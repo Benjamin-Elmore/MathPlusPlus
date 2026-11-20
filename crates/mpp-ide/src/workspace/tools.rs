@@ -6,12 +6,11 @@ use std::time::Instant;
 
 use egui::{Context, Ui};
 use mpp_syntax::document::parse_document;
-use mpp_syntax::Span;
 
 use crate::app::IdeApp;
 use crate::copy::CopyFormat;
 use crate::explorer::search::block_latex;
-use crate::history::{ago, Timeline};
+use crate::history::{ago, first_difference};
 use crate::settings::AutosaveMode;
 use crate::suggest::Suggester;
 use crate::typeset;
@@ -44,84 +43,58 @@ impl IdeApp {
         ok
     }
 
-    /// Adds the files' changes to their histories. Call once a frame.
-    pub(crate) fn record_history(&mut self) {
-        let now = Instant::now();
-        for d in &self.docs {
-            let rev = d.editor.revision();
-            let text = d.editor.text();
-            self.ws
-                .history
-                .entry(d.id)
-                .and_modify(|t| {
-                    t.observe(rev, text, now);
-                })
-                .or_insert_with(|| Timeline::new(text, rev, now));
-        }
-        let ids: Vec<u64> = self.docs.iter().map(|d| d.id).collect();
-        self.ws.history.retain(|id, _| ids.contains(id));
-    }
-
     /// The history of the current file, newest first: index, age, and what to
-    /// typeset for the block that changed.
+    /// typeset for the block that changed. These are the editor's own undo
+    /// steps (a template insert or a word of typing is one step), so the list,
+    /// Ctrl+Z and Ctrl+Y walk the same history.
     pub fn history_entries(&self) -> Vec<(usize, String, String)> {
         let Some(d) = self.doc() else {
             return vec![];
         };
-        let Some(tl) = self.ws.history.get(&d.id) else {
-            return vec![];
-        };
+        let states = d.editor.history();
         let now = Instant::now();
-        let last = tl.steps().len().saturating_sub(1);
-        tl.steps()
-            .iter()
-            .enumerate()
+        let current = d.editor.history_position();
+        let parsed: Vec<_> = states.iter().map(|s| parse_document(s.text)).collect();
+        (0..states.len())
             .rev()
             .take(MENU_STEPS)
-            .map(|(i, s)| {
-                let when = if i == 0 {
-                    "As opened".to_string()
-                } else {
-                    ago(s.when, now)
+            .map(|i| {
+                let s = &states[i];
+                let when = match s.when {
+                    _ if i == current => "Now".to_string(),
+                    Some(t) if i > 0 => ago(t, now),
+                    _ => "As opened".to_string(),
                 };
-                let parsed = parse_document(&s.text);
+                let offset = if i == 0 {
+                    0
+                } else {
+                    first_difference(states[i - 1].text, s.text)
+                };
                 let mut latex = String::new();
-                parsed.walk(&mut |b| {
-                    if latex.is_empty() && b.span.start <= s.offset && s.offset <= b.span.end {
-                        latex = block_latex(b, &s.text);
+                parsed[i].walk(&mut |b| {
+                    if latex.is_empty() && b.span.start <= offset && offset <= b.span.end {
+                        latex = block_latex(b, s.text);
                     }
                 });
-                if i == last && latex.is_empty() {
-                    latex = "\\text{latest}".into();
+                if latex.is_empty() {
+                    latex = "\\text{(empty)}".into();
                 }
                 (i, when, latex)
             })
             .collect()
     }
 
-    /// Restores the current file to a history step (as one undoable edit).
+    /// Goes back (or forward) to a history step; Ctrl+Y and Ctrl+Z carry on
+    /// from there.
     pub fn restore_history_step(&mut self, step: usize) -> bool {
-        let Some(d) = self.docs.get(self.active) else {
-            return false;
-        };
-        let Some(text) = self
-            .ws
-            .history
-            .get(&d.id)
-            .and_then(|t| t.text_at(step))
-            .map(str::to_string)
-        else {
-            return false;
-        };
         let Some(d) = self.docs.get_mut(self.active) else {
             return false;
         };
-        let end = d.editor.text().len();
-        let caret = d.editor.caret();
-        d.editor.replace_node(Span::new(0, end), &text);
-        d.editor.move_caret(caret.min(text.len()), false);
-        d.touched();
-        true
+        let ok = d.editor.go_to_history(step);
+        if ok {
+            d.touched();
+        }
+        ok
     }
 
     /// Removes the recovery copy of a file that is being closed.

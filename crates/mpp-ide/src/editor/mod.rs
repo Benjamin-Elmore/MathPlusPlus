@@ -11,6 +11,7 @@ pub mod symbols;
 pub mod template;
 
 use std::ops::Range;
+use std::time::Instant;
 
 use mpp_syntax::Span;
 
@@ -33,6 +34,31 @@ struct Snapshot {
     text: String,
     caret: usize,
     sessions: Vec<Session>,
+    /// When this state was reached (none: as the file was opened).
+    when: Option<Instant>,
+}
+
+impl Snapshot {
+    fn state(&self) -> HistoryState<'_> {
+        HistoryState {
+            text: &self.text,
+            when: self.when,
+        }
+    }
+}
+
+/// One state of the undo history, as Edit, History lists it.
+#[derive(Debug, Clone, Copy)]
+pub struct HistoryState<'a> {
+    pub text: &'a str,
+    /// When the state was reached (none: as the file was opened).
+    pub when: Option<Instant>,
+}
+
+/// Typing this character ends a word: it joins the word's undo step, and
+/// the next character starts a new one.
+fn ends_word(c: char) -> bool {
+    c.is_whitespace() || matches!(c, ',' | ';' | '.' | ':' | '!' | '?')
 }
 
 /// The text of a document with its caret and selection.
@@ -44,6 +70,11 @@ pub struct Editor {
     undo: Vec<Snapshot>,
     redo: Vec<Snapshot>,
     last_kind: Option<EditKind>,
+    /// The last word typed was ended (a space or punctuation): the next
+    /// character starts a new undo step.
+    word_done: bool,
+    /// When the current state was reached.
+    when: Option<Instant>,
     revision: u64,
     sessions: Vec<Session>,
     next_session: u64,
@@ -98,6 +129,8 @@ impl Editor {
         self.redo.clear();
         self.sessions.clear();
         self.last_kind = None;
+        self.word_done = false;
+        self.when = None;
         self.revision += 1;
     }
 
@@ -110,13 +143,17 @@ impl Editor {
     }
 
     fn record(&mut self, kind: EditKind, contiguous: bool) {
-        let group =
-            kind == EditKind::Typing && self.last_kind == Some(EditKind::Typing) && contiguous;
+        let group = kind == EditKind::Typing
+            && self.last_kind == Some(EditKind::Typing)
+            && contiguous
+            && !self.word_done;
+        self.word_done = false;
         if !group {
             self.undo.push(Snapshot {
                 text: self.text.clone(),
                 caret: self.caret,
                 sessions: self.sessions.clone(),
+                when: self.when,
             });
             if self.undo.len() > HISTORY_LIMIT {
                 self.undo.remove(0);
@@ -125,6 +162,7 @@ impl Editor {
         self.redo.clear();
         self.last_kind = Some(kind);
         self.left = None;
+        self.when = Some(Instant::now());
     }
 
     /// The one place the text changes: replaces `range` and moves every
@@ -168,8 +206,14 @@ impl Editor {
             return;
         }
         let left = self.left.take();
-        let typing = !s.chars().any(char::is_whitespace);
+        // Typing groups word by word: a word and the space or punctuation after
+        // it are one step. A new line is a step of its own.
+        let typing = !s.contains('\n');
         let contiguous = self.selection().is_none();
+        if s.chars().all(ends_word) {
+            // ", " after a word: the space joins the comma's step.
+            self.word_done = false;
+        }
         self.record(
             if typing {
                 EditKind::Typing
@@ -178,6 +222,7 @@ impl Editor {
             },
             contiguous,
         );
+        self.word_done = typing && s.chars().next_back().is_some_and(ends_word);
         let range = self.selection().unwrap_or(self.caret..self.caret);
         let left = left.filter(|(_, at)| range == (*at..*at));
         self.splice(range.clone(), s);
@@ -291,10 +336,12 @@ impl Editor {
             text: std::mem::replace(&mut self.text, s.text),
             caret: self.caret,
             sessions: std::mem::replace(&mut self.sessions, s.sessions),
+            when: std::mem::replace(&mut self.when, s.when),
         };
         self.caret = s.caret.min(self.text.len());
         self.anchor = None;
         self.last_kind = None;
+        self.word_done = false;
         self.revision += 1;
         old
     }
@@ -316,6 +363,38 @@ impl Editor {
         };
         let old = self.restore(s);
         self.undo.push(old);
+        true
+    }
+
+    /// Every state of the undo history, oldest first: the undo steps, the
+    /// current state (at [`Editor::history_position`]), then the redo steps.
+    pub fn history(&self) -> Vec<HistoryState<'_>> {
+        let mut out: Vec<HistoryState<'_>> = self.undo.iter().map(Snapshot::state).collect();
+        out.push(HistoryState {
+            text: &self.text,
+            when: self.when,
+        });
+        out.extend(self.redo.iter().rev().map(Snapshot::state));
+        out
+    }
+
+    /// Where the current state is in [`Editor::history`].
+    pub fn history_position(&self) -> usize {
+        self.undo.len()
+    }
+
+    /// Undoes or redoes until state `index` of [`Editor::history`] is current
+    /// (so Ctrl+Z and Ctrl+Y keep working from there).
+    pub fn go_to_history(&mut self, index: usize) -> bool {
+        if index > self.undo.len() + self.redo.len() {
+            return false;
+        }
+        while self.undo.len() > index {
+            self.undo();
+        }
+        while self.undo.len() < index {
+            self.redo();
+        }
         true
     }
 
@@ -819,6 +898,49 @@ mod tests {
         assert_eq!(e.text(), "");
         assert!(e.redo());
         assert_eq!(e.text(), "abc");
+    }
+
+    #[test]
+    fn typing_groups_word_by_word() {
+        let mut e = Editor::new("");
+        for c in "ab cd, ef".chars() {
+            e.insert_text(&c.to_string());
+        }
+        assert!(e.undo());
+        assert_eq!(e.text(), "ab cd, ");
+        assert!(e.undo());
+        assert_eq!(e.text(), "ab ");
+        assert!(e.undo());
+        assert_eq!(e.text(), "");
+        assert!(!e.undo());
+    }
+
+    #[test]
+    fn a_new_line_is_a_step_of_its_own() {
+        let mut e = Editor::new("");
+        e.insert_text("a");
+        e.insert_text("\n");
+        e.insert_text("b");
+        assert!(e.undo());
+        assert_eq!(e.text(), "a\n");
+        assert!(e.undo());
+        assert_eq!(e.text(), "a");
+    }
+
+    #[test]
+    fn the_history_walks_the_undo_steps() {
+        let mut e = Editor::new("x");
+        e.replace_node(Span::new(0, 1), "y");
+        e.replace_node(Span::new(0, 1), "z");
+        let texts: Vec<&str> = e.history().iter().map(|h| h.text).collect();
+        assert_eq!(texts, ["x", "y", "z"]);
+        assert_eq!(e.history_position(), 2);
+        assert!(e.go_to_history(0));
+        assert_eq!(e.text(), "x");
+        assert_eq!(e.history().len(), 3, "the later steps stay as redo");
+        assert!(e.go_to_history(2));
+        assert_eq!(e.text(), "z");
+        assert!(!e.go_to_history(3));
     }
 
     #[test]

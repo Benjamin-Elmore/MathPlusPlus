@@ -520,7 +520,6 @@ impl IdeApp {
             self.reload_changed();
         }
         self.settle_preview();
-        self.record_history();
         self.autosave_tick(&ctx);
         self.persist_settings();
         if !ctx.input(|i| i.pointer.any_down()) {
