@@ -549,6 +549,10 @@ impl<'a> Lowerer<'a> {
     }
 
     fn call(&mut self, callee: &Node, args: &[Node], span: Span) -> LowerResult {
+        if let Some(t) = crate::fields_wire::textbook(self.scope, &self.locals, callee, args.len())
+        {
+            return Ok(t.apply(self.lower_all(args)?));
+        }
         let inner = callee.ungrouped();
         if let NodeKind::Prime { base, count } = &inner.kind {
             if let Some(key) = node_key(base) {

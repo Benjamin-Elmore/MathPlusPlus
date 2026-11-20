@@ -1,0 +1,113 @@
+# Applied mathematics
+
+Optimisation, game theory, control, signal processing and mathematical physics. Present values and put–call parity are in [[std/finance.mpp]]. Import with `![[std/applied.mpp]]`.
+
+Name clash: $L$ here is a Lagrangian (the graph Laplacian is in [[std/discrete.mpp]], $L$-functions in [[std/number-theory.mpp]]).
+
+## Optimisation
+
+Gradient descent, $x_{k+1} = x_k - \eta \nabla f(x_k)$ with step $\eta > 0$. One step on $f(x) = x^2$ from 1 with $\eta = 1/4$ halves $x$; many steps on $x^2 + y^2$ reach the minimum at the origin.
+
+$$ x_{\text{GD}}(x, \eta, g) := x - \eta g $$
+
+$$ x_{\text{GD}}(1, \tfrac{1}{4}, 2 \cdot 1) \overset{?}{=} \frac{1}{2} $$
+
+$$ \mathrm{sgn}(10^{-6} - \operatorname{lpnorm}(\operatorname{graddescent}(x^2 + y^2, (x, y), (1, 1), \tfrac{1}{4}, 50), 2)) \overset{?}{=} 1 $$
+
+The Lagrangian $L(x, \lambda) = f(x) + \sum_i \lambda_i g_i(x)$ for constraints $g_i(x) \le 0$. To minimise $x^2$ subject to $1 - x \le 0$:
+
+$$ L_{\text{KKT}}(x, \lambda) := x^2 + \lambda (1 - x) $$
+
+$$ \frac{\partial}{\partial x} L_{\text{KKT}}(x, \lambda) \overset{?}{=} 2x - \lambda $$
+
+At a regular local minimum the KKT conditions hold: $\nabla_x L = 0$, $\lambda_i \ge 0$ and $\lambda_i g_i(x) = 0$. Here $x = 1$, $\lambda = 2$:
+
+$$ 2 \cdot 1 - 2 \overset{?}{=} 0 $$
+
+$$ 2 (1 - 1) \overset{?}{=} 0 $$
+
+$$ \operatorname{kkt}(x^2, (1 - x \le 0), (x), (1)) = ? $$
+
+**Theorem.** (Karush–Kuhn–Tucker) At a local minimum $x$ of $f$ subject to $g_i(x) \le 0$ where a constraint qualification holds, there are $\lambda_i \ge 0$ with $\nabla_x L(x, \lambda) = 0$ and $\lambda_i g_i(x) = 0$ for every $i$.
+
+## Game theory
+
+A finite zero-sum game has a value: $\max_x \min_y x^T A y = \min_y \max_x x^T A y$ over mixed strategies. Matching pennies with payoffs $\pm 1$ has value 0: the even mix guarantees 0 against either column.
+
+$$ A_{\text{pennies}} \equiv \begin{pmatrix} 1 & -1 \\ -1 & 1 \end{pmatrix} $$
+
+$$ x_{\text{mix}} \equiv \begin{pmatrix} \tfrac{1}{2} & \tfrac{1}{2} \end{pmatrix} $$
+
+$$ x_{\text{mix}} A_{\text{pennies}} \overset{?}{=} \begin{pmatrix} 0 & 0 \end{pmatrix} $$
+
+$$ \operatorname{gamevalue}(A_{\text{pennies}}) = ? $$
+
+**Theorem.** (von Neumann's minimax theorem) For every real matrix $A$, $\max_x \min_y x^T A y = \min_y \max_x x^T A y$, the extremes taken over probability vectors.
+
+The two-player Shapley value for player 1, with $v(\emptyset) = 0$: $[v(\{1\}) + v(\{1, 2\}) - v(\{2\})]/2$.
+
+$$ \phi_{\text{Shapley}}(v_1, v_2, v_{12}) := \frac{v_1 + v_{12} - v_2}{2} $$
+
+$$ \phi_{\text{Shapley}}(1, 2, 4) \overset{?}{=} \frac{3}{2} $$
+
+$$ \operatorname{hamming}(\operatorname{shapley}(1, 2, 4), (\phi_{\text{Shapley}}(1, 2, 4), \phi_{\text{Shapley}}(2, 1, 4))) \overset{?}{=} 0 $$
+
+$$ \phi_{\text{Shapley}}(1, 2, 4) + \phi_{\text{Shapley}}(2, 1, 4) \overset{?}{=} 4 $$
+
+## Control theory
+
+The linear state equation $x' = Ax + Bu$. With zero input, $x(t) = \exp(tA)x(0)$; for the double integrator the position grows linearly with the velocity.
+
+$$ A_{\text{dbl}} \equiv \begin{pmatrix} 0 & 1 \\ 0 & 0 \end{pmatrix} $$
+
+$$ B_{\text{dbl}} \equiv \begin{pmatrix} 0 \\ 1 \end{pmatrix} $$
+
+$$ \operatorname{expm}(A_{\text{dbl}}, t) \overset{?}{=} \begin{pmatrix} 1 & t \\ 0 & 1 \end{pmatrix} $$
+
+$$ \operatorname{expm}(A_{\text{dbl}}, 2) \begin{pmatrix} 1 \\ 3 \end{pmatrix} \overset{?}{=} \begin{pmatrix} 7 \\ 3 \end{pmatrix} $$
+
+The system is controllable exactly when $[B, AB, …, A^{n-1}B]$ has rank $n$, the state dimension.
+
+$$ \operatorname{ctrbrank}(A_{\text{dbl}}, B_{\text{dbl}}) \overset{?}{=} 2 $$
+
+$$ \operatorname{ctrbrank}(A_{\text{dbl}}, \begin{pmatrix} 1 \\ 0 \end{pmatrix}) \overset{?}{=} 1 $$
+
+**Theorem.** (Kalman rank condition) The system $x' = Ax + Bu$ with state dimension $n$ is controllable exactly when $\operatorname{rank}[B, AB, …, A^{n-1}B] = n$.
+
+## Signal processing
+
+The $N$-point DFT, $X[k] = \sum_{j=0}^{N-1} x[j] \exp(-2\pi i jk/N)$. For $x = (1, 2, 3, 4)$, written out:
+
+$$ X_{\text{DFT}}(k) := 1 + 2 e^{-2\pi i k/4} + 3 e^{-4\pi i k/4} + 4 e^{-6\pi i k/4} $$
+
+$$ X_{\text{DFT}}(1) \overset{?}{=} -2 + 2i $$
+
+$$ X_{\text{DFT}}(2) \overset{?}{=} -2 $$
+
+$X[0] = \sum_j x[j]$, so $X[0]/N$ is the mean of the signal.
+
+$$ \frac{X_{\text{DFT}}(0)}{4} \overset{?}{=} \operatorname{mean}((1, 2, 3, 4)) $$
+
+$$ \operatorname{lpnorm}(\operatorname{dft}((1, 2, 3, 4)), 1) \overset{?}{=} |X_{\text{DFT}}(0)| + |X_{\text{DFT}}(1)| + |X_{\text{DFT}}(2)| + |X_{\text{DFT}}(3)| $$
+
+## Mathematical physics
+
+Hamilton's equations $\dot q = \partial H/\partial p$, $\dot p = -\partial H/\partial q$. For the oscillator $H = (p^2 + q^2)/2$ they give $\dot q = p$, $\dot p = -q$.
+
+$$ H_{\text{osc}}(q, p) := \frac{p^2 + q^2}{2} $$
+
+$$ \frac{\partial}{\partial p} H_{\text{osc}}(q, p) \overset{?}{=} p $$
+
+$$ -\frac{\partial}{\partial q} H_{\text{osc}}(q, p) \overset{?}{=} -q $$
+
+$$ \operatorname{hamilton}(\tfrac{1}{2}(p^2 + q^2), q, p) = ? $$
+
+Schrödinger evolution $i\hbar\,\partial\psi/\partial t = \hat H \psi$. On an energy eigenstate of energy $E$ the time factor is $\exp(-iEt/\hbar)$:
+
+$$ \psi_{\text{t}}(t, E, \hbar) := e^{-i E t / \hbar} $$
+
+$$ i \hbar \frac{d}{dt} \psi_{\text{t}}(t, E, \hbar) \overset{?}{=} E \, \psi_{\text{t}}(t, E, \hbar) $$
+
+$$ |\psi_{\text{t}}(3, 2, 1)| \overset{?}{=} 1 $$
+
+**Theorem.** (Schrödinger equation) A quantum state evolves by $i\hbar\,\partial_t \psi = \hat H \psi$; if $\hat H \psi_0 = E \psi_0$, then $\psi(t) = e^{-iEt/\hbar} \psi_0$.

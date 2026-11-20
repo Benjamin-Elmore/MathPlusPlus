@@ -1,0 +1,109 @@
+# Discrete mathematics
+
+Counting, graphs, extremal and algebraic combinatorics, and the limits of computation. Graphs are lists of edges, `((1, 2), (2, 3), …)`, or adjacency matrices. Binomial coefficients and Catalan and Fibonacci numbers are in [[std/stats.mpp]] and [[std/numbers.mpp]]. Import with `![[std/discrete.mpp]]`.
+
+## Sets and logic
+
+A set of $n$ elements has $2^n$ subsets: choosing a subset is choosing a size $k$ and then $\binom{n}{k}$ members.
+
+$$ N_{\text{subsets}}(n) := 2^n $$
+
+$$ \sum_{k=0}^{5} \binom{5}{k} \overset{?}{=} N_{\text{subsets}}(5) $$
+
+$n$ Boolean variables have $2^n$ truth assignments and $2^{2^n}$ distinct Boolean functions: one output bit for each assignment.
+
+$$ N_{\text{Boolean}}(n) := 2^{2^n} $$
+
+$$ N_{\text{Boolean}}(2) \overset{?}{=} 16 $$
+
+$$ N_{\text{Boolean}}(3) \overset{?}{=} 2^{N_{\text{subsets}}(3)} $$
+
+## Generating functions
+
+The geometric series $\sum_{n \ge 0} x^n = 1/(1 - x)$ for $|x| < 1$.
+
+$$ \sum_{n=0}^{\infty} x^n \overset{?}{=} \frac{1}{1 - x} $$
+
+$$ \sum_{n=0}^{\infty} \left(\frac{1}{3}\right)^n \overset{?}{=} \frac{3}{2} $$
+
+## Graph theory
+
+The handshake lemma: the degrees of a finite undirected graph add to twice the number of edges. The complete graph $K_4$ has 6 edges and every vertex has degree 3.
+
+$$ K_{\text{4 edges}} \equiv ((1, 2), (1, 3), (1, 4), (2, 3), (2, 4), (3, 4)) $$
+
+$$ \operatorname{hamming}(\operatorname{graphdegrees}(K_{\text{4 edges}}), (3, 3, 3, 3)) \overset{?}{=} 0 $$
+
+$$ 4 \operatorname{mean}(\operatorname{graphdegrees}(K_{\text{4 edges}})) \overset{?}{=} 2 \cdot 6 $$
+
+A connected finite graph is a tree exactly when $|E| = |V| - 1$; a tree is its own only spanning tree.
+
+$$ \operatorname{spanningtrees}(((1, 2), (2, 3), (2, 4), (4, 5))) \overset{?}{=} 1 $$
+
+$$ \operatorname{spanningtrees}(((1, 2), (2, 3), (3, 1))) \overset{?}{=} 3 $$
+
+**Theorem.** (Trees) A connected finite graph with vertex set $V$ and edge set $E$ is a tree exactly when $|E| = |V| - 1$.
+
+Cayley's formula: $n^{n-2}$ labelled trees on $n$ vertices for $n \ge 2$, which Kirchhoff's matrix-tree theorem counts as the spanning trees of $K_n$.
+
+$$ N_{\text{Cayley}}(n) := n^{n - 2} $$
+
+$$ \operatorname{spanningtrees}(K_{\text{4 edges}}) \overset{?}{=} N_{\text{Cayley}}(4) $$
+
+$$ \operatorname{spanningtrees}(((1, 2), (1, 3), (1, 4), (1, 5), (2, 3), (2, 4), (2, 5), (3, 4), (3, 5), (4, 5))) \overset{?}{=} N_{\text{Cayley}}(5) $$
+
+The graph Laplacian $L = D - A$, with degree matrix $D$ and adjacency matrix $A$. For the path $1 - 2 - 3$:
+
+$$ \operatorname{graphlaplacian}(((1, 2), (2, 3))) \overset{?}{=} \begin{pmatrix} 1 & -1 & 0 \\ -1 & 2 & -1 \\ 0 & -1 & 1 \end{pmatrix} $$
+
+$$ \operatorname{adjacency}(((1, 2), (2, 3))) \overset{?}{=} \begin{pmatrix} 0 & 1 & 0 \\ 1 & 0 & 1 \\ 0 & 1 & 0 \end{pmatrix} $$
+
+## Extremal combinatorics
+
+$R(3, 3) = 6$: every red/blue colouring of the edges of $K_6$ has a one-colour triangle, and $K_5$ can avoid one. Both are checked by search.
+
+$$ \operatorname{ramseynumber}(3, 3) \overset{?}{=} 6 $$
+
+$$ \operatorname{ramseynumber}(2, 4) \overset{?}{=} 4 $$
+
+Sperner's theorem: the largest antichain of subsets of an $n$-set has $\binom{n}{\lfloor n/2 \rfloor}$ members (the middle layer).
+
+$$ N_{\text{Sperner}}(n) := \binom{n}{\lfloor n/2 \rfloor} $$
+
+$$ N_{\text{Sperner}}(4) \overset{?}{=} 6 $$
+
+$$ N_{\text{Sperner}}(5) \overset{?}{=} 10 $$
+
+**Theorem.** (Sperner) An antichain of subsets of an $n$-element set has at most $\binom{n}{\lfloor n/2 \rfloor}$ members.
+
+## Algebraic combinatorics
+
+Burnside's lemma: the number of orbits of a finite group action is the average number of fixed points, $\frac{1}{|G|}\sum_{g \in G} |\operatorname{Fix}(g)|$. Two-colour necklaces of 4 beads under rotation: $(2^4 + 2 + 2^2 + 2)/4 = 6$.
+
+$$ \operatorname{burnside}(((2, 3, 4, 1)), 2) \overset{?}{=} \frac{2^4 + 2^1 + 2^2 + 2^1}{4} $$
+
+$$ \operatorname{necklaces}(4, 2) \overset{?}{=} 6 $$
+
+$$ \operatorname{bracelets}(6, 2) \overset{?}{=} 13 $$
+
+The hook-length formula: the standard Young tableaux of shape $\lambda$ with $n$ cells number $f^\lambda = n!/\prod_c h(c)$, where $h(c)$ counts the cell, the cells to its right and the cells below it. For $\lambda = (4, 3, 1)$ the hooks are $6, 4, 3, 1$; $4, 2, 1$; $1$.
+
+$$ \operatorname{hooklength}((4, 3, 1)) \overset{?}{=} \frac{8!}{6 \cdot 4 \cdot 3 \cdot 1 \cdot 4 \cdot 2 \cdot 1 \cdot 1} $$
+
+$$ \operatorname{hooklength}((2, 2)) \overset{?}{=} 2 $$
+
+## Computability and complexity
+
+Comparison sorting needs at least $\lceil \log_2(n!) \rceil$ comparisons in the worst case for $n$ distinct items: there are $n!$ orders to tell apart and each comparison halves them at best.
+
+$$ N_{\text{sort}}(n) := \lceil \log_2(n!) \rceil $$
+
+$$ N_{\text{sort}}(4) \overset{?}{=} 5 $$
+
+$$ N_{\text{sort}}(10) \overset{?}{=} 22 $$
+
+**Theorem.** (Turing) The halting predicate, which says whether a given program halts on a given input, is undecidable: no program computes it.
+
+**Theorem.** (Cook–Levin) Boolean satisfiability is NP-complete.
+
+**Theorem.** (Sorting lower bound) Every comparison sort of $n$ distinct items uses at least $\lceil \log_2(n!) \rceil$ comparisons in the worst case.
