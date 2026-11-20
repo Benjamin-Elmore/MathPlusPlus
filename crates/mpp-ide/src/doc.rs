@@ -51,6 +51,8 @@ pub struct Doc {
     submitted: Option<u64>,
     last_edit: Instant,
     cache: Option<Arc<PageCache>>,
+    /// The page at the other width, for a second view of this file.
+    spare: Option<Arc<PageCache>>,
     /// A span to highlight (the target of go-to-definition).
     pub highlight: Option<Span>,
     /// A span to scroll into view on the next frame.
@@ -74,6 +76,7 @@ impl Doc {
             submitted: None,
             last_edit: Instant::now(),
             cache: None,
+            spare: None,
             highlight: None,
             scroll_to: None,
             want_x: None,
@@ -195,11 +198,17 @@ impl Doc {
             self.eval_id += 1;
         }
         self.cache = None;
+        self.spare = None;
     }
 
     /// True when the evaluation is of exactly the text on screen.
     pub fn eval_fresh(&self) -> bool {
         self.eval.is_some() && self.eval_text == self.editor.text()
+    }
+
+    /// How long since the text was last touched.
+    pub fn idle_for(&self) -> Duration {
+        self.last_edit.elapsed()
     }
 
     /// The number of errors in the current evaluation and parse.
@@ -225,7 +234,12 @@ impl Doc {
             mode,
         };
         if self.cache.as_ref().is_some_and(|c| c.key != key) {
-            self.cache = None;
+            let old = self.cache.take();
+            let spare = self.spare.take();
+            // A second view of this file asks for its own width: keep the other.
+            self.cache = spare.filter(|s| s.key == key);
+            self.spare =
+                old.filter(|o| o.key.revision == key.revision && o.key.eval_id == key.eval_id);
         }
         let editor = &self.editor;
         let eval = self.eval.as_deref();

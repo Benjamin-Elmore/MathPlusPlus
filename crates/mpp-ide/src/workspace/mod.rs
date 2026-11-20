@@ -2,6 +2,7 @@
 //! the app. Everything here is `impl IdeApp` glue over the explorer, tabs and
 //! settings modules, so `app.rs` only calls into it.
 
+mod tools;
 mod ui;
 
 use std::path::{Path, PathBuf};
@@ -57,6 +58,8 @@ pub struct Workspace {
     pub outline_open: bool,
     pub tiles: TileState,
     pub vars: crate::layout::panes::VarEdit,
+    pub autosave: crate::autosave::AutosaveState,
+    pub history: std::collections::HashMap<u64, crate::history::Timeline>,
     pub pending_close: Option<PendingClose>,
     pub outline_cache: Option<(u64, u64, Vec<OutlineItem>)>,
     pub settings_dir: Option<PathBuf>,
@@ -79,6 +82,8 @@ impl Default for Workspace {
             outline_open: true,
             tiles: TileState::default(),
             vars: Default::default(),
+            autosave: Default::default(),
+            history: Default::default(),
             pending_close: None,
             outline_cache: None,
             settings_dir: None,
@@ -280,6 +285,7 @@ impl IdeApp {
             return;
         }
         let id = self.docs[i].id;
+        self.forget_recovery(i);
         self.docs.remove(i);
         if self.ws.preview.is_some_and(|(p, _)| p == id) {
             self.ws.preview = None;
@@ -521,12 +527,7 @@ impl IdeApp {
                     self.message = Some(m);
                 }
             } else {
-                self.message = Some(format!(
-                    "The file {} could not be found.",
-                    t.file_name()
-                        .map(|n| n.to_string_lossy().into_owned())
-                        .unwrap_or_default()
-                ));
+                self.message = Some(self.missing_import_message(&t));
             }
         }
     }

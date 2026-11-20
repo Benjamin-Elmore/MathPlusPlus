@@ -21,6 +21,7 @@ const OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::O)
 const NEW: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
 const ZOOM_IN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Equals);
 const ZOOM_OUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Minus);
+const ZOOM_IN_PLUS: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Plus);
 const ZOOM_RESET: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Num0);
 
 /// The Math++ IDE.
@@ -119,6 +120,11 @@ impl IdeApp {
             }
             .into(),
         );
+    }
+
+    /// The last message shown in the status bar (an error), if any.
+    pub fn message(&self) -> Option<&str> {
+        self.message.as_deref()
     }
 
     /// The document being edited.
@@ -307,7 +313,7 @@ impl IdeApp {
                 i.consume_shortcut(&SAVE),
                 i.consume_shortcut(&OPEN),
                 i.consume_shortcut(&NEW),
-                i.consume_shortcut(&ZOOM_IN),
+                i.consume_shortcut(&ZOOM_IN) | i.consume_shortcut(&ZOOM_IN_PLUS),
                 i.consume_shortcut(&ZOOM_OUT),
                 i.consume_shortcut(&ZOOM_RESET),
                 i.zoom_delta(),
@@ -383,17 +389,7 @@ impl IdeApp {
                     ui.send_viewport_cmd(egui::ViewportCommand::Close);
                 }
             });
-            ui.menu_button("Edit", |ui| {
-                let mut latex = self.copy_format == CopyFormat::Latex;
-                if ui.checkbox(&mut latex, "Copy maths as LaTeX").changed() {
-                    self.copy_format = if latex {
-                        CopyFormat::Latex
-                    } else {
-                        CopyFormat::Unicode
-                    };
-                }
-                ui.weak("Copying gives Unicode maths by default");
-            });
+            ui.menu_button("Edit", |ui| self.edit_menu(ui));
             ui.menu_button("View", |ui| {
                 let mut dark = self.mode == Mode::Dark;
                 if ui.checkbox(&mut dark, "Dark theme").changed() {
@@ -425,6 +421,8 @@ impl IdeApp {
                 ui.separator();
                 ui.checkbox(&mut self.show_file_text, "Show file text");
             });
+            let ctx = ui.ctx().clone();
+            ui.menu_button("Help", |ui| self.help_menu(ui, &ctx));
         });
     }
 
@@ -452,6 +450,8 @@ impl IdeApp {
             self.reload_changed();
         }
         self.settle_preview();
+        self.record_history();
+        self.autosave_tick(&ctx);
         self.persist_settings();
         if !ctx.input(|i| i.pointer.any_down()) {
             self.persist_layout();

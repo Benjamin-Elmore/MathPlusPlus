@@ -7,6 +7,7 @@
 #![forbid(unsafe_code)]
 
 mod app;
+pub mod autosave;
 pub mod copy;
 pub mod defs;
 pub mod diagnostics;
@@ -16,13 +17,16 @@ pub mod eval;
 pub mod explorer;
 pub mod figure;
 pub mod files;
+pub mod history;
 pub mod layout;
 pub mod page;
 pub mod paint;
 mod sample;
 pub mod settings;
+pub mod suggest;
 pub mod tabs;
 pub mod theme;
+pub mod tutorial;
 pub mod typeset;
 pub mod view;
 pub mod workspace;
@@ -46,7 +50,7 @@ impl EframeApp {
         // The page zooms its own text (Ctrl+= and friends); egui must not also scale.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         if let Some(dir) = settings::app_data_dir() {
-            app.restore_session(&dir, Some(&cc.egui_ctx));
+            app.start_up(&dir, Some(&cc.egui_ctx));
         }
         if !paths.is_empty() {
             app.docs.clear();
@@ -70,5 +74,10 @@ impl eframe::App for EframeApp {
 
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         self.0.save_state(storage);
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.0.persist_settings();
+        self.0.clear_recovery_on_exit();
     }
 }

@@ -347,6 +347,29 @@ impl IdeApp {
                     "No results."
                 });
             });
+            let q = self.ws.search.last_run.trim().to_string();
+            if !q.is_empty() {
+                let known: Vec<String> = self
+                    .doc()
+                    .and_then(|d| d.eval.as_ref())
+                    .map(|e| e.bindings.keys().cloned().collect())
+                    .unwrap_or_default();
+                let guesses = crate::suggest::Suggester.names(&q, &known);
+                if !guesses.is_empty() {
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        ui.label(egui::RichText::new("Did you mean").color(c32(theme.muted)));
+                        for g in &guesses {
+                            let r = typeset::show(ui, &defs_name_latex(g), 17.0, *theme);
+                            if r.clicked() {
+                                self.ws.search.query = g.clone();
+                                let g = g.clone();
+                                self.run_search(&g);
+                            }
+                        }
+                    });
+                }
+            }
             return;
         }
         let root = self.project_root().map(Path::to_path_buf);
@@ -520,6 +543,7 @@ impl IdeApp {
     pub(crate) fn overlays(&mut self, ctx: &Context) {
         self.quick_open_ui(ctx);
         self.layout_name_dialog(ctx);
+        self.recovery_dialog(ctx);
         self.close_dialog(ctx);
     }
 

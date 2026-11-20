@@ -23,3 +23,12 @@
 - Layouts are saved per project in the app-data folder (`layouts/<hash>.json`); View → Layout lists the built-in Writing, Graphing and Review and any saved names; View → Reset layout.
 - Right-click a figure → "Open in tile" (`ViewEvent::OpenFigureTile` in view.rs).
 - The variables tile edits the plain number after a `:=` (slider and input box) and the evaluation follows.
+
+## N10 IDE tools
+
+- Undo and redo stay with the editor (it already groups a run of typing into one step and restores the caret); `history/` adds the browsable trail (Edit → History lists steps as the typeset block that changed; any step restores as one undoable edit). The editor groups all contiguous typing, not word by word: change that in `editor/` if per-word steps are wanted.
+- Autosave: Edit → Autosave (off, after a second of quiet, when the window loses focus). Recovery copies go to `<app data>/recovery/` every three seconds for files with unsaved edits and are removed on save or close; the next start-up offers "Restore unsaved changes to N files?" with a typeset side-by-side compare (`autosave/compare.rs`).
+- Zoom: `Ctrl+=`, `Ctrl+-`, `Ctrl+0`, `Ctrl+scroll` scale the page (and so every graph on it); remembered in the settings file. egui's own keyboard zoom is switched off in `EframeApp::new`.
+- Tutorial: eleven lessons plus `constants.mpp` in `tutorial/lessons.rs`, written to `<app data>/tutorial/` on first launch and from Help → Tutorial. The units and steps lessons describe the tools in words until those lanes are integrated; update them then.
+- Did you mean: `suggest::Suggester` has `names`, `symbols`, `units`, `phrases` and `files` with the same shapes as ide-b's `diagnostics::suggest::Suggest` plug point. After the merge, implement that trait for `Suggester` and call `set_suggester(Arc::new(Suggester))` in `EframeApp::new`; autocomplete in `editor/symbols.rs` can call `Suggester::names` and `phrases` too. In this lane it is used by the search view ("Did you mean …?") and by the missing-import message.
+- Shared scratch note: two lanes wrote scripts to the same scratchpad folder; keep lane scripts in a per-lane subfolder.
