@@ -1,0 +1,22 @@
+Title: Lab 8: Titrating a strong acid with a strong base
+Author: Math++ pipeline test (chemistry)
+
+%{
+**Pipeline expectations.** pH at $0\ \mathrm{mL}$: $1.000$; at $12.5\ \mathrm{mL}$: $\approx 1.477$; at $25.0\ \mathrm{mL}$ (equivalence): $7.00$; at $30.0\ \mathrm{mL}$: $\approx 11.959$. The equivalence volume is found by the solver as $25.0\ \mathrm{mL}$. The piecewise definition (N3) drives a curve with a sharp jump at equivalence, with an inflection point found by C2.
+%}
+
+## Setup
+Let $V_a := 25.0\,\mathrm{mL}$ of HCl at $c_a := 0.100\,\mathrm{mol/L}$, titrated with NaOH at $c_b := 0.100\,\mathrm{mol/L}$. Let $K_w \equiv 1.0 \times 10^{-14}$.
+
+$$ n_a := c_a V_a, \qquad n_b(V_b) := c_b V_b $$
+
+$$ V_{\text{eq}} := \operatorname{solve}_{V_b} \big(n_b(V_b) = n_a\big) = ? $$
+
+$$ \mathrm{pH}(V_b) := \begin{cases} -\log_{10}\dfrac{n_a - n_b(V_b)}{V_a + V_b} & V_b < V_{\text{eq}} \\ 7 & V_b = V_{\text{eq}} \\ 14 + \log_{10}\dfrac{n_b(V_b) - n_a}{V_a + V_b} & V_b > V_{\text{eq}} \end{cases} $$
+
+% Concentrations are in mol/L inside the logarithm; the unit checker should treat log of a concentration as log of its value in mol/L, and say so in the hover.
+
+## Results
+$$ \mathrm{pH}(0) = ? \qquad \mathrm{pH}(12.5\,\mathrm{mL}) \approx ? \qquad \mathrm{pH}(25.0\,\mathrm{mL}) = ? \qquad \mathrm{pH}(30.0\,\mathrm{mL}) \approx ? $$
+
+Figure: $\mathrm{pH}(V_b)$, $V_b \in [0, 50\,\mathrm{mL}]$. The titration curve.

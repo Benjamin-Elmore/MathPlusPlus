@@ -1,0 +1,22 @@
+Title: Lab 5: Radiocarbon dating
+Author: Math++ pipeline test (chemistry / physics)
+
+%{
+**Pipeline expectations.** $\lambda \approx 1.2097 \times 10^{-4}\ \mathrm{yr^{-1}}$. After $10\,000$ years, $N/N_0 \approx 0.2983$. A sample with 40 percent of its carbon-14 left is $\approx 7575$ years old. The ODE $\dot N = -\lambda N$ is solved exactly. Scientific notation follows N4.
+%}
+
+## Setup
+Let $t_{1/2} \equiv 5730\,\mathrm{yr}$ be the half-life of carbon-14.
+
+$$ \lambda := \frac{\ln 2}{t_{1/2}} \approx ? $$
+
+$$ \frac{dN}{dt} = -\lambda N, \quad N(0) = N_0 $$
+
+## Results
+Fraction left after $10\,000$ years:
+$$ \frac{N(10\,000\,\mathrm{yr})}{N_0} \approx ? $$
+
+Age of a sample with 40 percent left:
+$$ \operatorname{solve}_t \Big(\frac{N(t)}{N_0} = 0.40\Big) \approx ? $$
+
+Figure: $N(t)/N_0$, $t \in [0, 30\,000\,\mathrm{yr}]$, with the half-lives marked.

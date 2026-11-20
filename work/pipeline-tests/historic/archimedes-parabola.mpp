@@ -1,0 +1,23 @@
+Title: The quadrature of the parabola
+Author: Archimedes, *Quadrature of the Parabola* (c. 250 BC); written out with modern algebra for the Math++ pipeline tests
+Abstract: The area of a parabolic segment is $\tfrac43$ of its largest inscribed triangle. Tests integrals, a geometric series, and a direct symbolic cross-check.
+
+%{
+**Pipeline expectations.** Status: **proved**, no gaps. Steps 2–3 are checked symbolically, step 4 by induction, and step 5 by the series tools ($\sum_{j \ge 0} 4^{-j} = \tfrac43$). The cross-check block auto-evaluates to $\frac{(b-a)^3}{6}$, which matches $\frac43 \cdot \frac{(b-a)^3}{8}$. Archimedes used the method of exhaustion (double contradiction), not limits; a remark records this.
+%}
+
+Take the parabola $y = x^2$ and the chord between $x = a$ and $x = b$, with $a < b$.
+
+**Theorem 1** (Archimedes). The area between the chord and the parabola is $\tfrac43$ times the area of the triangle whose third vertex is on the parabola at $x = \tfrac{a+b}{2}$.
+
+**Proof.**
+1. Let $h := b - a$. The chord is $y = (a + b)x - ab$ — by algebra.
+2. The triangle with vertices on the parabola at $a$, $\tfrac{a+b}{2}$ and $b$ has area $T = \tfrac{h^3}{8}$ — by the determinant formula for area.
+3. The two smaller chords, each of width $\tfrac h2$, get triangles of total area $2 \cdot \tfrac{(h/2)^3}{8} = \tfrac14 T$ — by step 2.
+4. Repeating, stage $j$ adds triangles of total area $4^{-j} T$, and the triangles fill the segment — by induction on $j$.
+5. So the area is $T \sum_{j=0}^{\infty} 4^{-j} = \tfrac43 T = \tfrac{h^3}{6}$ — by the geometric series.
+∎
+
+**Remark.** Archimedes avoided infinite sums: he showed that the area can be neither more nor less than $\tfrac43 T$ (the method of exhaustion).
+
+$$ \int_a^b \big((a+b)x - ab - x^2\big)\, dx $$

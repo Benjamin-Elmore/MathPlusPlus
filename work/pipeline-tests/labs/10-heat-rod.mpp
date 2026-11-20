@@ -1,0 +1,18 @@
+Title: Lab 10: A metal rod cooling (the heat equation)
+Author: Math++ pipeline test (physics / PDEs)
+
+%{
+**Pipeline expectations.** Separation of variables (C7, PDE stretch goal) gives $u = 100\,e^{-\alpha\pi^2 t/L^2}\sin(\pi x/L)$. If PDE solving is not built, the result must fall back to a numeric method-of-lines solve and say so. The midpoint falls to $50$ K above ambient at $t \approx 702.3\ \mathrm s$. The check $u_t - \alpha u_{xx} = 0$ is confirmed symbolically. The 3D surface $u(x, t)$ renders.
+%}
+
+## Setup
+Let $L := 1\,\mathrm m$ and $\alpha := 1.0 \times 10^{-4}\,\mathrm{m^2/s}$. The ends are held at the ambient temperature, and $u$ is the temperature above ambient.
+
+$$ \frac{\partial u}{\partial t} = \alpha \frac{\partial^2 u}{\partial x^2}, \quad u(0, t) = u(L, t) = 0, \quad u(x, 0) = 100\,\mathrm K \cdot \sin\frac{\pi x}{L} $$
+
+## Results
+$$ u(x, t) = ? $$
+$$ \frac{\partial u}{\partial t} - \alpha \frac{\partial^2 u}{\partial x^2} \overset{?}{=} 0 $$
+$$ \operatorname{solve}_t \Big(u\big(\tfrac L2, t\big) = 50\,\mathrm K\Big) \approx ? $$
+
+Figure: $u(x, t)$, $x \in [0, L]$, $t \in [0, 3000\,\mathrm s]$. The cooling surface.

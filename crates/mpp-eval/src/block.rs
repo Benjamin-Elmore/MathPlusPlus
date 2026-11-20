@@ -2,7 +2,7 @@
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use mpp_core::{Expr, ExprNode, LogicOp, MathError, Step, Steps};
@@ -13,12 +13,12 @@ use mpp_syntax::math::{
     visit, Clause, DefHead, DefKind, Line, MathAst, Node, NodeKind, QueryMode, Range,
     RelOp as SynRel, Statement,
 };
-use mpp_syntax::{Diagnostic, Span};
+use mpp_syntax::{Diagnostic, Severity, Span};
 
 use crate::check::check;
 use crate::error::{EvalError, Located};
-use crate::holders::{contains_holder, Ctx, Holders};
-use crate::import::{ImportRequest, Importer};
+use crate::holders::{contains_holder, Collected, Ctx, Holders, Shown};
+use crate::import::{Exports, ImportContext, ImportErrorKind, ImportRequest, Importer};
 use crate::lower::{LowerScope, Lowerer};
 use crate::names::{node_key, subscripted};
 use crate::numeric::{approximate, is_exact_rational};
@@ -32,9 +32,12 @@ use crate::value::{Binding, Env, Origin, Sequence, Value, VarKind};
 pub(crate) struct Inputs<'a> {
     /// Sequences with a recurrence anywhere in the document.
     pub sequences: &'a BTreeSet<String>,
-    pub holders: &'a Holders,
+    pub holders: &'a Arc<Holders>,
     pub importer: &'a dyn Importer,
     pub base_dir: Option<&'a Path>,
+    pub root_dir: Option<&'a Path>,
+    pub chain: &'a [PathBuf],
+    pub doc_name: Option<&'a str>,
     pub lines: &'a LineIndex,
 }
 
@@ -140,6 +143,10 @@ impl Lookup for View<'_> {
 struct Resolved {
     value: Result<Expr, EvalError>,
     steps: Option<Steps>,
+    /// Remarks from the evaluators, such as a numerical fallback.
+    notes: Vec<String>,
+    /// Preferred presentations of values.
+    shown: Vec<Shown>,
     touched: BTreeSet<String>,
 }
 
@@ -276,11 +283,27 @@ impl Run<'_, '_> {
             let value = r.run(e);
             (value, r.touched().clone())
         };
+        let Collected {
+            steps,
+            notes,
+            shown,
+        } = ctx.finish();
         Resolved {
             value,
-            steps: ctx.into_steps(),
+            steps,
+            notes,
+            shown,
             touched,
         }
+    }
+
+    /// `e` with the known values put in but no holder evaluated (for the steps).
+    fn substituted(&self, e: &Expr, locals: &Locals) -> Option<Expr> {
+        let view = self.view();
+        let none = Holders::empty();
+        let ctx = Ctx::new(&none);
+        let mut r = Resolver::new(&view, &ctx, locals.clone());
+        r.run(e).ok()
     }
 
     fn resolve(&self, e: &Expr, locals: &Locals, span: Span) -> Result<Expr, Located> {
@@ -461,7 +484,8 @@ impl Run<'_, '_> {
                     span,
                     EvalError::ConstantRedefined {
                         name: name.to_string(),
-                        line,
+                        line: b.origin().line.unwrap_or(line),
+                        file: b.origin().file.as_ref().map(|f| f.to_string()),
                     },
                 );
                 true
@@ -827,6 +851,9 @@ impl Run<'_, '_> {
         lr.input = Some(input.clone());
         let numeric = mode == QueryMode::Approx;
         let resolved = self.resolve_full(&input, s.locals, &[], steps, numeric);
+        for note in &resolved.notes {
+            self.warn(expr.span, note.clone());
+        }
         let value = match resolved.value {
             Ok(v) => v,
             Err(err) => {
@@ -835,17 +862,28 @@ impl Run<'_, '_> {
             }
         };
         if let Some(mut log) = resolved.steps {
-            if value != input {
+            // The first step puts in the known values; the evaluators' own working
+            // (derivative rules, integration techniques …) follows.
+            let first = if log.is_empty() {
+                Some(("substitute the known values and simplify", value.clone()))
+            } else if resolved.touched.is_empty() {
+                None
+            } else {
+                self.substituted(&input, s.locals)
+                    .map(|e| ("substitute the known values", e))
+            };
+            if let Some((rule, after)) = first.filter(|(_, after)| *after != input) {
                 log.0.insert(
                     0,
                     Step {
-                        rule: "substitute the known values and simplify".into(),
+                        rule: rule.into(),
                         before: input.clone(),
-                        after: value.clone(),
+                        after,
                         note: None,
                     },
                 );
             }
+            lr.steps = Some(log.clone());
             self.result.steps.push((self.result.values.len(), log));
         }
         match mode {
@@ -866,7 +904,20 @@ impl Run<'_, '_> {
                 Err(err) => self.error(expr.span, err),
             },
         }
+        let approximate_only = value.as_number().is_some_and(|n| !n.is_exact());
+        if approximate_only && lr.approx.is_none() {
+            lr.approx = approximate(&value).ok();
+        }
+        let shown = resolved.shown.iter().find(|s| s.value == value).cloned();
         lr.set_value(Value::from_expr(value));
+        if approximate_only && lr.approx.is_some() {
+            // A numerical fallback (no closed form) is shown with ≈ only.
+            lr.text = None;
+        }
+        if let Some(s) = shown {
+            lr.text = Some(s.text);
+            lr.latex = Some(s.latex);
+        }
         self.push(lr);
     }
 
@@ -1035,36 +1086,33 @@ impl Run<'_, '_> {
             span: req.span,
             names: req.names.clone(),
             loaded: false,
+            file: None,
+            files: Vec::new(),
+            diagnostics: Vec::new(),
+            uncacheable: false,
         };
-        match self.inputs.importer.import(self.inputs.base_dir, &req) {
+        let ctx = ImportContext {
+            base: self.inputs.base_dir,
+            root_dir: self.inputs.root_dir,
+            chain: self.inputs.chain,
+            holders: self.inputs.holders,
+        };
+        match self.inputs.importer.import_in(&ctx, &req) {
             Ok(exports) => {
                 info.loaded = true;
-                let selected: Vec<(String, String)> = match &req.names {
-                    Some(pairs) => pairs.clone(),
-                    None => exports
-                        .bindings
-                        .keys()
-                        .map(|k| (k.clone(), k.clone()))
-                        .collect(),
-                };
-                for (name, alias) in selected {
-                    match exports.bindings.get(&name) {
-                        Some(b) => {
-                            let mut b = (**b).clone();
-                            let origin = b.origin_mut();
-                            origin.block = self.block;
-                            origin.file = Some(exports.file.clone());
-                            self.define(&alias, b);
-                        }
-                        None => self.error(
-                            req.span,
-                            EvalError::Invalid(format!("`{name}` is not defined in {}", req.path)),
-                        ),
-                    }
-                }
+                info.file = exports.path.clone();
+                info.files = exports.files.clone();
+                info.diagnostics = exports.diagnostics.clone();
+                info.uncacheable = exports.uncacheable;
+                self.import_names(&req, &exports);
             }
-            Err(message) => {
-                self.warn(req.span, message);
+            Err(e) => {
+                info.uncacheable = true;
+                if e.kind == ImportErrorKind::NotLoaded {
+                    self.warn(req.span, e.message);
+                } else {
+                    self.error(req.span, EvalError::Invalid(e.message));
+                }
                 for (_, alias) in req.names.iter().flatten() {
                     self.define(
                         alias,
@@ -1077,6 +1125,91 @@ impl Run<'_, '_> {
             }
         }
         self.result.imports.push(info);
+    }
+
+    /// Binds the names an import brings in, reporting clashes and missing names.
+    fn import_names(&mut self, req: &ImportRequest, exports: &Exports) {
+        if exports.error_count > 0 {
+            let n = exports.error_count;
+            let first = exports
+                .diagnostics
+                .iter()
+                .find(|d| d.diagnostic.severity == Severity::Error);
+            let detail = match first {
+                Some(d) if n == 1 => format!(": {}", d.diagnostic.message),
+                _ => String::new(),
+            };
+            self.error(
+                req.span,
+                EvalError::Invalid(format!(
+                    "{n} error{} in {}{detail}",
+                    if n == 1 { "" } else { "s" },
+                    exports.file
+                )),
+            );
+        }
+        let selected: Vec<(String, String)> = match &req.names {
+            Some(pairs) => pairs.clone(),
+            None => exports
+                .bindings
+                .keys()
+                .map(|k| (k.clone(), k.clone()))
+                .collect(),
+        };
+        for (name, alias) in selected {
+            let Some(found) = exports.bindings.get(&name) else {
+                self.error(
+                    req.span,
+                    EvalError::Invalid(format!("`{name}` is not defined in {}", exports.file)),
+                );
+                continue;
+            };
+            let mut b = (**found).clone();
+            let origin = b.origin_mut();
+            origin.block = self.block;
+            if origin.file.is_none() {
+                origin.file = Some(exports.file.clone());
+                origin.path = exports.path.clone();
+            }
+            if self.import_clashes(req, &alias, &name, &b, exports) {
+                continue;
+            }
+            self.define(&alias, b);
+        }
+    }
+
+    /// True when `alias` is already taken by something else (and reports it);
+    /// importing the same definition twice is not a clash.
+    fn import_clashes(
+        &mut self,
+        req: &ImportRequest,
+        alias: &str,
+        name: &str,
+        incoming: &Binding,
+        exports: &Exports,
+    ) -> bool {
+        let Some(prior) = self.view().get(alias, false) else {
+            return false;
+        };
+        let (new_file, old_file) = (
+            exports.file.to_string(),
+            prior.origin().file.as_ref().map(|f| f.to_string()),
+        );
+        if old_file.as_deref() == Some(new_file.as_str())
+            && prior.origin().span == incoming.origin().span
+        {
+            return true;
+        }
+        let here = self.inputs.doc_name.unwrap_or("this document").to_string();
+        let old = old_file.unwrap_or_else(|| format!("{here} (before this import)"));
+        let fix = format!("`Using ${name}$ as ${alias}_2$ from [[{}]]`", req.path);
+        self.error(
+            req.span,
+            EvalError::Invalid(format!(
+                "`{alias}` is defined in both {old} and {new_file}; rename one, for example with {fix}"
+            )),
+        );
+        true
     }
 }
 

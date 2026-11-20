@@ -277,6 +277,15 @@ impl<'a> Lowerer<'a> {
                     NablaOp::Curl => "curl",
                     NablaOp::Laplacian => "laplacian",
                 };
+                // `∇f` for a user function differentiates by its parameters.
+                if let Some(params) = node_key(body).and_then(|k| self.function_params(&k)) {
+                    let vars = params.iter().map(|p| Expr::sym(p)).collect();
+                    let target = self.bound(&params, |s| s.lower(body))?;
+                    return Ok(Expr::apply(
+                        name,
+                        vec![target, Expr::new(ExprNode::Tuple(vars))],
+                    ));
+                }
                 Ok(Expr::apply(name, vec![self.lower(body)?]))
             }
             K::NamedOp(op) => self.named_op(op),
@@ -553,9 +562,16 @@ impl<'a> Lowerer<'a> {
 
     fn integral(&mut self, i: &Integral, span: Span) -> LowerResult {
         if matches!(i.kind, IntKind::Contour | IntKind::Surface) {
+            let what = if i.kind == IntKind::Contour {
+                "∮ around a named curve"
+            } else {
+                "∯ over a named surface"
+            };
             return Err(fail(
                 span,
-                EvalError::Unsupported("line and surface integrals".into()),
+                EvalError::Unsupported(format!(
+                    "{what} (parametrise it and integrate over the parameter instead)"
+                )),
             ));
         }
         if i.dot {
@@ -592,12 +608,8 @@ impl<'a> Lowerer<'a> {
                 ))
             }
         };
-        if bounds.is_some() && vars.len() > 1 {
-            return Err(fail(
-                span,
-                EvalError::Unsupported("bounds on a multiple integral".into()),
-            ));
-        }
+        // `\iint_0^1 f dx dy`: the same bounds for every variable (a square or cube).
+        // Variable bounds are written as nested integrals, `\int_0^1 \int_0^x f dy dx`.
         let body = self.bound(&vars, |s| s.lower(&i.body))?;
         let mut out = body;
         for var in &vars {

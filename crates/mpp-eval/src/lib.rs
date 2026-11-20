@@ -11,13 +11,15 @@
 //!
 //! Calculus notation becomes unevaluated holder nodes that the calculus phase
 //! evaluates by registering a [`HolderEval`] (see [`holders`]); imports go through
-//! the [`Importer`] hook.
+//! the [`Importer`] hook (files on disk by default, with a cache, loop and clash checks).
 
 #![forbid(unsafe_code)]
 
 mod block;
+pub mod calculus;
 pub mod check;
 pub mod error;
+pub mod files;
 pub mod graph;
 pub mod holders;
 pub mod import;
@@ -28,12 +30,20 @@ pub mod resolve;
 pub mod result;
 mod session;
 pub mod value;
+#[cfg(feature = "watch")]
+pub mod watch;
 
 pub use check::Verdict;
 pub use error::{EvalError, Located};
+pub use files::{
+    EmbeddedSources, FileImporter, FsSource, LayeredSource, Location, SourceProvider, Stamp,
+};
 pub use graph::DepGraph;
-pub use holders::{evaluate_holder, Ctx, HolderEval, Holders};
-pub use import::{Exports, ImportRequest, Importer, NoImports};
+pub use holders::{evaluate_holder, Collected, Ctx, HolderEval, Holders, Shown};
+pub use import::{
+    Exports, FileDiagnostic, ImportContext, ImportError, ImportErrorKind, ImportRequest, Importer,
+    NoImports,
+};
 pub use mpp_syntax::math::QueryMode;
 pub use result::{
     BlockResult, DefinitionKind, Evaluated, ImportInfo, LineIndex, LineKind, LineResult, RangeInfo,
@@ -41,3 +51,5 @@ pub use result::{
 };
 pub use session::Session;
 pub use value::{Binding, Env, Origin, Sequence, Value, VarKind};
+#[cfg(feature = "watch")]
+pub use watch::FileWatcher;

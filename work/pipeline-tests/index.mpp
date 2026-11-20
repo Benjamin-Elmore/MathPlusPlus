@@ -1,0 +1,40 @@
+# Pipeline tests (Ben, 2026-11-20)
+
+End-to-end tests that run whole documents through the full pipeline: parse → evaluate → check proofs → typeset → graph → export. Each file holds its own expected results in a hidden comment block at the top ("Pipeline expectations"). A test passes only when the real output matches them.
+
+**How they run:** `cargo test -p mpp-cli --test pipeline` runs every file below with `mpp check` and `mpp run`, and compares the results and proof statuses with the expectations. UI snapshot tests open each file in the IDE, in both themes. N8 exports each one to PDF, LaTeX and HTML. A test whose features are not built yet is skipped, with the missing item named (for example "skipped: needs N15"); it is never silently passed. M16 requires every test to run with nothing skipped.
+
+**Rule for proofs:** the checker must never report more than the expectations say. A proof marked "not proved here", or one with gaps, that comes out as ✓ is a **failure**. Over-claiming is worse than under-claiming.
+
+## Proofs (N15)
+
+| File | Proof | Expected status |
+|---|---|---|
+| `navier-stokes.mpp` | Navier–Stokes facts + Millennium statement (C) | Lemmas 1, 3, 4 and 5 proved; Lemma 2 with gaps (decay at infinity); Theorem 6 **not proved here** (external, unverified) |
+| `historic/euclid-primes.mpp` | Euclid: infinitely many primes | proved, 1 cited result |
+| `historic/sqrt2-irrational.mpp` | √2 is irrational | proved |
+| `historic/pythagoras.mpp` | Pythagorean theorem (rearrangement) | proved, 1 cited result |
+| `historic/gauss-sum.mpp` | Gauss: 1 + … + n | proved (two proofs) |
+| `historic/fermat-little.mpp` | Fermat's little theorem (Euler's proof) | proved |
+| `historic/cauchy-schwarz.mpp` | Cauchy–Schwarz for sums | proved |
+| `historic/euler-basel.mpp` | Euler: ζ(2) = π²/6 | proved, 1 cited result (Weierstrass); a gap without it |
+| `historic/archimedes-parabola.mpp` | Archimedes: parabola quadrature | proved |
+| `historic/euler-identity.mpp` | Euler's formula and identity | proved, 1 cited result |
+| `historic/cantor-diagonal.mpp` | Cantor: ℝ is uncountable | proved, 1 cited result; a gap without it |
+| `historic/turing-halting.mpp` | Turing: halting is undecidable | proved (structure only) |
+
+## Labs (simulation)
+
+| File | Lab | Key expected results |
+|---|---|---|
+| `labs/01-projectile-drag.mpp` | Projectile with linear drag | $R_0 \approx 40.77$ m, $R \approx 34.07$ m |
+| `labs/02-pendulum.mpp` | Nonlinear pendulum | $T_0 \approx 2.006$ s, $T(30°) \approx 2.041$ s |
+| `labs/03-damped-spring.mpp` | Damped spring | $\zeta \approx 0.0632$, $T_d \approx 0.9954$ s |
+| `labs/04-rc-circuit.mpp` | RC charging + data fit | $\tau = 1$ s, $V(\tau) \approx 3.161$ V |
+| `labs/05-radioactive-decay.mpp` | Carbon-14 dating | $N/N_0 \approx 0.2983$ at 10 000 yr, age $\approx 7575$ yr at 40 percent |
+| `labs/06-reaction-kinetics.mpp` | Arrhenius + first-order kinetics | rate ratio $\approx 1.926$, $E_a \approx 50$ kJ/mol from the fit |
+| `labs/07-boyles-law.mpp` | Boyle's law fit | slope $\approx 99.2$ J, $n \approx 0.0400$ mol |
+| `labs/08-titration.mpp` | Strong acid–strong base titration | pH 1.000, 1.477, 7.00, 11.959 |
+| `labs/09-predator-prey.mpp` | Lotka–Volterra | equilibrium $(4, 2.75)$, $V$ conserved to $10^{-6}$ |
+| `labs/10-heat-rod.mpp` | Heat equation in a rod | midpoint at half temperature at $\approx 702.3$ s |
+| `labs/11-monte-carlo-pi.mpp` | Monte Carlo π | within $3\sigma \approx 0.0049$ of π, reproducible with seed 42 |

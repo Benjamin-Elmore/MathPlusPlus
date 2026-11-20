@@ -1,6 +1,7 @@
 //! What names are bound to, and the values results carry.
 
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::Arc;
 
 use mpp_core::{Expr, ExprNode};
@@ -14,8 +15,14 @@ pub struct Origin {
     pub block: BlockId,
     /// The statement line of the definition.
     pub span: Span,
-    /// The file the definition came from, when it was imported (`None` for this document).
+    /// The file the definition came from, as shown to the user, when it was
+    /// imported (`None` for this document).
     pub file: Option<Arc<str>>,
+    /// The resolved path of that file, for go-to-definition (`span` is a byte
+    /// range in it).
+    pub path: Option<Arc<Path>>,
+    /// The 1-based line of the definition in that file.
+    pub line: Option<usize>,
 }
 
 impl Origin {
@@ -25,6 +32,8 @@ impl Origin {
             block,
             span,
             file: None,
+            path: None,
+            line: None,
         }
     }
 

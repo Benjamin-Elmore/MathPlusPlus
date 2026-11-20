@@ -1,0 +1,32 @@
+Title: Lab 4: Charging a capacitor
+Author: Math++ pipeline test (circuits)
+
+%{
+**Pipeline expectations.** $\tau = 1\ \mathrm s$ exactly (units: $\Omega \cdot \mathrm F = \mathrm s$). $V_C(\tau) \approx 3.161\ \mathrm V$ (63.2 percent of $V_0$), and the time to reach 99 percent is $\approx 4.605\ \mathrm s$. C7 solves the first-order linear ODE with an integrating factor. The data table fit recovers $\tau \approx 1.0\ \mathrm s$ with $R^2 > 0.999$.
+%}
+
+## Setup
+Let $V_0 := 5\,\mathrm V$, $R := 10\,\mathrm{k\Omega}$ and $C := 100\,\mathrm{\mu F}$.
+
+$$ \tau := RC = ? $$
+
+$$ RC\,\frac{dV_C}{dt} + V_C = V_0, \quad V_C(0) = 0 $$
+
+## Results
+$$ V_C(\tau) \approx ? \qquad \operatorname{solve}_t \big(V_C(t) = 0.99\, V_0\big) \approx ? $$
+
+## Measured data
+| $t$ ($\mathrm s$) | $V$ ($\mathrm V$) |
+|---|---|
+| 0.0 | 0.00 |
+| 0.5 | 1.98 |
+| 1.0 | 3.15 |
+| 1.5 | 3.89 |
+| 2.0 | 4.32 |
+| 3.0 | 4.75 |
+| 4.0 | 4.91 |
+
+Fit $V = V_0(1 - e^{-t/\tau_{\text{fit}}})$ to the table:
+$$ \tau_{\text{fit}} \approx ? $$
+
+Figure: the data points and $V_C(t)$, $t \in [0, 5\,\mathrm s]$.

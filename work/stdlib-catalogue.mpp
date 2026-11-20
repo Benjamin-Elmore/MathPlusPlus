@@ -1,0 +1,311 @@
+# Standard library catalogue (Ben, 2026-11-20)
+
+Ben's checklist of mathematical values, functions and invariants for the standard library (N12) and the wider function coverage (N16). It is kept verbatim below.
+
+**How the builders use it:** every line becomes exactly one of these:
+- **compute**: a function or constant Math++ evaluates (e.g. $\tau(n)$, $\operatorname{erf}(x)$, $W_0(z)$, the DFT);
+- **check**: an identity or value that a test verifies symbolically or numerically (e.g. $\Gamma(\tfrac12) = \sqrt\pi$, $R(3,3) = 6$ by search);
+- **state**: a theorem written as a typeset **Theorem** block with its conditions, not computed (e.g. Yoneda, Gauss–Bonnet), and offered to the proof checker (N15) as a cited known result.
+
+The stdlib lane writes the classification as a table in `work/lanes/N12.mpp` before starting, and M17 reviewer 1 checks every line against it.
+
+**Name clashes to resolve** (the library must tell these apart by context, as a textbook does): $\pi$ the constant, $\pi(x)$ prime counting and $\pi$ a stationary distribution; $\varphi$ the golden ratio and $\varphi(n)$ Euler's totient; $\chi$ a character, a Dirichlet character and the Euler characteristic; $F$ for Frobenius, the Fibonacci numbers and a functor; $h$ for the class number, the hook length and the support function; $\Phi$ for the normal CDF and a flow map; $L$ for the Lagrangian, the graph Laplacian and $L$-functions. Rule: a name means the constant unless it is applied to an argument or brought in from a specific library file; the hover card always says which one is meant.
+
+```
+MATHEMATICAL VALUES, FUNCTIONS, AND INVARIANTS
+
+CORE CONSTANTS AND VALUES
+
+π = 3.1415926536…                    Circle circumference / diameter
+e = 2.7182818285…                    Base of the natural logarithm
+φ = (1 + √5)/2 = 1.6180339887…        Golden ratio, φ² = φ + 1
+γ = 0.5772156649…                    Euler–Mascheroni constant
+    γ = lim[n→∞] (Σ_{k=1}^n 1/k − ln n)
+i² = −1, exp(iπ) = −1
+sin(π/6) = 1/2, cos(π/4) = 1/√2, tan(π/4) = 1
+∫_ℝ exp(−x²) dx = √π
+Γ(1/2) = √π, Γ(n+1) = n! for integers n ≥ 0
+ζ(0) = −1/2, ζ(2) = π²/6, ζ(4) = π⁴/90
+ζ(3) = 1.2020569032…                 Apéry’s constant, irrational
+
+NUMBERS AND FOUNDATIONS
+
+Arithmetic
+  gcd(a,b) = gcd(b, a mod b) for b > 0.
+  For a,b > 0, lcm(a,b) = ab/gcd(a,b).
+  If n = ∏ p^a, divisor count τ(n) = ∏(a+1).
+  Sum of positive divisors σ(n) = ∏(p^(a+1)−1)/(p−1).
+
+Elementary number theory
+  Euler totient φ(n) = n∏_{p|n}(1−1/p), with primes p in the product.
+  a^φ(n) ≡ 1 mod n if gcd(a,n) = 1.
+  Chinese remainder map: ℤ/(mn) ≅ ℤ/m × ℤ/n for coprime m,n.
+
+Multiplicative functions
+  Dirichlet convolution (f*g)(n) = Σ_{d|n} f(d)g(n/d).
+  Möbius μ(n) = 0 if a prime square divides n, otherwise (−1)^k
+  if n has k distinct prime factors. In particular μ(1) = 1.
+  If F(n) = Σ_{d|n} f(d), then f(n) = Σ_{d|n} μ(d)F(n/d).
+
+Analytic number theory
+  ζ(s) = Σ_{n≥1} n^(−s) = ∏_p (1−p^(−s))^(−1) for Re(s) > 1.
+  Prime-counting function π(x) = #{primes p ≤ x} ~ x/ln x.
+  Dirichlet L-function L(s,χ) = Σ_{n≥1} χ(n)n^(−s) for Re(s) > 1.
+
+Algebraic number theory
+  Field norm N_{K/ℚ}(x) = ∏_σ σ(x), over all embeddings K → ℂ.
+  Class number h_K counts ideal classes of the ring of integers.
+  h_{ℚ(i)} = 1, so the Gaussian integers admit unique factorization.
+
+Computational number theory
+  Repeated squaring evaluates a^e mod m in O(log e) modular
+  multiplications for e ≥ 2.
+  For prime p, v_p(n!) = Σ_{k≥1} floor(n/p^k).
+
+Diophantine approximation
+  Continued fractions produce rational convergents p_k/q_k.
+  For irrational α, |α−p_k/q_k| < 1/(q_k q_{k+1}).
+  The golden ratio has continued fraction [1; 1, 1, 1, …].
+
+p-adic analysis
+  |x|_p = p^(−v_p(x)) for x ≠ 0, and |0|_p = 0.
+  |x+y|_p ≤ max(|x|_p, |y|_p). For example, |8|₂ = 1/8.
+
+Finite fields
+  A finite field 𝔽_q exists exactly when q = p^m for prime p and m ≥ 1.
+  Frobenius F(x) = x^p. Its mth iterate is the identity on 𝔽_q.
+  Trace to 𝔽_p: Tr(x) = Σ_{j=0}^{m−1} x^(p^j).
+
+Set theory and logic
+  A finite set of n elements has 2^n subsets.
+  A set of n Boolean variables has 2^n truth assignments and
+  2^(2^n) distinct Boolean functions.
+
+ANALYSIS, DIFFERENTIAL EQUATIONS, AND COMPUTATION
+
+Elementary functions
+  exp(x) = Σ_{n≥0} x^n/n!, ln x = ∫₁ˣ dt/t for x > 0.
+  sin x = Σ_{n≥0} (−1)^n x^(2n+1)/(2n+1)!.
+  arctan x = ∫₀ˣ dt/(1+t²), so arctan(1) = π/4.
+
+Calculus
+  d/dx ∫ₐˣ f(t)dt = f(x) for continuous f.
+  Chain rule: (f ∘ g)'(x) = f'(g(x))g'(x).
+  Taylor polynomial: T_n(x) = Σ_{k=0}^n f^(k)(a)(x−a)^k/k!.
+
+Real and measure analysis
+  ‖f‖_p = (∫|f|^p dμ)^(1/p) for f in L^p and 1 ≤ p < ∞.
+  Indicator 1_A(x) equals 1 on A and 0 elsewhere, so ∫1_A dμ = μ(A).
+
+Complex analysis
+  Cauchy integral formula: f(a) = (1/2πi)∮ f(z)/(z−a) dz
+  for f holomorphic on and inside a positively oriented simple contour
+  enclosing a. In particular, ∮ dz/z = 2πi around such a contour enclosing 0.
+
+Special functions
+  Gamma: Γ(z) = ∫₀^∞ t^(z−1)e^(−t) dt for Re(z) > 0.
+  Beta: B(a,b) = Γ(a)Γ(b)/Γ(a+b) for a,b > 0.
+  Error function: erf(x) = (2/√π)∫₀ˣ e^(−t²) dt, with erf(0) = 0.
+  Lambert W: W(z)e^W(z) = z. The principal branch has W₀(0) = 0.
+  Bessel: J₀(x) = Σ_{k≥0} (−1)^k(x²/4)^k/(k!)², with J₀(0) = 1.
+
+Orthogonal polynomials
+  Legendre: P₀(x) = 1, P₁(x) = x, P₂(x) = (3x²−1)/2.
+  Chebyshev: T_n(cos θ) = cos(nθ), so T_n(1) = 1.
+
+Harmonic analysis
+  Fourier transform: f̂(ξ) = ∫_ℝ f(x)e^(−2πixξ) dx for f in L¹.
+  Under this convention, e^(−πx²) transforms to e^(−πξ²).
+  Plancherel: ‖f̂‖₂ = ‖f‖₂ for the extended L² transform.
+
+Distribution theory
+  Dirac delta: δ(ψ) = ψ(0). Its derivative satisfies δ′(ψ) = −ψ′(0).
+  The Heaviside step has distributional derivative δ.
+
+Functional analysis
+  Operator norm: ‖T‖ = sup_{‖x‖≤1} ‖Tx‖ for bounded linear T.
+  Hilbert-space adjoint: ⟨Tx,y⟩ = ⟨x,T*y⟩.
+
+Ordinary differential equations
+  y′ = ay, y(0)=y₀ gives y(t) = y₀e^(at).
+  y″+ω²y=0 for ω>0 gives y(t) = A cos(ωt)+B sin(ωt).
+  Laplace transform of e^(at) is 1/(s−a) for real a and Re(s) > a.
+
+Partial differential equations
+  Heat kernel on ℝ^n for u_t = αΔu, α>0:
+  K_t(x) = (4παt)^(−n/2) exp(−|x|²/(4αt)) for t>0.
+  Convolving K_t with the initial data gives the free-space solution
+  under standard integrability or boundedness assumptions.
+
+Dynamical systems
+  Flow maps satisfy Φ_{s+t} = Φ_s ∘ Φ_t wherever defined.
+  Logistic map f_r(x) = rx(1−x), with first period-doubling at r=3.
+
+Calculus of variations
+  For stationary paths of ∫L(x,y,y′)dx with fixed endpoints,
+  the Euler–Lagrange equation is ∂L/∂y − d/dx(∂L/∂y′) = 0.
+
+Numerical analysis
+  Newton iteration: x_{k+1} = x_k − f(x_k)/f′(x_k).
+  Forward Euler: y_{k+1} = y_k + h f(t_k,y_k) for y′ = f(t,y).
+  A continuously differentiable iteration g with |g′(x*)| < 1 at a
+  fixed point x* converges from sufficiently nearby starting points.
+
+Approximation theory
+  Bernstein approximation on [0,1]:
+  B_n[f](x) = Σ_{k=0}^n f(k/n) C(n,k)x^k(1−x)^(n−k).
+  It converges uniformly to f when f is continuous.
+
+DISCRETE MATHEMATICS, CHANCE, AND INFORMATION
+
+Enumerative combinatorics
+  Binomial coefficient C(n,k) = n!/[k!(n−k)!] for 0 ≤ k ≤ n.
+  Catalan C_n = C(2n,n)/(n+1), beginning 1, 1, 2, 5, 14, 42.
+  Fibonacci F_0=0, F_1=1, F_{n+2}=F_{n+1}+F_n.
+
+Generating functions
+  Σ_{n≥0} x^n = 1/(1−x) for |x|<1.
+  Fibonacci generating function: Σ_{n≥0} F_n x^n = x/(1−x−x²)
+  as a formal power series.
+
+Graph theory
+  Σ_v deg(v) = 2|E| for a finite undirected graph.
+  A connected finite graph is a tree exactly when |E| = |V|−1.
+  Cayley’s formula: n^(n−2) labeled trees on n vertices for n ≥ 2.
+  Graph Laplacian L = D−A, with degree matrix D and adjacency A.
+
+Extremal combinatorics
+  R(3,3)=6: every red/blue coloring of K₆ has a monochromatic triangle.
+  Largest antichain of subsets of an n-set: C(n,floor(n/2)).
+
+Algebraic combinatorics
+  Burnside’s lemma: #orbits = (1/|G|)Σ_{g∈G}|Fix(g)| for a finite action.
+  Hook-length formula for standard Young tableaux of shape λ of size n:
+  f^λ = n! / ∏_{cells c} h(c), with h(c) counting c and cells right/below.
+
+Probability
+  Bayes: P(A|B) = P(B|A)P(A)/P(B) when P(A),P(B)>0.
+  Var(X) = E[X²] − (E[X])² when the second moment is finite.
+  Uniform[0,1] has mean 1/2 and variance 1/12.
+  Poisson(λ): P(X=k) = e^(−λ)λ^k/k!, with mean and variance both λ.
+
+Statistics
+  Sample variance s² = Σ(x_i−x̄)²/(n−1) for n ≥ 2.
+  Least squares β̂ = (XᵀX)⁻¹Xᵀy for full-column-rank X.
+  Normal CDF Φ(z) = [1+erf(z/√2)]/2, with Φ(0)=1/2.
+
+Stochastic processes
+  For a time-homogeneous finite Markov chain, k-step transitions are P^k.
+  A stationary distribution satisfies πP = π.
+  Standard Brownian motion has W_t ~ N(0,t) and quadratic variation t.
+
+Information theory
+  Shannon entropy H(X) = −Σ p_i log₂ p_i, with 0 log₂ 0 = 0.
+  For m possible outcomes, H ranges from 0 to log₂ m, attained by a
+  point mass and the uniform distribution, respectively.
+  Mutual information I(X;Y) = H(X)+H(Y)−H(X,Y) for finite alphabets.
+  A binary symmetric channel with flip probability p has capacity
+  1−H(Bernoulli(p)) bits per use.
+
+Coding theory
+  Hamming distance counts coordinates where two codewords differ.
+  A q-ary linear [n,k,d] code satisfies d ≤ n−k+1 (Singleton bound).
+  Binary Hamming codes have [2^m−1, 2^m−1−m, 3] for m ≥ 2.
+
+Computability and complexity
+  The halting predicate is undecidable. Boolean satisfiability is NP-complete.
+  Comparison sorting needs at least ceil(log₂(n!)) comparisons in the
+  worst case for n distinct items.
+
+Mathematical cryptography
+  One-time pad: C = M ⊕ K. For an independent, uniform, same-length key
+  used once, H(M|C) = H(M).
+  RSA’s modular identity: m^(ed) ≡ m mod pq for distinct primes p,q
+  when ed ≡ 1 mod lcm(p−1,q−1).
+
+ALGEBRA, GEOMETRY, AND TOPOLOGY
+
+Linear algebra
+  Rank–nullity: dim V = rank(T) + dim ker(T) for finite-dimensional V.
+  det(AB) = det(A)det(B). For square A, tr(A) = sum of its eigenvalues
+  and det(A) = their product, counted with algebraic multiplicity.
+
+Group theory
+  Orbit–stabilizer: |Orb(x)| = |G|/|Stab(x)| for a finite group action.
+  A finite group’s order is divisible by the order of each subgroup.
+
+Representation theory
+  Character of a representation ρ: χ(g) = tr(ρ(g)).
+  For a finite group, the dimensions d_i of its inequivalent complex
+  irreducible representations satisfy Σ_i d_i² = |G|.
+
+Lie theory
+  Matrix Lie bracket: [X,Y] = XY−YX.
+  Matrix exponential exp(tX) = Σ_{k≥0}(tX)^k/k! generates a
+  one-parameter subgroup: exp(sX)exp(tX) = exp((s+t)X).
+
+Commutative algebra
+  Localization S⁻¹R sends s∈S to a unit. Example: invert all nonzero
+  integers in ℤ to obtain ℚ.
+  Krull dimension is the supremum of lengths of prime-ideal chains.
+  dim k[x₁,…,x_n] = n for a field k.
+
+Algebraic geometry
+  A smooth plane projective curve of degree d over an algebraically
+  closed field has genus (d−1)(d−2)/2. A smooth plane cubic has genus 1.
+
+Euclidean and convex geometry
+  Circle area = πr². Sphere area = 4πr². Ball volume = 4πr³/3.
+  Support function of a nonempty compact convex set K:
+  h_K(u) = sup_{x∈K} u·x. For a radius-r ball centered at 0, h_K(u)=r‖u‖₂.
+
+Differential geometry
+  A metric measures speed by ‖γ′(t)‖_g and length by ∫‖γ′(t)‖_g dt.
+  On a closed oriented Riemannian surface, ∫K dA = 2πχ by Gauss–Bonnet.
+  Gaussian curvature of a round sphere of radius r is 1/r².
+
+Point-set topology
+  Interior int(A) is the largest open subset of A.
+  Closure cl(A) is the smallest closed superset. Boundary ∂A = cl(A)\int(A).
+
+Algebraic topology
+  π₁(S¹) ≅ ℤ. The winding number labels loops up to based homotopy.
+  Euler characteristic χ = Σ_k (−1)^k b_k for a finite cell complex,
+  where b_k are its Betti numbers. χ(S²)=2, χ(torus)=0.
+
+Category theory
+  Adjunction F ⊣ G: Hom(FX,Y) ≅ Hom(X,GY), naturally in X and Y.
+  Covariant Yoneda: Nat(Hom(A,−), F) ≅ F(A) for a Set-valued functor F.
+
+OPTIMIZATION AND APPLIED MATHEMATICS
+
+Optimization
+  Gradient descent: x_{k+1} = x_k − η∇f(x_k) with step η>0.
+  Lagrangian: L(x,λ) = f(x)+Σ_i λ_i g_i(x) for constraints g_i(x)≤0.
+  At regular local minima, KKT includes ∇_xL=0, λ_i≥0, and λ_i g_i(x)=0.
+
+Game theory
+  Finite zero-sum game value: max_x min_y xᵀAy = min_y max_x xᵀAy
+  over mixed strategies x,y. Matching pennies with payoffs ±1 has value 0.
+  Two-player Shapley value for player 1, with v(∅)=0:
+  [v({1}) + v({1,2}) − v({2})]/2.
+
+Control theory
+  Linear state equation x′ = Ax+Bu. With zero input, x(t)=exp(tA)x(0).
+  The finite-dimensional continuous-time system is controllable exactly
+  when [B, AB, …, A^(n−1)B] has rank n, the state dimension.
+
+Signal processing
+  N-point DFT: X[k] = Σ_{j=0}^{N−1} x[j] exp(−2πijk/N).
+  X[0] = Σ_j x[j], so X[0]/N is the signal’s mean.
+
+Mathematical physics
+  Hamilton’s equations: q̇ = ∂H/∂p, ṗ = −∂H/∂q.
+  Schrödinger evolution: iℏ ∂ψ/∂t = Ĥψ.
+  On an energy eigenstate of energy E, the time factor is exp(−iEt/ℏ).
+
+Financial mathematics
+  Present value PV = FV·e^(−rT) under constant continuous discounting.
+  European put–call parity without dividends: C−P = S−Ke^(−rT)
+  for spot S, common strike K, and time T to expiry.
+```

@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod calc;
 pub mod domains;
 pub mod error;
 pub mod eval;

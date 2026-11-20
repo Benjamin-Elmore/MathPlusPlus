@@ -1,0 +1,22 @@
+Title: Lab 9: Predators and prey (Lotka–Volterra)
+Author: Math++ pipeline test (biology / maths)
+
+%{
+**Pipeline expectations.** The equilibrium is $(x^*, y^*) = (4, 2.75)$, found by the solver. The system is solved numerically (RK45) from $(10, 5)$ over $t \in [0, 50]$. The conserved quantity $V$ stays constant to within $10^{-6}$ relative to its start, which tests the solver's accuracy. The phase portrait shows closed orbits, and the sliders for $\alpha$ and $\gamma$ redraw it live.
+%}
+
+## Setup
+Let $\alpha := 1.1$, $\beta := 0.4$, $\delta := 0.1$ and $\gamma := 0.4$, with $\alpha \in [0.5, 2]$ and $\gamma \in [0.1, 1]$.
+
+$$ \dot x = \alpha x - \beta x y, \quad \dot y = \delta x y - \gamma y, \quad x(0) = 10, \ y(0) = 5 $$
+
+## Equilibrium
+$$ \operatorname{solve}_{x, y} \big(\alpha x - \beta x y = 0,\ \delta x y - \gamma y = 0,\ x > 0,\ y > 0\big) = ? $$
+
+## Conserved quantity
+$$ V(x, y) := \delta x - \gamma \ln x + \beta y - \alpha \ln y $$
+$$ \frac{d}{dt} V\big(x(t), y(t)\big) = ? $$
+$$ \max_{t \in [0, 50]} \frac{|V(t) - V(0)|}{|V(0)|} \approx ? $$
+
+Figure: $x(t)$ and $y(t)$, $t \in [0, 50]$.
+Figure: $(x, y)$ phase portrait with the direction field.
