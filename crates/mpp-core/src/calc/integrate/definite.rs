@@ -20,7 +20,7 @@ use crate::steps::Steps;
 
 use super::engine::{div, linear_coeffs};
 use super::numeric::{quad, DEFAULT_TOLERANCE};
-use super::{definite_holder, integrate};
+use super::{definite_holder, integrate, oscillatory};
 
 /// Subintervals allowed for the numerical value of one definite integral.
 const MAX_INTERVALS: usize = 2_000;
@@ -223,8 +223,151 @@ fn numeric_bounds(
             );
             Ok(result)
         }
+        Err(MathError::Undetermined(why)) => {
+            if let Some(reason) = proven_divergence(e, var, &points) {
+                return Err(MathError::Divergent(format!(
+                    "∫ {e} d{var} from {a} to {b} ({reason})"
+                )));
+            }
+            if let Some((v, note)) = oscillating(e, var, &points) {
+                let result = Expr::float(v);
+                Steps::record(
+                    &mut log,
+                    "integrate between zeros",
+                    &holder,
+                    &result,
+                    Some(note),
+                );
+                return Ok(result);
+            }
+            Err(MathError::Undetermined(format!(
+                "whether ∫ {e} d{var} from {a} to {b} converges ({})",
+                why.strip_prefix("whether the integral converges: ")
+                    .unwrap_or(&why)
+            )))
+        }
         Err(err) => Err(err),
     }
+}
+
+/// A proof that the integral diverges, when one of the standard tests settles it:
+/// the integrand does not tend to 0 at an infinite bound, or it behaves like `c/x` there
+/// (limit comparison with `∫ dx/x`), or like `c/(x − p)` beside a singular point `p`.
+fn proven_divergence(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<String> {
+    let x = Expr::sym(var);
+    let nonzero = |v: &Expr| {
+        !v.is_zero()
+            && !has_undefined(v)
+            && (v.is_infinite()
+                || v.eval_f64(&EmptyEnv)
+                    .is_ok_and(|y| y.is_finite() && y != 0.0))
+    };
+    let last = points.len().saturating_sub(1);
+    for (i, (p, pv)) in points.iter().enumerate() {
+        if pv.is_infinite() {
+            if let Ok(l) = limit(e, var, p, LimitDir::Both, None) {
+                if nonzero(&l) {
+                    return Some(format!(
+                        "divergence test: the integrand tends to {l}, not 0, as {var} → {p}"
+                    ));
+                }
+            }
+            let xf = simplify(&mul(vec![x.clone(), e.clone()]));
+            if let Ok(l) = limit(&xf, var, p, LimitDir::Both, None) {
+                if nonzero(&l) {
+                    return Some(format!(
+                        "limit comparison with ∫ d{var}/{var}: {var}·f({var}) → {l} as {var} → {p}"
+                    ));
+                }
+            }
+            continue;
+        }
+        let env: BTreeMap<String, f64> = [(var.to_string(), *pv)].into_iter().collect();
+        if e.eval_f64(&env).is_ok_and(f64::is_finite) {
+            continue;
+        }
+        let shifted = simplify(&mul(vec![
+            add(vec![x.clone(), mul(vec![Expr::int(-1), p.clone()])]),
+            e.clone(),
+        ]));
+        let sides: &[LimitDir] = if i == 0 {
+            &[LimitDir::Right]
+        } else if i == last {
+            &[LimitDir::Left]
+        } else {
+            &[LimitDir::Left, LimitDir::Right]
+        };
+        for side in sides {
+            if let Ok(l) = limit(&shifted, var, p, *side, None) {
+                if nonzero(&l) {
+                    return Some(format!(
+                        "limit comparison with ∫ d{var}/({var} − {p}): ({var} − {p})·f({var}) → {l} as {var} → {p}"
+                    ));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn has_undefined(e: &Expr) -> bool {
+    matches!(e.node(), ExprNode::Const(Constant::Undefined))
+        || e.children().iter().any(|c| has_undefined(c))
+}
+
+/// The value of an integral with an infinite bound whose integrand oscillates, summed
+/// between the zeros of the integrand (see [`super::oscillatory`]).
+fn oscillating(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<(f64, String)> {
+    let (lo, hi) = (points.first()?.1, points.last()?.1);
+    if lo.is_finite() && hi.is_finite() {
+        return None;
+    }
+    // Finite pieces between the singular points are integrated directly.
+    let mut env: BTreeMap<String, f64> = BTreeMap::new();
+    let mut g = |x: f64| {
+        env.insert(var.to_string(), x);
+        e.eval_f64(&env).ok()
+    };
+    let mut total = 0.0;
+    let mut notes = Vec::new();
+    let inner: Vec<f64> = points.iter().map(|p| p.1).collect();
+    // Cut points: the finite ones, plus 0 when both bounds are infinite.
+    let mut finite: Vec<f64> = inner.iter().copied().filter(|v| v.is_finite()).collect();
+    if finite.is_empty() {
+        finite.push(0.0);
+    }
+    for w in finite.windows(2) {
+        let (v, _) = quad(&mut g, w[0], w[1], DEFAULT_TOLERANCE, MAX_INTERVALS).ok()?;
+        total += v;
+    }
+    let (first, last) = (*finite.first()?, *finite.last()?);
+    if hi.is_infinite() {
+        let t = oscillatory::oscillating_tail(&mut g, last)?;
+        total += t.value;
+        notes.push(tail_note(&t, var, false));
+    }
+    if lo.is_infinite() {
+        let mut h = |x: f64| g(-x);
+        let t = oscillatory::oscillating_tail(&mut h, -first)?;
+        total += t.value;
+        notes.push(tail_note(&t, var, true));
+    }
+    Some((total, notes.join("; ")))
+}
+
+fn tail_note(t: &oscillatory::Tail, var: &str, negative: bool) -> String {
+    let zeros: Vec<String> = t
+        .first_zeros
+        .iter()
+        .map(|z| format_f64(if negative { -z } else { *z }, 6))
+        .collect();
+    format!(
+        "the integrand oscillates, so the infinite range is cut at its zeros ({var} ≈ {}, …); the {} pieces form an alternating series whose terms shrink, summed with Wynn's ε-algorithm to ≈ {} (estimated error ≤ {})",
+        zeros.join(", "),
+        t.pieces,
+        format_f64(t.value, 10),
+        format_f64(t.error.max(f64::MIN_POSITIVE), 2)
+    )
 }
 
 /// `Σ (F(right⁻) − F(left⁺))` over the pieces, with limits where needed.
