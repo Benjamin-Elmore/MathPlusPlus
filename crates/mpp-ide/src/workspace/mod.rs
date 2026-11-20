@@ -15,6 +15,7 @@ use crate::explorer::links::{self, map_move};
 use crate::explorer::outline::OutlineItem;
 use crate::explorer::search::{self, Hit};
 use crate::explorer::{ops, ExplorerAction, ExplorerState};
+use crate::layout::behavior::TileState;
 use crate::settings::{AutosaveMode, Settings, SideView};
 use crate::tabs::nav::{NavHistory, Place};
 
@@ -54,7 +55,8 @@ pub struct Workspace {
     pub preview: Option<(u64, u64)>,
     pub quick: QuickOpen,
     pub outline_open: bool,
-    pub vars_open: bool,
+    pub tiles: TileState,
+    pub vars: crate::layout::panes::VarEdit,
     pub pending_close: Option<PendingClose>,
     pub outline_cache: Option<(u64, u64, Vec<OutlineItem>)>,
     pub settings_dir: Option<PathBuf>,
@@ -75,7 +77,8 @@ impl Default for Workspace {
             preview: None,
             quick: QuickOpen::default(),
             outline_open: true,
-            vars_open: false,
+            tiles: TileState::default(),
+            vars: Default::default(),
             pending_close: None,
             outline_cache: None,
             settings_dir: None,
@@ -229,15 +232,36 @@ impl IdeApp {
         }
     }
 
-    /// Ctrl+Tab / Ctrl+Shift+Tab.
+    /// Ctrl+Tab / Ctrl+Shift+Tab: the next tab of the group on screen.
     pub fn cycle_tab(&mut self, forward: bool) {
-        let n = self.docs.len();
-        if n > 1 {
-            self.active = if forward {
-                (self.active + 1) % n
-            } else {
-                (self.active + n - 1) % n
-            };
+        let focused = self.ws.tiles.focused;
+        let active = self.doc().map(|d| d.id);
+        let order = self
+            .with_tree(|t| {
+                let from = focused
+                    .filter(|f| t.tiles.get(*f).is_some())
+                    .or_else(|| {
+                        crate::layout::tiles::find_by(t, |p| {
+                            matches!(p, crate::layout::Pane::Equation { doc, .. } if Some(*doc) == active)
+                        })
+                    })?;
+                Some(crate::layout::tiles::group_docs(t, from))
+            })
+            .flatten()
+            .unwrap_or_default();
+        let Some(now) = active.and_then(|a| order.iter().position(|d| *d == a)) else {
+            return;
+        };
+        let n = order.len();
+        let next = if forward {
+            (now + 1) % n
+        } else {
+            (now + n - 1) % n
+        };
+        if let Some(i) = self.docs.iter().position(|d| d.id == order[next]) {
+            self.note_place();
+            self.active = i;
+            self.note_place();
         }
     }
 
@@ -447,6 +471,11 @@ impl IdeApp {
 
     /// Shows a side-bar view (and the side bar).
     pub fn show_side(&mut self, view: SideView) {
+        self.open_pane(match view {
+            SideView::Explorer => crate::layout::Pane::Explorer,
+            SideView::Search => crate::layout::Pane::Search,
+            SideView::Outline => crate::layout::Pane::Outline,
+        });
         self.ws.side_view = view;
         self.ws.side_visible = true;
         if view == SideView::Search {
@@ -456,7 +485,7 @@ impl IdeApp {
 
     /// Ctrl+B.
     pub fn toggle_side(&mut self) {
-        self.ws.side_visible = !self.ws.side_visible;
+        self.toggle_side_tiles();
     }
 
     /// Opens a hit of a search.

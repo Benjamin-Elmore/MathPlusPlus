@@ -40,6 +40,8 @@ pub enum ViewEvent {
     GotoAt(usize),
     /// A click landed here; if it is on an import, open that file.
     OpenLinkAt(usize),
+    /// "Open in tile" on a figure (counting figures from 0).
+    OpenFigureTile(usize),
     Save,
 }
 
@@ -113,6 +115,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             // The text may have changed: draw the up-to-date page.
             let pc = doc.page(avail_w, cx.size, cx.mode);
             paint_page(ui, &painter, doc, &pc, origin, cx, &theme, focused);
+            figure_menu(ui, &resp, &pc, origin, &mut events);
 
             let caret_rect = pc.page.caret_stop(doc.editor.caret()).map(|s| {
                 Rect::from_min_max(
@@ -140,6 +143,46 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             completion_popup(ui, doc, &pc, origin, cx, &theme, caret_rect);
         });
     events
+}
+
+/// Right-click on a figure offers to pin it in its own tile.
+fn figure_menu(
+    ui: &Ui,
+    resp: &egui::Response,
+    pc: &PageCache,
+    origin: Pos2,
+    events: &mut Vec<ViewEvent>,
+) {
+    let key = resp.id.with("figure-menu-pos");
+    if resp.secondary_clicked() {
+        if let Some(p) = resp.interact_pointer_pos() {
+            ui.data_mut(|d| d.insert_temp(key, p));
+        }
+    }
+    let Some(pos) = ui.data(|d| d.get_temp::<Pos2>(key)) else {
+        return;
+    };
+    let local = pos - origin.to_vec2();
+    let mut n = 0;
+    let mut found = None;
+    for b in &pc.page.blocks {
+        if let BlockTag::Figure(r) = b.tag {
+            if r.translate(Vec2::new(0.0, b.top)).contains(local) {
+                found = Some(n);
+                break;
+            }
+            n += 1;
+        }
+    }
+    let Some(idx) = found else {
+        return;
+    };
+    resp.context_menu(|ui| {
+        if ui.button("Open in tile").clicked() {
+            events.push(ViewEvent::OpenFigureTile(idx));
+            ui.close();
+        }
+    });
 }
 
 #[allow(clippy::too_many_arguments)]

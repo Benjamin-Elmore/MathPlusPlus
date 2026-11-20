@@ -11,13 +11,12 @@ use mpp_render::Theme;
 
 use super::PendingClose;
 use crate::app::IdeApp;
-use crate::defs::{self, DefInfo};
+use crate::defs;
 use crate::explorer::outline::{outline, OutlineItem, OutlineKind};
 use crate::explorer::panel::{section_header, text_galley};
 use crate::explorer::{self, icons, quick_open, ExplorerCtx, OpenFile};
 use crate::paint::c32;
 use crate::settings::SideView;
-use crate::tabs::{self, breadcrumbs, Tab, TabAction};
 use crate::typeset;
 
 const TOGGLE_SIDE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::B);
@@ -119,19 +118,6 @@ impl IdeApp {
                     .inner_margin(egui::Margin::symmetric(0, 6)),
             )
             .show(ui, |ui| self.activity_bar(ui, &theme));
-        if self.ws.side_visible {
-            let r = egui::Panel::left("side")
-                .default_size(self.ws.side_width)
-                .size_range(160.0..=700.0)
-                .resizable(true)
-                .frame(
-                    egui::Frame::NONE
-                        .fill(c32(theme.code_background).gamma_multiply(0.7))
-                        .inner_margin(egui::Margin::symmetric(0, 4)),
-                )
-                .show(ui, |ui| self.side_content(ui, &theme));
-            self.ws.side_width = r.response.rect.width();
-        }
     }
 
     fn activity_bar(&mut self, ui: &mut Ui, theme: &Theme) {
@@ -168,40 +154,28 @@ impl IdeApp {
         }
     }
 
-    fn side_content(&mut self, ui: &mut Ui, theme: &Theme) {
-        match self.ws.side_view {
-            SideView::Explorer => self.explorer_view(ui, theme),
-            SideView::Search => self.search_view(ui, theme),
-            SideView::Outline => {
-                view_title(ui, "OUTLINE", theme);
-                egui::ScrollArea::vertical()
-                    .id_salt("outline-view")
-                    .show(ui, |ui| self.outline_list(ui, theme));
-            }
-        }
+    /// The outline as a tile.
+    pub(crate) fn outline_tile(&mut self, ui: &mut Ui, theme: &Theme) {
+        view_title(ui, "OUTLINE", theme);
+        egui::ScrollArea::vertical()
+            .id_salt("outline-view")
+            .auto_shrink([false, false])
+            .show(ui, |ui| self.outline_list(ui, theme));
     }
 
-    fn explorer_view(&mut self, ui: &mut Ui, theme: &Theme) {
-        ui.horizontal(|ui| {
+    pub(crate) fn explorer_view(&mut self, ui: &mut Ui, theme: &Theme) {
+        ui.horizontal_wrapped(|ui| {
             ui.add_space(10.0);
-            ui.label(
-                egui::RichText::new("EXPLORER")
-                    .size(13.5)
-                    .color(c32(theme.muted)),
-            );
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                ui.add_space(6.0);
-                if ui.small_button("New folder").clicked() {
-                    if let Some(d) = self.ws.explorer.target_dir() {
-                        self.ws.explorer.start_create(&d, true);
-                    }
+            if ui.small_button("New file").clicked() {
+                if let Some(d) = self.ws.explorer.target_dir() {
+                    self.ws.explorer.start_create(&d, false);
                 }
-                if ui.small_button("New file").clicked() {
-                    if let Some(d) = self.ws.explorer.target_dir() {
-                        self.ws.explorer.start_create(&d, false);
-                    }
+            }
+            if ui.small_button("New folder").clicked() {
+                if let Some(d) = self.ws.explorer.target_dir() {
+                    self.ws.explorer.start_create(&d, true);
                 }
-            });
+            }
         });
         ui.add_space(2.0);
         let open: Vec<OpenFile> =
@@ -242,40 +216,8 @@ impl IdeApp {
                 if open_outline {
                     self.outline_list(ui, theme);
                 }
-                let open_vars = self.ws.vars_open;
-                let h = section_header(ui, "VARIABLES", open_vars, theme);
-                if h.clicked() {
-                    self.ws.vars_open = !open_vars;
-                }
-                if open_vars {
-                    self.variables_list(ui, theme);
-                }
             });
         self.run_explorer_actions(actions);
-    }
-
-    fn variables_list(&mut self, ui: &mut Ui, theme: &Theme) {
-        let vars: Vec<DefInfo> = self
-            .doc()
-            .and_then(|d| d.eval.as_ref().map(|e| defs::all(e)))
-            .unwrap_or_default();
-        if vars.is_empty() {
-            ui.weak("  Nothing defined yet.");
-        }
-        let mut jump = None;
-        for d in &vars {
-            ui.horizontal(|ui| {
-                ui.add_space(14.0);
-                let r = typeset::show(ui, &defs::summary_latex(d), 17.0, *theme);
-                if r.clicked() {
-                    jump = Some(d.clone());
-                }
-            });
-            ui.add_space(3.0);
-        }
-        if let Some(d) = jump {
-            self.goto_definition(&d);
-        }
     }
 
     /// The outline of the current file, typeset; clicking scrolls to the entry.
@@ -364,7 +306,7 @@ impl IdeApp {
         }
     }
 
-    fn search_view(&mut self, ui: &mut Ui, theme: &Theme) {
+    pub(crate) fn search_view(&mut self, ui: &mut Ui, theme: &Theme) {
         view_title(ui, "SEARCH", theme);
         let mut run = None;
         ui.horizontal(|ui| {
@@ -455,61 +397,6 @@ impl IdeApp {
             });
         if let Some(h) = open {
             self.open_hit(&h);
-        }
-    }
-
-    /// The tab strip and the breadcrumbs above the page.
-    pub(crate) fn header_ui(&mut self, ui: &mut Ui) {
-        if self.docs.is_empty() {
-            return;
-        }
-        let theme = self.mode.theme();
-        let strip: Vec<Tab> = self
-            .docs
-            .iter()
-            .map(|d| Tab {
-                title: d.title(),
-                dirty: d.is_dirty(),
-                errors: d.error_count(),
-                preview: self.is_preview(d),
-            })
-            .collect();
-        let mut crumb = None;
-        let mut action = None;
-        egui::Panel::top("tabs")
-            .frame(egui::Frame::NONE.fill(c32(theme.code_background)))
-            .show(ui, |ui| {
-                action = tabs::show(ui, &strip, self.active, &theme);
-            });
-        let current = self.doc().and_then(|d| d.path.clone());
-        if let (Some(root), Some(file)) = (self.project_root().map(Path::to_path_buf), current) {
-            egui::Panel::top("crumbs")
-                .frame(
-                    egui::Frame::NONE
-                        .fill(c32(theme.background))
-                        .inner_margin(egui::Margin::symmetric(0, 4)),
-                )
-                .show(ui, |ui| {
-                    crumb = breadcrumbs::show(ui, &root, &file, &theme);
-                });
-        }
-        match action {
-            Some(TabAction::Select(i)) => {
-                self.note_place();
-                self.active = i;
-                self.note_place();
-            }
-            Some(TabAction::Close(i)) => self.request_close(i),
-            Some(TabAction::Move { from, to }) => self.move_tab(from, to),
-            None => {}
-        }
-        if let Some(p) = crumb {
-            self.show_side(SideView::Explorer);
-            if p.is_dir() {
-                self.ws.explorer.expanded.insert(p.clone());
-            }
-            self.ws.explorer.reveal(&p);
-            self.ws.explorer.selected = Some(p);
         }
     }
 
@@ -632,6 +519,7 @@ impl IdeApp {
     /// Ctrl+P and the close-with-unsaved-edits question.
     pub(crate) fn overlays(&mut self, ctx: &Context) {
         self.quick_open_ui(ctx);
+        self.layout_name_dialog(ctx);
         self.close_dialog(ctx);
     }
 

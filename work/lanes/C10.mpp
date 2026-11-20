@@ -15,3 +15,11 @@
 - `app.rs`: the old `side_panel`, `close_tab`, `folder`/`files` fields are gone. The window is now `menu`, `status_ui`, `side_ui`, `header_ui`, central page. `IdeApp::ws` holds the project, side bar, search and history state.
 - `view.rs`: one new `ViewEvent::OpenLinkAt` and one call that emits it on a click.
 - `doc.rs`: `Doc::id`, `Doc::reload`, `Doc::problems`.
+
+## N13 tile manager
+
+- Panels are `egui_tiles` tiles (`layout/tiles.rs` pure operations, `layout/behavior.rs` the app glue). The old side panel and tab strip are gone: the Explorer, Search, Outline, Variables, Problems (placeholder until N9), Steps and Standard library (placeholders) and every equation view are tiles.
+- Keys: `Ctrl+\` split right, `Ctrl+Shift+\` split down, `Ctrl+Shift+Enter` or double-click a tab to maximise and restore, `Ctrl+K` then an arrow moves focus.
+- Layouts are saved per project in the app-data folder (`layouts/<hash>.json`); View → Layout lists the built-in Writing, Graphing and Review and any saved names; View → Reset layout.
+- Right-click a figure → "Open in tile" (`ViewEvent::OpenFigureTile` in view.rs).
+- The variables tile edits the plain number after a `:=` (slider and input box) and the evaluation follows.

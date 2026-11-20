@@ -13,7 +13,7 @@ use crate::files::Recent;
 use crate::layout::{BODY_SIZE, MAX_SIZE, MIN_SIZE};
 use crate::sample::WELCOME;
 use crate::theme::{self, Mode};
-use crate::view::{self, CompletionState, ViewCtx, ViewEvent};
+use crate::view::CompletionState;
 use crate::workspace::Workspace;
 
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
@@ -34,9 +34,9 @@ pub struct IdeApp {
     pub show_file_text: bool,
     pub recent: Recent,
     pub ws: Workspace,
-    figures: Box<dyn FigureDrawer>,
-    completion: Option<CompletionState>,
-    clip: Option<(String, String)>,
+    pub(crate) figures: Box<dyn FigureDrawer>,
+    pub(crate) completion: Option<CompletionState>,
+    pub(crate) clip: Option<(String, String)>,
     pub(crate) message: Option<String>,
     applied_mode: Option<Mode>,
 }
@@ -260,7 +260,7 @@ impl IdeApp {
         }
     }
 
-    fn goto_at(&mut self, offset: usize) {
+    pub(crate) fn goto_at(&mut self, offset: usize) {
         let info = self.doc().and_then(|d| {
             let ev = d.eval.as_ref()?;
             defs::definition_at(ev, d.editor.text(), offset)
@@ -301,6 +301,7 @@ impl IdeApp {
 
     fn shortcuts(&mut self, ctx: &Context) {
         self.workspace_shortcuts(ctx);
+        self.tile_shortcuts(ctx);
         let (save, open, new, zin, zout, zreset, zdelta) = ctx.input_mut(|i| {
             (
                 i.consume_shortcut(&SAVE),
@@ -405,6 +406,8 @@ impl IdeApp {
                     self.size = (self.size - 1.0).max(MIN_SIZE);
                 }
                 ui.separator();
+                self.layout_menu(ui);
+                ui.separator();
                 if ui
                     .add(egui::Button::new("Side bar").shortcut_text("Ctrl+B"))
                     .clicked()
@@ -438,36 +441,10 @@ impl IdeApp {
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
         self.status_ui(ui);
         self.side_ui(ui);
-        self.header_ui(ui);
 
-        let central = egui::CentralPanel::default()
+        egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(crate::paint::c32(theme.background)))
-            .show(ui, |ui| {
-                let (mode, size, copy_format) = (self.mode, self.size, self.copy_format);
-                let Some(doc) = self.docs.get_mut(self.active) else {
-                    ui.centered_and_justified(|ui| ui.weak("No file open"));
-                    return;
-                };
-                let mut cx = ViewCtx {
-                    mode,
-                    size,
-                    figures: self.figures.as_ref(),
-                    completion: &mut self.completion,
-                    clip: &mut self.clip,
-                    copy_format,
-                };
-                let events = view::show(ui, doc, &mut cx);
-                for e in events {
-                    match e {
-                        ViewEvent::GotoAt(o) => self.goto_at(o),
-                        ViewEvent::OpenLinkAt(o) => self.open_link_at(o),
-                        ViewEvent::Save => self.save(),
-                    }
-                }
-            });
-        if let Some(src) = central.response.dnd_release_payload::<PathBuf>() {
-            self.add_import(&src);
-        }
+            .show(ui, |ui| self.tiles_ui(ui));
 
         self.file_text_window(&ctx);
         self.overlays(&ctx);
@@ -476,6 +453,9 @@ impl IdeApp {
         }
         self.settle_preview();
         self.persist_settings();
+        if !ctx.input(|i| i.pointer.any_down()) {
+            self.persist_layout();
+        }
 
         let mut wait: Option<std::time::Duration> = None;
         for d in &mut self.docs {
