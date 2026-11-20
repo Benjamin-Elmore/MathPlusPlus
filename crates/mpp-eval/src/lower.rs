@@ -168,7 +168,7 @@ impl<'a> Lowerer<'a> {
                 span,
                 EvalError::Unsupported("a line that continues the one before".into()),
             )),
-            K::Error => Err(fail(span, EvalError::Silent)),
+            K::Error | K::Placeholder { .. } => Err(fail(span, EvalError::Silent)),
             K::Call { callee, args, .. } => self.call(callee, args, span),
             K::FuncApp(app) => self.func_app(app, span),
             K::Unary { op, operand } => {
