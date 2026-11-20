@@ -11,9 +11,11 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
+use mpp_core::calc::Recurrence;
 use mpp_core::simplify::canonical;
 use mpp_core::{EmptyEnv, Expr, ExprNode, LogicOp, Name, RelOp};
 
+use crate::calculus;
 use crate::error::EvalError;
 use crate::holders::{evaluate_holder, Ctx};
 use crate::value::{Binding, Sequence, VarKind};
@@ -49,6 +51,9 @@ pub struct Resolver<'a> {
     calls: Vec<String>,
     memo: HashMap<(String, Vec<Expr>), Expr>,
     terms: HashMap<String, BTreeMap<i64, Expr>>,
+    /// Recurrences compiled by the core, by sequence name (`None` when the rule is not
+    /// one it takes, so terms are computed here instead).
+    recurrences: HashMap<String, Option<Recurrence>>,
     computing: Vec<String>,
     touched: BTreeSet<String>,
     work: usize,
@@ -66,6 +71,7 @@ impl<'a> Resolver<'a> {
             calls: Vec::new(),
             memo: HashMap::new(),
             terms: HashMap::new(),
+            recurrences: HashMap::new(),
             computing: Vec::new(),
             touched: BTreeSet::new(),
             work: 0,
@@ -137,17 +143,9 @@ impl<'a> Resolver<'a> {
                     vars: vars.clone(),
                 }))
             }
-            ExprNode::Integral { expr, var, bounds } => {
-                let bounds = match bounds {
-                    Some((a, b)) => Some((self.resolve(a)?, self.resolve(b)?)),
-                    None => None,
-                };
-                let body = self.with_mask(std::slice::from_ref(var), |r| r.resolve(expr))?;
-                self.holder(Expr::new(ExprNode::Integral {
-                    expr: body,
-                    var: var.clone(),
-                    bounds,
-                }))
+            ExprNode::Integral { .. } => {
+                let parts = self.integral_parts(e)?;
+                self.holder(parts)
             }
             ExprNode::BigOp {
                 kind,
@@ -199,6 +197,32 @@ impl<'a> Resolver<'a> {
         }
     }
 
+    /// Resolves the parts of an integral without evaluating it. A nested integral
+    /// (`∫_0^1 ∫_0^x f dy dx`) is resolved as a whole, so the calculus evaluator sees
+    /// every level at once and can integrate it as an iterated integral.
+    fn integral_parts(&mut self, e: &Expr) -> Result<Expr> {
+        let ExprNode::Integral { expr, var, bounds } = e.node() else {
+            return self.resolve(e);
+        };
+        self.tick()?;
+        let bounds = match bounds {
+            Some((a, b)) => Some((self.resolve(a)?, self.resolve(b)?)),
+            None => None,
+        };
+        let body = self.with_mask(std::slice::from_ref(var), |r| {
+            if matches!(expr.node(), ExprNode::Integral { .. }) {
+                r.integral_parts(expr)
+            } else {
+                r.resolve(expr)
+            }
+        })?;
+        Ok(Expr::new(ExprNode::Integral {
+            expr: body,
+            var: var.clone(),
+            bounds,
+        }))
+    }
+
     fn symbol(&mut self, e: &Expr, name: &str) -> Result<Expr> {
         if self.is_masked(name) {
             return Ok(e.clone());
@@ -234,10 +258,12 @@ impl<'a> Resolver<'a> {
     }
 
     fn apply(&mut self, name: &Name, args: &[Expr]) -> Result<Expr> {
-        let args = args
-            .iter()
-            .map(|a| self.resolve(a))
-            .collect::<Result<Vec<_>>>()?;
+        let bound = calculus::bound_names(name, args);
+        let args = self.with_mask(&bound, |r| {
+            args.iter()
+                .map(|a| r.resolve(a))
+                .collect::<Result<Vec<_>>>()
+        })?;
         let raw = || Expr::new(ExprNode::Apply(name.clone(), args.clone()));
         if self.is_masked(name) || self.locals.contains_key(&**name) {
             return Ok(raw());
@@ -345,6 +371,13 @@ impl<'a> Resolver<'a> {
                 .insert(k, v.clone());
             return Ok(v);
         }
+        if let Some(v) = self.core_term(name, seq, k)? {
+            self.terms
+                .entry(name.to_string())
+                .or_default()
+                .insert(k, v.clone());
+            return Ok(v);
+        }
         let Some(body) = &seq.body else {
             return Err(EvalError::Invalid(format!("{name}_{k} is not defined")));
         };
@@ -370,6 +403,64 @@ impl<'a> Resolver<'a> {
         let out = self.terms_up_to(name, seq, body, first, k);
         self.computing.pop();
         out
+    }
+
+    /// The term `name_k` from the core's [`Recurrence`], when the rule compiles to one.
+    fn core_term(&mut self, name: &str, seq: &Sequence, k: i64) -> Result<Option<Expr>> {
+        if !self.recurrences.contains_key(name) {
+            let compiled = self.compile_recurrence(name, seq);
+            self.recurrences.insert(name.to_string(), compiled);
+        }
+        let Some(Some(rec)) = self.recurrences.get(name) else {
+            return Ok(None);
+        };
+        if k < rec.start() {
+            return Ok(None);
+        }
+        if k - rec.start() > MAX_SEQUENCE_TERMS {
+            return Err(EvalError::TooDeep(name.to_string()));
+        }
+        let value = rec.nth(k).map_err(EvalError::Math)?;
+        if self.ctx.logging() {
+            let note = format!(
+                "{name}_{{{}+{}}} = {} from {name}_{} = {}",
+                seq.index,
+                seq.shift,
+                rec.rule(),
+                rec.start(),
+                rec.initial()
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+            self.ctx.log(
+                "compute the terms of the recurrence",
+                &Expr::apply(name, vec![Expr::int(k)]),
+                &value,
+                Some(note),
+            );
+        }
+        Ok(Some(value))
+    }
+
+    /// The recurrence of `name` for the core, with its rule resolved against the
+    /// environment (the index and the sequence itself stay symbolic).
+    fn compile_recurrence(&mut self, name: &str, seq: &Sequence) -> Option<Recurrence> {
+        let body = seq.body.as_ref()?;
+        let (&first, _) = seq.initials.iter().next()?;
+        let mut initial = Vec::with_capacity(seq.initials.len());
+        for (offset, (&j, init)) in seq.initials.iter().enumerate() {
+            if j != first.checked_add(i64::try_from(offset).ok()?)? {
+                return None;
+            }
+            initial.push(self.unmasked(|r| r.resolve(init)).ok()?.simplify());
+        }
+        let keep = [Name::from(seq.index.as_str()), Name::from(name)];
+        let rule = self
+            .unmasked(|r| r.with_mask(&keep, |r| r.resolve(body)))
+            .ok()?;
+        Recurrence::with_shift(name, &seq.index, first, initial, &rule, seq.shift).ok()
     }
 
     fn terms_up_to(

@@ -495,8 +495,16 @@ Figure: $z = x^2 - y^2$, $x, y \\in [-2, 2]$.
     let a = answers(&ev);
     assert_eq!(a.len(), 5);
     assert_eq!(exact(a[4]), "400");
-    // The range from launch.mpp (v_0 and g from this document) is the upper limit.
-    assert!(exact(a[1]).contains("40000/981"), "{}", exact(a[1]));
+    // The range from launch.mpp (v_0 and g from this document) is the upper limit:
+    // R = 40000/981 and the area under the trajectory is R²/6.
+    let r: f64 = 40000.0 / 981.0;
+    let area: f64 = a[1]
+        .approx
+        .as_deref()
+        .and_then(|t| t.parse().ok())
+        .expect("a number");
+    assert!((area - r * r / 6.0).abs() < 1e-6, "{area}");
+    assert_eq!(exact(a[0]), "-981*x/20000 + 1");
     assert_eq!(
         ev.blocks.iter().filter(|b| !b.imports.is_empty()).count(),
         2

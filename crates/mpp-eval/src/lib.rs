@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 mod block;
+pub mod calculus;
 pub mod check;
 pub mod error;
 pub mod files;
@@ -38,7 +39,7 @@ pub use files::{
     EmbeddedSources, FileImporter, FsSource, LayeredSource, Location, SourceProvider, Stamp,
 };
 pub use graph::DepGraph;
-pub use holders::{evaluate_holder, Ctx, HolderEval, Holders};
+pub use holders::{evaluate_holder, Collected, Ctx, HolderEval, Holders, Shown};
 pub use import::{
     Exports, FileDiagnostic, ImportContext, ImportError, ImportErrorKind, ImportRequest, Importer,
     NoImports,
