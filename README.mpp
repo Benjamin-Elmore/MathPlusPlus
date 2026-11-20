@@ -1,0 +1,9 @@
+# Math++
+
+Math++ is an interpreted maths language written in Rust. A `.mpp` file reads like an academic paper: prose with the maths typeset in it, and nothing that looks like code. The interpreter works out results (algebra, derivatives, integrals, series, limits), draws 2D and 3D graphs, and supports imports between files, with a live IDE that shows the typeset result as you type.
+
+## Running
+
+```
+cargo run -p mpp-cli
+```
