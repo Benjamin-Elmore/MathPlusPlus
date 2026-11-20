@@ -1,8 +1,11 @@
 //! Running whole documents through a session.
 
 use mpp_core::Expr;
-use mpp_eval::{BlockResult, DefinitionKind, Evaluated, LineKind, LineResult, Session, Value};
+use mpp_eval::{
+    BlockResult, DefinitionKind, Evaluated, LineKind, LineResult, NoImports, Session, Value,
+};
 use mpp_syntax::Severity;
+use std::sync::Arc;
 
 fn run(src: &str) -> Evaluated {
     let mut s = Session::new();
@@ -446,7 +449,7 @@ fn calculus_queries_return_holders_for_now() {
 }
 
 #[test]
-fn the_example_document() {
+fn the_example_document_without_imports() {
     let src = "\
 # Projectile motion
 Let $g \\equiv 9.81$ be gravity and $v_0 := 20$ the launch speed.
@@ -465,7 +468,10 @@ $$ E = ? $$
 Figure: $y(x)$, $x \\in [0, R]$.
 Figure: $z = x^2 - y^2$, $x, y \\in [-2, 2]$.
 ";
-    let ev = run(src);
+    let ev = Session::new()
+        .with_importer(Arc::new(NoImports))
+        .run_str(src)
+        .clone();
     no_errors(&ev);
     assert!(ev.bindings["g"].is_constant());
     assert!(ev.bindings.contains_key("v_0"));

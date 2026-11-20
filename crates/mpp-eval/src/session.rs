@@ -9,9 +9,10 @@ use mpp_syntax::math::{DefHead, MathAst, Statement};
 use mpp_syntax::Diagnostic;
 
 use crate::block::{run_block, Inputs, Outcome};
+use crate::files::{canonical, FileImporter};
 use crate::graph::DepGraph;
 use crate::holders::Holders;
-use crate::import::{Importer, NoImports};
+use crate::import::Importer;
 use crate::names::node_key;
 use crate::result::{shift_span, BlockResult, Evaluated, LineIndex};
 use crate::value::{same_binding, Env};
@@ -29,6 +30,12 @@ pub struct Session {
     holders: Arc<Holders>,
     importer: Arc<dyn Importer>,
     base_dir: Option<PathBuf>,
+    /// The folder the import tree started from; shown file names are relative to it.
+    root_dir: Option<PathBuf>,
+    /// The files being loaded, outermost first, for the import loop check.
+    chain: Vec<PathBuf>,
+    /// The name of this file in messages.
+    doc_name: Option<Arc<str>>,
     cache: HashMap<BlockId, Cached>,
     sequences: BTreeSet<String>,
     evaluated: Evaluated,
@@ -51,12 +58,15 @@ impl Default for Session {
 }
 
 impl Session {
-    /// A session with the built-in holder evaluators and no import support.
+    /// A session with the built-in holder evaluators and a file importer.
     pub fn new() -> Self {
         Session {
             holders: Arc::new(Holders::new()),
-            importer: Arc::new(NoImports),
+            importer: Arc::new(FileImporter::new()),
             base_dir: None,
+            root_dir: None,
+            chain: Vec::new(),
+            doc_name: None,
             cache: HashMap::new(),
             sequences: BTreeSet::new(),
             evaluated: Evaluated::empty(),
@@ -67,12 +77,14 @@ impl Session {
     pub fn with_holders(mut self, holders: Holders) -> Self {
         self.holders = Arc::new(holders);
         self.cache.clear();
+        self.importer.invalidate(None);
         self
     }
 
     /// The holder registry, to register more evaluators (forgets cached results).
     pub fn holders_mut(&mut self) -> &mut Holders {
         self.cache.clear();
+        self.importer.invalidate(None);
         Arc::make_mut(&mut self.holders)
     }
 
@@ -83,10 +95,35 @@ impl Session {
         self
     }
 
+    /// The importer, to share its cache with a [`crate::FileWatcher`].
+    pub fn importer(&self) -> Arc<dyn Importer> {
+        self.importer.clone()
+    }
+
     /// The folder imports are resolved against.
     pub fn set_base_dir(&mut self, dir: Option<PathBuf>) {
         self.base_dir = dir;
         self.cache.clear();
+    }
+
+    /// Says which file the next runs are of: imports resolve against its folder,
+    /// an import of the file itself is reported as a loop, and messages name it.
+    pub fn set_file(&mut self, path: impl AsRef<Path>) {
+        let key = canonical(path.as_ref());
+        self.base_dir = key.parent().map(Path::to_path_buf);
+        self.root_dir = self.base_dir.clone();
+        self.doc_name = key
+            .file_name()
+            .map(|n| Arc::from(n.to_string_lossy().as_ref()));
+        self.chain = vec![key];
+        self.cache.clear();
+    }
+
+    /// Forgets the cached copy of the imported file `path` because it changed on
+    /// disk. The next [`Session::update`] reads it again and re-runs only the
+    /// blocks that import it and the blocks that use what it defines.
+    pub fn invalidate(&mut self, path: impl AsRef<Path>) {
+        self.importer.invalidate(Some(path.as_ref()));
     }
 
     /// The last result.
@@ -104,14 +141,44 @@ impl Session {
     pub fn run_file(&mut self, path: impl AsRef<Path>) -> std::io::Result<&Evaluated> {
         let path = path.as_ref();
         let text = std::fs::read_to_string(path)?;
-        self.base_dir = path.parent().map(Path::to_path_buf);
+        self.set_file(path);
         Ok(self.run_str(&text))
+    }
+
+    /// A session that runs an imported file inside an import tree.
+    pub(crate) fn for_import(
+        holders: Arc<Holders>,
+        importer: Arc<dyn Importer>,
+        base_dir: Option<PathBuf>,
+        root_dir: Option<PathBuf>,
+        chain: Vec<PathBuf>,
+        doc_name: Arc<str>,
+    ) -> Self {
+        let mut session = Session::new();
+        session.holders = holders;
+        session.importer = importer;
+        session.base_dir = base_dir;
+        session.root_dir = root_dir;
+        session.chain = chain;
+        session.doc_name = Some(doc_name);
+        session
+    }
+
+    /// Runs an imported file on the current thread (the caller already has the
+    /// large evaluation stack).
+    pub(crate) fn run_nested(&mut self, src: &str) -> &Evaluated {
+        self.cache.clear();
+        self.update_with(src, false)
     }
 
     /// Runs the new text of the document, reusing every block whose text is
     /// unchanged and whose inputs (the bindings it read) are unchanged.
     /// [`Evaluated::recomputed`] lists the blocks that ran.
     pub fn update(&mut self, src: &str) -> &Evaluated {
+        self.update_with(src, true)
+    }
+
+    fn update_with(&mut self, src: &str, own_stack: bool) -> &Evaluated {
         let doc = parse_document(src);
         let lines = LineIndex::new(src);
         let sequences = sequence_names(&doc);
@@ -125,10 +192,17 @@ impl Session {
             holders: &self.holders,
             importer: self.importer.as_ref(),
             base_dir: self.base_dir.as_deref(),
+            root_dir: self.root_dir.as_deref(),
+            chain: &self.chain,
+            doc_name: self.doc_name.as_deref(),
             lines: &lines,
         };
 
-        let pass = with_large_stack(|| run_blocks(&doc, &self.cache, &inputs));
+        let pass = if own_stack {
+            with_large_stack(|| run_blocks(&doc, &self.cache, &inputs))
+        } else {
+            run_blocks(&doc, &self.cache, &inputs)
+        };
         let Pass {
             env,
             cache,

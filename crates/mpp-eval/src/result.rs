@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use mpp_core::{Expr, Steps};
@@ -11,7 +12,8 @@ use mpp_syntax::{Diagnostic, Severity, Span};
 
 use crate::check::Verdict;
 use crate::graph::DepGraph;
-use crate::value::{Binding, Value};
+use crate::import::FileDiagnostic;
+use crate::value::{Binding, Origin, Value};
 
 /// What a definition line defined.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,6 +168,15 @@ pub struct ImportInfo {
     pub names: Option<Vec<(String, String)>>,
     /// True when the importer supplied the file.
     pub loaded: bool,
+    /// The resolved path of the file.
+    pub file: Option<Arc<Path>>,
+    /// The file and every file it imports in turn (what to watch).
+    pub files: Vec<PathBuf>,
+    /// Everything reported inside the imported files, in full. The import line
+    /// itself only carries a summary such as "2 errors in mechanics.mpp".
+    pub diagnostics: Vec<FileDiagnostic>,
+    /// The result depends on the importer's context (a loop or a missing file).
+    pub uncacheable: bool,
 }
 
 /// Everything one block produced.
@@ -284,6 +295,26 @@ impl Evaluated {
             source: String::new(),
             lines: LineIndex::default(),
         }
+    }
+
+    /// Where `name` was defined: the document itself, or the file it was imported
+    /// from (with the byte span and line of the definition in that file). Use it
+    /// for go-to-definition across files.
+    pub fn definition_of(&self, name: &str) -> Option<Origin> {
+        self.bindings.get(name).map(|b| b.origin().clone())
+    }
+
+    /// Every file imported by the document, directly or through other files.
+    pub fn imported_files(&self) -> Vec<PathBuf> {
+        let mut files: Vec<PathBuf> = Vec::new();
+        for import in self.blocks.iter().flat_map(|b| b.imports.iter()) {
+            for f in &import.files {
+                if !files.contains(f) {
+                    files.push(f.clone());
+                }
+            }
+        }
+        files
     }
 
     /// The source text that was run.

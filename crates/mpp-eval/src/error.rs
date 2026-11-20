@@ -15,7 +15,12 @@ pub enum EvalError {
     /// A name is defined in terms of itself.
     Circular(Vec<String>),
     /// A constant (`≡`) was defined again.
-    ConstantRedefined { name: String, line: usize },
+    ConstantRedefined {
+        name: String,
+        line: usize,
+        /// The file that defined it, when it was imported.
+        file: Option<String>,
+    },
     /// Something that is not a function was called with several arguments.
     NotAFunction(String),
     /// A user function got the wrong number of arguments.
@@ -64,10 +69,16 @@ impl fmt::Display for EvalError {
                     write!(f, "circular definition: {}", chain.join(" → "))
                 }
             }
-            EvalError::ConstantRedefined { name, line } => write!(
-                f,
-                "`{name}` is a constant (≡) defined on line {line} and cannot be redefined"
-            ),
+            EvalError::ConstantRedefined { name, line, file } => {
+                let place = match file {
+                    Some(file) => format!("line {line} of {file}"),
+                    None => format!("line {line}"),
+                };
+                write!(
+                    f,
+                    "`{name}` is a constant (≡) defined on {place} and cannot be redefined"
+                )
+            }
             EvalError::NotAFunction(name) => write!(f, "`{name}` is not a known function"),
             EvalError::Arity {
                 name,
@@ -134,7 +145,8 @@ mod tests {
         assert_eq!(
             EvalError::ConstantRedefined {
                 name: "g".into(),
-                line: 3
+                line: 3,
+                file: None,
             }
             .to_string(),
             "`g` is a constant (≡) defined on line 3 and cannot be redefined"
