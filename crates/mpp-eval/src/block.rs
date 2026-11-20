@@ -1,5 +1,7 @@
 //! Running one block: its statements, in order, against the environment.
 
+mod sentences;
+
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -353,7 +355,7 @@ impl Run<'_, '_> {
                 nodes.extend(a.interval.as_ref());
                 self.helper(&nodes);
             }
-            BlockKind::Solve(s) => self.helper(&[&s.equation]),
+            BlockKind::Solve(s) => self.solve_sentence(s),
             BlockKind::Theorem(_)
             | BlockKind::Directive(_)
             | BlockKind::Rule
@@ -552,7 +554,7 @@ impl Run<'_, '_> {
             return self.error(name_span, EvalError::Circular(vec![key.to_string()]));
         }
         let resolved = self.resolve_full(&value, &Locals::new(), &[], false, false);
-        let shown = match resolved.value {
+        let shown = match resolved.value.and_then(|v| self.finish_value(v)) {
             Ok(v) => v,
             Err(err) => return self.error(body.span, err),
         };
@@ -854,7 +856,7 @@ impl Run<'_, '_> {
         for note in &resolved.notes {
             self.warn(expr.span, note.clone());
         }
-        let value = match resolved.value {
+        let value = match resolved.value.and_then(|v| self.finish_value(v)) {
             Ok(v) => v,
             Err(err) => {
                 self.error(expr.span, err);

@@ -18,6 +18,7 @@
 mod block;
 pub mod calculus;
 pub mod check;
+pub mod domains_wire;
 pub mod error;
 pub mod files;
 pub mod graph;

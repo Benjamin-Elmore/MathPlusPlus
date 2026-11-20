@@ -422,6 +422,8 @@ pub enum BinOp {
     Union,
     Intersect,
     SetMinus,
+    /// `a \bmod n`: the remainder of `a` on division by `n`.
+    Mod,
     And,
     Or,
 }

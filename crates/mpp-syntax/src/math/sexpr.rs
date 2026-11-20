@@ -357,6 +357,7 @@ impl Printer {
             BinOp::Union => "∪",
             BinOp::Intersect => "∩",
             BinOp::SetMinus => "∖",
+            BinOp::Mod => "mod",
             BinOp::And => "and",
             BinOp::Or => "or",
         };

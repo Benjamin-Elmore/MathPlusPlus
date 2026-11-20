@@ -20,7 +20,7 @@ use crate::error::{MathError, MathResult};
 use crate::expr::Expr;
 use crate::steps::Steps;
 
-pub use calculus::{BasicCalculus, Calculus};
+pub use calculus::{BasicCalculus, Calculus, FullCalculus};
 pub use linalg::{LinearAlgebra, Matrix};
 pub use number_theory::NumberTheory;
 pub use ode::Odes;

@@ -37,6 +37,8 @@ pub enum Op {
     Cup,
     Cap,
     SetMinus,
+    /// `\bmod`, `\mod`: the remainder.
+    Mod,
     And,
     Or,
     Not,
@@ -591,6 +593,9 @@ impl<'a> Lexer<'a> {
             "geqslant" => Tok::Rel(RelOp::Ge),
             "colon" => Tok::Rel(RelOp::Other(":")),
             "coloneqq" => Tok::Assign,
+            "bmod" | "mod" => Tok::Op(Op::Mod),
+            // The transpose mark in `A^\top`.
+            "top" | "intercal" => Tok::Letter('⊤'),
             _ => {
                 if let Some(font) = font_command(name) {
                     if let Some(text) = self.braced_plain() {

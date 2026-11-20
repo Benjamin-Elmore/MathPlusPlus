@@ -184,6 +184,11 @@ impl<'a> Lowerer<'a> {
             K::Binary { op, lhs, rhs } => {
                 let a = self.lower(lhs)?;
                 let b = self.lower(rhs)?;
+                if let Some(m) = matrix_op(*op)
+                    .and_then(|m| crate::domains_wire::matrix_binary(m, &a, &b, self.scope))
+                {
+                    return Ok(m);
+                }
                 Ok(binary(*op, a, b))
             }
             K::Frac { num, den, .. } => {
@@ -451,6 +456,9 @@ impl<'a> Lowerer<'a> {
         }
         let b = self.lower(base)?;
         let e = self.lower(exp)?;
+        if let Some(m) = crate::domains_wire::matrix_power(&b, &e, self.scope) {
+            return Ok(m);
+        }
         Ok(b.pow(e))
     }
 
@@ -694,7 +702,8 @@ impl<'a> Lowerer<'a> {
     }
 
     fn named_op(&mut self, op: &NamedOp) -> LowerResult {
-        let args = self.lower_all(&op.args)?;
+        let mut args = self.lower_all(&op.args)?;
+        crate::domains_wire::protect_ode_args(&op.name, &mut args);
         if op.sub.is_none() && op.sup.is_none() {
             return Ok(Expr::apply(&op.name, args));
         }
@@ -761,6 +770,19 @@ fn small_order(node: &Node) -> Result<u32, Located> {
     }
 }
 
+/// The matrix operation a binary operator stands for, when its sides are matrices.
+fn matrix_op(op: BinOp) -> Option<crate::domains_wire::MatrixOp> {
+    use crate::domains_wire::MatrixOp;
+    Some(match op {
+        BinOp::Mul(mpp_syntax::math::MulStyle::Cdot) => MatrixOp::Dot,
+        BinOp::Mul(_) => MatrixOp::Mul,
+        BinOp::Times => MatrixOp::Times,
+        BinOp::Add => MatrixOp::Add,
+        BinOp::Sub => MatrixOp::Sub,
+        _ => return None,
+    })
+}
+
 fn binary(op: BinOp, a: Expr, b: Expr) -> Expr {
     match op {
         BinOp::Add => a + b,
@@ -776,6 +798,7 @@ fn binary(op: BinOp, a: Expr, b: Expr) -> Expr {
         BinOp::Union => Expr::apply("union", vec![a, b]),
         BinOp::Intersect => Expr::apply("intersect", vec![a, b]),
         BinOp::SetMinus => Expr::apply("setminus", vec![a, b]),
+        BinOp::Mod => Expr::apply("mod", vec![a, b]),
     }
 }
 

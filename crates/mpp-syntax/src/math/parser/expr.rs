@@ -475,6 +475,7 @@ fn mul_op(op: Op) -> Option<MulOp> {
         Op::Cap => MulOp::Bin(BinOp::Intersect),
         Op::Slash => MulOp::Frac(FracStyle::Slash),
         Op::Obelus => MulOp::Frac(FracStyle::Obelus),
+        Op::Mod => MulOp::Bin(BinOp::Mod),
         _ => return None,
     })
 }
