@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use mpp_cli::{calc_line, check_report, run_file, run_lines, run_report};
+use mpp_cli::{calc_line, check_report, run_file, run_lines, run_report_with};
 use mpp_export::{export_path, load, render_page, ExportOptions, Format, PageSize};
 
 #[derive(Parser)]
@@ -19,7 +19,12 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Run a file and print the answer to each query
-    Run { file: PathBuf },
+    Run {
+        file: PathBuf,
+        /// Show the working of `= ?!` queries under their answers
+        #[arg(long)]
+        steps: bool,
+    },
     /// Check files for errors (exit code 1 when there are any)
     Check {
         #[arg(required = true)]
@@ -78,7 +83,7 @@ enum Paper {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Run { file } => run(&file),
+        Command::Run { file, steps } => run(&file, steps),
         Command::Check { files } => check(&files),
         Command::Render { file, output } => render(&file, output),
         Command::Export {
@@ -115,10 +120,10 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn run(file: &Path) -> ExitCode {
+fn run(file: &Path, steps: bool) -> ExitCode {
     match run_file(file) {
         Ok(ev) => {
-            print!("{}", run_report(&ev));
+            print!("{}", run_report_with(&ev, steps));
             if run_lines(&ev).iter().any(|l| l.error) {
                 ExitCode::FAILURE
             } else {

@@ -1,0 +1,56 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\section*{Derivatives}
+
+The derivative of a function, written as you would write it.
+
+\begin{equation*}
+  \frac{d}{dx} x^3 \sin x = x^{3} \cos\left(x\right) + 3 x^{2} \sin\left(x\right)
+\end{equation*}
+\begin{equation*}
+  \frac{d}{dx} e^{x^2} = 2 e^{x^{2}} x
+\end{equation*}
+\begin{equation*}
+  \frac{d}{dx} \ln(\cos x) = -\frac{\sin\left(x\right)}{\cos\left(x\right)}
+\end{equation*}
+Define a function, then differentiate it:
+
+\begin{equation*}
+  f(x) \coloneqq  x^2 \ln x
+\end{equation*}
+\begin{equation*}
+  \frac{d}{dx} f(x) = x + 2 x \ln\left(x\right)
+\end{equation*}
+\begin{equation*}
+  f'(1) = 1
+\end{equation*}
+A second derivative:
+
+\begin{equation*}
+  \frac{d^2}{dx^2} \sin(3 x) = -9 \sin\left(3 x\right)
+\end{equation*}
+A partial derivative:
+
+\begin{equation*}
+  \frac{\partial}{\partial y} (x^2 y^3) = 3 x^{2} y^{2}
+\end{equation*}
+\end{document}

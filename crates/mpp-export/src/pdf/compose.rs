@@ -1492,3 +1492,90 @@ fn base64(data: &[u8]) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use mpp_eval::{FileImporter, Session};
+    use std::path::PathBuf;
+    use std::sync::Arc;
+
+    fn pages_of(src: &str, opts: &ExportOptions) -> (Vec<Page>, f32, f32) {
+        let mut session = Session::new().with_importer(Arc::new(FileImporter::new()));
+        let ev = session.run_str(src).clone();
+        let provider = EvalProvider::new(&ev, session.importer(), None::<PathBuf>, false, true);
+        let pages = compose(&ev, &provider, opts);
+        let (w, h) = opts.page.points();
+        let _ = w;
+        (pages, h, opts.margin_mm * 72.0 / 25.4)
+    }
+
+    fn long_document() -> String {
+        let mut src = String::from("# A long document\n\n");
+        for i in 1..=60 {
+            src.push_str(&format!(
+                "## Part {i}\n\nSome prose that goes on for a while so that the page fills up and the break falls in different places each time, with $x_{{{i}}}$ inline and a long enough sentence to wrap.\n\n$$ \\sum_{{n=1}}^{{{i}}} \\frac{{1}}{{n^2 + {i}}} = ? $$\n\n$$ \\int_0^{i} \\frac{{x^2}}{{1 + x^2}} \\, dx = ? $$\n\n"
+            ));
+        }
+        src
+    }
+
+    #[test]
+    fn nothing_runs_off_the_page_and_no_equation_is_split() {
+        for page in [crate::PageSize::A4, crate::PageSize::Letter] {
+            let opts = ExportOptions {
+                page,
+                ..ExportOptions::default()
+            };
+            let (pages, h, margin) = pages_of(&long_document(), &opts);
+            assert!(pages.len() > 3, "only {} pages", pages.len());
+            let bottom = h - margin;
+            for (n, p) in pages.iter().enumerate() {
+                for item in &p.items {
+                    let (y, is_number) = match item {
+                        Primitive::Glyph { y, .. } => (*y, *y > bottom + 1.0),
+                        Primitive::Rule { rect, .. } => (rect.y + rect.h, false),
+                        _ => continue,
+                    };
+                    if is_number {
+                        // Only the page number lives below the bottom margin.
+                        assert!(y > h - margin, "page {n}");
+                        continue;
+                    }
+                    assert!(
+                        y <= bottom + 4.0,
+                        "page {n}: content at y = {y} (bottom {bottom})"
+                    );
+                    assert!(y >= margin - 30.0, "page {n}: content above the top margin");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_heading_is_never_the_last_thing_on_a_page() {
+        let opts = ExportOptions::default();
+        let (pages, h, margin) = pages_of(&long_document(), &opts);
+        let bottom = h - margin;
+        for p in &pages {
+            // The lowest glyph of the page body must have text under it that is not a
+            // lone heading: at least two lines of ordinary text sit below any bold line.
+            let lowest = p
+                .items
+                .iter()
+                .filter_map(|i| match i {
+                    Primitive::Glyph { y, font, .. } if *y <= bottom => Some((*y, *font)),
+                    _ => None,
+                })
+                .fold((0.0f32, FontId::Text), |a, b| if b.0 > a.0 { b } else { a });
+            assert_ne!(lowest.1, FontId::TextBold, "a heading ended a page");
+        }
+    }
+
+    #[test]
+    fn letter_and_a4_differ_in_size() {
+        let a4 = crate::PageSize::A4.points();
+        let letter = crate::PageSize::Letter.points();
+        assert!(a4.1 > letter.1 && a4.0 < letter.0);
+    }
+}

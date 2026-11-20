@@ -172,3 +172,45 @@ fn ide_says_clearly_when_it_is_not_built() {
         );
     }
 }
+
+fn docs(name: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs")
+        .join(name)
+}
+
+#[test]
+fn the_guide_has_no_errors_and_exports() {
+    let out = mpp().arg("check").arg(docs("guide.mpp")).output().unwrap();
+    assert!(out.status.success(), "{}", text(&out.stderr));
+    let dir = tempfile::tempdir().unwrap();
+    let pdf = dir.path().join("guide.pdf");
+    assert!(mpp()
+        .arg("export")
+        .arg(docs("guide.mpp"))
+        .args(["--to", "pdf", "-o"])
+        .arg(&pdf)
+        .status()
+        .unwrap()
+        .success());
+    assert!(std::fs::read(&pdf).unwrap().starts_with(b"%PDF-"));
+}
+
+#[test]
+fn run_shows_steps_when_asked() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("steps.mpp");
+    std::fs::write(&file, "$$ \\int x e^x \\, dx = ?! $$\n").unwrap();
+    let plain = text(&mpp().arg("run").arg(&file).output().unwrap().stdout);
+    let with = text(
+        &mpp()
+            .arg("run")
+            .arg(&file)
+            .arg("--steps")
+            .output()
+            .unwrap()
+            .stdout,
+    );
+    assert!(with.lines().count() > plain.lines().count(), "{with}");
+    assert!(with.contains("integration by parts"));
+}

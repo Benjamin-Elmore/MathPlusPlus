@@ -227,9 +227,9 @@ impl Parser {
                     "" | "2" => "√",
                     "3" => "∛",
                     "4" => "∜",
-                    n => return format!("{}√{}", script(n, true), paren(&a)),
+                    n => return format!("{}√{}", script(n, true), tight(&a)),
                 };
-                format!("{root}{}", paren(&a))
+                format!("{root}{}", tight(&a))
             }
             "left" | "right" | "big" | "Big" | "bigg" | "Bigg" | "displaystyle" | "textstyle"
             | "limits" | "nolimits" => {
@@ -329,6 +329,19 @@ fn paren(s: &str) -> String {
         c.is_alphanumeric() || matches!(c, '.' | '°' | '′' | '√' | '∂' | '∞') || is_script(c)
     }) || (s.starts_with('(') && s.ends_with(')') && !s[1..s.len() - 1].contains('('));
     if simple || s.is_empty() {
+        s.to_string()
+    } else {
+        format!("({s})")
+    }
+}
+
+/// Brackets for the argument of a root: only a single symbol or number goes without.
+fn tight(s: &str) -> String {
+    let single = s.chars().count() == 1 || s.chars().all(|c| c.is_ascii_digit());
+    if single
+        || s.is_empty()
+        || (s.starts_with('(') && s.ends_with(')') && !s[1..s.len() - 1].contains('('))
+    {
         s.to_string()
     } else {
         format!("({s})")

@@ -23,6 +23,8 @@ pub struct RunLine {
     pub answer: String,
     /// True when the line is an error.
     pub error: bool,
+    /// The working of a `= ?!` query, one step per line (`rule: before → after`).
+    pub steps: Vec<String>,
 }
 
 impl RunLine {
@@ -57,6 +59,7 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
                     asked: to_unicode(&src),
                     answer: errors[i].message.clone(),
                     error: true,
+                    steps: vec![],
                 }
             }
             None => answer_line(ev, line, &src),
@@ -72,6 +75,7 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
                     asked: to_unicode(&snippet(ev, d.span.start, d.span.end)),
                     answer: d.message.clone(),
                     error: true,
+                    steps: vec![],
                 },
             ));
         }
@@ -93,6 +97,7 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
             asked: to_unicode(src),
             answer: v.describe(),
             error: false,
+            steps: vec![],
         };
     }
     let approx_query = matches!(
@@ -117,14 +122,36 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
         asked,
         answer: shown.unwrap_or_else(|| "(no answer)".into()),
         error: false,
+        steps: line
+            .steps
+            .iter()
+            .flat_map(|s| s.iter())
+            .map(|st| {
+                let mut t = format!("{}: {} → {}", st.rule, st.before, st.after);
+                if let Some(n) = &st.note {
+                    t.push_str(&format!(" ({n})"));
+                }
+                t
+            })
+            .collect(),
     }
 }
 
 /// The text `mpp run` prints.
 pub fn run_report(ev: &Evaluated) -> String {
+    run_report_with(ev, false)
+}
+
+/// The text `mpp run` prints; with `steps`, the working of `= ?!` queries under each answer.
+pub fn run_report_with(ev: &Evaluated, steps: bool) -> String {
     let mut out = String::new();
     for l in run_lines(ev) {
         let _ = writeln!(out, "{}", l.text());
+        if steps {
+            for s in &l.steps {
+                let _ = writeln!(out, "    {s}");
+            }
+        }
     }
     out
 }

@@ -1,0 +1,42 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\section*{Using files together}
+
+A document can use what other files define. These two names come from the
+\texttt{lib} folder next to this file.
+
+Using $g, A$ from [[lib/physics.mpp]].
+
+\begin{equation*}
+  g = \frac{981}{100}
+\end{equation*}
+\begin{equation*}
+  A(3) = 9 \pi
+\end{equation*}
+Everything from another file, with \texttt{![[$\ldots$]]}:
+
+\textit{Imports everything from lib/shapes.mpp.}
+
+\begin{equation*}
+  P(3) = 6 \pi
+\end{equation*}
+\end{document}

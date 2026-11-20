@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Assumptions</title>
+<style>
+@font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: normal; src: url(data:…) format('opentype'); }
+@font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: normal; src: url(data:…) format('opentype'); }
+@font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: bold; src: url(data:…) format('opentype'); }
+:root { --mpp-text: #111111; --mpp-result: #1f5fb8; --mpp-auto-result: #9a9a9a; --mpp-placeholder: #a8a8a8; --mpp-placeholder-label: #9c9c9c; --mpp-rule: #111111; --mpp-background: #fdfdfb; --mpp-code-background: #f2f2ee; --mpp-link: #1f4f98; --mpp-muted: #444444; --mpp-error: #c01c28; --mpp-warning: #b5830a; --mpp-note-background: #f6f1dc; --mpp-note-accent: #a8821c; }
+html { background: var(--mpp-background); }
+body { margin: 0; color: var(--mpp-text); background: var(--mpp-background); font-family: 'Latin Modern Roman', 'LM Roman 10', 'CMU Serif', 'Cambria', 'Times New Roman', serif; font-size: 19px; line-height: 1.45; }
+main.paper { max-width: 40em; margin: 3em auto 5em; padding: 0 1.5em; text-align: justify; hyphens: auto; }
+h1 { font-size: 1.7em; font-weight: normal; text-align: center; margin: 0.4em 0 1em; }
+h2 { font-size: 1.3em; margin: 1.6em 0 0.6em; }
+h3 { font-size: 1.1em; margin: 1.3em 0 0.5em; }
+h4, h5, h6 { font-size: 1em; font-style: italic; margin: 1em 0 0.4em; }
+p { margin: 0 0 0.7em; }
+svg.defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+svg.m { display: inline; }
+.eq { position: relative; display: flex; justify-content: center; align-items: center; margin: 0.9em 0; overflow-x: auto; }
+.eq-num { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+.theorem { margin: 1em 0; }
+.theorem > p:first-of-type { display: inline; }
+.theorem.slanted p { font-style: italic; }
+.thm-head { font-weight: bold; margin-right: 0.4em; }
+.proof .thm-head { font-weight: normal; font-style: italic; }
+.qed { float: right; }
+.import, .helper, .assume { color: var(--mpp-muted); }
+.assume { font-style: italic; }
+.unit { font-size: 0.85em; color: var(--mpp-muted); }
+blockquote { margin: 1em 2em; color: var(--mpp-muted); }
+table { border-collapse: collapse; margin: 1em auto; }
+th, td { padding: 0.2em 0.8em; }
+thead th { border-top: 1.5px solid var(--mpp-rule); border-bottom: 1px solid var(--mpp-rule); }
+tbody tr:last-child td { border-bottom: 1.5px solid var(--mpp-rule); }
+pre { background: var(--mpp-code-background); padding: 0.7em 1em; overflow-x: auto; font-size: 0.85em; }
+code { font-family: 'Consolas', 'DejaVu Sans Mono', monospace; font-size: 0.9em; }
+figure { margin: 1.2em 0; text-align: center; }
+figcaption { font-size: 0.92em; margin-top: 0.4em; }
+.fig-spec { border: 1px dashed var(--mpp-placeholder); padding: 1.5em; color: var(--mpp-muted); }
+hr { border: none; border-top: 1px solid var(--mpp-rule); opacity: 0.35; margin: 1.5em 0; }
+ol.footnotes { font-size: 0.88em; }
+.title-block { text-align: center; margin: 0 0 2em; }
+.doc-title { font-size: 1.9em; margin: 0.2em 0 0.5em; }
+.doc-author { margin: 0.1em 0; font-size: 1.1em; }
+.doc-date { margin: 0.1em 0; color: var(--mpp-muted); }
+.abstract { margin: 1.4em 2.5em 0; font-size: 0.92em; text-align: justify; }
+.abstract-head { text-align: center; font-weight: bold; margin: 0 0 0.3em; }
+.sec-num { margin-right: 0.5em; }
+.cite-missing { color: var(--mpp-error); font-weight: bold; }
+.references h2 { margin-top: 2em; }
+ol.refs { list-style: none; padding-left: 0; font-size: 0.95em; }
+ol.refs li { margin: 0.35em 0; padding-left: 2.6em; text-indent: -2.6em; text-align: left; }
+ol.refs.author-year li { padding-left: 1.6em; text-indent: -1.6em; }
+.ref-num { display: inline-block; width: 2.6em; text-indent: 0; }
+.note { display: flex; gap: 0.7em; align-items: flex-start; margin: 0.9em 0; padding: 0.55em 0.9em; background: var(--mpp-note-background); border-left: 3px solid var(--mpp-note-accent); border-radius: 0 6px 6px 0; font-size: 0.86em; line-height: 1.4; color: var(--mpp-muted); text-align: left; }
+.note-mark { color: var(--mpp-note-accent); font-size: 1.1em; line-height: 1.2; }
+.note-body { flex: 1; min-width: 0; }
+.note-body > :first-child { margin-top: 0; }
+.note-body > :last-child { margin-bottom: 0; }
+.note.off { border-left-style: dashed; }
+.note .eq { opacity: 0.6; }
+.eq + .note { margin-top: -0.4em; }
+a { color: var(--mpp-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main class="paper">
+<svg class="defs" width="0" height="0" aria-hidden="true">
+<defs>
+<path id="mpp-m9" d="M332 -238C332 -235 330 -232 328 -230C224 -152 155 48 155 208L155 292C155 452 224 652 328 730C330 732 332 735 332 738C332 743 327 748 322 748C320 748 318 747 316 746C206 663 101 463 101 292L101 208C101 37 206 -163 316 -246C318 -247 320 -248 322 -248C327 -248 332 -243 332 -238Z"/>
+<path id="mpp-m10" d="M288 208L288 292C288 463 183 663 73 746C71 747 69 748 67 748C62 748 57 743 57 738C57 735 59 732 61 730C165 652 234 452 234 292L234 208C234 48 165 -152 61 -230C59 -232 57 -235 57 -238C57 -243 62 -248 67 -248C69 -248 71 -247 73 -246C183 -163 288 37 288 208Z"/>
+<path id="mpp-m12" d="M722 250C722 261 713 270 702 270L409 270L409 563C409 574 400 583 389 583C378 583 369 574 369 563L369 270L76 270C65 270 56 261 56 250C56 239 65 230 76 230L369 230L369 -63C369 -74 378 -83 389 -83C400 -83 409 -74 409 -63L409 230L702 230C713 230 722 239 722 250Z"/>
+<path id="mpp-m17" d="M460 320C460 400 455 480 420 554C374 650 292 666 250 666C190 666 117 640 76 547C44 478 39 400 39 320C39 245 43 155 84 79C127 -2 200 -22 249 -22C303 -22 379 -1 423 94C455 163 460 241 460 320ZM377 332C377 257 377 189 366 125C351 30 294 0 249 0C210 0 151 25 133 121C122 181 122 273 122 332C122 396 122 462 130 516C149 635 224 644 249 644C282 644 348 626 367 527C377 471 377 395 377 332Z"/>
+<path id="mpp-m18" d="M419 0L419 31L387 31C297 31 294 42 294 79L294 640C294 664 294 666 271 666C209 602 121 602 89 602L89 571C109 571 168 571 220 597L220 79C220 43 217 31 127 31L95 31L95 0C130 3 217 3 257 3C297 3 384 3 419 0Z"/>
+<path id="mpp-m29" d="M689 -9L141 250L689 509C713 520 696 556 671 545L90 270C73 262 73 238 90 230L671 -45C696 -56 713 -20 689 -9Z"/>
+<path id="mpp-m30" d="M722 347C722 358 713 367 702 367L76 367C65 367 56 358 56 347C56 336 65 327 76 327L702 327C713 327 722 336 722 347ZM722 153C722 164 713 173 702 173L76 173C65 173 56 164 56 153C56 142 65 133 76 133L702 133C713 133 722 142 722 153Z"/>
+<path id="mpp-m31" d="M688 230C705 238 705 262 688 270L107 545C82 556 65 520 89 509L637 250L89 -9C65 -20 82 -56 107 -45Z"/>
+<path id="mpp-m68" d="M415 119C415 129 405 129 402 129C393 129 391 125 389 119C360 26 295 14 258 14C205 14 117 57 117 218C117 381 199 423 252 423C261 423 324 422 359 386C318 383 312 353 312 340C312 314 330 294 358 294C384 294 404 311 404 341C404 409 328 448 251 448C126 448 34 340 34 216C34 88 133 -11 249 -11C383 -11 415 109 415 119Z"/>
+<path id="mpp-m74" d="M247 0L247 31C181 31 177 36 177 75L177 442L37 431L37 400C102 400 111 394 111 345L111 76C111 31 100 31 33 31L33 0L143 3C178 3 213 1 247 0ZM192 604C192 631 169 657 139 657C105 657 85 629 85 604C85 577 108 551 138 551C172 551 192 579 192 604Z"/>
+<path id="mpp-m77" d="M255 0L255 31C188 31 177 31 177 76L177 694L33 683L33 652C103 652 111 645 111 596L111 76C111 31 100 31 33 31L33 0L144 3Z"/>
+<path id="mpp-m78" d="M813 0L813 31C761 31 736 31 735 61L735 252C735 338 735 369 704 405C690 422 657 442 599 442C515 442 471 382 454 344C440 431 366 442 321 442C248 442 201 399 173 337L173 442L32 431L32 400C102 400 110 393 110 344L110 76C110 31 99 31 32 31L32 0L145 3L257 0L257 31C190 31 179 31 179 76L179 260C179 364 250 420 314 420C377 420 388 366 388 309L388 76C388 31 377 31 310 31L310 0L423 3L535 0L535 31C468 31 457 31 457 76L457 260C457 364 528 420 592 420C655 420 666 366 666 309L666 76C666 31 655 31 588 31L588 0L701 3Z"/>
+<path id="mpp-m79" d="M535 0L535 31C483 31 458 31 457 61L457 252C457 338 457 369 426 405C412 422 379 442 321 442C248 442 201 399 173 337L173 442L32 431L32 400C102 400 110 393 110 344L110 76C110 31 99 31 32 31L32 0L145 3L257 0L257 31C190 31 179 31 179 76L179 260C179 364 250 420 314 420C377 420 388 366 388 309L388 76C388 31 377 31 310 31L310 0L423 3Z"/>
+<path id="mpp-m80" d="M471 214C471 342 371 448 250 448C125 448 28 339 28 214C28 85 132 -11 249 -11C370 -11 471 87 471 214ZM388 222C388 186 388 132 366 88C344 43 300 14 250 14C207 14 163 35 136 81C111 125 111 186 111 222C111 261 111 315 135 359C162 405 209 426 249 426C293 426 336 404 362 361C388 318 388 260 388 222Z"/>
+<path id="mpp-m84" d="M360 128C360 181 330 211 318 223C285 255 246 263 204 271C148 282 81 295 81 353C81 388 107 429 193 429C303 429 308 339 310 308C311 299 322 299 322 299C335 299 335 304 335 323L335 424C335 441 335 448 324 448C319 448 317 448 304 436C301 432 291 423 287 420C249 448 208 448 193 448C71 448 33 381 33 325C33 290 49 262 76 240C108 214 136 208 208 194C230 190 312 174 312 102C312 51 277 11 199 11C115 11 79 68 60 153C57 166 56 170 46 170C33 170 33 163 33 145L33 13C33 -4 33 -11 44 -11C49 -11 50 -10 69 9C71 11 71 13 89 32C133 -10 178 -11 199 -11C314 -11 360 56 360 128Z"/>
+<path id="mpp-m93" d="M159 -230L159 730C159 741 150 750 139 750C128 750 119 741 119 730L119 -230C119 -241 128 -250 139 -250C150 -250 159 -241 159 -230Z"/>
+<path id="mpp-m152" d="M943 216C943 327 873 442 754 442C610 442 521 294 508 272C441 353 440 354 418 373C386 400 327 442 248 442C132 442 56 333 56 215C56 104 126 -11 245 -11C389 -11 478 137 491 159C558 78 559 77 581 58C613 31 672 -11 751 -11C867 -11 943 98 943 216ZM921 216C921 116 851 37 767 37C721 37 680 60 635 109C607 140 562 203 534 237C572 305 648 410 761 410C867 410 921 306 921 216ZM465 194C427 126 351 21 238 21C132 21 78 125 78 215C78 315 148 394 232 394C278 394 319 371 364 322C392 291 437 228 465 194Z"/>
+<path id="mpp-m158" d="M1060 216C1060 333 974 441 850 441C707 441 618 327 577 274C528 334 440 441 292 441C166 441 78 335 78 215C78 98 164 -10 288 -10C431 -10 520 104 561 157C610 97 698 -10 846 -10C972 -10 1060 96 1060 216ZM1032 216C1032 116 950 45 863 45C769 45 703 125 610 237C671 334 760 403 858 403C961 403 1032 313 1032 216ZM528 194C467 97 378 28 280 28C177 28 106 118 106 215C106 315 188 386 275 386C369 386 435 306 528 194Z"/>
+<path id="mpp-m559" d="M554 0L554 44L504 44C398 44 398 55 398 86L398 636C398 666 395 666 362 666C291 602 180 602 160 602L143 602L143 558L160 558C183 558 248 561 306 586L306 86C306 55 306 44 200 44L150 44L150 0C205 4 294 4 352 4C410 4 499 4 554 0Z"/>
+<path id="mpp-m966" d="M473 0L473 36L435 36C335 36 335 49 335 82L335 636C335 663 333 664 305 664C241 601 150 600 109 600L109 564C133 564 199 564 254 592L254 82C254 49 254 36 154 36L116 36L116 0L294 4Z"/>
+<path id="mpp-m1013" d="M505 182L471 182C468 160 458 101 445 91C437 85 360 85 346 85L162 85C267 178 302 206 362 253C436 312 505 374 505 469C505 590 399 664 271 664C147 664 63 577 63 485C63 434 106 429 116 429C140 429 169 446 169 482C169 500 162 535 110 535C141 606 209 628 256 628C356 628 408 550 408 469C408 382 346 313 314 277L73 39C63 30 63 28 63 0L475 0Z"/>
+<path id="mpp-m1032" d="M516 319C516 429 503 508 457 578C426 624 364 664 284 664C52 664 52 391 52 319C52 247 52 -20 284 -20C516 -20 516 247 516 319ZM425 332C425 258 425 184 412 121C392 30 324 8 284 8C238 8 177 35 157 117C143 176 143 258 143 332C143 405 143 481 158 536C179 615 243 636 284 636C338 636 390 603 408 545C424 491 425 419 425 332Z"/>
+<path id="mpp-m1272" d="M760 695C760 698 758 705 749 705C746 705 745 704 734 693L664 616C655 630 609 705 498 705C275 705 50 484 50 252C50 87 168 -22 321 -22C408 -22 484 18 537 64C630 146 647 237 647 240C647 250 635 250 635 250C629 250 624 248 622 240C613 211 590 140 521 82C452 26 389 9 337 9C247 9 141 61 141 217C141 274 162 436 262 553C323 624 417 674 506 674C608 674 667 597 667 481C667 441 664 440 664 430C664 420 675 420 679 420C692 420 692 422 697 440Z"/>
+<path id="mpp-m1296" d="M498 143C498 153 489 153 486 153C476 153 475 149 472 135C455 70 437 11 396 11C369 11 366 37 366 57C366 79 368 87 379 131L401 221L437 361C444 389 444 391 444 395C444 412 432 422 415 422C391 422 376 400 373 378C355 415 326 442 281 442C164 442 40 295 40 149C40 55 95 -11 173 -11C193 -11 243 -7 303 64C311 22 346 -11 394 -11C429 -11 452 12 468 44C485 80 498 143 498 143ZM361 332C361 326 359 320 358 315L308 119C303 101 303 99 288 82C244 27 203 11 175 11C125 11 111 66 111 105C111 155 143 278 166 324C197 383 242 420 282 420C347 420 361 338 361 332Z"/>
+<path id="mpp-m1299" d="M516 683C516 683 516 694 503 694C488 694 393 685 376 683C368 682 362 677 362 664C362 652 371 652 386 652C434 652 436 645 436 635L433 615L373 378C355 415 326 442 281 442C164 442 40 295 40 149C40 55 95 -11 173 -11C193 -11 243 -7 303 64C311 22 346 -11 394 -11C429 -11 452 12 468 44C485 80 498 143 498 143C498 153 489 153 486 153C476 153 475 149 472 135C455 70 437 11 396 11C369 11 366 37 366 57C366 81 368 88 372 105ZM361 332C361 326 359 320 358 315L308 119C303 101 303 99 288 82C244 27 203 11 175 11C125 11 111 66 111 105C111 155 143 278 166 324C197 383 242 420 282 420C347 420 361 338 361 332Z"/>
+<path id="mpp-m1300" d="M430 107C430 113 424 120 418 120C413 120 411 118 405 110C326 11 217 11 205 11C127 11 118 95 118 127C118 139 119 170 134 231L187 231C216 231 290 233 340 254C410 284 415 343 415 357C415 401 377 442 308 442C197 442 46 345 46 170C46 68 105 -11 203 -11C346 -11 430 95 430 107ZM382 357C382 253 222 253 181 253L140 253C179 405 282 420 308 420C355 420 382 391 382 357Z"/>
+<path id="mpp-m1309" d="M571 143C571 153 562 153 559 153C549 153 549 150 544 135C524 67 491 11 442 11C425 11 418 21 418 44C418 69 427 93 436 115C455 168 497 278 497 335C497 402 454 442 382 442C292 442 243 378 226 355C221 411 180 442 134 442C88 442 69 403 59 385C43 351 29 292 29 288C29 278 41 278 41 278C51 278 52 279 58 301C75 372 95 420 131 420C151 420 162 407 162 374C162 353 159 342 146 290L88 59C85 44 79 21 79 16C79 -2 93 -11 108 -11C120 -11 138 -3 145 17C146 19 158 66 164 91L186 181C192 203 198 225 203 248L216 298C231 329 284 420 379 420C424 420 433 383 433 350C433 288 384 160 368 117C359 94 358 82 358 71C358 24 393 -11 440 -11C534 -11 571 135 571 143Z"/>
+<path id="mpp-m1311" d="M490 282C490 376 433 442 357 442C307 442 259 406 226 367C216 421 173 442 136 442C90 442 71 403 62 385C44 351 31 291 31 288C31 278 43 278 43 278C53 278 54 279 60 301C77 372 97 420 133 420C150 420 164 412 164 374C164 351 161 340 157 323L45 -122C37 -156 35 -163 -9 -163C-21 -163 -32 -163 -32 -182C-32 -190 -27 -194 -19 -194C8 -194 37 -191 65 -191C98 -191 132 -194 164 -194C169 -194 182 -194 182 -174C182 -163 172 -163 158 -163C108 -163 108 -156 108 -147C108 -135 150 28 157 53C170 24 198 -11 249 -11C365 -11 490 135 490 282ZM418 326C418 267 385 152 367 114C333 44 285 11 248 11C182 11 169 94 169 100C169 100 169 104 172 116L221 312C228 339 255 367 273 382C308 413 337 420 354 420C394 420 418 385 418 326Z"/>
+<path id="mpp-m1319" d="M527 376C527 428 468 442 434 442C376 442 341 389 329 366C304 432 250 442 221 442C117 442 60 313 60 288C60 278 72 278 72 278C80 278 83 280 85 289C119 395 185 420 219 420C238 420 273 411 273 353C273 322 256 255 219 115C203 53 168 11 124 11C118 11 95 11 74 24C99 29 121 50 121 78C121 105 99 113 84 113C54 113 29 87 29 55C29 9 79 -11 123 -11C189 -11 225 59 228 65C240 28 276 -11 336 -11C439 -11 496 118 496 143C496 153 487 153 484 153C475 153 473 149 471 142C438 35 370 11 338 11C299 11 283 43 283 77C283 99 289 121 300 165L334 302C340 328 363 420 433 420C438 420 462 420 483 407C455 402 435 377 435 353C435 337 446 318 473 318C495 318 527 336 527 376Z"/>
+<path id="mpp-m1320" d="M490 404C490 422 476 431 461 431C451 431 435 425 426 410C424 405 416 374 412 356L392 276L347 96C343 81 300 11 234 11C183 11 172 55 172 92C172 138 189 200 223 288C239 329 243 340 243 360C243 405 211 442 161 442C66 442 29 297 29 288C29 278 41 278 41 278C51 278 52 280 57 296C84 390 124 420 158 420C166 420 183 420 183 388C183 363 173 337 166 318C126 212 108 155 108 108C108 19 171 -11 230 -11C269 -11 303 6 331 34C318 -18 306 -67 266 -120C240 -154 202 -183 156 -183C142 -183 97 -180 80 -141C96 -141 109 -141 123 -129C133 -120 143 -107 143 -88C143 -57 116 -53 106 -53C83 -53 50 -69 50 -118C50 -168 94 -205 156 -205C259 -205 362 -114 390 -1L486 381C490 395 490 397 490 404Z"/>
+<path id="mpp-m1363" d="M791 144C791 158 774 158 770 158C753 158 752 154 746 135C727 75 681 23 633 23C610 23 603 39 603 61C603 82 607 92 616 114C633 154 679 268 679 323C679 397 626 442 531 442C440 442 377 387 342 343C337 425 257 442 220 442C120 442 91 287 91 287C91 273 107 273 112 273C129 273 131 279 135 292C150 350 173 408 215 408C249 408 256 376 256 355C256 341 246 303 240 277L218 187L195 98C189 73 178 29 178 24C178 2 196 -11 215 -11C230 -11 252 -3 263 22L282 100C316 235 316 237 318 241C331 268 403 408 525 408C574 408 595 381 595 336C595 279 553 176 530 119C525 107 520 94 520 77C520 25 570 -11 629 -11C736 -11 791 119 791 144Z"/>
+<path id="mpp-m1404" d="M571 143C571 156 558 156 555 156C541 156 540 152 533 125C521 77 502 18 460 18C434 18 427 40 427 67C427 84 435 120 442 146L464 236C474 273 475 279 484 312C490 338 502 385 502 390C502 412 484 422 468 422C451 422 428 410 422 382C401 415 367 441 319 441C191 441 61 300 61 156C61 59 126 -10 212 -10C266 -10 314 21 354 60C373 0 431 -10 457 -10C493 -10 518 12 536 43C558 82 571 139 571 143ZM408 326C408 322 406 315 405 312L358 125C351 97 329 77 307 58C298 50 258 18 215 18C178 18 142 44 142 115C142 168 171 278 194 318C240 398 291 413 319 413C389 413 408 337 408 326Z"/>
+<path id="mpp-m1417" d="M658 143C658 156 645 156 642 156C628 156 627 150 623 139C600 59 557 18 517 18C496 18 492 32 492 53C492 76 497 89 515 134C527 165 568 271 568 327C568 424 491 441 438 441C355 441 299 390 269 350C262 419 203 441 162 441C119 441 96 410 83 387C61 350 47 293 47 288C47 275 61 275 64 275C78 275 79 278 86 305C101 364 120 413 159 413C185 413 192 391 192 364C192 345 183 308 176 281L154 191L122 63C118 50 112 25 112 22C112 0 130 -10 146 -10C164 -10 180 3 185 12C190 21 198 53 203 74L225 164C231 186 237 208 242 231C253 272 255 280 284 321C312 361 359 413 434 413C492 413 493 362 493 343C493 283 450 172 434 130C423 102 419 93 419 76C419 23 463 -10 514 -10C614 -10 658 128 658 143Z"/>
+<path id="mpp-m1419" d="M557 274C557 391 476 441 407 441C345 441 292 399 265 371C248 428 192 441 162 441C123 441 99 415 83 388C63 354 47 294 47 288C47 275 61 275 64 275C78 275 79 278 86 305C101 363 120 413 159 413C185 413 192 391 192 364C192 353 190 340 189 334L75 -122C68 -150 66 -158 26 -158C13 -158 -1 -158 -1 -179C-1 -190 8 -194 13 -194C39 -194 72 -190 99 -190C133 -190 171 -194 204 -194C213 -194 224 -191 224 -172C224 -158 210 -158 198 -158C176 -158 149 -158 149 -146C149 -141 156 -115 160 -100L197 49C209 29 240 -10 300 -10C422 -10 557 125 557 274ZM477 316C477 275 455 173 425 115C400 66 351 18 300 18C229 18 211 95 211 105C211 109 213 116 214 120L264 321C322 398 372 413 404 413C443 413 477 384 477 316Z"/>
+<path id="mpp-m1427" d="M583 368C583 424 519 441 479 441C429 441 389 408 367 370C349 411 303 441 247 441C135 441 71 318 71 288C71 275 85 275 88 275C101 275 102 279 107 292C132 370 195 413 244 413C277 413 304 395 304 347C304 327 292 277 283 243L249 106C239 72 206 18 155 18C152 18 122 18 101 32C142 45 145 81 145 87C145 109 128 124 105 124C77 124 48 100 48 63C48 13 104 -10 153 -10C199 -10 240 19 265 61C289 8 344 -10 384 -10C499 -10 560 115 560 143C560 156 547 156 544 156C530 156 529 151 525 139C504 70 444 18 388 18C348 18 327 45 327 83C327 109 351 200 379 311C399 388 444 413 477 413C477 413 510 413 531 399C499 390 487 362 487 344C487 322 504 307 527 307C550 307 583 326 583 368Z"/>
+<path id="mpp-m1858" d="M943 250C943 256 939 261 934 263C877 282 833 322 797 367C769 403 748 447 739 494C737 503 729 510 719 510C708 510 699 501 699 490C699 489 700 487 700 486C710 433 733 384 766 342C788 314 814 290 844 270L78 270C67 270 58 261 58 250C58 239 67 230 78 230L844 230C814 210 788 186 766 158C733 116 710 67 700 14C700 13 699 11 699 10C699 -1 708 -10 719 -10C729 -10 737 -3 739 6C748 53 769 97 797 133C833 178 877 218 934 237C939 239 943 244 943 250Z"/>
+<path id="mpp-m2481" d="M648 -928C648 -918 641 -910 632 -907C510 -869 422 -748 422 -650L422 -50C422 70 315 190 185 250C315 310 422 430 422 550L422 1150C422 1248 510 1369 632 1407C641 1410 648 1418 648 1428C648 1440 638 1450 626 1450C624 1450 622 1450 620 1449C465 1401 328 1273 328 1150L328 550C328 440 241 309 118 271C109 268 102 260 102 250C102 240 109 232 118 229C241 191 328 60 328 -50L328 -650C328 -773 465 -901 620 -949C622 -950 624 -950 626 -950C638 -950 648 -940 648 -928Z"/>
+<path id="mpp-m2615" d="M722 250C722 261 713 270 702 270L76 270C65 270 56 261 56 250C56 239 65 230 76 230L702 230C713 230 722 239 722 250Z"/>
+<path id="mpp-m2824" d="M722 153C722 164 713 173 702 173L382 173L438 327L702 327C713 327 722 336 722 347C722 358 713 367 702 367L453 367L575 703C576 705 577 708 577 710C577 721 568 730 557 730C548 730 540 725 538 717L410 367L76 367C65 367 56 358 56 347C56 336 65 327 76 327L396 327L340 173L76 173C65 173 56 164 56 153C56 142 65 133 76 133L325 133L203 -203C202 -205 202 -208 202 -210C202 -221 210 -230 222 -230C230 -230 238 -225 240 -217L368 133L702 133C713 133 722 142 722 153Z"/>
+<path id="mpp-m2862" d="M691 75L143 334L691 593C715 604 698 640 673 629L92 354C75 346 75 322 92 314L673 39C698 28 715 64 691 75ZM702 -99C702 -88 693 -79 682 -79L96 -79C85 -79 76 -88 76 -99C76 -110 85 -119 96 -119L682 -119C693 -119 702 -110 702 -99Z"/>
+<path id="mpp-m2926" d="M587 -23C587 -12 578 -3 567 -3L374 -3C241 -3 132 100 122 230L567 230C594 230 594 270 567 270L122 270C132 400 241 503 374 503L567 503C578 503 587 512 587 523C587 534 578 543 567 543L374 543C212 543 81 412 81 250C81 88 212 -43 374 -43L567 -43C578 -43 587 -34 587 -23Z"/>
+<path id="mpp-m3063" d="M943 1268C943 1322 889 1361 834 1361C758 1361 702 1252 647 1048C644 1037 508 535 398 -119C372 -272 343 -439 310 -578C292 -651 246 -839 165 -839C129 -839 104 -816 104 -816C136 -814 153 -792 153 -767C153 -734 128 -718 105 -718C81 -718 56 -733 56 -768C56 -819 106 -861 167 -861C319 -861 376 -627 447 -337C524 -21 589 298 643 619C680 832 717 1032 751 1161C763 1210 797 1339 836 1339C867 1339 892 1320 896 1316C863 1314 846 1292 846 1267C846 1234 871 1218 894 1218C918 1218 943 1233 943 1268Z"/>
+<path id="mpp-m3077" d="M853 20C853 31 845 40 833 40C821 40 818 33 812 21L389 -855L211 -463C207 -455 205 -449 198 -449C195 -449 193 -449 184 -457L85 -532C74 -541 73 -542 73 -546C73 -553 77 -557 83 -557C86 -557 88 -557 97 -549L149 -510L347 -945C353 -959 355 -960 366 -960C382 -960 384 -956 391 -941L847 3C852 14 853 15 853 20Z"/>
+<path id="mpp-m3081" d="M1020 830C1020 841 1012 850 1000 850C987 850 983 841 978 830L462 -246L249 250L110 143L125 127L196 181L424 -350C455 -350 456 -349 466 -330L1013 812C1020 825 1020 827 1020 830Z"/>
+<path id="mpp-m3518" d="M611 20C611 40 593 40 576 40L238 40L603 644C610 656 611 659 611 663C611 683 593 683 576 683L91 683C76 683 55 683 55 663C55 643 76 643 91 643L428 643L63 39C60 34 55 26 55 20C55 0 76 0 91 0L576 0C593 0 611 0 611 20ZM556 643L192 40L110 40L474 643Z"/>
+<path id="mpp-m4474" d="M567 407C567 431 546 431 527 431L192 431C170 431 132 431 88 384C53 345 27 299 27 294C27 294 27 284 39 284C47 284 49 288 55 296C104 373 162 373 182 373L239 373C207 252 153 131 111 40C103 25 103 23 103 16C103 -3 119 -11 132 -11C162 -11 170 17 182 54C196 100 196 102 209 152L265 373L378 373C345 225 336 182 336 115C336 100 336 73 344 39C354 -5 365 -11 380 -11C400 -11 421 7 421 27C421 33 421 35 415 49C386 121 386 186 386 214C386 267 393 321 404 373L518 373C531 373 567 373 567 407Z"/>
+<path id="mpp-t50" d="M415 119C415 129 407 131 402 131C393 131 391 125 389 117C354 14 264 14 254 14C204 14 164 44 141 81C111 129 111 195 111 231L390 231C412 231 415 231 415 252C415 351 361 448 236 448C120 448 28 345 28 220C28 86 133 -11 248 -11C370 -11 415 100 415 119ZM349 252L112 252C118 401 202 426 236 426C339 426 349 291 349 252Z"/>
+<path id="mpp-t63" d="M535 0L535 31C483 31 458 31 457 61L457 252C457 338 457 369 426 405C412 422 379 442 321 442C237 442 193 382 177 346L176 346L176 694L32 683L32 652C102 652 110 645 110 596L110 76C110 31 99 31 32 31L32 0L145 3L257 0L257 31C190 31 179 31 179 76L179 260C179 364 250 420 314 420C377 420 388 366 388 309L388 76C388 31 377 31 310 31L310 0L423 3Z"/>
+<path id="mpp-t66" d="M247 0L247 31C181 31 177 36 177 75L177 442L37 431L37 400C102 400 111 394 111 345L111 76C111 31 100 31 33 31L33 0L143 3C178 3 213 1 247 0ZM192 604C192 631 169 657 139 657C105 657 85 629 85 604C85 577 108 551 138 551C172 551 192 579 192 604Z"/>
+<path id="mpp-t81" d="M471 214C471 342 371 448 250 448C125 448 28 339 28 214C28 85 132 -11 249 -11C370 -11 471 87 471 214ZM388 222C388 186 388 132 366 88C344 43 300 14 250 14C207 14 163 35 136 81C111 125 111 186 111 222C111 261 111 315 135 359C162 405 209 426 249 426C293 426 336 404 362 361C388 318 388 260 388 222Z"/>
+<path id="mpp-t96" d="M364 381C364 413 333 442 290 442C217 442 181 375 167 332L167 442L28 431L28 400C98 400 106 393 106 344L106 76C106 31 95 31 28 31L28 0L142 3C182 3 229 3 269 0L269 31L248 31C174 31 172 42 172 78L172 232C172 331 214 420 290 420C297 420 299 420 301 419C298 418 278 406 278 380C278 352 299 337 321 337C339 337 364 349 364 381Z"/>
+<path id="mpp-t98" d="M360 128C360 181 330 211 318 223C285 255 246 263 204 271C148 282 81 295 81 353C81 388 107 429 193 429C303 429 308 339 310 308C311 299 322 299 322 299C335 299 335 304 335 323L335 424C335 441 335 448 324 448C319 448 317 448 304 436C301 432 291 423 287 420C249 448 208 448 193 448C71 448 33 381 33 325C33 290 49 262 76 240C108 214 136 208 208 194C230 190 312 174 312 102C312 51 277 11 199 11C115 11 79 68 60 153C57 166 56 170 46 170C33 170 33 163 33 145L33 13C33 -4 33 -11 44 -11C49 -11 50 -10 69 9C71 11 71 13 89 32C133 -10 178 -11 199 -11C314 -11 360 56 360 128Z"/>
+<path id="mpp-t105" d="M332 124L332 181L307 181L307 126C307 52 277 14 240 14C173 14 173 105 173 122L173 400L316 400L316 431L173 431L173 615L148 615C147 533 117 426 19 422L19 400L104 400L104 124C104 1 197 -11 233 -11C304 -11 332 60 332 124Z"/>
+<path id="mpp-t114" d="M703 400L703 431C681 429 652 428 630 428L537 431L537 400C573 399 595 381 595 352C595 346 595 344 590 331L499 75L400 354C396 366 395 368 395 373C395 400 434 400 454 400L454 431L350 428C320 428 291 429 261 431L261 400C298 400 314 398 324 385C329 379 340 349 347 330L261 88L166 355C161 367 161 369 161 373C161 400 200 400 220 400L220 431L111 428L18 431L18 400C68 400 80 397 92 365L218 11C223 -3 226 -11 239 -11C252 -11 254 -5 259 9L360 292L462 8C466 -3 469 -11 482 -11C495 -11 498 -2 502 8L619 336C637 386 668 399 703 400Z"/>
+</defs>
+</svg>
+<h1>Assumptions</h1>
+<p>Without knowing anything about <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10.87" height="8.61" viewBox="0 0 10.87 8.61" overflow="visible" style="vertical-align:-0.21px" role="img" aria-label="𝑥"><use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg>, Math++ keeps the safe form and says why in the working (a query that ends in <code>?!</code> shows it):</p>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="82.1" height="23.85" viewBox="0 0 82.1 23.85" overflow="visible" style="vertical-align:-4.75px" role="img" aria-label="√𝑥2=|𝑥|"><use xlink:href="#mpp-m3077" href="#mpp-m3077" transform="matrix(0.019 0 0 -0.019 0 1.52)" fill="var(--mpp-text, #111111)"/>
+<rect x="15.83" y="0.76" width="19.5" height="0.76" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 15.83 19.1)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 26.69 13.61)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 40.6 19.1)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m93" href="#mpp-m93" transform="matrix(0.019 0 0 -0.019 60.66 19.1)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 65.95 19.1)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m93" href="#mpp-m93" transform="matrix(0.019 0 0 -0.019 76.81 19.1)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<p>A power integral has two cases, so the answer is piecewise:</p>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="297.28" height="49.1" viewBox="0 0 297.28 49.1" overflow="visible" style="vertical-align:-19.8px" role="img" aria-label="∫𝑥𝑛𝑑𝑥={𝑥𝑛+1𝑛+1𝑛≠−1ln(|𝑥|)otherwise+𝐶"><use xlink:href="#mpp-m3063" href="#mpp-m3063" transform="matrix(0.019 0 0 -0.019 0 29.3)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 22.15 29.3)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 33.02 22.4)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1299" href="#mpp-m1299" transform="matrix(0.019 0 0 -0.019 46.64 29.3)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 56.52 29.3)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 72.66 29.3)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2481" href="#mpp-m2481" transform="matrix(0.019 0 0 -0.019 92.72 29.3)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1427" href="#mpp-m1427" transform="matrix(0.0133 0 0 -0.0133 111.15 11.15)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1363" href="#mpp-m1363" transform="matrix(0.0095 0 0 -0.0095 119.77 6.33)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0095 0 0 -0.0095 128.14 6.33)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m559" href="#mpp-m559" transform="matrix(0.0095 0 0 -0.0095 135.53 6.33)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 113.3 25.2)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0133 0 0 -0.0133 122.69 25.2)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 133.03 25.2)" fill="var(--mpp-result, #1f5fb8)"/>
+<rect x="108.87" y="13.51" width="36.15" height="0.76" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1309" href="#mpp-m1309" transform="matrix(0.019 0 0 -0.019 179.93 18.64)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m2824" href="#mpp-m2824" transform="matrix(0.019 0 0 -0.019 196.61 18.64)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.019 0 0 -0.019 216.67 18.64)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 231.45 18.64)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m77" href="#mpp-m77" transform="matrix(0.019 0 0 -0.019 108.87 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m79" href="#mpp-m79" transform="matrix(0.019 0 0 -0.019 114.15 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.019 0 0 -0.019 124.72 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m93" href="#mpp-m93" transform="matrix(0.019 0 0 -0.019 132.11 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 137.39 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m93" href="#mpp-m93" transform="matrix(0.019 0 0 -0.019 148.26 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.019 0 0 -0.019 153.54 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t81" href="#mpp-t81" transform="matrix(0.019 0 0 -0.019 179.93 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t105" href="#mpp-t105" transform="matrix(0.019 0 0 -0.019 189.43 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t63" href="#mpp-t63" transform="matrix(0.019 0 0 -0.019 196.82 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t50" href="#mpp-t50" transform="matrix(0.019 0 0 -0.019 207.39 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t96" href="#mpp-t96" transform="matrix(0.019 0 0 -0.019 215.82 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t114" href="#mpp-t114" transform="matrix(0.019 0 0 -0.019 223.27 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t66" href="#mpp-t66" transform="matrix(0.019 0 0 -0.019 236.99 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t98" href="#mpp-t98" transform="matrix(0.019 0 0 -0.019 242.27 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t50" href="#mpp-t50" transform="matrix(0.019 0 0 -0.019 249.76 42.26)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 264.69 29.3)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1272" href="#mpp-m1272" transform="matrix(0.019 0 0 -0.019 283.7 29.3)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<p>An improper integral that depends on a parameter:</p>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="279.51" height="67.82" viewBox="0 0 279.51 67.82" overflow="visible" style="vertical-align:-30.26px" role="img" aria-label="∞1∫𝑥−𝑝𝑑𝑥={∞𝑝≤1−1−𝑝+1otherwise"><use xlink:href="#mpp-m158" href="#mpp-m158" transform="matrix(0.0133 0 0 -0.0133 7.53 7.77)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 0.09 65.92)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m3063" href="#mpp-m3063" transform="matrix(0.019 0 0 -0.019 0 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 25.85 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.0133 0 0 -0.0133 36.71 30.66)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1419" href="#mpp-m1419" transform="matrix(0.0133 0 0 -0.0133 47.06 30.66)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1299" href="#mpp-m1299" transform="matrix(0.019 0 0 -0.019 59.13 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 69.01 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 85.15 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2481" href="#mpp-m2481" transform="matrix(0.019 0 0 -0.019 105.21 37.56)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m152" href="#mpp-m152" transform="matrix(0.019 0 0 -0.019 121.36 24.64)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1311" href="#mpp-m1311" transform="matrix(0.019 0 0 -0.019 198.97 24.64)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m2862" href="#mpp-m2862" transform="matrix(0.019 0 0 -0.019 213.8 24.64)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 233.86 24.64)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.019 0 0 -0.019 121.36 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 155.85 40.31)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.0133 0 0 -0.0133 141.59 54.35)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1419" href="#mpp-m1419" transform="matrix(0.0133 0 0 -0.0133 151.94 54.35)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0133 0 0 -0.0133 159.77 54.35)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 170.12 54.35)" fill="var(--mpp-result, #1f5fb8)"/>
+<rect x="139.31" y="42.67" width="40.66" height="0.76" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t81" href="#mpp-t81" transform="matrix(0.019 0 0 -0.019 198.97 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t105" href="#mpp-t105" transform="matrix(0.019 0 0 -0.019 208.47 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t63" href="#mpp-t63" transform="matrix(0.019 0 0 -0.019 215.86 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t50" href="#mpp-t50" transform="matrix(0.019 0 0 -0.019 226.42 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t96" href="#mpp-t96" transform="matrix(0.019 0 0 -0.019 234.86 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t114" href="#mpp-t114" transform="matrix(0.019 0 0 -0.019 242.31 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t66" href="#mpp-t66" transform="matrix(0.019 0 0 -0.019 256.02 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t98" href="#mpp-t98" transform="matrix(0.019 0 0 -0.019 261.31 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-t50" href="#mpp-t50" transform="matrix(0.019 0 0 -0.019 268.79 47.8)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<p>A condition in brackets holds for its block only:</p>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="174.33" height="23.87" viewBox="0 0 174.33 23.87" overflow="visible" style="vertical-align:-4.71px" role="img" aria-label="√𝑦2=−𝑦(𝑦&lt;0)"><use xlink:href="#mpp-m3081" href="#mpp-m3081" transform="matrix(0.019 0 0 -0.019 0 16.91)" fill="var(--mpp-text, #111111)"/>
+<rect x="19" y="0.76" width="18.47" height="0.76" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1320" href="#mpp-m1320" transform="matrix(0.019 0 0 -0.019 19 19.16)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 28.84 13.67)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 42.75 19.16)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.019 0 0 -0.019 62.81 19.16)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1320" href="#mpp-m1320" transform="matrix(0.019 0 0 -0.019 77.59 19.16)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.019 0 0 -0.019 115.4 19.16)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1320" href="#mpp-m1320" transform="matrix(0.019 0 0 -0.019 122.79 19.16)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m29" href="#mpp-m29" transform="matrix(0.019 0 0 -0.019 137.38 19.16)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m17" href="#mpp-m17" transform="matrix(0.019 0 0 -0.019 157.44 19.16)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.019 0 0 -0.019 166.94 19.16)" fill="var(--mpp-text, #111111)"/>
+</svg></div>
+<p>From here on, <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10.87" height="8.61" viewBox="0 0 10.87 8.61" overflow="visible" style="vertical-align:-0.21px" role="img" aria-label="𝑥"><use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg> is positive, <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="11.4" height="8.61" viewBox="0 0 11.4 8.61" overflow="visible" style="vertical-align:-0.21px" role="img" aria-label="𝑛"><use xlink:href="#mpp-m1309" href="#mpp-m1309" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg> is an integer and <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10.05" height="8.61" viewBox="0 0 10.05 8.61" overflow="visible" style="vertical-align:-0.21px" role="img" aria-label="𝑎"><use xlink:href="#mpp-m1296" href="#mpp-m1296" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg> is negative.</p>
+<p class="assume">Assume <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="45.71" height="13.72" viewBox="0 0 45.71 13.72" overflow="visible" style="vertical-align:-1.06px" role="img" aria-label="𝑥&gt;0"><use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m31" href="#mpp-m31" transform="matrix(0.019 0 0 -0.019 16.15 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m17" href="#mpp-m17" transform="matrix(0.019 0 0 -0.019 36.21 12.65)" fill="var(--mpp-text, #111111)"/>
+</svg>.</p>
+<p class="assume">Assume <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="47.3" height="13.79" viewBox="0 0 47.3 13.79" overflow="visible" style="vertical-align:-0.82px" role="img" aria-label="𝑛∈ℤ"><use xlink:href="#mpp-m1309" href="#mpp-m1309" transform="matrix(0.019 0 0 -0.019 0 12.98)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2926" href="#mpp-m2926" transform="matrix(0.019 0 0 -0.019 16.68 12.98)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m3518" href="#mpp-m3518" transform="matrix(0.019 0 0 -0.019 34.63 12.98)" fill="var(--mpp-text, #111111)"/>
+</svg> and <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="44.89" height="13.72" viewBox="0 0 44.89 13.72" overflow="visible" style="vertical-align:-1.06px" role="img" aria-label="𝑎&lt;0"><use xlink:href="#mpp-m1296" href="#mpp-m1296" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m29" href="#mpp-m29" transform="matrix(0.019 0 0 -0.019 15.33 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m17" href="#mpp-m17" transform="matrix(0.019 0 0 -0.019 35.39 12.65)" fill="var(--mpp-text, #111111)"/>
+</svg>.</p>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="71.53" height="19.76" viewBox="0 0 71.53 19.76" overflow="visible" style="vertical-align:-0.66px" role="img" aria-label="√𝑥2=𝑥"><use xlink:href="#mpp-m3077" href="#mpp-m3077" transform="matrix(0.019 0 0 -0.019 0 1.52)" fill="var(--mpp-text, #111111)"/>
+<rect x="15.83" y="0.76" width="19.5" height="0.76" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 15.83 19.1)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 26.69 13.61)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 40.6 19.1)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 60.66 19.1)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="85.37" height="18.92" viewBox="0 0 85.37 18.92" overflow="visible" style="vertical-align:-4.71px" role="img" aria-label="ln(𝑒𝑥)=𝑥"><use xlink:href="#mpp-m77" href="#mpp-m77" transform="matrix(0.019 0 0 -0.019 0 14.21)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m79" href="#mpp-m79" transform="matrix(0.019 0 0 -0.019 5.28 14.21)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.019 0 0 -0.019 15.85 14.21)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1300" href="#mpp-m1300" transform="matrix(0.019 0 0 -0.019 23.24 14.21)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1427" href="#mpp-m1427" transform="matrix(0.0133 0 0 -0.0133 32.09 7.32)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.019 0 0 -0.019 41.77 14.21)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 54.44 14.21)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 74.5 14.21)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="137.29" height="20.04" viewBox="0 0 137.29 20.04" overflow="visible" style="vertical-align:-4.71px" role="img" aria-label="cos(𝑛𝜋)=(−1)𝑛"><use xlink:href="#mpp-m68" href="#mpp-m68" transform="matrix(0.019 0 0 -0.019 0 15.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m80" href="#mpp-m80" transform="matrix(0.019 0 0 -0.019 8.44 15.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m84" href="#mpp-m84" transform="matrix(0.019 0 0 -0.019 17.94 15.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.019 0 0 -0.019 25.42 15.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1309" href="#mpp-m1309" transform="matrix(0.019 0 0 -0.019 32.81 15.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m4474" href="#mpp-m4474" transform="matrix(0.019 0 0 -0.019 44.21 15.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.019 0 0 -0.019 55.04 15.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 67.71 15.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.019 0 0 -0.019 87.77 15.33)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.019 0 0 -0.019 95.16 15.33)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 109.94 15.33)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.019 0 0 -0.019 119.44 15.33)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 126.84 5.87)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="101.85" height="28.52" viewBox="0 0 101.85 28.52" overflow="visible" style="vertical-align:-13.43px" role="img" aria-label="𝑥→∞lim𝑒𝑎𝑥=0"><use xlink:href="#mpp-m1427" href="#mpp-m1427" transform="matrix(0.0133 0 0 -0.0133 0 26.49)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1858" href="#mpp-m1858" transform="matrix(0.0133 0 0 -0.0133 8.62 26.49)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m158" href="#mpp-m158" transform="matrix(0.0133 0 0 -0.0133 21.92 26.49)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m77" href="#mpp-m77" transform="matrix(0.019 0 0 -0.019 5.41 15.09)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m74" href="#mpp-m74" transform="matrix(0.019 0 0 -0.019 10.7 15.09)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m78" href="#mpp-m78" transform="matrix(0.019 0 0 -0.019 15.98 15.09)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1300" href="#mpp-m1300" transform="matrix(0.019 0 0 -0.019 40.23 15.09)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1404" href="#mpp-m1404" transform="matrix(0.0133 0 0 -0.0133 49.09 8.19)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1427" href="#mpp-m1427" transform="matrix(0.0133 0 0 -0.0133 57.33 8.19)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 72.29 15.09)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m17" href="#mpp-m17" transform="matrix(0.019 0 0 -0.019 92.35 15.09)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="134.44" height="68.09" viewBox="0 0 134.44 68.09" overflow="visible" style="vertical-align:-30.53px" role="img" aria-label="∞0∫𝑒𝑎𝑥𝑑𝑥=−1𝑎"><use xlink:href="#mpp-m158" href="#mpp-m158" transform="matrix(0.0133 0 0 -0.0133 7.53 7.77)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1032" href="#mpp-m1032" transform="matrix(0.0133 0 0 -0.0133 0.09 65.92)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m3063" href="#mpp-m3063" transform="matrix(0.019 0 0 -0.019 0 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1300" href="#mpp-m1300" transform="matrix(0.019 0 0 -0.019 25.85 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1404" href="#mpp-m1404" transform="matrix(0.0133 0 0 -0.0133 34.7 30.66)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1427" href="#mpp-m1427" transform="matrix(0.0133 0 0 -0.0133 42.95 30.66)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1299" href="#mpp-m1299" transform="matrix(0.019 0 0 -0.019 55.8 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 65.68 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 81.82 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.019 0 0 -0.019 101.88 37.56)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 122.38 24.69)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1296" href="#mpp-m1296" transform="matrix(0.019 0 0 -0.019 122.11 50.59)" fill="var(--mpp-result, #1f5fb8)"/>
+<rect x="119.83" y="32.43" width="14.61" height="0.76" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<p class="assume">Assume <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="44.39" height="16.34" viewBox="0 0 44.39 16.34" overflow="visible" style="vertical-align:-3.69px" role="img" aria-label="𝑝&gt;1"><use xlink:href="#mpp-m1311" href="#mpp-m1311" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m31" href="#mpp-m31" transform="matrix(0.019 0 0 -0.019 14.83 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 34.89 12.65)" fill="var(--mpp-text, #111111)"/>
+</svg>.</p>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="184.79" height="67.82" viewBox="0 0 184.79 67.82" overflow="visible" style="vertical-align:-30.26px" role="img" aria-label="∞1∫𝑥−𝑝𝑑𝑥=−1−𝑝+1"><use xlink:href="#mpp-m158" href="#mpp-m158" transform="matrix(0.0133 0 0 -0.0133 7.53 7.77)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 0.09 65.92)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m3063" href="#mpp-m3063" transform="matrix(0.019 0 0 -0.019 0 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 25.85 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.0133 0 0 -0.0133 36.71 30.66)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1419" href="#mpp-m1419" transform="matrix(0.0133 0 0 -0.0133 47.06 30.66)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1299" href="#mpp-m1299" transform="matrix(0.019 0 0 -0.019 59.13 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 69.01 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 85.15 37.56)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.019 0 0 -0.019 105.21 37.56)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 149.22 24.69)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m2615" href="#mpp-m2615" transform="matrix(0.019 0 0 -0.019 125.44 50.59)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m1311" href="#mpp-m1311" transform="matrix(0.019 0 0 -0.019 140.22 50.59)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 154 50.59)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 173.01 50.59)" fill="var(--mpp-result, #1f5fb8)"/>
+<rect x="123.16" y="32.43" width="61.63" height="0.76" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<h2>Mistakes the checker catches</h2>
+<p>Assumptions that contradict the ones above are an error:</p>
+<p class="assume">Assume <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="45.71" height="13.72" viewBox="0 0 45.71 13.72" overflow="visible" style="vertical-align:-1.06px" role="img" aria-label="𝑥&lt;0"><use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m29" href="#mpp-m29" transform="matrix(0.019 0 0 -0.019 16.15 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m17" href="#mpp-m17" transform="matrix(0.019 0 0 -0.019 36.21 12.65)" fill="var(--mpp-text, #111111)"/>
+</svg>.</p>
+</main>
+<!-- Latin Modern fonts: GUST Font License.
+% This is a preliminary version (2006-09-30), barring acceptance from
+% the LaTeX Project Team and other feedback, of the GUST Font License.
+% (GUST is the Polish TeX Users Group, http://www.gust.org.pl)
+%
+% For the most recent version of this license see
+% http://www.gust.org.pl/fonts/licenses/GUST-FONT-LICENSE.txt
+% or
+% http://tug.org/fonts/licenses/GUST-FONT-LICENSE.txt
+%
+% This work may be distributed and/or modified under the conditions
+% of the LaTeX Project Public License, either version 1.3c of this
+% license or (at your option) any later version.
+% 
+% Please also observe the following clause:
+% 1) it is requested, but not legally required, that derived works be
+%    distributed only after changing the names of the fonts comprising this
+%    work and given in an accompanying &quot;manifest&quot;, and that the
+%    files comprising the Work, as listed in the manifest, also be given
+%    new names. Any exceptions to this request are also given in the
+%    manifest.
+%    
+%    We recommend the manifest be given in a separate file named
+%    MANIFEST-&lt;fontid&gt;.txt, where &lt;fontid&gt; is some unique identification
+%    of the font family. If a separate &quot;readme&quot; file accompanies the Work, 
+%    we recommend a name of the form README-&lt;fontid&gt;.txt.
+%
+% The latest version of the LaTeX Project Public License is in
+% http://www.latex-project.org/lppl.txt and version 1.3c or later
+% is part of all distributions of LaTeX version 2006/05/20 or later.
+
+
+-->
+</body>
+</html>

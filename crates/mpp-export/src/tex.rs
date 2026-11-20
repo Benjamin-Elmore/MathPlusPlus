@@ -100,7 +100,7 @@ pub(crate) fn escape_text(s: &str) -> String {
                 Some(s) if !s.latex.is_empty() => {
                     let _ = write!(o, "${}$", s.latex);
                 }
-                _ => o.push(c),
+                _ => unicode_fallback(c, false, &mut o),
             },
             c => o.push(c),
         }
@@ -124,12 +124,54 @@ pub(crate) fn texify_math(src: &str) -> String {
                     o.push_str(s.latex);
                     o.push(' ');
                 }
-                _ => o.push(c),
+                _ => unicode_fallback(c, true, &mut o),
             },
             c => o.push(c),
         }
     }
     o
+}
+
+/// A character with no LaTeX symbol: a raised or lowered letter or digit, or a visible `?`.
+fn unicode_fallback(c: char, math: bool, o: &mut String) {
+    use mpp_syntax::symbols::{subscript_value, superscript_value};
+    let (script, mark) = if let Some(n) = superscript_value(c) {
+        (n, '^')
+    } else if let Some(n) = subscript_value(c) {
+        (n, '_')
+    } else if c.is_ascii() {
+        o.push(c);
+        return;
+    } else {
+        o.push('?');
+        return;
+    };
+    if math {
+        let _ = write!(o, "{mark}{{{script}}}");
+    } else {
+        let _ = write!(o, "${mark}{{{script}}}$");
+    }
+}
+
+/// Puts a result where the `?` of a query is, or a mark after a check.
+fn fill_result(text: &mut String, value: &mpp_render::ResultValue) {
+    let value = match value {
+        mpp_render::ResultValue::Latex(l) => texify_math(l),
+        mpp_render::ResultValue::Node(_) => String::new(),
+    };
+    match value.as_str() {
+        "✓" => text.push_str(" \\quad \\checkmark"),
+        "✗" => text.push_str(" \\quad \\times"),
+        "?" => {}
+        v => {
+            if let Some(q) = text.rfind('?') {
+                let after = text[q + 1..].to_string();
+                let rest = after.strip_prefix('!').unwrap_or(&after).to_string();
+                text.truncate(q);
+                let _ = write!(text, "{v}{rest}");
+            }
+        }
+    }
 }
 
 fn strip_label(s: &str) -> String {
@@ -555,23 +597,7 @@ impl Writer<'_> {
             }
             let mut text = texify_math(&text);
             if let Some(r) = results.iter().find(|r| r.line == i) {
-                let value = match &r.value {
-                    mpp_render::ResultValue::Latex(l) => texify_math(l),
-                    mpp_render::ResultValue::Node(_) => String::new(),
-                };
-                match value.as_str() {
-                    "✓" => text.push_str(" \\quad \\checkmark"),
-                    "✗" => text.push_str(" \\quad \\times"),
-                    "?" => {}
-                    v => {
-                        if let Some(q) = text.rfind('?') {
-                            let after = text[q + 1..].to_string();
-                            let rest = after.strip_prefix('!').unwrap_or(&after).to_string();
-                            text.truncate(q);
-                            let _ = write!(text, "{v}{rest}");
-                        }
-                    }
-                }
+                fill_result(&mut text, &r.value);
             }
             rows.push(text);
         }
@@ -601,6 +627,32 @@ impl Writer<'_> {
             let _ = writeln!(self.out, "  {r}{extra}{sep}");
         }
         let _ = writeln!(self.out, "\\end{{{env}{star}}}");
+        if self.opts.include_steps && !self.in_comment {
+            self.steps(b);
+        }
+    }
+
+    /// The working of `= ?!` queries, one line per step.
+    fn steps(&mut self, b: &Block) {
+        let Some(br) = self.ev.block(b.id) else {
+            return;
+        };
+        for (_, steps) in &br.steps {
+            let _ = writeln!(self.out, "\\begin{{quote}}\\small");
+            for step in steps.iter() {
+                let mut line = format!(
+                    "\\textit{{{}}}: ${}$ $\\to$ ${}$",
+                    escape_text(&step.rule),
+                    texify_math(&step.before.to_latex()),
+                    texify_math(&step.after.to_latex())
+                );
+                if let Some(n) = &step.note {
+                    let _ = write!(line, " ({})", escape_text(n));
+                }
+                let _ = writeln!(self.out, "{line}\\\\");
+            }
+            let _ = writeln!(self.out, "\\end{{quote}}");
+        }
     }
 
     fn figure(&mut self, b: &Block) {
@@ -637,7 +689,11 @@ impl Writer<'_> {
                     let _ = write!(out, "\\textbf{{{}}}", self.inlines(x));
                 }
                 InlineKind::Math(m) => {
-                    let _ = write!(out, "${}$", texify_math(self.src(m.raw).trim()));
+                    let mut text = texify_math(self.src(m.raw).trim());
+                    if let Some(r) = self.provider.results_for_ast(&m.ast).first() {
+                        fill_result(&mut text, &r.value);
+                    }
+                    let _ = write!(out, "${text}$");
                 }
                 InlineKind::Code(c) => {
                     let _ = write!(out, "\\texttt{{{}}}", escape_text(c));

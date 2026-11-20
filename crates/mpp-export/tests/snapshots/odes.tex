@@ -1,0 +1,42 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\section*{Differential equations}
+
+Solve an equation for a function with \texttt{dsolve}.
+
+\begin{equation*}
+  \operatorname{dsolve}(y' = y, y, x) = y = e^{x} C
+\end{equation*}
+\begin{equation*}
+  \operatorname{dsolve}(y' = x y, y, x) = y = e^{\frac{x^{2}}{2}} C
+\end{equation*}
+With a starting value, written as the point the solution passes through:
+
+\begin{equation*}
+  \operatorname{dsolve}(y' = y, y, x, (0, 1)) = y = e^{x}
+\end{equation*}
+A numerical solution, when there is no formula:
+
+\begin{equation*}
+  \operatorname{rk4}(x + y, x, y, 0, 1, 1, 100) \approx 3.436563656
+\end{equation*}
+\end{document}
