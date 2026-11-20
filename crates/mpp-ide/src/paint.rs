@@ -31,6 +31,8 @@ pub struct GlyphMesh {
 
 /// How much thicker glyph edges are painted in dark mode.
 const DARK_INK_BOOST: f32 = 2.6;
+/// …but never more than this much per pixel of glyph size.
+const DARK_INK_PER_PX: f32 = 0.03;
 
 type MeshCache = Mutex<HashMap<(FontId, u16), Arc<GlyphMesh>>>;
 
@@ -182,12 +184,8 @@ pub fn paint_glyph(
     painter.add(Shape::mesh(mesh));
     // Light ink on a dark page looks thinner than dark ink on a light one, so
     // dark mode thickens the edge a little: maths then matches the prose weight.
-    let boost = if painter.ctx().global_style().visuals.dark_mode {
-        DARK_INK_BOOST
-    } else {
-        1.0
-    };
-    let width = (size * 0.012).clamp(0.25, 0.6) * boost;
+    let dark = painter.ctx().global_style().visuals.dark_mode;
+    let width = edge_width(size, dark);
     for c in &g.contours {
         let pts: Vec<Pos2> = c
             .iter()
@@ -197,6 +195,22 @@ pub fn paint_glyph(
             pts,
             PathStroke::new(width, color),
         )));
+    }
+}
+
+/// The width of the anti-aliasing edge drawn around a glyph of `size` pixels.
+///
+/// Dark mode thickens it, in proportion to the glyph: a fixed extra width swamps
+/// small glyphs (script-size digits under an integral then lose their
+/// thick-and-thin strokes and look like a sans-serif face).
+pub fn edge_width(size: f32, dark: bool) -> f32 {
+    let base = (size * 0.012).clamp(0.25, 0.6);
+    if dark {
+        (base * DARK_INK_BOOST)
+            .min(size * DARK_INK_PER_PX)
+            .max(base)
+    } else {
+        base
     }
 }
 
@@ -371,6 +385,52 @@ mod tests {
         assert_eq!(cmds.len(), 4);
         assert_eq!(cmds[0], ('M', vec![10.0, 20.0]));
         assert_eq!(cmds[2].1.len(), 4);
+    }
+
+    #[test]
+    fn dark_edges_scale_with_the_glyph() {
+        // Body text keeps its boost; script sizes get proportionally less.
+        assert!((edge_width(22.0, true) - 0.65).abs() < 0.02);
+        let script = edge_width(15.4, true);
+        let body = edge_width(22.0, true);
+        assert!(script / 15.4 <= body / 22.0 + 1e-4, "{script} vs {body}");
+        assert!(script < 0.5);
+        assert_eq!(edge_width(15.4, false), 0.25);
+    }
+
+    #[test]
+    fn script_digits_are_latin_modern_math() {
+        // The lower bound "0" under ∫ is the maths font's script-size zero.
+        let dl = mpp_render::layout_latex(
+            r"\int_0^1 x \, dx",
+            &mpp_render::LayoutOptions::display(20.0),
+        );
+        let zeros: Vec<(FontId, u16)> = dl
+            .items
+            .iter()
+            .filter_map(|p| match p {
+                Primitive::Glyph {
+                    ch: '0',
+                    font,
+                    glyph,
+                    ..
+                } => Some((*font, *glyph)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(zeros.len(), 1);
+        let (font, glyph) = zeros[0];
+        assert_eq!(font, FontId::Math);
+        let plain = Fonts::get().glyph(FontId::Math, '0').expect("zero");
+        assert_eq!(
+            glyph,
+            Fonts::get().script_variant(plain, 1),
+            "the ssty script zero"
+        );
+        assert!(
+            !glyph_mesh(font, glyph).indices.is_empty(),
+            "it has an outline"
+        );
     }
 
     #[test]
