@@ -304,6 +304,8 @@ fn directive(t: &str, ts: usize, line: Line) -> Block {
     let text = t[1..].trim().to_string();
     let kind = if text == "noeval" {
         DirectiveKind::NoEval
+    } else if super::display::parse_display_directive(&t[1..]).is_some() {
+        DirectiveKind::Display
     } else {
         DirectiveKind::Comment
     };

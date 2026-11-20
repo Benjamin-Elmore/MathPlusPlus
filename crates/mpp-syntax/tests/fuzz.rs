@@ -191,7 +191,7 @@ fn check_ast(ast: &MathAst, base: usize, len: usize) {
                     r.names.iter().for_each(|n| check_node(n, base, len));
                     check_node(&r.set, base, len);
                 }
-                Clause::Condition(n) => check_node(n, base, len),
+                Clause::Condition(n) | Clause::Assumption(n) => check_node(n, base, len),
             }
         }
     }

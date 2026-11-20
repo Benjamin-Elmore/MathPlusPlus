@@ -80,6 +80,8 @@ pub struct LineResult {
     pub noeval: bool,
     /// The working of a `= ?!` query, step by step.
     pub steps: Option<Steps>,
+    /// The display format the text was last shown under (see [`crate::numfmt`]).
+    pub number_format: Option<crate::numfmt::Shown>,
 }
 
 impl LineResult {
@@ -98,6 +100,7 @@ impl LineResult {
             auto_eval: false,
             noeval: false,
             steps: None,
+            number_format: None,
         }
     }
 

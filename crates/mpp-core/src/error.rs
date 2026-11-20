@@ -37,6 +37,10 @@ pub enum MathError {
     NoClosedForm(String),
     /// An improper integral (or other limit process) has no finite value.
     Divergent(String),
+    /// Units that don't fit together; the message names both ("can't add m and s").
+    Dimension(String),
+    /// Assumptions that can't all hold ("x > 0 and x < 0 can't both hold").
+    Contradiction(String),
 }
 
 impl fmt::Display for MathError {
@@ -68,6 +72,8 @@ impl fmt::Display for MathError {
             }
             MathError::NoClosedForm(what) => write!(f, "no closed form was found for {what}"),
             MathError::Divergent(what) => write!(f, "{what} diverges"),
+            MathError::Dimension(message) => write!(f, "{message}"),
+            MathError::Contradiction(message) => write!(f, "{message}"),
         }
     }
 }

@@ -59,6 +59,10 @@ pub enum BlockKind {
     Analyse(Analyse),
     /// `Solve $x^2 = 4$ for $x$.`
     Solve(Solve),
+    /// `Assume $x > 0$.`, `Assume $n \in \mathbb{Z}$, $a \neq 0$.`
+    Assume(Assume),
+    /// `Data: $T$ from [[measurements.csv]].`
+    Data(DataImport),
     /// `Let $a = 3$.` and prose that starts the same way.
     Let(Let),
     FootnoteDef {
@@ -262,6 +266,22 @@ pub struct Solve {
     pub unknowns: Option<Vec<Node>>,
 }
 
+/// `Data: $T$ from [[file.csv]].`: a table of measurements read from a CSV file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DataImport {
+    /// The table's name.
+    pub name: Node,
+    /// The path as written (relative to the document).
+    pub path: String,
+    pub path_span: Span,
+}
+
+/// `Assume $cond$ {, $cond$} [and $cond$].`: facts about names, in force from here on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Assume {
+    pub conditions: Vec<Node>,
+}
+
 /// A paragraph that starts `Let $…$`: the maths in it defines variables.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Let {
@@ -291,6 +311,9 @@ pub struct Directive {
 pub enum DirectiveKind {
     /// `%noeval`: the next maths block is never auto-evaluated.
     NoEval,
+    /// A number-display directive such as `%sf 4` or `%block dp 2`; read it with
+    /// [`crate::document::display::parse_display_directive`].
+    Display,
     /// Any other `%` line.
     Comment,
 }

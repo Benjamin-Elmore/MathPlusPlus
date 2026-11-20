@@ -14,9 +14,9 @@ use std::sync::Arc;
 
 use mpp_core::{BigOpKind, Expr, ExprNode, Func, LimitDir, LogicOp, MathError, Number, RelOp};
 use mpp_syntax::math::{
-    BigOp, BigOpKind as SynBigOp, BinOp, CaseCondition, CaseRow, Constant, DerivNotation,
+    Accent, BigOp, BigOpKind as SynBigOp, BinOp, CaseCondition, CaseRow, Constant, DerivNotation,
     Derivative, Fence, FuncApp, IntKind, Integral, Limit, MatrixEnv, NablaOp, Name, NamedOp, Node,
-    NodeKind, RelOp as SynRel, Side, UnaryOp,
+    NodeKind, RelOp as SynRel, Side, UnaryOp, UnitText,
 };
 use mpp_syntax::Span;
 
@@ -184,6 +184,11 @@ impl<'a> Lowerer<'a> {
             K::Binary { op, lhs, rhs } => {
                 let a = self.lower(lhs)?;
                 let b = self.lower(rhs)?;
+                if let Some(m) = matrix_op(*op)
+                    .and_then(|m| crate::domains_wire::matrix_binary(m, &a, &b, self.scope))
+                {
+                    return Ok(m);
+                }
                 Ok(binary(*op, a, b))
             }
             K::Frac { num, den, .. } => {
@@ -294,10 +299,59 @@ impl<'a> Lowerer<'a> {
                 EvalError::Unsupported("an accent on this expression".into()),
             )),
             K::Relation { first, rest } => self.relation(first, rest),
+            K::Quantity { value, unit } => self.quantity(value, unit),
+            K::SetBuilder {
+                var,
+                domain,
+                condition,
+            } => {
+                let x = self.bound_name(Some(var), span, "set")?;
+                let d = match domain {
+                    Some(d) => self.lower(d)?,
+                    None => Expr::new(ExprNode::Tuple(Vec::new())),
+                };
+                let c = self.bound(std::slice::from_ref(&x), |s| s.lower(condition))?;
+                Ok(Expr::apply(
+                    crate::domains_wire::SET_OF,
+                    vec![Expr::sym(&x), d, c],
+                ))
+            }
+            K::Convert { expr, unit } => {
+                let e = self.lower(expr)?;
+                crate::units_wire::convert_expr(e, &unit.text).map_err(math(unit.span))
+            }
         }
     }
 
+    /// `9.81 m/s^2`. A plain one-letter unit that is a name in scope here (a parameter,
+    /// an index or a defined variable) is that name instead: `3 t` with `f(t) := 3 t`.
+    fn quantity(&mut self, value: &Node, unit: &UnitText) -> LowerResult {
+        let v = self.lower(value)?;
+        if unit.plain && !unit.text.contains(['/', '·']) {
+            let letters: Vec<String> = unit
+                .text
+                .chars()
+                .take_while(char::is_ascii_alphabetic)
+                .map(String::from)
+                .collect();
+            let named = |s: &Self, n: &str| s.is_local(n) || s.scope.binding(n).is_some();
+            let as_names = !letters.is_empty() && letters.iter().all(|l| named(self, l));
+            if as_names {
+                // Read the "unit" again as maths: `3 t^2` is three times t squared.
+                let (node, diags) = mpp_syntax::math::parse_expr(&unit.text, unit.span.start);
+                if diags.is_empty() {
+                    let names = self.lower(&node)?;
+                    return Ok(v * names);
+                }
+            }
+        }
+        crate::units_wire::quantity_expr(v, &unit.text).map_err(math(unit.span))
+    }
+
     fn name(&mut self, n: &Name, span: Span) -> LowerResult {
+        if let Some(e) = self.data_name(n)? {
+            return Ok(e);
+        }
         if let Some(sub) = &n.sub {
             let base = base_key(n);
             if self.is_sequence(&base) {
@@ -316,6 +370,64 @@ impl<'a> Lowerer<'a> {
             return Ok(Expr::apply(&key, args));
         }
         Ok(Expr::sym(&key))
+    }
+
+    /// True when `base` names a data column here (a variable holding a list of values).
+    fn is_column(&self, base: &str) -> bool {
+        !self.is_local(base)
+            && matches!(
+                self.scope.binding(base).as_deref(),
+                Some(Binding::Variable { value, .. }) if matches!(value.node(), ExprNode::Tuple(_))
+            )
+    }
+
+    /// The length of the data column `base`.
+    fn column_len(&self, base: &str) -> Option<usize> {
+        match self.scope.binding(base).as_deref() {
+            Some(Binding::Variable { value, .. }) => match value.node() {
+                ExprNode::Tuple(items) => Some(items.len()),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// `\bar{x}` (the mean) and `x_i` (an entry) for a data column `x`, unless the
+    /// decorated name is defined on its own.
+    fn data_name(&mut self, n: &Name) -> Result<Option<Expr>, Located> {
+        if !self.is_column(&n.base) {
+            return Ok(None);
+        }
+        if let Some(key) = name_key(n) {
+            if key != n.base && (self.is_local(&key) || self.scope.binding(&key).is_some()) {
+                return Ok(None);
+            }
+        }
+        match (&n.sub, n.accent) {
+            (None, Some(Accent::Bar | Accent::Overline)) => {
+                Ok(Some(Expr::apply("mean", vec![Expr::sym(&n.base)])))
+            }
+            (Some(sub), None) => {
+                let index = self.lower(sub)?;
+                Ok(Some(Expr::apply(
+                    crate::domains_wire::ELEMENT,
+                    vec![Expr::sym(&n.base), index],
+                )))
+            }
+            _ => Ok(None),
+        }
+    }
+
+    /// `\sum_i x_i` without bounds runs over every entry of the data column it indexes.
+    fn data_bounds(&self, index: &str, body: &Node) -> Option<(Expr, Expr)> {
+        let mut found = None;
+        find_indexed(body, index, &mut |base| {
+            if found.is_none() && self.is_column(base) {
+                found = self.column_len(base);
+            }
+        });
+        let n = found?;
+        Some((Expr::one(), Expr::int(i64::try_from(n).ok()?)))
     }
 
     fn constant(&self, c: Constant) -> Expr {
@@ -451,12 +563,28 @@ impl<'a> Lowerer<'a> {
         }
         let b = self.lower(base)?;
         let e = self.lower(exp)?;
+        if let Some(m) = crate::domains_wire::matrix_power(&b, &e, self.scope)
+            .or_else(|| crate::domains_wire::set_power(&b, &e))
+        {
+            return Ok(m);
+        }
         Ok(b.pow(e))
     }
 
     fn func_app(&mut self, app: &FuncApp, span: Span) -> LowerResult {
         let args = self.lower_all(&app.args)?;
         let name = app.func;
+        if let ([one], "max" | "min", None, false) = (args.as_slice(), name, &app.sub, app.inverse)
+        {
+            if one.as_sym().is_some_and(|s| self.is_column(s)) {
+                let op = if name == "max" {
+                    crate::domains_wire::LIST_MAX
+                } else {
+                    crate::domains_wire::LIST_MIN
+                };
+                return Ok(Expr::apply(op, args));
+            }
+        }
         let value = if app.inverse {
             let inverse = match name {
                 "sin" | "cos" | "tan" | "sec" | "csc" | "cot" | "sinh" | "cosh" | "tanh" => {
@@ -542,14 +670,18 @@ impl<'a> Lowerer<'a> {
             ));
         }
         let var = self.bound_name(op.index.as_ref(), span, "sum")?;
-        let (Some(from), Some(to)) = (&op.from, &op.to) else {
-            return Err(fail(
-                span,
-                EvalError::Invalid("this sum needs a start value and an end value".into()),
-            ));
+        let (lower, upper) = match (&op.from, &op.to) {
+            (Some(from), Some(to)) => (self.lower(from)?, self.lower(to)?),
+            _ => match (&op.from, &op.to, self.data_bounds(&var, &op.body)) {
+                (None, None, Some(bounds)) => bounds,
+                _ => {
+                    return Err(fail(
+                        span,
+                        EvalError::Invalid("this sum needs a start value and an end value".into()),
+                    ))
+                }
+            },
         };
-        let lower = self.lower(from)?;
-        let upper = self.lower(to)?;
         let body = self.bound(std::slice::from_ref(&var), |s| s.lower(&op.body))?;
         Ok(Expr::new(ExprNode::BigOp {
             kind,
@@ -694,7 +826,8 @@ impl<'a> Lowerer<'a> {
     }
 
     fn named_op(&mut self, op: &NamedOp) -> LowerResult {
-        let args = self.lower_all(&op.args)?;
+        let mut args = self.lower_all(&op.args)?;
+        crate::domains_wire::protect_ode_args(&op.name, &mut args);
         if op.sub.is_none() && op.sup.is_none() {
             return Ok(Expr::apply(&op.name, args));
         }
@@ -734,6 +867,16 @@ impl<'a> Lowerer<'a> {
     }
 }
 
+/// Calls `f` with the base of every name subscripted by exactly `index` in `node`.
+fn find_indexed(node: &Node, index: &str, f: &mut dyn FnMut(&str)) {
+    if let NodeKind::Name(n) = &node.kind {
+        if n.sub.as_deref().and_then(node_key).as_deref() == Some(index) {
+            f(&n.base);
+        }
+    }
+    mpp_syntax::math::visit::children(node, &mut |c| find_indexed(c, index, f));
+}
+
 fn is_otherwise(node: &Node) -> bool {
     match &node.kind {
         NodeKind::Text(t) => {
@@ -761,6 +904,19 @@ fn small_order(node: &Node) -> Result<u32, Located> {
     }
 }
 
+/// The matrix operation a binary operator stands for, when its sides are matrices.
+fn matrix_op(op: BinOp) -> Option<crate::domains_wire::MatrixOp> {
+    use crate::domains_wire::MatrixOp;
+    Some(match op {
+        BinOp::Mul(mpp_syntax::math::MulStyle::Cdot) => MatrixOp::Dot,
+        BinOp::Mul(_) => MatrixOp::Mul,
+        BinOp::Times => MatrixOp::Times,
+        BinOp::Add => MatrixOp::Add,
+        BinOp::Sub => MatrixOp::Sub,
+        _ => return None,
+    })
+}
+
 fn binary(op: BinOp, a: Expr, b: Expr) -> Expr {
     match op {
         BinOp::Add => a + b,
@@ -776,6 +932,7 @@ fn binary(op: BinOp, a: Expr, b: Expr) -> Expr {
         BinOp::Union => Expr::apply("union", vec![a, b]),
         BinOp::Intersect => Expr::apply("intersect", vec![a, b]),
         BinOp::SetMinus => Expr::apply("setminus", vec![a, b]),
+        BinOp::Mod => Expr::apply("mod", vec![a, b]),
     }
 }
 

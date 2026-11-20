@@ -11,6 +11,9 @@ pub const DIGITS: usize = 10;
 
 /// Formats a complex value, dropping a negligible imaginary part.
 pub fn format_complex(z: Complex64, digits: usize) -> String {
+    if let Some(shown) = mpp_core::display::format_approx(z, digits) {
+        return shown;
+    }
     if z.im.abs() <= 1e-12 * z.re.abs().max(1.0) {
         format_f64(z.re, digits)
     } else {

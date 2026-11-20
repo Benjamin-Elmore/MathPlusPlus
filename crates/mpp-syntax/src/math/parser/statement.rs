@@ -2,7 +2,7 @@
 
 use super::expr::{self, name_node};
 use super::Parser;
-use crate::lexer::Tok;
+use crate::lexer::{Delim, Tok};
 use crate::math::ast::{
     BinOp, Clause, DefHead, DefKind, Label, Line, MathAst, Name, Node, NodeKind, QueryMode, Range,
     RelOp, Statement,
@@ -143,6 +143,10 @@ impl Parser<'_> {
             if self.at_line_end() {
                 break;
             }
+            if let Some(cond) = self.bracketed_assumption(&statement) {
+                clauses.push(Clause::Assumption(cond));
+                continue;
+            }
             if self.eat(|t| matches!(t, Tok::Comma)).is_some() {
                 if self.at_line_end() {
                     break;
@@ -169,6 +173,39 @@ impl Parser<'_> {
             noeval: false,
             align: Vec::new(),
             span: Span::new(start, end),
+        }
+    }
+
+    /// `(x > 0)` after a query or check: a relation in round brackets.
+    fn bracketed_assumption(&mut self, statement: &Statement) -> Option<Node> {
+        if !matches!(statement, Statement::Query { .. } | Statement::Check { .. }) {
+            return None;
+        }
+        if !self.at(|t| {
+            matches!(
+                t,
+                Tok::Open {
+                    delim: Delim::Paren,
+                    ..
+                }
+            )
+        }) {
+            return None;
+        }
+        let cp = self.checkpoint();
+        let group = self.parse_atom();
+        let inner = match &group.kind {
+            NodeKind::Group { inner, .. } => (**inner).clone(),
+            _ => {
+                self.restore(cp);
+                return None;
+            }
+        };
+        if matches!(inner.kind, NodeKind::Relation { .. }) {
+            Some(inner)
+        } else {
+            self.restore(cp);
+            None
         }
     }
 
@@ -380,7 +417,12 @@ impl Parser<'_> {
             if self.eat(|t| matches!(t, Tok::Comma)).is_some() {
                 continue;
             }
-            if self.eat(|t| matches!(t, Tok::Rel(RelOp::In))).is_some() {
+            if self.at(|t| matches!(t, Tok::Rel(RelOp::In))) {
+                // `v in km/h` is a conversion, not a range.
+                if names.len() == 1 && self.at_unit_conversion() {
+                    break;
+                }
+                self.bump();
                 let set = expr::as_interval(self.parse_expr());
                 let span = Span::new(start, set.span.end);
                 return Some(Range { names, set, span });

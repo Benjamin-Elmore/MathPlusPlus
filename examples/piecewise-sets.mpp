@@ -1,0 +1,43 @@
+# Piecewise functions, intervals and sets
+
+A function made of two pieces that meet smoothly at $x = 1$:
+
+$$ f(x) := \begin{cases} x^2 & x < 1 \\ 2x - 1 & x \ge 1 \end{cases} $$
+
+$$ f(3) = ? $$
+
+The derivative works piece by piece, and the working notes what happens where the pieces meet:
+
+$$ \frac{d}{dx} f(x) = ? $$
+
+$$ \int_0^2 f(x) \, dx = ? $$
+
+$$ \int f(x) \, dx = ? $$
+
+A step has a jump, so it is not differentiable there:
+
+$$ h(x) := \begin{cases} 1 & x < 2 \\ 3 & x \ge 2 \end{cases} $$
+
+$$ \int_0^4 h(x) \, dx = ? $$
+
+## Intervals and sets
+
+$$ [0, 1) \cup (2, 3] = ? $$
+
+$$ [0, 3] \cap (1, 5) = ? $$
+
+$$ \mathbb{R} \setminus [0, 1] = ? $$
+
+$$ 2 \in [0, 1) \cup (1, 3] = ? $$
+
+$$ \{x \in \mathbb{R} : x^2 < 4\} = ? $$
+
+$$ \{n \in \mathbb{Z} : n^2 < 10\} = ? $$
+
+## Inequalities
+
+Solve $x^2 - 4 < 0$ for $x$.
+
+Solve $\frac{x - 1}{x + 2} \le 0$ for $x$.
+
+Solve $x^2 \ge 4$ for $x$.

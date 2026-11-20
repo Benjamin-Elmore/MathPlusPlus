@@ -1,5 +1,10 @@
 //! Running one block: its statements, in order, against the environment.
 
+mod assume;
+mod data;
+mod sentences;
+mod units;
+
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -71,6 +76,7 @@ pub(crate) fn run_block(block: &Block, env: &mut Env, inputs: &Inputs<'_>) -> Ou
         effects: Vec::new(),
         positional: false,
         volatile: false,
+        local_assumptions: Vec::new(),
     };
     run.block(block);
     run.finish()
@@ -94,6 +100,8 @@ struct Run<'a, 'e> {
     effects: Vec<(String, Arc<Binding>)>,
     positional: bool,
     volatile: bool,
+    /// Conditions in brackets after a query in the display block being run.
+    local_assumptions: Vec<Expr>,
 }
 
 /// A read-only view of the environment that records what it is asked.
@@ -273,7 +281,9 @@ impl Run<'_, '_> {
         numeric: bool,
     ) -> Resolved {
         let view = self.view();
-        let mut ctx = Ctx::new(self.inputs.holders).numeric(numeric);
+        let mut ctx = Ctx::new(self.inputs.holders)
+            .numeric(numeric)
+            .with_assumptions(std::sync::Arc::new(self.assumptions()));
         if steps {
             ctx = ctx.with_steps();
         }
@@ -316,7 +326,7 @@ impl Run<'_, '_> {
 
     fn block(&mut self, block: &Block) {
         match &block.kind {
-            BlockKind::DisplayMath(m) => self.math(&m.ast, Place::Display { noeval: m.noeval }),
+            BlockKind::DisplayMath(m) => self.display_block(&m.ast, m.noeval),
             BlockKind::Let(l) => {
                 for m in l.math() {
                     self.math(&m.ast, Place::Let);
@@ -327,8 +337,10 @@ impl Run<'_, '_> {
             | BlockKind::FootnoteDef { content, .. } => self.prose(content),
             BlockKind::List(list) => self.list(list),
             BlockKind::Table(t) => {
-                for cell in t.header.iter().chain(t.rows.iter().flatten()) {
-                    self.prose(cell);
+                if !self.data_table(t) {
+                    for cell in t.header.iter().chain(t.rows.iter().flatten()) {
+                        self.prose(cell);
+                    }
                 }
             }
             BlockKind::Quote(paragraphs) => {
@@ -353,7 +365,9 @@ impl Run<'_, '_> {
                 nodes.extend(a.interval.as_ref());
                 self.helper(&nodes);
             }
-            BlockKind::Solve(s) => self.helper(&[&s.equation]),
+            BlockKind::Solve(s) => self.solve_sentence(s),
+            BlockKind::Assume(a) => self.assume_sentence(a),
+            BlockKind::Data(d) => self.data_import(d),
             BlockKind::Theorem(_)
             | BlockKind::Directive(_)
             | BlockKind::Rule
@@ -426,6 +440,8 @@ impl Run<'_, '_> {
                 }
                 Clause::Range(r) => self.range(r, RangeKind::Slider, &where_names),
                 Clause::Condition(n) => conditions.push(n),
+                // Read for the whole block before it runs (see `display_block`).
+                Clause::Assumption(_) => {}
             }
         }
         let noeval = line.noeval || place == Place::Display { noeval: true };
@@ -552,7 +568,7 @@ impl Run<'_, '_> {
             return self.error(name_span, EvalError::Circular(vec![key.to_string()]));
         }
         let resolved = self.resolve_full(&value, &Locals::new(), &[], false, false);
-        let shown = match resolved.value {
+        let shown = match resolved.value.and_then(|v| self.finish_value(v)) {
             Ok(v) => v,
             Err(err) => return self.error(body.span, err),
         };
@@ -583,6 +599,9 @@ impl Run<'_, '_> {
             },
         );
         lr.input = Some(value);
+        if self.present_units(&mut lr, &shown, QueryMode::Exact, body.span) {
+            return self.push(lr);
+        }
         if shown.is_constant() && !is_exact_rational(&shown) && !contains_holder(&shown) {
             lr.approx = approximate(&shown).ok();
         }
@@ -641,6 +660,9 @@ impl Run<'_, '_> {
             Err(l) => return self.located(l),
         };
         let mut body_expr = with_locals(lowered, s.locals, &names);
+        if let Some(fitted) = self.fitted_body(&body_expr, &names, body.span) {
+            body_expr = fitted;
+        }
         if !s.conditions.is_empty() {
             let mut conds = Vec::new();
             for c in s.conditions {
@@ -850,14 +872,21 @@ impl Run<'_, '_> {
         };
         lr.input = Some(input.clone());
         let numeric = mode == QueryMode::Approx;
-        let resolved = self.resolve_full(&input, s.locals, &[], steps, numeric);
+        let mut resolved = self.resolve_full(&input, s.locals, &[], steps, numeric);
         for note in &resolved.notes {
             self.warn(expr.span, note.clone());
         }
-        let value = match resolved.value {
+        let raw = resolved.value.clone();
+        let value = match raw.and_then(|v| self.finish_logged(v, resolved.steps.as_mut())) {
             Ok(v) => v,
             Err(err) => {
-                self.error(expr.span, err);
+                let span = match err {
+                    EvalError::Math(MathError::Dimension(_)) => {
+                        self.dimension_span(expr, s.names, s.locals)
+                    }
+                    _ => expr.span,
+                };
+                self.error(span, err);
                 return self.push(lr);
             }
         };
@@ -885,6 +914,15 @@ impl Run<'_, '_> {
             }
             lr.steps = Some(log.clone());
             self.result.steps.push((self.result.values.len(), log));
+        }
+        if self.present_units(&mut lr, &value, mode, expr.span) {
+            return self.push(lr);
+        }
+        if let Some((text, latex)) = crate::domains_wire::present_set(&value) {
+            lr.set_value(Value::from_expr(value));
+            lr.text = Some(text);
+            lr.latex = Some(latex);
+            return self.push(lr);
         }
         match mode {
             QueryMode::Exact => {

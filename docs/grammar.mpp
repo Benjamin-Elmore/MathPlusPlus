@@ -25,7 +25,7 @@ quote         = { ">" " " inline NL }- ;
 list          = { list_item }- ;
 list_item     = { "  " } ("- " | "* " | digit { digit } ". ") inline NL ;
 footnote_def  = "[^" name "]:" " " inline NL ;
-directive     = "%" { any_char } NL ;                      (* comment line, or %noeval *)
+directive     = "%" { any_char } NL ;                      (* comment line, %noeval, or a display directive (§2.4) *)
 theorem       = "**" theorem_kind "." "**" " " paragraph_text ;
 theorem_kind  = "Definition" | "Theorem" | "Lemma" | "Corollary"
               | "Proposition" | "Example" | "Remark" | "Proof" ;
@@ -161,6 +161,7 @@ row           = expr { "&" expr } ;
 cases         = "\begin{cases}" case_row { "\\" case_row } "\end{cases}" ;
 case_row      = expr "&" ( relation_chain | "\text{otherwise}" | "otherwise" ) ;
 set_lit       = "\{" [ expr { "," expr } ] "\}" | "∅" | "\emptyset" ;
+set_builder   = "\{" name [ "\in" set ] ( ":" | "\mid" ) relation_chain "\}" ;   (* {x ∈ ℝ : x^2 < 4} *)
 interval      = ( "[" | "(" ) expr "," expr ( "]" | ")" ) ;
 accent        = ( "\hat" | "\bar" | "\vec" | "\dot" | "\ddot" | "\tilde" ) "{" name "}" ;
 font_name     = ( "\mathbf" | "\mathcal" | "\mathfrak" ) "{" letters "}" ;
@@ -175,6 +176,58 @@ text          = "\text{" any "}" ;
 **Calls against products.** `f(x)` is parsed as a call node. The evaluator decides: if `f` is a function it is applied, otherwise it is $f \cdot x$. A known function written without brackets takes the product to its right up to the next function name, `+` or `−`: `\sin 2x` is $\sin(2x)$, and `\sin x \cos x` is $\sin(x)\cos(x)$. Powers on a function name apply to the result: `\sin^2 x` is $(\sin x)^2$, except `^{-1}`, which means the inverse function.
 
 **Integral bodies** run up to their differential: in `\int_0^1 x^2 + 1 \, dx` the body is $x^2 + 1$. A `\sum`, `\prod` or `\lim` takes the multiplicative term to its right, so it stops at the next `+` or `−` (use brackets to take more).
+
+**Remainders.** `a \bmod n` (or `a \mod n`) is the remainder, at the level of `·`; `a \equiv b \pmod{n}` stays a congruence.
+
+### 2.3 Units
+
+A quantity is a number followed by a unit: `9.81\,\mathrm{m/s^2}`, `9.81 m/s^2`, `100\,\mathrm{km/h}`, `25\,{}^\circ\mathrm{C}`, `30^\circ`, `1.5 \times 10^{3}\,\mathrm{m}`.
+
+```
+quantity      = ( number | "10^" script ) [ separator ] unit ;
+separator     = " " | "\," | "\;" | "\:" | "\ " | "~" ;
+unit          = roman_unit { ( "\," | "\cdot" | "·" | "/" ) roman_unit }
+              | degrees | plain_unit ;
+roman_unit    = ( "\mathrm{" | "\text{" | "\textrm{" ) unit_text "}" [ unit_power ] ;
+degrees       = ( "^\circ" | "^{\circ}" | "{}^\circ" | "°" ) [ "C" | "F" | "\mathrm{C}" | "\mathrm{F}" ]
+              | "℃" | "℉" ;
+plain_unit    = unit_text ;                                (* no spaces inside *)
+unit_text     = unit_product { "/" unit_product } ;        (* a / b c means a / (b·c) *)
+unit_product  = unit_factor { ( "·" | "\cdot" | "\," | " " ) unit_factor } ;   (* spaces only in \mathrm{} *)
+unit_factor   = ( "(" unit_text ")" | unit_name | "1" ) [ unit_power ] ;
+unit_power    = "^" ( [ "-" ] integer | "{" [ "-" ] integer [ "/" integer ] "}" | "(" … ")" ) | superscripts ;
+unit_name     = [ si_prefix ] symbol ;                     (* km, µs, kΩ; symbols from the unit table *)
+conversion    = expr ( "\operatorname{in}" | "\text{in}" | "in" ) unit ;
+```
+
+- **No clashes.** A letter is read as a unit only (1) straight after a number, (2) inside `\mathrm{}` after a number or as a conversion target, or (3) when it comes from the Units picker (which writes `\mathrm{…}`). Anywhere else `m` is the variable `m`. So `m \equiv 70\,\mathrm{kg}` and `W := m g` work as expected.
+- **Plain units after a number** need a space (`3 m`) unless they can't be a single letter (`2kg`, `10min`, `9.81m/s^2`), so `2x` and `5t^2` stay products. A plain one-letter unit that is a name in scope at that point (a function parameter, an index, an integration variable, a defined variable) is that name: with `f(t) := 3 t^2`, `t` is the parameter, and with `g := 9.81\,\mathrm{m/s^2}`, `2 g` is twice gravity, not two grams. Write `\mathrm{}` to force the unit. The words `in`, `sec`, `hr`, `deg` and `l` are never plain units, and a unit can't be followed by `(` (so `2 \min(a, b)` is a function).
+- `30^\circ` is 30 degrees; `{}^\circ\mathrm{C}` and `^\circ C` are degrees Celsius.
+- **Conversion** (`v \operatorname{in} \mathrm{km/h}`, or the prose form `v in km/h`) binds more loosely than `+` and `·`, so `v t \operatorname{in} \mathrm{m}` converts the product. After a bare `in`, a one-letter plain unit is not enough (`x in S` is membership); write `\operatorname{in}` or `\mathrm{}` for those.
+
+### 2.4 Number display
+
+A `%` line whose first character after the `%` is a letter and whose first word is one of the keywords below is a display directive; `% sf 4` (a space first) and any other `%` line stay comments. Directives change how results are shown, never what they are.
+
+```
+display     = "%" [ "block" " " ] option NL ;
+option      = "sf" " " digits            (* significant figures, 1 to 50; trailing zeros kept *)
+            | "dp" " " digits            (* decimal places, 0 to 50; trailing zeros kept *)
+            | "sci" [ " " digits ]       (* scientific notation, from 10^n up and below 10^-n; default 4 and -3 *)
+            | "eng" [ " " digits ]       (* engineering notation, exponents in steps of 3, same thresholds *)
+            | "exact" | "decimal"        (* exact values stay exact (default) | every number as a decimal *)
+            | "mixed" | "improper"       (* 3 1/2 | 7/2 (default) *)
+            | "deg" | "rad"              (* angle results in degrees | radians (default) *)
+            | "polar" | "rect"           (* r∠θ | a + bi (default) *)
+            | "plain" ;                  (* no forced notation, ten significant figures again *)
+```
+
+- **Scope.** A directive applies from its line to the end of the file (so one at the top is file-wide) and later directives override earlier ones. `%block sf 3` applies only to the next block that has results; any number of `%block` lines before a block all apply to it.- **What each option shows.** Exact numbers stay fractions under `%exact`, whatever `%sf` or `%dp` say; those apply to decimals (approximations, `≈ ?` answers, and every number under `%decimal`). Under `%decimal` whole numbers stay whole unless `%sf`/`%dp` is set. `%sci` and `%eng` also rewrite exact integers outside the thresholds, keeping every digit unless `%sf`/`%dp` is set. Without them a decimal switches to powers of ten from 10^21 up and below 10^-7.
+- **Notation.** Plain text shows `6.02 × 10²³`; LaTeX shows `6.02 \times 10^{23}`. `6.02e23` is never shown.
+- **Angles.** `%deg` shows an answer in degrees when it is exactly one inverse trig call (`\arcsin`, `\arccos`, `\arctan`, `\operatorname{atan2}`, `\arg`, `\sin^{-1}`…): `\arcsin(1/2) = ?` reads `30°`. It also gives the angle of a polar complex number in degrees. It never changes how inputs are read: `30^\circ` and `30°` are always degrees and a bare `\sin(30)` is always the sine of 30 radians.
+- **Complex numbers.** `%polar` shows `5∠0.927295218` in text and `5 e^{0.927295218 i}` in LaTeX (`5∠53.13°` and `5\angle 53.13^\circ` with `%deg`); the magnitude and angle are decimals.
+- **Units** follow the same rules: the number in front of the unit is formatted, the unit is untouched.
+- **Errors.** A directive that names an option but is malformed (`%sf`, `%sf x`, `%dp 99`, `%exact now`, `%block`) is an error on its own line; the rest of the file runs normally.
 
 ## 3. Sentence forms
 
@@ -191,8 +244,16 @@ helper_name   = "the domain" | "the range" | "the intercepts" | "the critical po
               | "the asymptotes" | "the tangent line" | "the normal line"
               | "the linearisation" | "the linearization" ;
 analyse       = ("Analyse" | "Analyze") " " "$" expr "$" [ " on " "$" interval "$" ] "." ;
-solve         = "Solve" " " "$" expr "$" [ " for " "$" name_list "$" ] "." ;
+solve         = "Solve" " " "$" equations "$" [ " for " "$" name_list "$" ] "." ;
+equations     = expr { "," expr } | cases ;                (* several equations are a system *)
+data          = "Data:" " " "$" name "$" " from " wiki_link "." ;   (* a CSV file, relative to the document *)
+assume        = "Assume" [ " that" ] " " "$" condition "$" { ( "," [ " and" ] | " and" ) " " "$" condition "$" } "." ;
+condition     = relation_chain | name "\in" ( mathbb | interval ) ;   (* a bound on one name *)
 ```
+
+**Data.** A table whose header cells are each a name in maths, optionally followed by a unit in brackets (`| $t$ (s) | $x$ [m] |`), and whose cells are numbers, defines one data column per header. `Data: $T$ from [[file.csv]].` reads a CSV file the same way: a header row of names with optional units (`t (s), x (m)`; commas, semicolons or tabs), then rows of numbers; it also names the whole table `T` (a matrix), and the file is read again when it changes. For a column `x`, `\bar{x}` is its mean, `x_i` its entry `i` (from 1) and `\sum_i x_i` runs over all its entries, unless those decorated names are defined on their own.
+
+**Assumptions** hold from the sentence to the end of the document (and in files that import it), like definitions. A condition in round brackets after a query or check, `\sqrt{y^2} = ? \quad (y < 0)`, holds for that display block only. Each condition bounds one name: `x > 0`, `0 < x \le 1`, `2x - 1 \ge 0`, `a \neq 0`, `n \in \mathbb{Z}`, `n \in \mathbb{N}`, `x \in [0, 1]`, `x \in \mathbb{R}`. Conditions that contradict the ones in force are an error, and so is assuming something about a name that already has a value.
 
 Every helper has an operator form that means the same thing: `\operatorname{crit} f = ?`, `\operatorname{extrema}_{[0,4]} f = ?`, `\operatorname{tangent}_{x=1} f = ?`, `\operatorname{solve}_x (x^2 = 4) = ?`.
 

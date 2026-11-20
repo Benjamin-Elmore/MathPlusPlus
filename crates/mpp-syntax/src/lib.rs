@@ -8,5 +8,6 @@ pub mod lexer;
 pub mod math;
 pub mod span;
 pub mod symbols;
+pub mod units;
 
 pub use span::{Diagnostic, Severity, Span};

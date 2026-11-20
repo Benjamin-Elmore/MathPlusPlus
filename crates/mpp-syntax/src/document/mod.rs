@@ -10,6 +10,7 @@
 mod ast;
 mod block;
 mod cursor;
+pub mod display;
 pub mod dump;
 mod figure;
 mod inline;

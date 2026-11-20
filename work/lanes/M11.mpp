@@ -1,0 +1,54 @@
+# M11 wider maths: notes for the integrator
+
+Lane `domains` (branch `wip/domains`). Everything lives in `crates/mpp-core/src/domains/`.
+
+## Edits outside the lane's folders
+
+- `crates/mpp-core/src/lib.rs`: added `pub mod domains;` and `pub use domains::{Ctx, Domain, Registry};`. Nothing else in core was changed.
+- No new dependencies. No changes to the workspace `Cargo.toml` or `Cargo.lock`.
+
+## The contract (matches PLAN.mpp, one small refinement)
+
+- `mpp_core::domains::Domain` with `name()`, `operators()` and `apply(op, args, &mut Ctx) -> Option<MathResult<Value>>`. `Value` is `mpp_core::Expr`: matrices, tuples, sets, intervals and relations are already expression nodes, so results flow back into the evaluator and the printer unchanged.
+- PLAN.mpp names the module `mpp_core::domain`; it is `mpp_core::domains` (one module per field below it). Please update the PLAN line when merging.
+- `Ctx` holds an optional step log, the calculus backend and notes for the result ("sample (divides by n − 1)", "k is any integer", "solved numerically …").
+- `Registry::standard()` registers every domain; `registry.apply(op, args, ctx)` returns `None` when no domain handles `op`, and `registry.call` turns that into `UnknownFunction`.
+
+## Hook for the calculus lane
+
+`domains::Calculus` (`diff`, `integrate`) is how solvers get antiderivatives. `Ctx::new()` uses `BasicCalculus` (complete elementary derivatives; antiderivatives of polynomials, powers of linear terms, `e^(ax+b)`, `sin`/`cos`/`sinh`/`cosh` of linear terms and polynomial multiples of them). When `calc::{diff, integrate}` lands, implement `Calculus` for a small struct that calls them and pass it with `Ctx::new().with_calculus(&it)`; the ODE solver then handles everything the full integrator can.
+
+## Operators
+
+| Domain | Operators |
+|---|---|
+| linear algebra | `det`, `inverse`/`inv`, `transpose`, `trace`, `rank`, `rref`, `nullspace`, `adjugate`, `norm`, `dot`, `cross`, `matmul`, `matadd`, `matsub`, `scale`, `identity`, `charpoly`, `eigenvals`/`eigen`, `eigenvects`, `linsolve` |
+| equation solving | `solve` (one equation, or a tuple of equations for a system; optional unknown(s) and interval), `nsolve` (interval or starting value), `roots` (with multiplicities) |
+| differential equations | `dsolve(eq, y, x[, (x0, y0)])`, `rk4(f, x, y, x0, y0, x1[, steps])`, `rk4table` |
+| sets and intervals | `union`, `intersect`, `setminus`, `complement`, `member`, `subset`, `card` |
+| number theory | `mod`, `modinv`, `powmod`, `crt`, `egcd`, `isprime`, `nextprime`, `factorint`, `totient` |
+| statistics | `binom`, `mean`, `median`, `mode`, `var`, `pvar`, `std`, `pstd` |
+
+A union of disjoint intervals is returned as `union(I₁, I₂, …)` (an `Apply` node) until the printer and N3 give sets a proper `∪`.
+
+## Grammar or guide changes
+
+None for M11 (the operators are reached through the evaluator's function-call path once the evaluator dispatches unknown names to the registry).
+
+## Wiring into documents (domains lane, after N1)
+
+- `crates/mpp-eval/src/domains_wire.rs`: a holder evaluator registered in `Holders::default()` (one line). An `Apply` naming a registry operator is answered by the registry with the full calculus (`domains::FullCalculus`, so `dsolve` integrates with `calc::integrate`) and the statement's step log; the registry's notes become remarks on the line. `\operatorname{solve}_x (…)` takes the unknowns from the subscript. `\operatorname{factor}(360)` shows `2^3 · 3^2 · 5`; `x \in S`, `\notin`, `\subset` are answered when the element is known.
+- Matrices keep their order: lowering (`lower.rs`, two small hooks) turns a product, sum or power whose side is a matrix literal or a name defined as one into an ordered matrix operation (`A B`, `A \cdot B`, `u \times w`, `A^{-1}`, `A^T`, `A^\top`, `A^3`). Whatever matrix arithmetic is left in the core's commutative form after resolution (a sum of matrices, a scalar times one matrix, a power of one matrix) is finished on the result; a product of several matrices whose order was lost is an error, never a guess.
+- The resolver masks the unknowns of `solve`/`nsolve`/`roots` and the function and variable of `dsolve`, and `y'` / `dy/dx` inside `dsolve(…)` are kept for the solver instead of being differentiated as constants.
+- `Solve $…$ [for $…$].` answers like a query: one equation, a comma list of equations (a system), or a `cases` block of equations. One unknown reads `x = 2 or x = 3`.
+- Parser: `\bmod` and `\mod` are a binary operator (`BinOp::Mod`, `Op::Mod`), `\top` / `\intercal` lex as the letter `⊤`. Other crates that match `BinOp` exhaustively need the new arm.
+
+## Guide section (for `docs/guide.mpp`)
+
+> ## Matrices, equations and the other fields
+>
+> Write a matrix with `\begin{pmatrix} … \end{pmatrix}` and work with it as you would on paper: `$A B = ?$`, `$A^{-1} = ?$`, `$A^T = ?$`, `$\det A = ?$` (or a `vmatrix`), `$\operatorname{rank} A = ?$`, `$\operatorname{eigen}(A) = ?$`. Products keep the order you write; `\cdot` between two vectors is the dot product and `\times` the cross product.
+>
+> Solve with a sentence, `Solve $x^2 - 5x + 6 = 0$ for $x$.`, or in maths with `$\operatorname{solve}_x (x^2 = 4) = ?$`. A system is a comma list or a `cases` block: `Solve $x + y = 3, x - y = 1$ for $x, y$.`
+>
+> Number theory: `$17 \bmod 5 = ?$`, `$\gcd(12, 18) = ?$`, `$\operatorname{lcm}(4, 6) = ?$`, `$\operatorname{isprime}(97) = ?$`, `$\operatorname{factor}(360) = ?$`. Statistics: `\operatorname{mean}`, `median`, `mode`, `var` and `std` (sample), `pvar` and `pstd` (population). Differential equations: `$\operatorname{dsolve}(y' = x y, y, x) = ?$`, with an initial condition as a fourth argument `(0, 1)`.
