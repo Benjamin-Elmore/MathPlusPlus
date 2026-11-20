@@ -1,0 +1,51 @@
+# Lane M13 (plot): requests for the integrator
+
+Branch `wip/plot`, crate `crates/mpp-plot` only, plus the lane-owned `examples/graphs-2d.mpp` and `examples/graphs-3d.mpp`.
+
+## Shared files
+
+- **Workspace `Cargo.toml`:** nothing to change; `members = ["crates/*"]` picks the crate up.
+- **`Cargo.lock`:** the new crate adds `resvg` (PNG export; `text` and `system-fonts` features only) and its tree (`tiny-skia`, `usvg`, `fontdb`, `rustybuzz`, `ttf-parser` and so on), plus `insta` and `proptest` which are already used elsewhere. Every package in the tree is MIT, Apache-2.0, BSD or Zlib licensed (checked with `cargo metadata`), so `cargo deny` should pass. I did **not** commit `Cargo.lock`; regenerate it when merging.
+- **`docs/grammar.mpp` §4:** one addendum is worth making. `points $(1, 1), (2, 4)$` is a parse error today (the clause parser stops at the comma), so several points are written as separate items: `points $(1, 1)$, points $(2, 4)$`. The plot crate merges them into one layer. If you would rather allow a list in one clause, the parser needs `parse_name_list` instead of `parse_clause` for `points`, and no change is needed here.
+
+## Text for `docs/guide.mpp` (section "Graphs")
+
+### Graphs
+
+A `Figure:` line draws a graph under it. List what to draw, separated by commas, and give the range of each variable with `x \in [a, b]`. Whatever follows the first `. ` is the caption.
+
+- **A curve:** `Figure: $\sin x$, $\cos x$, $x \in [-2\pi, 2\pi]$.` With two or more curves a legend appears, written from the equations.
+- **Your own definitions:** functions, constants and variables defined above the figure are used, so `Figure: $h(t)$, $t \in [0, 4]$.` draws the function you defined.
+- **Sliders:** a variable declared with a range, `a := 1, \; a \in [0, 3]`, gets a slider wherever a figure uses it. Dragging redraws the figure at once.
+- **Asymptotes and jumps:** the curve is broken at an asymptote (`\tan x`, `1/x`), never joined by a vertical line. At a jump of a piecewise function an open dot marks the end that is not included and a closed dot the end that is.
+- **Equations:** `x^2 + y^2 = 4` is drawn as a curve of its own. `y = x^2` and `x = y^2` are drawn as curves of one variable. Give no range and the plot window is found for you, with equal scales so a circle looks round.
+- **Parametric and polar:** `(\sin 3t, \sin 2t)` with `t \in [0, 2\pi]`; `1 + \cos \theta, polar`; or `r = 2 \sin 3\theta`.
+- **Inequalities:** `y > x^2 - 1` shades the region where it holds. A dashed edge means the edge is not included. `1 < x^2 + y^2 \le 4` works too, and where regions overlap the colours blend.
+- **Points and level curves:** `points $(1, 1)$` marks a point; `contour` turns a function of two variables into level curves.
+- **Surfaces:** a function of two variables with a range for each, `z = x^2 - y^2, x, y \in [-2, 2]`, is a 3D surface coloured by height. `(\cos t, \sin t, t/4)` is a curve in space, and three coordinates of two parameters make a parametric surface (a sphere, a torus). Drag to turn the view, scroll to zoom, drag with the right button to move it.
+- **Export:** a figure exports to SVG (a vector drawing) and PNG.
+
+The window of a curve is chosen for you: the y range ignores spikes, so `\tan x` shows its branches, not one tall line. Give `y \in [a, b]` to choose it yourself.
+
+## Contract for the IDE lane (egui)
+
+All of this is in `mpp_plot`; there is no GUI dependency.
+
+- `mpp_plot::figures(&Evaluated) -> Vec<DocFigure>`: one per `Figure:` block (`block`, `span`, `figure: Result<Figure, PlotError>`). `figure_for_block` builds one. `Figure::warnings()` lists items it could not draw, for a note under the graph.
+- `Figure::sliders() -> Vec<Slider { name, min, max, value }>` (only sliders the figure uses) and `Figure::rebuild(&BTreeMap<String, f64>)` re-samples (about 1 ms for curves, 1 ms for a 60 by 60 surface, 5 ms for a shaded inequality, release build).
+- `Figure::scene_2d(w, h, &PlotTheme)` and `Figure::scene_3d(&Camera, w, h, &PlotTheme)` return a `PlotScene`: pixel-space `Item`s (`Polyline`, `Polygon`, `Triangle` with per-vertex colours, `Marker` with open or closed dots, `Text`, `ClipStart/ClipEnd`). A `Text` whose `latex` is `Some` is a maths label: typeset that LaTeX with Latin Modern Math at `size` instead of drawing `text`. `Figure::scene(w, h, theme)` picks 2D or 3D.
+- 2D interaction: `Figure::layout_2d(w, h)` gives `Layout2d` with `to_px`, `to_world`, `panned(dx, dy)` and `zoomed(factor, about_px)`, both returning a `Bounds` for `Figure::set_view(Some(bounds))`, which re-samples the curves for the new window. `set_view(None)` goes back to the automatic window.
+- 3D interaction: `Camera { yaw, pitch, zoom, pan, perspective }` with `orbit(dx, dy)`, `pan_by(dx, dy)`, `zoom_by(factor)`, `reset()`. Keep one `Camera` per figure in the IDE state. `Options3d { style: Shaded | ShadedWire | Wire, axes }` through `scene_3d_with`.
+- Export: `to_svg(&PlotScene) -> String`, `to_png(&PlotScene, scale) -> Result<Vec<u8>, PlotError>` (resvg; it loads system fonts, and asks for Latin Modern Roman then falls back to Times New Roman or any serif).
+
+## N14 (theme and fonts)
+
+- Every colour comes from `PlotTheme { background, grid, axes, text, legend_background, legend_border, palette, surface_colormap, wireframe, region_alpha, font, math_font }`. `PlotTheme::light()` and `dark()` are the only places colours are written; the dark palette is brighter and both meet WCAG AA (text and axes 4.5:1, curves 3:1), which a unit test checks.
+- To unify with `mpp-render`'s theme: add `From<&RenderTheme> for PlotTheme` (or the reverse) in whichever crate depends on both, filling `background`, `text` and `axes` from the shared palette and keeping the plot-only colours here.
+- `font` and `math_font` name Latin Modern Roman and Latin Modern Math first. The IDE draws tick labels with its UI font and typesets `latex` labels itself.
+
+## Hooks for later items
+
+- **C5 (visual helpers):** add a `Geometry` variant per helper (tangent line, Riemann rectangles, area between curves, solid of revolution, slope field, vector field, Taylor, Newton) with its sampled form in `LayerData`; `build.rs` already warns for each unsupported `FigureKeyword` ("`tangent at` is not drawn yet"), which is where each keyword gets wired up. `contour` and `points` are the working examples. Sliders for $n$ or a point work already, because any free name that has a slider range stays symbolic in the expressions.
+- **N3 (piecewise, open and closed dots):** done at the sampler level. `sample::Jump` records the jump position, both limits and which side is closed; `view2d` draws the dots. A piecewise value that reaches the figure as `ExprNode::Piecewise` is evaluated directly.
+- **N5 (scatter and histograms):** `data::scatter(&[[x, y]])` and `data::histogram(&[f64], bins)` return `Layer`s (`Geometry::Scatter`, `Geometry::Histogram`) that a `FigureSpec` can hold next to curves; a regression curve is an ordinary `Explicit` layer.
