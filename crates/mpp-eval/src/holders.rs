@@ -1,0 +1,289 @@
+//! Unevaluated "holder" nodes and the registry that evaluates them.
+//!
+//! Lowering turns calculus and operator notation into nodes the core keeps
+//! unevaluated: `Derivative`, `Integral`, `BigOp` and `Limit`, plus `Apply` nodes
+//! for operators the core does not know (`expand`, `det`, `grad` …). After the
+//! evaluator has substituted every known name into such a node it calls
+//! [`evaluate_holder`], which asks each registered [`HolderEval`] in turn. The first
+//! one that recognises the node answers; when none does, the node stays as written.
+//!
+//! The calculus phase extends this by registering its own evaluators with
+//! [`Holders::register`] (later registrations are asked first).
+//!
+//! Conventions for `Apply` holders made by lowering:
+//! - `grad(f)`, `div(F)`, `curl(F)`, `laplacian(f)` for the ∇ forms;
+//! - `name(args…)` for `\operatorname{name} args` without scripts, and
+//!   `operatorname(name, sub, sup, (args…))` with scripts (an empty tuple for a missing one);
+//! - `subs(inner, t = value)`: evaluate `inner`, then put `value` for `t` (used for `f'(2)`);
+//! - `det(M)` for `vmatrix`, `norm(v)`, `double_factorial(n)`, and `union`, `intersect`,
+//!   `setminus`, `compose`, `tensor`, `directsum`, `in`, `subset` … for the set and
+//!   relation operators the core does not have.
+
+use std::cell::RefCell;
+use std::fmt;
+use std::sync::Arc;
+
+use mpp_core::{add, mul, BigOpKind, Expr, ExprNode, MathError, MathResult, RelOp, Steps};
+
+/// Most terms a finite sum or product is expanded into exactly.
+pub const MAX_EXACT_TERMS: i64 = 10_000;
+
+/// What a holder evaluator can see while it works.
+pub struct Ctx<'a> {
+    /// The registry, so an evaluator can evaluate holders nested in its result.
+    pub holders: &'a Holders,
+    /// True when the statement asks for a number (`≈ ?`).
+    pub numeric: bool,
+    steps: Option<RefCell<Steps>>,
+}
+
+impl<'a> Ctx<'a> {
+    /// A context over `holders` without a step log.
+    pub fn new(holders: &'a Holders) -> Self {
+        Ctx {
+            holders,
+            numeric: false,
+            steps: None,
+        }
+    }
+
+    /// Turns the step log on.
+    pub fn with_steps(mut self) -> Self {
+        self.steps = Some(RefCell::new(Steps::new()));
+        self
+    }
+
+    /// Marks the context as numeric.
+    pub fn numeric(mut self, numeric: bool) -> Self {
+        self.numeric = numeric;
+        self
+    }
+
+    /// True when steps are being recorded.
+    pub fn logging(&self) -> bool {
+        self.steps.is_some()
+    }
+
+    /// Records a step when the log is on.
+    pub fn log(&self, rule: &str, before: &Expr, after: &Expr, note: Option<String>) {
+        if let Some(steps) = &self.steps {
+            steps
+                .borrow_mut()
+                .push(rule, before.clone(), after.clone(), note);
+        }
+    }
+
+    /// The recorded steps, if logging was on.
+    pub fn into_steps(self) -> Option<Steps> {
+        self.steps.map(RefCell::into_inner)
+    }
+}
+
+/// Evaluates holder nodes it recognises.
+pub trait HolderEval: Send + Sync {
+    /// `None` when `e` is not a node this evaluator handles.
+    fn evaluate(&self, e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>>;
+}
+
+impl<F> HolderEval for F
+where
+    F: Fn(&Expr, &Ctx<'_>) -> Option<MathResult<Expr>> + Send + Sync,
+{
+    fn evaluate(&self, e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+        self(e, ctx)
+    }
+}
+
+/// The registry of holder evaluators.
+#[derive(Clone)]
+pub struct Holders {
+    evals: Vec<Arc<dyn HolderEval>>,
+}
+
+impl fmt::Debug for Holders {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Holders({} evaluators)", self.evals.len())
+    }
+}
+
+impl Default for Holders {
+    fn default() -> Self {
+        let mut h = Holders::empty();
+        h.register(subs_holder);
+        h.register(finite_big_op);
+        h.register(named_ops);
+        h
+    }
+}
+
+impl Holders {
+    /// A registry with the built-in evaluators (`expand`, `factor`, `simplify`,
+    /// finite sums and products, `subs`).
+    pub fn new() -> Self {
+        Holders::default()
+    }
+
+    /// A registry with no evaluators: every holder stays as written.
+    pub fn empty() -> Self {
+        Holders { evals: Vec::new() }
+    }
+
+    /// Adds an evaluator; it is asked before the ones registered earlier.
+    pub fn register(&mut self, eval: impl HolderEval + 'static) {
+        self.evals.insert(0, Arc::new(eval));
+    }
+
+    /// Number of evaluators.
+    pub fn len(&self) -> usize {
+        self.evals.len()
+    }
+
+    /// True when no evaluators are registered.
+    pub fn is_empty(&self) -> bool {
+        self.evals.is_empty()
+    }
+}
+
+/// Evaluates a holder node, or returns it unchanged when nothing recognises it.
+pub fn evaluate_holder(e: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
+    for eval in &ctx.holders.evals {
+        if let Some(result) = eval.evaluate(e, ctx) {
+            return result;
+        }
+    }
+    Ok(e.clone())
+}
+
+/// True when `e` contains an unevaluated calculus node.
+pub fn contains_holder(e: &Expr) -> bool {
+    match e.node() {
+        ExprNode::Derivative { .. }
+        | ExprNode::Integral { .. }
+        | ExprNode::BigOp { .. }
+        | ExprNode::Limit { .. } => true,
+        _ => e.children().into_iter().any(contains_holder),
+    }
+}
+
+fn one_arg<'e>(name: &str, args: &'e [Expr]) -> MathResult<&'e Expr> {
+    match args {
+        [a] => Ok(a),
+        _ => Err(MathError::WrongArity {
+            function: name.into(),
+            expected: "1".into(),
+            got: args.len(),
+        }),
+    }
+}
+
+/// `expand(x)`, `factor(x)`, `simplify(x)`.
+fn named_ops(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    let ExprNode::Apply(name, args) = e.node() else {
+        return None;
+    };
+    let result = match &**name {
+        "expand" => one_arg(name, args).and_then(Expr::expand),
+        "factor" => one_arg(name, args).map(Expr::factor),
+        "simplify" => one_arg(name, args).map(Expr::simplify),
+        _ => return None,
+    };
+    if let (Ok(after), Ok(before)) = (&result, one_arg(name, args)) {
+        ctx.log(name, before, after, None);
+    }
+    Some(result)
+}
+
+/// Sums and products with exact integer bounds and at most [`MAX_EXACT_TERMS`] terms.
+fn finite_big_op(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    let ExprNode::BigOp {
+        kind,
+        expr,
+        var,
+        lower,
+        upper,
+    } = e.node()
+    else {
+        return None;
+    };
+    let lo = lower.as_number()?.as_integer()?;
+    let hi = upper.as_number()?.as_integer()?;
+    let lo = i64::try_from(lo).ok()?;
+    let hi = i64::try_from(hi).ok()?;
+    if hi.saturating_sub(lo) >= MAX_EXACT_TERMS {
+        return None;
+    }
+    let terms: Vec<Expr> = (lo..=hi).map(|k| expr.subs(var, &Expr::int(k))).collect();
+    let result = match kind {
+        BigOpKind::Sum => add(terms),
+        BigOpKind::Product => mul(terms),
+    };
+    let rule = match kind {
+        BigOpKind::Sum => "add the terms",
+        BigOpKind::Product => "multiply the factors",
+    };
+    ctx.log(rule, e, &result, Some(format!("{var} = {lo}, …, {hi}")));
+    Some(Ok(result))
+}
+
+/// `subs(inner, t = value)` once `inner` has been evaluated.
+fn subs_holder(e: &Expr, _ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    let ExprNode::Apply(name, args) = e.node() else {
+        return None;
+    };
+    if &**name != "subs" {
+        return None;
+    }
+    let [inner, binding] = args.as_slice() else {
+        return None;
+    };
+    let ExprNode::Relation(RelOp::Eq, var, value) = binding.node() else {
+        return None;
+    };
+    let var = var.as_sym()?;
+    if contains_holder(inner) {
+        return None;
+    }
+    Some(Ok(inner.subs(var, value)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn built_ins() {
+        let holders = Holders::new();
+        let ctx = Ctx::new(&holders);
+        let x = Expr::sym("x");
+        let sq = Expr::apply("expand", vec![(x.clone() + Expr::one()).pow(2)]);
+        assert_eq!(
+            evaluate_holder(&sq, &ctx).unwrap(),
+            x.pow(2) + Expr::int(2) * x.clone() + Expr::one()
+        );
+        let sum = Expr::new(ExprNode::BigOp {
+            kind: BigOpKind::Sum,
+            expr: Expr::sym("k").pow(2),
+            var: "k".into(),
+            lower: Expr::one(),
+            upper: Expr::int(10),
+        });
+        assert_eq!(evaluate_holder(&sum, &ctx).unwrap(), Expr::int(385));
+        let unknown = Expr::apply("grad", vec![x.clone()]);
+        assert_eq!(evaluate_holder(&unknown, &ctx).unwrap(), unknown);
+    }
+
+    #[test]
+    fn later_registrations_win() {
+        let mut holders = Holders::empty();
+        assert!(holders.is_empty());
+        holders.register(|_: &Expr, _: &Ctx<'_>| Some(Ok(Expr::int(1))));
+        holders.register(|_: &Expr, _: &Ctx<'_>| Some(Ok(Expr::int(2))));
+        let ctx = Ctx::new(&holders).with_steps();
+        assert_eq!(
+            evaluate_holder(&Expr::sym("x"), &ctx).unwrap(),
+            Expr::int(2)
+        );
+        assert_eq!(holders.len(), 2);
+        assert!(ctx.logging());
+    }
+}

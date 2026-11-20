@@ -221,6 +221,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpp-eval"
+version = "0.1.0"
+dependencies = [
+ "mpp-core",
+ "mpp-syntax",
+ "num-complex",
+ "proptest",
+]
+
+[[package]]
 name = "mpp-syntax"
 version = "0.1.0"
 dependencies = [

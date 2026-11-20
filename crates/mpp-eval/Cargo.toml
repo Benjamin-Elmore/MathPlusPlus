@@ -1,0 +1,14 @@
+[package]
+name = "mpp-eval"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Math++ evaluator: runs a document top to bottom with scopes, definitions, queries and a dependency graph"
+
+[dependencies]
+mpp-core = { path = "../mpp-core" }
+mpp-syntax = { path = "../mpp-syntax" }
+num-complex = "0.4"
+
+[dev-dependencies]
+proptest = "1"

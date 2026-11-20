@@ -1,0 +1,385 @@
+//! The results of running a document: per block, per statement line.
+
+use std::collections::BTreeMap;
+use std::fmt::Write as _;
+use std::sync::Arc;
+
+use mpp_core::{Expr, Steps};
+use mpp_syntax::document::{BlockId, Document};
+use mpp_syntax::math::QueryMode;
+use mpp_syntax::{Diagnostic, Severity, Span};
+
+use crate::check::Verdict;
+use crate::graph::DepGraph;
+use crate::value::{Binding, Value};
+
+/// What a definition line defined.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DefinitionKind {
+    /// `a := …`
+    Variable,
+    /// `g ≡ …`
+    Constant,
+    /// `f(x) := …`
+    Function,
+    /// `a_{n+1} := …`
+    Recurrence,
+    /// `a_1 := …` for a sequence with a recurrence.
+    Initial,
+}
+
+/// What a statement line is.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LineKind {
+    Definition {
+        name: String,
+        kind: DefinitionKind,
+    },
+    /// `= ?`, `≈ ?`, `= ?!`.
+    Query {
+        mode: QueryMode,
+        steps: bool,
+    },
+    /// `\overset{?}{=}`.
+    Check,
+    /// A bare expression or relation chain: recorded, not evaluated.
+    Relation,
+    /// `x \in [a, b]` on its own.
+    Range,
+    /// An expression item of a `Figure:` line.
+    Figure,
+    /// The maths of a helper sentence (`Find the critical points of $f$`).
+    Helper,
+}
+
+/// The result of one statement line.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LineResult {
+    /// Source span of the line.
+    pub span: Span,
+    pub kind: LineKind,
+    /// The lowered input (before names were substituted).
+    pub input: Option<Expr>,
+    /// The exact result (for a definition, its value at this point).
+    pub value: Option<Value>,
+    /// The value as LaTeX.
+    pub latex: Option<String>,
+    /// The value as plain text.
+    pub text: Option<String>,
+    /// The numeric value, 10 significant digits.
+    pub approx: Option<String>,
+    /// The verdict of a check.
+    pub verdict: Option<Verdict>,
+    /// Conditions written after the statement (`, x > 0`).
+    pub conditions: Vec<Expr>,
+    /// True when auto-evaluation may show a preview result for this line.
+    pub auto_eval: bool,
+    /// Marked `%noeval`.
+    pub noeval: bool,
+}
+
+impl LineResult {
+    /// An empty result of `kind` for the line at `span`.
+    pub fn new(span: Span, kind: LineKind) -> Self {
+        LineResult {
+            span,
+            kind,
+            input: None,
+            value: None,
+            latex: None,
+            text: None,
+            approx: None,
+            verdict: None,
+            conditions: Vec::new(),
+            auto_eval: false,
+            noeval: false,
+        }
+    }
+
+    /// Sets the value with its LaTeX and plain text.
+    pub fn set_value(&mut self, value: Value) {
+        match &value {
+            Value::Function { params, body } => {
+                self.latex = Some(format!(
+                    "({}) \\mapsto {}",
+                    params.join(", "),
+                    body.to_latex()
+                ));
+                self.text = Some(format!("({}) ↦ {body}", params.join(", ")));
+            }
+            other => {
+                let e = other.expr();
+                self.latex = Some(e.to_latex());
+                self.text = Some(e.to_string());
+            }
+        }
+        self.value = Some(value);
+    }
+
+    /// The answer as one line of text (`= 2`, `≈ 1.414213562`, `✓ …`).
+    pub fn answer(&self) -> Option<String> {
+        if let Some(v) = &self.verdict {
+            return Some(v.describe());
+        }
+        match (&self.kind, &self.text, &self.approx) {
+            (
+                LineKind::Query {
+                    mode: QueryMode::Approx,
+                    ..
+                },
+                _,
+                Some(a),
+            ) => Some(format!("≈ {a}")),
+            (_, Some(t), Some(a)) if t != a => Some(format!("= {t} ≈ {a}")),
+            (_, Some(t), _) => Some(format!("= {t}")),
+            (_, None, Some(a)) => Some(format!("≈ {a}")),
+            _ => None,
+        }
+    }
+}
+
+/// Whether a range is a slider or a plotting range.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RangeKind {
+    /// `a := 2, a \in [0, 5]`: a slider for the figures and the IDE.
+    Slider,
+    /// `x \in [0, R]` in a `Figure:` line.
+    Plot,
+}
+
+/// A range written with `\in`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RangeInfo {
+    pub names: Vec<String>,
+    /// The set, with known names substituted (usually an interval).
+    pub set: Expr,
+    pub kind: RangeKind,
+    pub span: Span,
+}
+
+/// An import the block asked for.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImportInfo {
+    pub path: String,
+    pub span: Span,
+    /// `(name in the file, name here)`, or `None` for "import everything".
+    pub names: Option<Vec<(String, String)>>,
+    /// True when the importer supplied the file.
+    pub loaded: bool,
+}
+
+/// Everything one block produced.
+#[derive(Debug, Clone, PartialEq)]
+pub struct BlockResult {
+    pub id: BlockId,
+    pub span: Span,
+    /// Names this block defines, in order.
+    pub defines: Vec<String>,
+    /// Names this block looks up from the blocks before it.
+    pub uses: Vec<String>,
+    /// One result per statement line.
+    pub values: Vec<LineResult>,
+    /// Parser and evaluation problems inside this block.
+    pub diagnostics: Vec<Diagnostic>,
+    /// Working for `= ?!` lines, by index into `values`.
+    pub steps: Vec<(usize, Steps)>,
+    pub ranges: Vec<RangeInfo>,
+    pub imports: Vec<ImportInfo>,
+}
+
+impl BlockResult {
+    /// An empty result for a block.
+    pub fn new(id: BlockId, span: Span) -> Self {
+        BlockResult {
+            id,
+            span,
+            defines: Vec::new(),
+            uses: Vec::new(),
+            values: Vec::new(),
+            diagnostics: Vec::new(),
+            steps: Vec::new(),
+            ranges: Vec::new(),
+            imports: Vec::new(),
+        }
+    }
+
+    /// The steps recorded for `values[index]`.
+    pub fn steps_for(&self, index: usize) -> Option<&Steps> {
+        self.steps.iter().find(|(i, _)| *i == index).map(|(_, s)| s)
+    }
+
+    /// True when any diagnostic is an error.
+    pub fn has_errors(&self) -> bool {
+        self.diagnostics
+            .iter()
+            .any(|d| d.severity == Severity::Error)
+    }
+
+    /// Moves every span by `delta` bytes (the block moved in the file).
+    pub(crate) fn shift(&mut self, delta: isize) {
+        let mv = |s: &mut Span| *s = shift_span(*s, delta);
+        mv(&mut self.span);
+        self.values.iter_mut().for_each(|v| mv(&mut v.span));
+        self.diagnostics.iter_mut().for_each(|d| mv(&mut d.span));
+        self.ranges.iter_mut().for_each(|r| mv(&mut r.span));
+        self.imports.iter_mut().for_each(|i| mv(&mut i.span));
+    }
+}
+
+/// `span` moved by `delta` bytes.
+pub(crate) fn shift_span(span: Span, delta: isize) -> Span {
+    let start = span.start.checked_add_signed(delta).unwrap_or(0);
+    let end = span.end.checked_add_signed(delta).unwrap_or(start);
+    Span::new(start, end)
+}
+
+/// Line numbers for byte offsets.
+#[derive(Debug, Clone, Default)]
+pub struct LineIndex {
+    starts: Vec<usize>,
+}
+
+impl LineIndex {
+    /// Indexes `src`.
+    pub fn new(src: &str) -> Self {
+        let mut starts = vec![0];
+        starts.extend(src.match_indices('\n').map(|(i, _)| i + 1));
+        LineIndex { starts }
+    }
+
+    /// The 1-based line holding byte `offset`.
+    pub fn line_of(&self, offset: usize) -> usize {
+        self.starts.partition_point(|&s| s <= offset).max(1)
+    }
+}
+
+/// The result of running a whole document.
+#[derive(Debug, Clone)]
+pub struct Evaluated {
+    pub document: Document,
+    /// One result per block, nested blocks included, in document order.
+    pub blocks: Vec<BlockResult>,
+    /// The blocks that ran in the last run or update (the others were reused).
+    pub recomputed: Vec<BlockId>,
+    /// Problems not inside any block.
+    pub diagnostics: Vec<Diagnostic>,
+    /// The names in scope at the end of the document.
+    pub bindings: BTreeMap<String, Arc<Binding>>,
+    /// Which blocks define and use which names.
+    pub graph: DepGraph,
+    pub(crate) source: String,
+    pub(crate) lines: LineIndex,
+}
+
+impl Evaluated {
+    /// The result of an empty document.
+    pub fn empty() -> Self {
+        Evaluated {
+            document: mpp_syntax::document::parse_document(""),
+            blocks: Vec::new(),
+            recomputed: Vec::new(),
+            diagnostics: Vec::new(),
+            bindings: BTreeMap::new(),
+            graph: DepGraph::default(),
+            source: String::new(),
+            lines: LineIndex::default(),
+        }
+    }
+
+    /// The source text that was run.
+    pub fn source(&self) -> &str {
+        &self.source
+    }
+
+    /// The 1-based line of a byte offset.
+    pub fn line_of(&self, offset: usize) -> usize {
+        self.lines.line_of(offset)
+    }
+
+    /// The result of the block `id`.
+    pub fn block(&self, id: BlockId) -> Option<&BlockResult> {
+        self.blocks.iter().find(|b| b.id == id)
+    }
+
+    /// Every diagnostic, block ones included, in source order.
+    pub fn all_diagnostics(&self) -> Vec<&Diagnostic> {
+        let mut all: Vec<&Diagnostic> = self
+            .diagnostics
+            .iter()
+            .chain(self.blocks.iter().flat_map(|b| b.diagnostics.iter()))
+            .collect();
+        all.sort_by_key(|d| (d.span.start, d.span.end));
+        all
+    }
+
+    /// The errors among [`Evaluated::all_diagnostics`].
+    pub fn errors(&self) -> Vec<&Diagnostic> {
+        self.all_diagnostics()
+            .into_iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect()
+    }
+
+    /// Every query and check line with its block.
+    pub fn queries(&self) -> impl Iterator<Item = (&BlockResult, &LineResult)> {
+        self.blocks.iter().flat_map(|b| {
+            b.values
+                .iter()
+                .filter(|v| matches!(v.kind, LineKind::Query { .. } | LineKind::Check))
+                .map(move |v| (b, v))
+        })
+    }
+
+    fn snippet(&self, span: Span) -> String {
+        let text = self.source.get(span.start..span.end).unwrap_or("");
+        text.split_whitespace().collect::<Vec<_>>().join(" ")
+    }
+
+    /// A plain-text report: each query line with its answer, then the problems.
+    pub fn report(&self) -> String {
+        let mut out = String::new();
+        for (_, line) in self.queries() {
+            let answer = line.answer().unwrap_or_else(|| "(no answer)".into());
+            let _ = writeln!(
+                out,
+                "{:>4}: {}  {answer}",
+                self.line_of(line.span.start),
+                self.snippet(line.span)
+            );
+        }
+        for d in self.all_diagnostics() {
+            let level = match d.severity {
+                Severity::Error => "error",
+                Severity::Warning => "warning",
+            };
+            let _ = writeln!(
+                out,
+                "{:>4}: {level}: {}",
+                self.line_of(d.span.start),
+                d.message
+            );
+        }
+        out
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn line_numbers() {
+        let idx = LineIndex::new("a\nbc\n\nd");
+        assert_eq!(idx.line_of(0), 1);
+        assert_eq!(idx.line_of(2), 2);
+        assert_eq!(idx.line_of(5), 3);
+        assert_eq!(idx.line_of(6), 4);
+        assert_eq!(idx.line_of(100), 4);
+    }
+
+    #[test]
+    fn spans_shift() {
+        assert_eq!(shift_span(Span::new(5, 9), -2), Span::new(3, 7));
+        assert_eq!(shift_span(Span::new(1, 2), -5), Span::new(0, 0));
+    }
+}
