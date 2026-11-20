@@ -345,15 +345,15 @@ impl Run<'_, '_> {
                 names: None,
             }),
             BlockKind::Using(u) => self.using(u),
-            BlockKind::Helper(h) => {
-                let mut nodes = vec![&h.target];
-                nodes.extend(h.interval.as_ref());
-                self.helper(&nodes);
-            }
+            BlockKind::Helper(h) => self.helper_sentence(
+                crate::helpers::sentence_op(h.helper),
+                &h.target,
+                h.interval.as_ref(),
+                h.at.as_ref(),
+                block.span,
+            ),
             BlockKind::Analyse(a) => {
-                let mut nodes = vec![&a.target];
-                nodes.extend(a.interval.as_ref());
-                self.helper(&nodes);
+                self.helper_sentence("analyse", &a.target, a.interval.as_ref(), None, block.span)
             }
             BlockKind::Solve(s) => self.helper(&[&s.equation]),
             BlockKind::Theorem(_)
@@ -391,6 +391,54 @@ impl Run<'_, '_> {
                 self.push(line);
             }
         }
+    }
+
+    /// "Find the critical points of $f$ on $[0, 4]$." and "Analyse $f$.": the same
+    /// holder as the operator form, answered on the sentence's line.
+    fn helper_sentence(
+        &mut self,
+        op: &str,
+        target: &Node,
+        interval: Option<&Node>,
+        at: Option<&Clause>,
+        span: Span,
+    ) {
+        let mut lr = LineResult::new(span, LineKind::Helper);
+        let lowered = (|| -> Result<Expr, Located> {
+            let t = self.lower(target, &[])?;
+            let i = interval.map(|n| self.lower(n, &[])).transpose()?;
+            let a = match at {
+                Some(Clause::Where { name, value, .. }) => Some(Expr::equation(
+                    self.lower(name, &[])?,
+                    self.lower(value, &[])?,
+                )),
+                Some(Clause::Condition(n)) => Some(self.lower(n, &[])?),
+                _ => None,
+            };
+            Ok(crate::helpers::sentence_holder(op, t, i, a))
+        })();
+        let input = match lowered {
+            Ok(e) => e,
+            Err(l) => {
+                self.located(l);
+                return self.push(lr);
+            }
+        };
+        lr.input = Some(input.clone());
+        let resolved =
+            self.resolve_full(&input, &Locals::new(), &[], self.inputs.show_steps, false);
+        for note in &resolved.notes {
+            self.warn(span, note.clone());
+        }
+        match resolved.value {
+            Ok(v) => lr.set_value(Value::from_expr(v)),
+            Err(err) => self.error(target.span, err),
+        }
+        if let Some(log) = resolved.steps.filter(|l| !l.is_empty()) {
+            lr.steps = Some(log.clone());
+            self.result.steps.push((self.result.values.len(), log));
+        }
+        self.push(lr);
     }
 
     // ---- statement lines ---------------------------------------------------

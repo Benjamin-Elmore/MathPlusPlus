@@ -58,3 +58,8 @@ fn check(name: &str) {
 fn steps_example() {
     check("steps");
 }
+
+#[test]
+fn curve_sketching_example() {
+    check("curve-sketching");
+}

@@ -6,6 +6,11 @@
 //! integrals); when it falls back to numbers the result says so (`≈`), and when it cannot
 //! decide it says that instead of guessing.
 
+pub mod analysis;
 pub mod steps;
+pub mod table;
+#[cfg(test)]
+pub(crate) mod testkit;
 
+pub use analysis::Analysis;
 pub use steps::{StepNode, StepTree};

@@ -1,0 +1,44 @@
+# Function analysis helpers: notes for the integrator
+
+Lane `tools-a` (branch `wip/tools-a`).
+
+## What it adds
+
+- `mpp_core::tools::analysis::Analysis` (`crates/mpp-core/src/tools/analysis/`): domain and range as unions of intervals, intercepts, critical points with the first-derivative test, local and absolute extrema (the closed interval method on a closed interval; limits at open ends decide whether a maximum or minimum is attained), increasing and decreasing intervals, concavity and inflection points, vertical, horizontal and slant asymptotes, tangent and normal lines (vertical tangents and corners recognised), the linearisation `L(x)`, the mean value and intermediate value theorems on an interval, and `summary()` (the "Analyse" table).
+- `mpp_core::tools::table`: a labelled table value, `table((label, value), …)`, with `rows`, `row`, `to_text` and `to_latex`.
+- `mpp_eval::helpers`: the helper holder (registered in `Holders::default`). Operator names: `domain`, `range`, `intercepts`, `crit`/`critical`, `extrema`, `localextrema`, `absextrema`, `increasing`/`decreasing`/`monotonicity`, `concavity`, `inflection`, `asymptotes`, `tangent`, `normal`, `linearisation`/`linearization`, `mvt`, `ivt`, `analyse`/`analyze`. The subscript is an interval (`_{[0,4]}`) or a point (`_{x=1}`); for `ivt` the superscript is the value (default 0).
+- Helper sentences ("Find the … of $f$ [on $I$] [at $x = a$].", "Analyse $f$ [on $I$].") now evaluate through the same holder; their line (`LineKind::Helper`) gets the value, and `Evaluated::report` lists answered helper lines.
+- `mpp_eval::Value::Table` for table values (`Value::from_expr` recognises them; `set_value` gives row-per-line text and a LaTeX `array`).
+
+## How it decides
+
+The points where `f` may stop being defined (zeros of denominators, logarithm arguments, even-root radicands, the cosine under `tan` …) cut the line into intervals; one sample point decides each interval, and each cut point is checked exactly. Sign charts of `f′` and `f″` work the same way with their zeros added. Zeros come from the equation solver (exact), with common factors and never-zero factors (`e^u`) taken out first; when the solver gives up, roots are found numerically in [−100, 100] and a warning marks them `≈`. A periodic function on all of ℝ, a parameter without a value, or a limit the CAS cannot take is an error that says what to give, never a guess.
+
+## Known limits (for later items)
+
+- The simplifier cancels common factors on input, so `(x² − 1)/(x − 1)` is analysed as `x + 1` and its hole at 1 is not reported (needs N3's piecewise/assumption work or a non-cancelling form).
+- `floor`, `ceil`, piecewise functions and user functions without bodies are refused ("not supported yet").
+
+## Edits outside the lane's folders
+
+- `crates/mpp-eval/src/lib.rs` (`pub mod helpers;`), `holders.rs` (one `register` line), `calculus.rs` (`bound_names` falls through to the helpers' bound names, so `x := 5` does not leak into a helper's variable), `value.rs` (`Value::Table`), `result.rs` (table text/LaTeX; `report` lists helper lines and indents multi-line answers), `block.rs` (helper and Analyse sentences evaluate through `helper_sentence`).
+
+## Grammar
+
+No change needed: the §3 sentence forms and `\operatorname{…}` forms already parse. Please add the operator names above (and `mvt`, `ivt` with their scripts) to the list after §3 when merging.
+
+## Guide text (for `docs/guide.mpp`)
+
+### Analysing a function
+
+Ask about a function the way a textbook does:
+
+Find the critical points of $f$ on $[0, 4]$.
+
+Each helper also has an operator form, so `$$ \operatorname{crit} f = ? $$` means the same thing. The helpers are: the domain and range, the intercepts, the critical points, the local extrema, the absolute extrema (with an interval, by comparing the critical values with the values at the endpoints), the intervals of increase, the concavity and inflection points, the asymptotes (vertical, horizontal and slant), the tangent line and normal line at a point (`at $x = 1$`, or `\operatorname{tangent}_{x=1} f`), and the linearisation $L(x)$. `\operatorname{mvt}_{[a, b]} f` checks the mean value theorem and finds the points $c$; `\operatorname{ivt}_{[a, b]}^{N} f` checks the intermediate value theorem for the value $N$.
+
+"Analyse $f$." gives the whole curve-sketch summary as a table. Answers are exact when the equation solver finds them; when a root can only be found numerically the result says so with ≈. For a periodic function such as $\sin x$ give an interval, since it has infinitely many critical points.
+
+## Example
+
+`examples/curve-sketching.mpp` with `examples/curve-sketching.expected.txt`.

@@ -123,6 +123,11 @@ impl LineResult {
                 ));
                 self.text = Some(format!("({}) ↦ {body}", params.join(", ")));
             }
+            Value::Table(t) => {
+                let rows = mpp_core::tools::table::rows(t).unwrap_or_default();
+                self.latex = Some(mpp_core::tools::table::to_latex(&rows));
+                self.text = Some(mpp_core::tools::table::to_text(&rows));
+            }
             other => {
                 let e = other.expr();
                 self.latex = Some(e.to_latex());
@@ -383,8 +388,17 @@ impl Evaluated {
     /// A plain-text report: each query line with its answer, then the problems.
     pub fn report(&self) -> String {
         let mut out = String::new();
-        for (_, line) in self.queries() {
-            let answer = line.answer().unwrap_or_else(|| "(no answer)".into());
+        let answered = self.blocks.iter().flat_map(|b| {
+            b.values.iter().filter(|v| {
+                matches!(v.kind, LineKind::Query { .. } | LineKind::Check)
+                    || (v.kind == LineKind::Helper && v.value.is_some())
+            })
+        });
+        for line in answered {
+            let answer = line
+                .answer()
+                .unwrap_or_else(|| "(no answer)".into())
+                .replace('\n', "\n        ");
             let _ = writeln!(
                 out,
                 "{:>4}: {}  {answer}",
