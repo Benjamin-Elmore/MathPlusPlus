@@ -1,0 +1,68 @@
+# C3 applications of integrals + numerical methods: notes for the integrator
+
+Lane `tools-b` (branch `wip/tools-b`). Core code is in `crates/mpp-core/src/tools_b/` (`applications.rs`, `numerics.rs`, `convergence.rs`, `util.rs`); the operator forms are in `crates/mpp-eval/src/helpers_b.rs`.
+
+## Edits outside the lane's folders
+
+- `crates/mpp-core/src/lib.rs`: `pub mod tools_b;` (one line).
+- `crates/mpp-eval/src/lib.rs`: `pub mod helpers_b;` and `crates/mpp-eval/src/holders.rs`: `h.register(crate::helpers_b::evaluate);` in `Holders::default` (one line each).
+- `crates/mpp-core/src/calc/sum/mod.rs` and `calc/sum/convergence.rs`: the convergence module and its single tests became `pub(crate)` so each test can be run and reported by name. No behaviour change.
+- Bug fix (own commit): `functions.rs` (+ `functions/special.rs`), `calc/diff.rs`, `calc/limit.rs`, `printer.rs`, `error.rs`, `calc/integrate/*`. New functions `erf`, `Si`, `Ci` (`Func::Erf`, `Func::Si`, `Func::Ci`) and a new error `MathError::Undetermined` ("could not determine …"), used when neither convergence nor divergence is proven. Two older tests changed because `e^{-x^2}` now has the closed form `√π/2 · erf(x)`.
+- No new dependencies.
+
+## Requests
+
+- **Symbol table (`mpp-syntax`):** add `erf`, `Si` and `Ci` as function names so `erf(x)`, `\operatorname{erf} x` and `Si(x)` parse as calls. Until then `\operatorname{erf}(x)` works (helpers_b turns it into the built-in).
+- **Grammar §3 (prose forms):** please add these helper sentences; each means the operator form beside it.
+  - `Find the area between $f$ and $g$ [on $[a, b]$].` → `\operatorname{area}(f, g, [a, b])`
+  - `Find the volume of revolution of $f$ [and $g$] on $[a, b]$ about $y = c$ [by shells].` → `\operatorname{volume}_{shell}(f, g, [a, b], y = c)`
+  - `Find the arc length of $f$ on $[a, b]$.` → `\operatorname{arclength}(f, [a, b])`
+  - `Find the surface area of $f$ on $[a, b]$ about $x = c$.` → `\operatorname{surfacearea}(f, [a, b], x = c)`
+  - `Find the average value of $f$ on $[a, b]$.`, `Find the work done by $F$ on $[a, b]$.`, `Find the centroid of $f$ [and $g$] on $[a, b]$.`
+  - `Approximate $\int_a^b f\,dx$ by the left (right, midpoint, trapezoid, Simpson) rule with $n = 4$.` → `\operatorname{riemann}_{left}(f, [a, b], 4)` etc.
+  - `Use Newton's method on $f$ from $x_0 = 1$.` → `\operatorname{newton}(f, 1)`
+  - `Test $\sum a_k$ for convergence.` → `\operatorname{tests}(a_k)`; `Find the interval of convergence of $\sum a_k$.` → `\operatorname{ioc}(a_k)`
+  The sentence parser only has to produce the operator call; helpers_b answers it.
+- **Note for the domains wiring:** the domains registry also names `rk4` and `dsolve`. The helpers_b `rk4(f, x₀, y₀, h, n)` takes a step size and a step count; `domains::ode::rk4` takes an end point. If the registry is later asked before helpers_b, keep the helpers_b form for `rk4`/`euler` (it is the textbook table form) or route by argument count.
+- `\mid` is a symbol, so `\operatorname{riemann}_{mid}` does not parse; the guide uses `\operatorname{midpoint}(…)` (or `_{\mathrm{mid}}`).
+
+## Guide text (for `docs/guide.mpp`)
+
+### Applications of the integral
+
+Each application is an operator. An interval $[a, b]$ gives the bounds, `y = c` or `x = c` gives an axis, and a name such as $x$ after the functions picks the variable. Curves written in $y$ (`\operatorname{area}(y + 2, y^2)`) are curves $x = f(y)$.
+
+| Operator | Means |
+|---|---|
+| `\operatorname{area}(f, g, [a, b])` | the area between $f$ and $g$; without an interval, the region they enclose (it finds where they cross) |
+| `\operatorname{volume}(f, g, [a, b], y = c)` | the solid made by turning the region about the line; disks, washers or shells are chosen from the axis, or ask with `_{disk}`, `_{washer}`, `_{shell}` |
+| `\operatorname{arclength}(f, [a, b])`, `\operatorname{arclength}((x(t), y(t)), t, [a, b])` | the length of a curve |
+| `\operatorname{surfacearea}(f, [a, b], x = c)` | the surface made by turning the curve about an axis (the $x$-axis by default) |
+| `\operatorname{average}(f, [a, b])` | the average value $\frac{1}{b - a}\int_a^b f$ |
+| `\operatorname{work}(F, [a, b])` | the work $\int_a^b F\,dx$ |
+| `\operatorname{centroid}(f, g, [a, b])` | the centroid $(\bar x, \bar y)$ of the region |
+| `\operatorname{centreofmass}(\rho, [a, b])` | the centre of mass of a rod with density $\rho$ |
+| `\operatorname{accumulate}(f, a)` | $F(x) = \int_a^x f(t)\,dt$ |
+
+Answers are exact when the integrals are, and otherwise numbers marked ≈. `= ?!` shows the integral that was set up, where the curves cross and how the region was split.
+
+### Numerical methods
+
+| Operator | Means |
+|---|---|
+| `\operatorname{riemann}_{left}(f, [a, b], n)`, `_{right}`, `\operatorname{midpoint}(…)` | Riemann sums, exact when every sample is rational |
+| `\operatorname{trapezoid}(f, [a, b], n)`, `\operatorname{simpson}(f, [a, b], n)` | the trapezoid and Simpson rules |
+| `\operatorname{newton}(f, x_0)` | Newton's method; `= ?!` lists every iteration |
+| `\operatorname{euler}(f, x_0, y_0, h, n)`, `\operatorname{rk4}(…)` | Euler's method and RK4 for $y' = f(x, y)$ |
+| `\operatorname{taylorbound}(f, a, x, n)` | the Lagrange bound on the error of $T_n$ at $x$ |
+| `\operatorname{termsneeded}(f, a, x, \varepsilon)` | the smallest degree whose bound is below $\varepsilon$ |
+
+Each rule also reports its error bound ($M_1(b-a)^2/2n$, $M_2(b-a)^3/24n^2$, $M_2(b-a)^3/12n^2$, $M_4(b-a)^5/180n^4$) and, when the exact integral is known, the actual error.
+
+### Convergence
+
+`\operatorname{tests}(a_k)` runs every test and reports each by name: divergence, geometric, $p$-series, comparison, limit comparison, ratio, root, integral, alternating series and telescoping. The answer is `true` or `false`; when no test decides, Math++ says so instead of guessing. `\operatorname{radius}(a_k)` and `\operatorname{ioc}(a_k)` give the radius and interval of convergence of a power series, with both endpoints tested.
+
+### Improper integrals
+
+`\int_0^\infty \frac{\sin x}{x}\,dx = ?` gives $\frac{\pi}{2}$: the integrator knows $\operatorname{Si}$, $\operatorname{Ci}$ and $\operatorname{erf}$. An oscillating integrand with no closed form (such as $\sin x^2$) is summed between its zeros. An integral is called divergent only when that is proven (the antiderivative's limit is infinite, the integrand does not tend to 0, or a comparison with $1/x$); otherwise the message says the convergence could not be determined.

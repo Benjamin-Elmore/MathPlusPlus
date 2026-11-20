@@ -177,6 +177,7 @@ impl Default for Holders {
         h.register(finite_big_op);
         h.register(named_ops);
         h.register(crate::calculus::evaluate);
+        h.register(crate::helpers_b::evaluate);
         h
     }
 }
