@@ -68,7 +68,7 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
         | "trapezoidal" | "simpson" => quadrature(&call, ctx),
         "newton" => newton(&call, ctx),
         "euler" | "rk4" | "rungekutta" => stepper(&call, ctx),
-        "taylorbound" | "lagrange" | "remainder" => taylor_bound(&call, ctx),
+        "taylorbound" | "remainder" => taylor_bound(&call, ctx),
         "termsneeded" | "taylorterms" => taylor_terms(&call, ctx),
         "tests" | "convtests" | "convergencetests" => tests(&call, ctx),
         "radius" | "roc" | "radiusofconvergence" => power_series(&call, ctx, true),
