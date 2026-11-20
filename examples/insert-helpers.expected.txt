@@ -82,9 +82,11 @@ slant asymptotes: none
     ≈ 1.414213562
     note: Newton's method from x₀ = 1 converged in 4 iterations
 58: \operatorname{euler} \left( {y' = x + y}, {y(0) = 1}, {0.1}, {10} \right) = ?
-    error: Euler's method is not defined here: it needs x₀, y₀, the step h and the number of steps n
+    ≈ 3.18748492
+    note: Euler's method with h = 0.1: y(1) ≈ 3.18748492 after 10 steps
 60: \operatorname{rk4} \left( {y' = x + y}, {y(0) = 1}, {0.1}, {10} \right) = ?
-    error: RK4 is not defined here: it needs x₀, y₀, the step h and the number of steps n
+    ≈ 3.436559488
+    note: classical Runge–Kutta (RK4) with h = 0.1: y(1) ≈ 3.436559488 after 10 steps
 62: \operatorname{taylorbound} \left( {e^x}, {0}, {3}, {1} \right) = ?
     ≈ 0.1132617429
 64: \operatorname{converges} {\frac{1}{n^2}} = ?

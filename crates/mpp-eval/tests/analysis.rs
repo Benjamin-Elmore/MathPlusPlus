@@ -161,3 +161,38 @@ fn numeric_fallback_is_marked() {
         .collect();
     assert!(notes.iter().any(|n| n.contains('≈')), "{notes:?}");
 }
+
+/// The warnings left on the document.
+fn warnings(ev: &Evaluated) -> Vec<String> {
+    ev.blocks
+        .iter()
+        .flat_map(|b| b.diagnostics.iter())
+        .filter(|d| d.severity == Severity::Warning)
+        .map(|d| d.message.clone())
+        .collect()
+}
+
+#[test]
+fn removable_holes_stay_out_of_the_domain() {
+    // The core simplifies x²/x to x, but the function as written is undefined at 0.
+    let ev = run("$$ \\operatorname{domain} \\frac{x^2}{x} = ? $$\n");
+    no_errors(&ev);
+    assert_eq!(answered(&ev)[0].text.as_deref(), Some("(-∞, 0) ∪ (0, ∞)"));
+    assert!(
+        warnings(&ev)
+            .iter()
+            .any(|w| w.contains("removable discontinuity at x = 0")),
+        "{:?}",
+        warnings(&ev)
+    );
+    // Through a function definition and a helper sentence.
+    let ev = run("$$ h(x) := \\frac{x^2 - 1}{x - 1} $$\n\nFind the domain of $h$.\n");
+    no_errors(&ev);
+    assert_eq!(answered(&ev)[0].text.as_deref(), Some("(-∞, 1) ∪ (1, ∞)"));
+    assert!(warnings(&ev).iter().any(|w| w.contains("hole at (1, 2)")));
+    // A hole is not a vertical asymptote.
+    let src = "$$ k(x) := \\frac{x^2}{x} $$\n\nFind the asymptotes of $k$.\n";
+    let ev = run(src);
+    no_errors(&ev);
+    assert_eq!(row(&answered(&ev)[0], "vertical"), "∅");
+}

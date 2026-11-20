@@ -78,6 +78,9 @@ pub struct Analysis {
     pub steps: Option<Steps>,
     d1: Option<Expr>,
     d2: Option<Expr>,
+    /// Denominators of the function as it was written, before simplification cancelled
+    /// them (`x − 1` in `(x² − 1)/(x − 1)`): `f` is undefined where they vanish.
+    excluded: Vec<Expr>,
 }
 
 /// Attained `(x, f(x))` values and the limits at open ends of an interval.
@@ -176,7 +179,23 @@ impl Analysis {
             steps: None,
             d1: None,
             d2: None,
+            excluded: Vec::new(),
         })
+    }
+
+    /// The denominators of the function as written. Simplifying `(x² − 1)/(x − 1)` to
+    /// `x + 1` loses the point `x = 1` where the original is undefined; with its
+    /// denominators the analysis keeps it out of the domain and reports the hole.
+    pub fn with_excluded(mut self, denominators: Vec<Expr>) -> Analysis {
+        for d in denominators {
+            let d = simplify(&d);
+            if d.contains_sym(&self.var) && !self.excluded.contains(&d) {
+                self.excluded.push(d);
+            }
+        }
+        self.d1 = None;
+        self.d2 = None;
+        self
     }
 
     /// Records the working from now on.
@@ -260,6 +279,8 @@ impl Analysis {
     fn breaks_of(&mut self, g: &Expr) -> MathResult<Zeros> {
         let mut parts = Vec::new();
         trouble(g, &self.var, &mut parts)?;
+        // A point where the function as written is undefined breaks every derivative too.
+        parts.extend(self.excluded.iter().cloned());
         let mut all = Zeros {
             exact: true,
             ..Zeros::default()
@@ -283,6 +304,13 @@ impl Analysis {
     }
 
     fn defined(&self, x: &Expr) -> Option<Expr> {
+        let holed = self
+            .excluded
+            .iter()
+            .any(|d| value_at(d, &self.var, x).is_some_and(|v| util::is_zero(&v)));
+        if holed {
+            return None;
+        }
         value_at(&self.f, &self.var, x)
     }
 
@@ -326,6 +354,23 @@ impl Analysis {
             pieces.push(point(region.hi.clone()));
         }
         let d = RealSet::from_pieces(pieces)?;
+        // Holes: the function as written is undefined there, but the simplified one is
+        // not, so the discontinuity is removable.
+        for c in &cuts {
+            if self.defined(c).is_none() {
+                let v = value_at(&self.f, &self.var, c).or_else(|| {
+                    self.lim(c, LimitDir::Both)
+                        .ok()
+                        .filter(|l| !l.is_infinite() && !l.is_undefined() && num(l).is_some())
+                });
+                if let Some(v) = v {
+                    let x = &self.var;
+                    self.note(format!(
+                        "removable discontinuity at {x} = {c}: f is undefined there but its limit is {v}, so the graph has a hole at ({c}, {v})"
+                    ));
+                }
+            }
+        }
         self.step(
             "find the domain",
             &self.f.clone(),

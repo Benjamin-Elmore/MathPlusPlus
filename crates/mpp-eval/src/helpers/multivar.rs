@@ -201,7 +201,11 @@ pub fn bound_names(name: &str, args: &[Expr]) -> Vec<Name> {
 
 /// Evaluates one of these helpers; `None` for other nodes.
 pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
-    let (op, sub, _, items) = parts(e)?;
+    let (op, sub, _, mut items) = parts(e)?;
+    // The multivariable helpers work on the function itself.
+    if let Some(first) = items.first_mut() {
+        *first = super::unwrap_where_defined(first).0;
+    }
     Some(run(&op, &sub, &items, ctx))
 }
 

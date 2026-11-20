@@ -265,6 +265,28 @@ fn eliminate(fs: &[Expr], vars: &[String], depth: usize) -> Option<Vec<Vec<(Stri
     if live.is_empty() || depth > MAX_SYSTEM {
         return Some(vec![Vec::new()]);
     }
+    // A product is zero when one of its factors is: x·(1 − 4λ²) = 0 splits into x = 0
+    // and 1 − 4λ² = 0, so no branch is lost to dividing by a factor that may vanish.
+    for (i, f) in live.iter().enumerate() {
+        let factors = unknown_factors(f, vars);
+        if factors.len() < 2 {
+            continue;
+        }
+        let mut out: Vec<Vec<(String, Expr)>> = Vec::new();
+        for g in factors {
+            let mut branch = live.clone();
+            branch[i] = g;
+            for a in eliminate(&branch, vars, depth + 1)? {
+                if !out.contains(&a) {
+                    out.push(a);
+                }
+                if out.len() > MAX_BRANCHES {
+                    return None;
+                }
+            }
+        }
+        return Some(out);
+    }
     let (i, v) = live
         .iter()
         .enumerate()
@@ -274,6 +296,19 @@ fn eliminate(fs: &[Expr], vars: &[String], depth: usize) -> Option<Vec<Vec<(Stri
         })
         .min_by_key(|(d, _, _)| *d)
         .map(|(_, i, v)| (i, v.clone()))?;
+    // `c·v + r = 0` with `c` depending on other unknowns: v = −r/c holds only where
+    // c ≠ 0, so the case c = 0 (then r = 0 too) is followed as its own branch.
+    let mut extra: Vec<Vec<(String, Expr)>> = Vec::new();
+    if let Some(c) = live[i].as_poly(&v) {
+        if let [r, a] = c.as_slice() {
+            if vars.iter().any(|w| a.contains_sym(w)) {
+                let mut branch = live.clone();
+                branch[i] = a.clone();
+                branch.push(r.clone());
+                extra = eliminate(&branch, vars, depth + 1)?;
+            }
+        }
+    }
     let mut ctx = Ctx::new();
     let sols = solve(&live[i], &v, None, &mut ctx).ok()?;
     let values = match sols {
@@ -303,7 +338,32 @@ fn eliminate(fs: &[Expr], vars: &[String], depth: usize) -> Option<Vec<Vec<(Stri
             }
         }
     }
+    for a in extra {
+        if !out.contains(&a) {
+            out.push(a);
+        }
+    }
     Some(out)
+}
+
+/// The factors of `f` that contain an unknown (each once, powers dropped), when `f`
+/// factors into a product.
+fn unknown_factors(f: &Expr, vars: &[String]) -> Vec<Expr> {
+    let factored = crate::factor::factor(f);
+    let ExprNode::Mul(parts) = factored.node() else {
+        return Vec::new();
+    };
+    let mut out: Vec<Expr> = Vec::new();
+    for p in parts {
+        let base = match p.node() {
+            ExprNode::Pow(b, k) if k.as_number().is_some_and(|n| n.is_positive()) => b.clone(),
+            _ => p.clone(),
+        };
+        if vars.iter().any(|v| base.contains_sym(v)) && !out.contains(&base) {
+            out.push(base);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -372,6 +432,44 @@ mod tests {
             .collect();
         xs.sort_by(f64::total_cmp);
         assert_eq!(xs, vec![-4.0, 3.0]);
+    }
+
+    #[test]
+    fn lagrange_systems_keep_every_branch() {
+        // y = 2λx, x = 2λy, x² + y² = 1: substituting gives x(1 − 4λ²) = 0, and dividing
+        // by 1 − 4λ² would lose every solution.
+        let mut ctx = Ctx::new();
+        let two = Expr::int(2);
+        let eqs = vec![
+            Expr::equation(s("y"), two.clone() * s("λ") * s("x")),
+            Expr::equation(s("x"), two * s("λ") * s("y")),
+            Expr::equation(s("x").pow(2) + s("y").pow(2), Expr::one()),
+        ];
+        let sol = solve_system(&eqs, &vars(&["x", "y", "λ"]), &mut ctx).unwrap();
+        assert!(sol.exact);
+        assert_eq!(sol.assignments.len(), 4, "{sol:?}");
+        for a in &sol.assignments {
+            let l = a[2].1.eval_f64(&EmptyEnv).unwrap();
+            assert!((l.abs() - 0.5).abs() < 1e-12);
+        }
+        // A coefficient that may vanish: (λ − 1)x = λ − 1, λ² = 1 has λ = 1 with any x.
+        let eqs = vec![
+            Expr::equation((s("λ") - Expr::one()) * s("x"), s("λ") - Expr::one()),
+            Expr::equation(s("λ").pow(2), Expr::one()),
+        ];
+        let sol = solve_system(&eqs, &vars(&["x", "λ"]), &mut ctx).unwrap();
+        assert!(
+            sol.assignments
+                .iter()
+                .any(|a| a.iter().any(|(v, e)| v == "λ" && *e == Expr::int(-1))),
+            "{sol:?}"
+        );
+        assert!(
+            sol.assignments
+                .iter()
+                .any(|a| a.iter().any(|(v, e)| v == "λ" && e.is_one())),
+            "{sol:?}"
+        );
     }
 
     #[test]

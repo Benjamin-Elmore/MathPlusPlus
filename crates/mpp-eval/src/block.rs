@@ -2,6 +2,7 @@
 
 mod assume;
 mod data;
+mod ode;
 mod sentences;
 mod units;
 
@@ -79,6 +80,7 @@ pub(crate) fn run_block(block: &Block, env: &mut Env, inputs: &Inputs<'_>) -> Ou
         positional: false,
         volatile: false,
         local_assumptions: Vec::new(),
+        unknown_fns: Vec::new(),
     };
     run.block(block);
     run.finish()
@@ -104,6 +106,8 @@ struct Run<'a, 'e> {
     volatile: bool,
     /// Conditions in brackets after a query in the display block being run.
     local_assumptions: Vec<Expr>,
+    /// Unknown functions of the differential equation on the line being run.
+    unknown_fns: Vec<String>,
 }
 
 /// A read-only view of the environment that records what it is asked.
@@ -251,12 +255,28 @@ impl Run<'_, '_> {
         }
     }
 
+    /// Keeps the denominators a function was written with (hidden, under
+    /// [`crate::helpers::denominators_key`]), so the helpers see where the function as
+    /// written is undefined even when its body simplified them away. Written for every
+    /// function definition, so a redefinition replaces them.
+    fn remember_denominators(&mut self, function: &str, denominators: Vec<Expr>, span: Span) {
+        let key = crate::helpers::denominators_key(function);
+        let b = Arc::new(Binding::Variable {
+            kind: VarKind::Variable,
+            value: Expr::new(ExprNode::Tuple(denominators)),
+            origin: self.origin(span),
+        });
+        self.env.insert(key.clone(), b.clone());
+        self.effects.push((key, b));
+    }
+
     // ---- lowering and resolving --------------------------------------------
 
     fn lower(&self, node: &Node, locals: &[String]) -> Result<Expr, Located> {
         let view = self.view();
         Lowerer::new(&view)
             .with_locals(locals.iter().cloned())
+            .with_unknown_functions(self.unknown_fns.iter().cloned())
             .lower(node)
     }
 
@@ -267,11 +287,33 @@ impl Run<'_, '_> {
         params: &[String],
         locals: &[String],
     ) -> Result<Expr, Located> {
+        self.lower_function_body(node, name, params, locals)
+            .map(|(e, _)| e)
+    }
+
+    /// Lowers a function body, with the denominators it was written with.
+    fn lower_function_body(
+        &self,
+        node: &Node,
+        name: &str,
+        params: &[String],
+        locals: &[String],
+    ) -> Result<(Expr, Vec<Expr>), Located> {
         let view = self.view();
-        Lowerer::new(&view)
+        let mut lowerer = Lowerer::new(&view)
             .with_locals(locals.iter().cloned())
             .defining(name, params)
-            .lower(node)
+            .with_unknown_functions(self.unknown_fns.iter().cloned());
+        let e = lowerer.lower(node)?;
+        Ok((e, lowerer.take_denominators()))
+    }
+
+    /// Lowers the function a helper analyses (see [`Lowerer::lower_helper_target`]).
+    fn lower_helper_target(&self, node: &Node) -> Result<Expr, Located> {
+        let view = self.view();
+        Lowerer::new(&view)
+            .with_unknown_functions(self.unknown_fns.iter().cloned())
+            .lower_helper_target(node)
     }
 
     fn resolve_full(
@@ -409,7 +451,7 @@ impl Run<'_, '_> {
     ) {
         let mut lr = LineResult::new(span, LineKind::Helper);
         let lowered = (|| -> Result<Expr, Located> {
-            let t = self.lower(target, &[])?;
+            let t = self.lower_helper_target(target)?;
             let i = interval.map(|n| self.lower(n, &[])).transpose()?;
             let a = match at {
                 Some(Clause::Where { name, value, .. }) => Some(Expr::equation(
@@ -461,6 +503,12 @@ impl Run<'_, '_> {
     }
 
     fn line(&mut self, line: &Line, place: Place) {
+        self.unknown_fns = self.unknown_functions_of(line);
+        self.statement_line(line, place);
+        self.unknown_fns.clear();
+    }
+
+    fn statement_line(&mut self, line: &Line, place: Place) {
         let mut where_names: Vec<String> = Vec::new();
         let mut locals = Locals::new();
         let mut conditions: Vec<&Node> = Vec::new();
@@ -702,7 +750,7 @@ impl Run<'_, '_> {
         };
         let mut locals: Vec<String> = s.names.to_vec();
         locals.extend(names.iter().cloned());
-        let lowered = match self.lower_in_function(body, &key, &names, &locals) {
+        let (lowered, denominators) = match self.lower_function_body(body, &key, &names, &locals) {
             Ok(e) => e,
             Err(l) => return self.located(l),
         };
@@ -753,6 +801,7 @@ impl Run<'_, '_> {
                 origin: self.origin(line.span),
             },
         );
+        self.remember_denominators(&key, denominators, line.span);
         let mut lr = LineResult::new(
             line.span,
             LineKind::Definition {
@@ -918,6 +967,9 @@ impl Run<'_, '_> {
             }
         };
         lr.input = Some(input.clone());
+        // `y'' + y = 0 = ?`: a differential equation goes to the solver with the
+        // line's conditions.
+        let input = self.ode_input(&input, s).unwrap_or(input);
         let numeric = mode == QueryMode::Approx;
         let logging = steps || self.inputs.show_steps;
         let mut resolved = self.resolve_full(&input, s.locals, &[], logging, numeric);

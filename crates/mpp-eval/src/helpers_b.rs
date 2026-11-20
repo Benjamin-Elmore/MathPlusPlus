@@ -777,7 +777,8 @@ fn unknown_function_derivative(e: &Expr) -> Option<Expr> {
     Some(e.clone())
 }
 
-fn is_differential_equation_or_system(e: &Expr) -> bool {
+/// True when `e` is a differential equation or a tuple of them.
+pub(crate) fn is_differential_equation_or_system(e: &Expr) -> bool {
     match e.node() {
         ExprNode::Tuple(items) => {
             !items.is_empty() && items.iter().all(tools_b::ode::is_differential_equation)
@@ -967,10 +968,44 @@ mod ode {
     }
 
     fn system(eqs: &[Expr], rest: &[Expr], ctx: &Ctx<'_>) -> MathResult<Expr> {
-        let initial: Option<Vec<Expr>> = rest.iter().find_map(|a| match a.node() {
+        let mut initial: Option<Vec<Expr>> = rest.iter().find_map(|a| match a.node() {
             ExprNode::Tuple(v) if v.iter().all(Expr::is_constant) => Some(v.clone()),
             _ => None,
         });
+        // `x(0) = 1, y(0) = 0`: starting values at 0 written as conditions, put in the
+        // order of the solver's unknowns.
+        let at_zero: Vec<(String, Expr)> = rest
+            .iter()
+            .filter_map(|a| match a.node() {
+                ExprNode::Relation(RelOp::Eq, l, r) => match l.node() {
+                    ExprNode::Apply(f, at) if at.len() == 1 && at[0].is_zero() => {
+                        Some((f.to_string(), r.clone()))
+                    }
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect();
+        if initial.is_none() && !at_zero.is_empty() {
+            let general = systems::solve_system(eqs, None, None)?;
+            let ordered: Option<Vec<Expr>> = general
+                .unknowns
+                .iter()
+                .map(|u| at_zero.iter().find(|(f, _)| f == u).map(|(_, v)| v.clone()))
+                .collect();
+            match ordered {
+                Some(values) if values.len() == at_zero.len() => initial = Some(values),
+                _ => {
+                    return Err(MathError::Domain {
+                        function: "dsolve".into(),
+                        detail: format!(
+                            "a system needs one starting value at 0 for each of {}",
+                            general.unknowns.join(", ")
+                        ),
+                    })
+                }
+            }
+        }
         let sol = logged(ctx, |s| systems::solve_system(eqs, initial.as_deref(), s))?;
         ctx.note(format!(
             "matrix exponential e^(At) = L⁻¹{{(sI − A)⁻¹}}; the eigenvalues of A are {}",

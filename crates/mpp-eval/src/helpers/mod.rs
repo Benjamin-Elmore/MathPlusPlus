@@ -59,6 +59,7 @@ const OPS: &[(&str, Op)] = &[
     ("normal", Op::Normal),
     ("linearisation", Op::Linearisation),
     ("linearization", Op::Linearisation),
+    ("linearise", Op::Linearisation),
     ("mvt", Op::MeanValue),
     ("ivt", Op::IntermediateValue),
     ("analyse", Op::Analyse),
@@ -92,6 +93,36 @@ pub fn sentence_op(h: HelperName) -> &'static str {
         HelperName::NormalLine => "normal",
         HelperName::Linearisation => "linearisation",
     }
+}
+
+/// `where defined(f, d₁, d₂, …)`: the function a helper analyses with the denominators it
+/// was written with, which simplification may have cancelled (see
+/// [`crate::lower::Lowerer::lower_helper_target`]).
+pub const WHERE_DEFINED: &str = "where defined";
+
+/// Wraps `f` with its denominators (just `f` when there are none).
+pub fn where_defined(f: Expr, denominators: Vec<Expr>) -> Expr {
+    if denominators.is_empty() {
+        return f;
+    }
+    let mut args = vec![f];
+    args.extend(denominators);
+    Expr::apply(WHERE_DEFINED, args)
+}
+
+/// `(f, denominators)` from a [`where_defined`] wrapper (no denominators otherwise).
+pub fn unwrap_where_defined(e: &Expr) -> (Expr, Vec<Expr>) {
+    match e.node() {
+        ExprNode::Apply(name, args) if &**name == WHERE_DEFINED && !args.is_empty() => {
+            (args[0].clone(), args[1..].to_vec())
+        }
+        _ => (e.clone(), Vec::new()),
+    }
+}
+
+/// The environment key under which a user function's denominators are kept.
+pub fn denominators_key(function: &str) -> String {
+    format!("denominators:{function}")
 }
 
 fn empty() -> Expr {
@@ -205,6 +236,8 @@ fn needs_interval(op: Op) -> bool {
 }
 
 fn run(op: Op, f: &Expr, sub: &Expr, sup: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
+    let (f, denominators) = unwrap_where_defined(f);
+    let f = &f;
     let point = point_of(sub);
     let at =
         match (&point, needs_point(op)) {
@@ -229,7 +262,8 @@ fn run(op: Op, f: &Expr, sub: &Expr, sup: &Expr, ctx: &Ctx<'_>) -> MathResult<Ex
     }
     let var = variable_of(f, point.as_ref().map(|(v, _)| v.as_str()))?;
     let theorem = needs_interval(op);
-    let mut a = Analysis::new(f, &var, if theorem { None } else { interval.clone() })?;
+    let mut a = Analysis::new(f, &var, if theorem { None } else { interval.clone() })?
+        .with_excluded(denominators);
     if ctx.logging() {
         a = a.with_steps();
     }

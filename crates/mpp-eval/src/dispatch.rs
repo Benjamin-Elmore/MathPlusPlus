@@ -102,7 +102,6 @@ enum Route {
 
 /// Insert-menu helper names and the evaluator names they stand for.
 const ALIASES: &[(&str, &str)] = &[
-    ("linearise", "linearisation"),
     ("converges", "tests"),
     ("convergence", "tests"),
     ("directional", "dirderiv"),
@@ -133,13 +132,23 @@ const FROM_TO: &[&str] = &[
 fn routed(name: &str) -> bool {
     matches!(
         name,
-        "dsolve" | "rk4" | "rk4table" | "laplace" | "invlaplace" | "euler" | "tangentplane"
+        "dsolve"
+            | "rk4"
+            | "rk4table"
+            | "laplace"
+            | "invlaplace"
+            | "euler"
+            | "tangentplane"
+            | "solve"
     ) || ALIASES.iter().any(|(a, _)| *a == name)
         || FROM_TO.contains(&name)
 }
 
 /// Asked before every other holder: routes shared operator names by argument shape.
 pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    if let Some(v) = step_or_delta(e) {
+        return Some(Ok(v));
+    }
     let call = Call::read(e)?;
     if !routed(&call.name) {
         return None;
@@ -147,6 +156,19 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     if let Some((_, to)) = ALIASES.iter().find(|(a, _)| *a == call.name) {
         let renamed = adapt_alias(&call.renamed(to));
         return Some(crate::holders::evaluate_holder(&renamed.to_expr(), ctx));
+    }
+    if call.name == "solve" {
+        // `\operatorname{solve}_{y(x)} (y'' + y = 0)` is the ODE toolkit's; any other
+        // `solve` is the algebraic solver's.
+        let ode = call
+            .args
+            .first()
+            .is_some_and(crate::helpers_b::is_differential_equation_or_system);
+        return if ode {
+            crate::helpers_b::evaluate(e, ctx)
+        } else {
+            None
+        };
     }
     if call.name == "tangentplane" {
         // `tangentplane_{(1, 2)} f`: the menu writes the point without its variables.
@@ -196,6 +218,34 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
             }
         }
     }
+}
+
+/// `H(c)` and `δ(c)` at a real number `c ≠ 0` (at 0 the conventions differ, so the call
+/// stays as written).
+fn step_or_delta(e: &Expr) -> Option<Expr> {
+    let ExprNode::Apply(name, args) = e.node() else {
+        return None;
+    };
+    let [arg] = args.as_slice() else {
+        return None;
+    };
+    if !matches!(&**name, "H" | "delta") || !arg.is_constant() {
+        return None;
+    }
+    let x = arg.eval_f64(&mpp_core::EmptyEnv).ok()?;
+    // An exact number decides its sign exactly; anything else must be clearly away
+    // from 0, so rounding (sin π ≈ 1e−16) cannot pick the wrong side.
+    let decided = match arg.as_number() {
+        Some(n) if n.is_exact() => x != 0.0,
+        _ => x.abs() > 1e-9,
+    };
+    if !x.is_finite() || !decided {
+        return None;
+    }
+    Some(match (&**name, x > 0.0) {
+        ("H", true) => Expr::one(),
+        _ => Expr::zero(),
+    })
 }
 
 /// True when `op(args…)` (without scripts) is the domain registry's form of an ODE

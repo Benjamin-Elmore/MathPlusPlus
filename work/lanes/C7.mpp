@@ -33,6 +33,18 @@ Entry points: `mpp_core::tools_b::ode::{dsolve, solve_parsed, solve_numeric, par
 5. **Name overlap with C4 (tools-a).** C4 lists "Laplace transforms for ODEs". helpers_b registers `laplace` and `invlaplace`; if tools-a adds the same names, keep one (the core code here is `tools_b::ode::laplace`), whichever the integrator prefers.
 6. **Primes on a function named `x`.** `x'` lowers to `d/dx x = 1`, so systems use other names with primes (`u' = v`) or `\frac{dx}{dt}`.
 
+**Status (engine lane, 2026-11-20):** 1, 2, 3, 4 and 6 are done. A line's unknown functions
+are the names with no value that it differentiates (`y'`, `\frac{dy}{dx}`, `\dot x`, the
+`y(x)` under `\operatorname{solve}`); on that line `y(0)` lowers to `Apply(y, [0])`, `y'(0)`
+to `Apply(y′, [0])` and `y(x)` to `y`. A bare equation in an unknown function, with or
+without `= ?`, goes to the solver with the line's conditions; `\begin{cases}` with no
+conditions is a system; primes on `x` mean d/dt when `x` is itself an unknown function;
+`x(0) = 1, y(0) = 0` give a system its starting values. `H(…)` and `δ(…)` are calls when the
+names are free, `H(c)` and `δ(c)` evaluate for numbers `c ≠ 0`, and `\erf`, `\Si`, `\Ci` are
+in the symbol table. 5: one dispatcher (`mpp-eval/src/dispatch.rs`) sends `laplace` to this
+toolkit, with the multivariable table as a fallback; `dsolve` and `rk4` go to the registry
+or here by the shape of their arguments.
+
 ## Guide text (for `docs/guide.mpp`)
 
 ### Differential equations
@@ -41,7 +53,7 @@ Entry points: `mpp_core::tools_b::ode::{dsolve, solve_parsed, solve_numeric, par
 
 $$ \operatorname{dsolve}(y'' + 2y' + 5y = 0) = ? $$
 
-gives $y(x) = C_1 e^{-x}\cos 2x + C_2 e^{-x}\sin 2x$ (constant coefficients). Starting values are a tuple $(x_0, y_0, y'_0, \dots)$: `\operatorname{dsolve}(y'' + y = 0, (0, 1, 0))` gives $y(x) = \cos x$.
+gives $y(x) = C_1 e^{-x}\cos 2x + C_2 e^{-x}\sin 2x$ (constant coefficients). Starting values are written as conditions after the equation, `$$ y'' + y = 0, \quad y(0) = 1, y'(0) = 0 $$`, which shows $y(x) = \cos x$ (no operator needed: an equation with a derivative of a name that has no value is solved as a differential equation), or as a tuple $(x_0, y_0, y'_0, \dots)$: `\operatorname{dsolve}(y'' + y = 0, (0, 1, 0))`.
 
 **Methods.** First order: separable, linear (integrating factor), Bernoulli, homogeneous $y' = F(y/x)$, exact (and made exact by an integrating factor), Riccati (give a known solution as `y_1 = …` or let Math++ find a simple one), Clairaut (with its singular solution). Higher order: constant coefficients of any order, undetermined coefficients, variation of parameters, Cauchy–Euler, reduction of order, and equations without $y$. Laplace transforms handle step and delta forcing (`\operatorname{H}(t - 1)`, `\operatorname{delta}(t - \pi)`); ask for them with `\operatorname{dsolve}_{laplace}`. Linear systems $\mathbf x' = A\mathbf x + \mathbf f$ are a tuple of equations: `\operatorname{dsolve}((u' = v, v' = -u), (1, 0))`; the note names the type of equilibrium. Equations with variable coefficients and no closed form get a power series (or a Frobenius series, `_{frobenius}`).
 
