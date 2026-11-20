@@ -10,6 +10,7 @@
 pub mod calculus;
 pub mod fieldkit;
 pub mod linalg;
+pub mod nt_ext;
 pub mod number_theory;
 pub mod ode;
 pub mod sets;
@@ -24,6 +25,7 @@ use crate::steps::Steps;
 
 pub use calculus::{BasicCalculus, Calculus};
 pub use linalg::{LinearAlgebra, Matrix};
+pub use nt_ext::NumberTheoryExt;
 pub use number_theory::NumberTheory;
 pub use ode::Odes;
 pub use sets::{RealSet, Sets};
@@ -136,6 +138,7 @@ impl Registry {
         r.register(Box::new(NumberTheory));
         r.register(Box::new(Statistics));
         r.register(Box::new(SpecialFunctions));
+        r.register(Box::new(NumberTheoryExt));
         r
     }
 
