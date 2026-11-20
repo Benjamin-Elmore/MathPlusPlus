@@ -575,8 +575,21 @@ impl<'a> Lowerer<'a> {
                 if let Some(params) = self.function_params(&key) {
                     return self.prime_call(&key, &params, *count, args, span);
                 }
+                // A built-in function (Γ′, ψ′) is never an unknown of a differential
+                // equation; a textbook letter (W, J_0) is one when the line says so.
+                let builtin = Func::from_name(&key).is_some();
+                if let ([arg], true) = (args, builtin) {
+                    if let Some(d) = self.known_prime(base, &key, *count, arg, span)? {
+                        return Ok(d);
+                    }
+                }
                 if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
                     return self.unknown_fn_call(&key, *count, arg);
+                }
+                if let ([arg], false) = (args, builtin) {
+                    if let Some(d) = self.known_prime(base, &key, *count, arg, span)? {
+                        return Ok(d);
+                    }
                 }
             }
         }
@@ -667,6 +680,35 @@ impl<'a> Lowerer<'a> {
         }
         let at = Expr::equation(Expr::sym(param), arg);
         Ok(Expr::apply("subs", vec![inner, at]))
+    }
+
+    /// `Γ'(1)`, `\operatorname{erf}''(x)`, `J_0'(x)`, `W'(x)`: the derivative of a built-in
+    /// or textbook function of one variable, at the argument. `None` when `key` is not
+    /// one (or the document gives the name a meaning of its own).
+    fn known_prime(
+        &mut self,
+        base: &Node,
+        key: &str,
+        count: u8,
+        arg: &Node,
+        span: Span,
+    ) -> Result<Option<Expr>, Located> {
+        const VAR: &str = "#prime";
+        let t = Expr::sym(VAR);
+        let f = if let Some(tb) = crate::fields_wire::textbook(self.scope, &self.locals, base, 1) {
+            tb.apply(vec![t])
+        } else if !self.is_local(key)
+            && self.scope.binding(key).is_none()
+            && Func::from_name(key)
+                .is_some_and(|f| f.arity() == mpp_core::functions::Arity::Exactly(1))
+        {
+            Expr::call(key, vec![t]).map_err(math(span))?
+        } else {
+            return Ok(None);
+        };
+        let d = f.diff(VAR, u32::from(count)).map_err(math(span))?;
+        let at = self.lower(arg)?;
+        Ok(Some(d.subs(VAR, &at).simplify()))
     }
 
     /// `f'` with no argument; `y'` for a name that is not a function means d/dx.

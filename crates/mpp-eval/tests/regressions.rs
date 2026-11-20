@@ -101,3 +101,37 @@ fn hamilton_with_an_undefined_hamiltonian_is_an_error() {
         "((q, p), (p, -q))"
     );
 }
+
+#[test]
+fn derivatives_of_special_functions() {
+    // Γ′(1) = Γ(1) ψ(1) = −γ (it used to come out as 0).
+    assert_eq!(answer(r"$$ \Gamma'(1) = ? $$"), "-γ");
+    assert_eq!(approx(r"$$ \Gamma'(1) \approx ? $$"), "-0.5772156649");
+    assert_eq!(answer(r"$$ \psi(4) = ? $$"), "-γ + 11/6");
+    // ψ′ is the trigamma function: ψ′(1) = π²/6.
+    assert_eq!(approx(r"$$ \psi'(1) \approx ? $$"), "1.644934067");
+    assert_eq!(
+        answer(r"$$ \frac{d}{dx} \operatorname{erf}(x) = ? $$"),
+        "2*e^(-x^2)/sqrt(π)"
+    );
+    assert_eq!(
+        answer(r"$$ \frac{d}{dx} \operatorname{Si}(x) = ? $$"),
+        "sin(x)/x"
+    );
+    assert_eq!(
+        answer(r"$$ \frac{d}{dx} \operatorname{Ci}(x) = ? $$"),
+        "cos(x)/x"
+    );
+    // J₀′ = −J₁, W′ = W/(x(1 + W)), and the elliptic integrals (DLMF 19.4.1).
+    assert_eq!(answer(r"$$ \frac{d}{dx} J_0(x) = ? $$"), "-besselj(1, x)");
+    assert_eq!(approx(r"$$ J_0'(2) \approx ? $$"), "-0.5767248078");
+    assert_eq!(approx(r"$$ W'(1) \approx ? $$"), "0.3618962566");
+    assert_eq!(
+        answer(r"$$ \frac{d}{dk} E(k) = ? $$"),
+        "(ellipe(k) - ellipk(k))/k"
+    );
+    assert_eq!(
+        answer(r"$$ \frac{d}{dk} K(k) = ? $$"),
+        "ellipe(k)/(k*(-k^2 + 1)) - ellipk(k)/k"
+    );
+}

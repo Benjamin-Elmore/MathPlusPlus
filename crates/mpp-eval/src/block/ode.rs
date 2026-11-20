@@ -19,7 +19,11 @@ impl Run<'_, '_> {
         let mut found = Vec::new();
         let mut visit_node = |n: &Node| collect_unknowns(n, &mut found);
         match &line.statement {
-            Statement::Query { expr, .. } => visit_node(expr),
+            // A query is a differential equation only when it holds an equation (or
+            // a solver): `J_0'(2) ≈ ?` asks for a derivative, not for an unknown.
+            Statement::Query { expr, .. } if has_equation(expr) || !line.clauses.is_empty() => {
+                visit_node(expr)
+            }
             Statement::Relation(n) => visit_node(n),
             Statement::Check { lhs, rhs } => {
                 visit_node(lhs);
@@ -132,6 +136,19 @@ fn has_unknown_derivative(e: &Expr, unknowns: &[String]) -> bool {
 fn primed_name(f: &str, y: &str) -> bool {
     f.strip_prefix(y)
         .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| matches!(c, '′' | '\'')))
+}
+
+/// True when `node` holds an equation or a `solve`/`dsolve` operator.
+fn has_equation(node: &Node) -> bool {
+    match &node.kind {
+        NodeKind::Relation { .. } => true,
+        NodeKind::NamedOp(op) if matches!(op.name.as_str(), "solve" | "dsolve") => true,
+        _ => {
+            let mut found = false;
+            visit::children(node, &mut |c| found = found || has_equation(c));
+            found
+        }
+    }
 }
 
 /// Collects the names differentiated in `node` (and the `y` of `y(x)` under

@@ -287,6 +287,8 @@ fn outer_derivative(f: Func, u: &Expr) -> Option<Expr> {
         Func::Si => mul(vec![one(Func::Sin), pow(u.clone(), Expr::int(-1))]),
         Func::Ci => mul(vec![one(Func::Cos), pow(u.clone(), Expr::int(-1))]),
         Func::Gamma => mul(vec![one(Func::Gamma), one(Func::Digamma)]),
+        // ψ′ = ψ^{(1)}, the trigamma function.
+        Func::Digamma => Expr::apply("polygamma", vec![Expr::one(), u.clone()]),
         Func::Factorial => {
             let up = add(vec![u.clone(), Expr::one()]);
             mul(vec![one(Func::Factorial), func(Func::Digamma, vec![up])])

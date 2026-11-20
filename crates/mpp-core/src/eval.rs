@@ -157,6 +157,7 @@ fn real(e: &Expr, env: &dyn Env) -> MathResult<f64> {
                 .map(|a| real(a, env))
                 .collect::<MathResult<Vec<_>>>()?;
             env.call_real(name, &vals)
+                .or_else(|| crate::domains::special::call_real(name, &vals))
                 .unwrap_or_else(|| Err(MathError::UnknownFunction(name.to_string())))
         }
         ExprNode::BigOp {
@@ -362,6 +363,7 @@ pub fn eval_complex_with(e: &Expr, env: &dyn Env) -> MathResult<Complex64> {
                 .map(|a| eval_complex_with(a, env))
                 .collect::<MathResult<Vec<_>>>()?;
             env.call_complex(name, &vals)
+                .or_else(|| crate::domains::special::call_complex(name, &vals))
                 .unwrap_or_else(|| Err(MathError::UnknownFunction(name.to_string())))
         }
         ExprNode::BigOp {

@@ -13,6 +13,9 @@ use crate::number::Number;
 /// A symbol or function name.
 pub type Name = Arc<str>;
 
+/// The name of the exact Euler–Mascheroni constant (see [`Expr::euler_gamma`]).
+pub const EULER_GAMMA: &str = "eulergamma";
+
 /// Named constants.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Constant {
@@ -202,6 +205,12 @@ impl Expr {
     /// π.
     pub fn pi() -> Expr {
         Expr::constant(Constant::Pi)
+    }
+
+    /// The Euler–Mascheroni constant γ = −ψ(1) = 0.5772…, kept exact as the
+    /// zero-argument application [`EULER_GAMMA`] (shown `γ`).
+    pub fn euler_gamma() -> Expr {
+        Expr::apply(EULER_GAMMA, Vec::new())
     }
 
     /// e.

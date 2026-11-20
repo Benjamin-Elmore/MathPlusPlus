@@ -8,7 +8,9 @@ use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
-use crate::expr::{BigOpKind, Constant, Expr, ExprNode, LimitDir, LogicOp, Name, RelOp};
+use crate::expr::{
+    BigOpKind, Constant, Expr, ExprNode, LimitDir, LogicOp, Name, RelOp, EULER_GAMMA,
+};
 use crate::functions::Func;
 use crate::number::{format_f64, Number};
 use crate::simplify::{split_coeff, split_pow, with_coeff};
@@ -285,6 +287,9 @@ fn plain(e: &Expr) -> (String, Prec) {
                 .join(" ∪ "),
             Prec::Add,
         ),
+        ExprNode::Apply(name, args) if args.is_empty() && &**name == EULER_GAMMA => {
+            ("γ".into(), Prec::Atom)
+        }
         ExprNode::Apply(name, args) => (format!("{name}({})", plain_list(args)), Prec::Atom),
         ExprNode::Relation(op, a, b) => {
             let (sa, pa) = plain(a);
@@ -791,6 +796,9 @@ fn latex(e: &Expr) -> (String, Prec) {
                 .join(" \\cup "),
             Prec::Add,
         ),
+        ExprNode::Apply(name, args) if args.is_empty() && &**name == EULER_GAMMA => {
+            ("\\gamma".into(), Prec::Atom)
+        }
         ExprNode::Apply(name, args) => (
             format!("{}\\left({}\\right)", latex_name(name), latex_list(args)),
             Prec::Atom,

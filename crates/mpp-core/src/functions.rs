@@ -173,7 +173,7 @@ impl Func {
             "ceil" => Func::Ceil,
             "factorial" => Func::Factorial,
             "Gamma" | "gamma" | "Γ" => Func::Gamma,
-            "digamma" | "psi" => Func::Digamma,
+            "digamma" | "psi" | "ψ" => Func::Digamma,
             "min" => Func::Min,
             "max" => Func::Max,
             "gcd" => Func::Gcd,
@@ -298,7 +298,7 @@ pub fn func(f: Func, args: Vec<Expr>) -> Expr {
         Func::Floor | Func::Ceil => floor_ceil(f, &args[0]),
         Func::Factorial => factorial(&args[0]),
         Func::Gamma => gamma(&args[0]),
-        Func::Digamma => None,
+        Func::Digamma => digamma(&args[0]),
         Func::Min | Func::Max => return min_max(f, args),
         Func::Gcd | Func::Lcm => gcd_lcm(f, &args),
         Func::Binomial => binomial(&args[0], &args[1]),
@@ -684,6 +684,32 @@ fn factorial(x: &Expr) -> Option<Expr> {
         return gamma(&Expr::ratio(r + BigRational::one()));
     }
     None
+}
+
+/// Exact digamma values (DLMF 5.4.12–5.4.15): ψ(n) = −γ + H_{n−1} for whole n ≥ 1 and
+/// ψ(n + 1/2) = −γ − 2 ln 2 + Σ_{k=1}^{n} 2/(2k − 1) for whole n ≥ 0; the poles
+/// n ≤ 0 are undefined.
+fn digamma(x: &Expr) -> Option<Expr> {
+    const MAX: i64 = 10_000;
+    let r = x.as_number().and_then(Number::as_rational)?;
+    let gamma = -Expr::euler_gamma();
+    if r.is_integer() {
+        let n = r.to_integer();
+        if !n.is_positive() {
+            return Some(Expr::undefined());
+        }
+        let n = i64::try_from(n).ok().filter(|n| *n <= MAX)?;
+        let harmonic: BigRational = (1..n).map(|k| q(1, k)).sum();
+        return Some((gamma + Expr::ratio(harmonic)).simplify());
+    }
+    if r.denom() != &BigInt::from(2) {
+        return None;
+    }
+    let m = (r - q(1, 2)).to_integer();
+    let m = i64::try_from(m).ok().filter(|m| (0..=MAX).contains(m))?;
+    let sum: BigRational = (1..=m).map(|k| q(2, 2 * k - 1)).sum();
+    let ln2 = func(Func::Ln, vec![Expr::int(2)]);
+    Some((gamma - Expr::int(2) * ln2 + Expr::ratio(sum)).simplify())
 }
 
 fn gamma(x: &Expr) -> Option<Expr> {
