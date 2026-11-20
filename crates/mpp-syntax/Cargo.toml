@@ -6,3 +6,7 @@ license.workspace = true
 description = "Lexer and parser for Math++ source files"
 
 [dependencies]
+
+[dev-dependencies]
+insta = "1.49"
+proptest = "1.12"

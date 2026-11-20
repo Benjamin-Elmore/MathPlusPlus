@@ -65,9 +65,9 @@ core          = definition | query | check | relation_chain | name_list ;
 definition    = def_head (":=" | "≡" | "\equiv") expr ;
 def_head      = name [ "(" name { "," name } ")" ]         (* f(x, y) := … *)
               | name "_{" name "+1}"                       (* recurrence: a_{n+1} := … *)
-              | name "_" integer ;                         (* initial term: a_1 := 1 *)
+              | name "_" integer ;                         (* initial term: a_1 := 1; plain variable v_0 if no recurrence for v *)
 query         = expr ( "=" | "≈" | "\approx" ) "?" [ "!" ] ;
-check         = expr "\overset{?}{=}" expr ;
+check         = expr ( "\overset{?}{=}" | "≟" | "?=" ) expr ;
 relation_chain= expr { relation expr } ;
 name_list     = name { "," name } ;                        (* only inside Using … from *)
 clause        = name "=" expr                              (* where-binding *)
@@ -77,6 +77,8 @@ clause        = name "=" expr                              (* where-binding *)
 
 - `:=` makes a changeable variable or a function, `≡` makes a constant. A head with arguments defines a function; a bare name with an expression that mentions other names is a no-argument function that recomputes when they change.
 - `= ?` asks for the exact answer, `≈ ?` for a number, and `= ?!` for the answer with its working (steps).
+- `name ≡ expr` is a constant definition, except when the right side holds `\pmod`: `a \equiv b \pmod{n}` stays a congruence.
+- A name with a number subscript on the left of `:=` (`v_0 := 20`) is an initial term when a recurrence for the same letter exists (`v_{n+1} := …`); otherwise it is the plain variable `v_0`. The parser marks it as an initial term and the evaluator decides.
 - A where-binding after a comma holds only for that statement: `$$ A = \pi r^2, \quad r = 3 $$`. Spacing commands (`\quad`, `\;`, `\,`, `\ `) are ignored by the parser.
 - A display block that is a bare expression, or an equation with an unknown, is evaluated automatically (preview only), unless it is a definition, a check, or marked `%noeval`.
 
@@ -86,12 +88,12 @@ Precedence, lowest first:
 
 | Level | Operators | Associativity |
 |---|---|---|
-| relation | `= ≠ < > ≤ ≥ ≈ ≡ ∼ ≅ ∝ ≪ ≫ ∈ ∉ ⊂ ⊆ ⇒ ⇔ →` | chain |
+| relation | `= ≠ < > ≤ ≥ ≈ ≡ ∼ ≅ ∝ ≪ ≫ ∈ ∉ ⊂ ⊆ ⇒ ⇔ →`, and `:` (as in `f: ℝ → ℝ`) | chain |
 | logic | `∨`, then `∧`, then `¬` (prefix) | left |
 | additive | `+ − ± ∓ ∪ ∖` | left |
 | multiplicative | `· × ÷ / ∘ ⊗ ⊕ ∩`, implicit product | left |
 | unary | prefix `−`, `+`, `±` | prefix |
-| big operator | `∑ ∏ ∫ ∬ ∭ ∮ lim`, `d/dx`, `∂`, `∇` | takes the term to its right |
+| big operator | `∑ ∏ ∫ ∬ ∭ ∮ lim`, `d/dx`, `∂` | takes the term to its right (`∇` takes one factor) |
 | power | `^`, `_`, primes `′ ″`, `!`, Unicode `²³` | right (for `^`) |
 | atom | number, name, group, call, fraction, root, matrix … | |
 
@@ -104,24 +106,31 @@ additive      = [ sign ] term { add_op term } ;
 term          = factor { [ mul_op ] factor } ;             (* no operator = implicit product *)
 factor        = big_op | postfix ;
 postfix       = atom { "^" script | "_" script | prime | "!" | unicode_super } ;
-script        = "{" expr "}" | atom_no_postfix ;           (* x^2, x^{n+1}, a_n, x_{max} *)
+script        = "{" expr "}" | [ sign ] atom_no_postfix   (* x^2, x^{n+1}, a_n, x^-1 *)
+              | "(" expr ")" ;                             (* x^(n+1): the brackets only group *)
+                                                           (* x_{max}: two or more letters in braces after _ are an upright label *)
+                                                           (* plain a^b^c is a^(b^c); x^23 is x^{23} *)
 prime         = "'" | "′" | "″" ;
 
 big_op        = sum_like | integral | limit | derivative | nabla_op | named_op ;
 sum_like      = ("\sum" | "∑" | "sum" | "\prod" | "∏" | "prod")
                 [ "_" bound_index ] [ "^" script ] term ;
 bound_index   = "{" name "=" expr "}" | "(" name "=" expr ")" ;
-integral      = int_sign [ "_" script ] [ "^" script ] expr_until_d differential ;
+integral      = int_sign [ "_" script ] [ "^" script ] expr_until_d [ "\cdot" ] differential
+              | int_sign [ "_" script ] [ "^" script ] differential term ;  (* \int dx \, f(x) *)
+                                                           (* \int \frac{dx}{x} reads the dx in the numerator as the differential *)
 int_sign      = "\int" | "∫" | "int" | "\iint" | "∬" | "\iiint" | "∭"
               | "\oint" | "∮" | "\oiint" | "∯" ;
 differential  = [ "\," ] "d" name { [ "\," ] "d" name }    (* dx, dy dx, dA, dV, d\mathbf r *)
-limit         = ("\lim" | "lim") "_" "{" name ("\to" | "→" | "->") expr [ "^+" | "^-" ] "}" term ;
+limit         = ("\lim" | "lim") "_" ( "{" | "(" ) name ("\to" | "→" | "->") expr [ side ] ( "}" | ")" ) term ;
+side          = "^+" | "^-" | "^{+}" | "^{-}" | "⁺" | "⁻" | "+" | "-" ;   (* x \to 0^+, plain x->0+ *)
 derivative    = "\frac{d" [ "^" integer ] "}{d" name [ "^" integer ] "}" term
               | "\frac{d" name "}{d" name "}"              (* dy/dx as a whole *)
               | "\frac{\partial" [ "^" integer ] [ name ] "}{" partial_dens "}" [ term ]
               | ("\partial_" | "D_") script term
               | "d/d" name term ;
-nabla_op      = ("\nabla" | "∇" | "nabla") [ "^2" ] [ ("\cdot" | "·" | "\times" | "×") ] term ;
+nabla_op      = ("\nabla" | "∇" | "nabla") [ "^2" | "²" ] [ ("\cdot" | "·" | "\times" | "×") ] factor ;
+                                                           (* a factor, so \nabla f \cdot \mathbf u is (∇f)·u *)
 named_op      = "\operatorname{" name "}" [ "_" script ] [ "^" script ] ( call_args | term ) ;
 
 atom          = number | constant | name_or_call | group | abs | norm | floor | ceil
@@ -129,6 +138,8 @@ atom          = number | constant | name_or_call | group | abs | norm | floor | 
               | accent | font_name | text | mathbb ;
 number        = digit { digit } [ "." digit { digit } ] [ ("e" | "E") [ "-" ] digit { digit } ] ;
 constant      = "\pi" | "π" | "pi" | "e" | "i" | "\infty" | "∞" | "inf" ;
+                                                           (* plain inf is ∞; \inf with a backslash is the infimum *)
+                                                           (* e and i are names where something binds them: \sum_{i=1}, f(i) := …, subscripts *)
 name_or_call  = name [ call_args ] ;                       (* f(x): call if f is a function, else f·(x) *)
 call_args     = ( "(" | "\left(" ) expr { "," expr } ( ")" | "\right)" ) ;
 name          = letter [ "_" script ] | greek | func_name | "\operatorname{" letters "}"
@@ -141,7 +152,7 @@ ceil          = "\lceil" expr "\rceil" | "⌈" expr "⌉" | "ceil(" expr ")" ;
 frac          = ( "\frac" | "\tfrac" | "\dfrac" ) "{" expr "}" "{" expr "}"
               | "\tfrac12" ;                               (* digit shorthand: \frac12 = 1/2 *)
 sqrt          = "\sqrt" [ "[" expr "]" ] "{" expr "}" | "√" atom | "sqrt(" expr ")"
-              | "root(" expr "," expr ")" ;
+              | "root(" expr "," expr ")" ;                 (* root(n, x) is the n-th root of x *)
 binom         = "\binom{" expr "}{" expr "}" | "binom(" expr "," expr ")" ;
 matrix        = "\begin{" mat_env "}" row { "\\" row } "\end{" mat_env "}" ;
 mat_env       = "pmatrix" | "bmatrix" | "vmatrix" | "matrix" ;   (* vmatrix = determinant *)
@@ -158,7 +169,7 @@ text          = "\text{" any "}" ;
 
 **The three input forms.** LaTeX (`\frac{a}{b}`, `\alpha`, `\int_0^1`), the plain form (`a/b`, `alpha`, `sqrt(x)`, `sum_(n=1)^inf`, `int_0^1`, `lim_(x->0)`, `<=`, `>=`, `!=`, `->`) and Unicode typed directly (`α`, `∫`, `∑`, `≤`, `x²`) all produce the same tree. Every name in the symbol table (`alpha`, `Omega`, `nabla`, `infty`, `partial`, `in`, `forall` …) means its symbol, with or without the backslash.
 
-**Names.** A run of letters that is a known name (a Greek letter, a symbol, or a function such as `sin`, `ln`, `exp`, `det`) is that name. Any other run of letters is a product of single letters, so `xy` is $x y$. Longer names are written `\operatorname{name}` or `\mathrm{name}`, or get a subscript (`v_0`, `x_{max}`).
+**Names.** A run of letters that is a known name (a Greek letter, a symbol, or a function such as `sin`, `ln`, `exp`, `det`) is that name. Any other run of letters is a product of single letters, so `xy` is $x y$. Longer names are written `\operatorname{name}` or `\mathrm{name}`, or get a subscript (`v_0`, `x_{max}`). Precomposed Unicode letters with accents (`ẋ`, `â`, `ȳ`) mean the letter with that accent, and styled letters (`ℝ`, `𝐅`, `ℒ`) mean the letter in that font.
 
 **Calls against products.** `f(x)` is parsed as a call node. The evaluator decides: if `f` is a function it is applied, otherwise it is $f \cdot x$. A known function written without brackets takes the product to its right up to the next function name, `+` or `−`: `\sin 2x` is $\sin(2x)$, and `\sin x \cos x` is $\sin(x)\cos(x)$. Powers on a function name apply to the result: `\sin^2 x` is $(\sin x)^2$, except `^{-1}`, which means the inverse function.
 
@@ -201,4 +212,4 @@ fig_keyword   = "polar" | "parametric" | "implicit" | "points" | "contour" | "sl
 
 ## 5. Errors
 
-A maths error is reported at the exact span it comes from, says what was expected ("expected the upper bound after `^`"), and the parser carries on at the next block, so one bad line never stops the rest of the document. Unclosed `$$` closes at the next blank line, with an error.
+A maths error is reported at the exact span it comes from, says what was expected ("expected the upper bound after `^`"), and the parser carries on at the next block, so one bad line never stops the rest of the document. Unclosed `$$` closes at the next blank line, with an error. Inside a maths span the parser recovers at the next `,` or line break (`\\`), putting an error placeholder where something was missing, so it always returns a tree. Nesting deeper than about 30 brackets, or more than 256 operators in a row on one line, is reported as an error instead of being followed.

@@ -1,0 +1,118 @@
+---
+source: crates/mpp-syntax/tests/forms.rs
+expression: report(cases)
+---
+## operator
+\frac{d}{dx} x^2
+  => (deriv :op-frac (by x) (^ x 2))
+d/dx x^2
+  => (deriv :op-slash (by x) (^ x 2))
+d/dx x²
+  => (deriv :op-slash (by x) (^ x 2))
+## operator on a bracket
+\frac{d}{dt}\left( x^2 \right)
+  => (deriv :op-frac (by t) (group paren :sized (^ x 2)))
+d/dt (x^2)
+  => (deriv :op-slash (by t) (group paren (^ x 2)))
+## whole quotient
+\frac{dy}{dx}
+  => (deriv :whole-frac (by x) y)
+dy/dx
+  => (deriv :whole-slash (by x) y)
+## second order
+\frac{d^2 y}{dx^2}
+  => (deriv :whole-frac :order 2 (by (^ x 2)) y)
+d^2y/dx^2
+  => (deriv :whole-slash :order 2 (by (^ x 2)) y)
+d²y/dx²
+  => (deriv :whole-slash :order 2 (by (^ x 2)) y)
+## partial
+\frac{\partial f}{\partial x}
+  => (pderiv :whole-frac (by x) f)
+partial f/partial x
+  => (pderiv :whole-slash (by x) f)
+∂f/∂x
+  => (pderiv :whole-slash (by x) f)
+\partial_x f
+  => (pderiv :sub (by x) f)
+## mixed partial
+\frac{\partial^2 f}{\partial x \partial y}
+  => (pderiv :whole-frac :order 2 (by x y) f)
+∂²f/∂x∂y
+  => (pderiv :whole-slash :order 2 (by x y) f)
+## partial subscripts
+\partial_{xy} f + \partial_x^2 f
+  => (+ (pderiv :sub (by x y) f) (pderiv :sub :order 2 (by x) f))
+∂_(x, y) f + ∂ₓ² f
+  => (same)
+## partial operator
+\frac{\partial}{\partial t} u
+  => (pderiv :op-frac (by t) u)
+∂/∂t u
+  => (pderiv :op-slash (by t) u)
+## jacobian
+\frac{\partial(x, y)}{\partial(u, v)}
+  => (pderiv :whole-frac (by (tuple paren u v)) (tuple paren x y))
+∂(x, y)/∂(u, v)
+  => (pderiv :whole-slash (by (tuple paren u v)) (tuple paren x y))
+## dot notation
+\dot{x} + \ddot{x}
+  => (+ (deriv :dot 1 x) (deriv :dot 2 x))
+dot x + ddot x
+  => (same)
+ẋ + ẍ
+  => (same)
+## D operator
+D_x f
+  => (deriv :dsub (by x) f)
+## D as a plain name
+D_x = 3
+  => (rel (_ D x) = 3)
+## upright d
+\frac{\mathrm{d}y}{\mathrm{d}x}
+  => (deriv :whole-frac (by x) y)
+dy/dx
+  => (deriv :whole-slash (by x) y)
+## gradient
+\nabla f
+  => (grad f)
+nabla f
+  => (same)
+∇f
+  => (same)
+## divergence
+\nabla \cdot \mathbf{F}
+  => (div bf:F)
+nabla cdot mathbf F
+  => (same)
+∇·𝐅
+  => (same)
+## curl
+\nabla \times \mathbf{F}
+  => (curl bf:F)
+nabla times mathbf F
+  => (same)
+∇×𝐅
+  => (same)
+## laplacian
+\nabla^2 u
+  => (laplacian u)
+nabla^2 u
+  => (same)
+∇²u
+  => (same)
+## directional derivative
+\nabla f \cdot \mathbf{u}
+  => (* :cdot (grad f) bf:u)
+∇f · 𝐮
+  => (same)
+## ode
+y'' + 4y' + 4y = 0
+  => (rel (+ (+ (prime 2 y) (* :implicit 4 (prime 1 y))) (* :implicit 4 y)) = 0)
+y′′ + 4y′ + 4y = 0
+  => (same)
+y″ + 4y′ + 4y = 0
+  => (same)
+## initial condition
+y(0) = 1, y'(0) = 0
+  => (line (rel (call y 0) = 1) (if (rel (call (prime 1 y) 0) = 0)))

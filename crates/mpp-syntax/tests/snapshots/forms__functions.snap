@@ -1,0 +1,77 @@
+---
+source: crates/mpp-syntax/tests/forms.rs
+expression: report(cases)
+---
+## argument without brackets
+\sin 2x
+  => (sin (* :implicit 2 x))
+sin 2x
+  => (same)
+## argument stops at next function
+\sin x \cos x
+  => (* :implicit (sin x) (cos x))
+sin x cos x
+  => (same)
+## argument stops at plus
+\sin x + 1
+  => (+ (sin x) 1)
+sin x + 1
+  => (same)
+## bracketed argument
+\sin(x + 1)
+  => (sin :paren (+ x 1))
+sin(x + 1)
+  => (same)
+\sin\left(x + 1\right)
+  => (same)
+## power on function
+\sin^2 x
+  => (^ (sin x) 2)
+sin^2 x
+  => (same)
+sin² x
+  => (same)
+## power after brackets
+\sin(x)^2
+  => (^ (sin :paren x) 2)
+sin(x)^2
+  => (same)
+## inverse function
+\sin^{-1} x
+  => (sin^-1 x)
+sin^-1 x
+  => (same)
+sin⁻¹ x
+  => (same)
+## log base
+\log_{10} x
+  => (log :sub 10 x)
+log_10 x
+  => (same)
+log₁₀ x
+  => (same)
+## several arguments
+\max(a, b)
+  => (max :paren a b)
+max(a, b)
+  => (same)
+## function of absolute value
+\ln|x|
+  => (ln (abs x))
+ln|x|
+  => (same)
+## exponential
+e^{x} + \exp(x)
+  => (+ (^ #e x) (exp :paren x))
+e^x + exp(x)
+  => (same)
+## nested functions
+\sin \ln x
+  => (sin (ln x))
+sin ln x
+  => (same)
+## trig in fraction
+\frac{g x^2}{2 v_0^2 \cos^2\theta}
+  => (/ :frac (* :implicit g (^ x 2)) (* :implicit (* :implicit 2 (^ (_ v 0) 2)) (^ (cos θ) 2)))
+(g x^2)/(2 v_0^2 cos^2 theta)
+  => (/ :slash (group paren (* :implicit g (^ x 2))) (group paren (* :implicit (* :implicit 2 (^ (_ v 0) 2)) (^ (cos θ) 2))))

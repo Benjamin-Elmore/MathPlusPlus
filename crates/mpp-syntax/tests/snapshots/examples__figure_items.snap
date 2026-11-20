@@ -1,0 +1,20 @@
+---
+source: crates/mpp-syntax/tests/examples.rs
+expression: out
+---
+y(x)
+  => (call y x)
+x \in [0, R]
+  => (range (x) (interval [] 0 R))
+z = x^2 - y^2
+  => (rel z = (- (^ x 2) (^ y 2)))
+x, y \in [-2, 2]
+  => (range (x y) (interval [] (neg 2) 2))
+r = 1 + \cos\theta
+  => (rel r = (+ 1 (cos θ)))
+x^2 + y^2 = 1
+  => (rel (+ (^ x 2) (^ y 2)) = 1)
+y' = x - y
+  => (rel (prime 1 y) = (- x y))
+a := 2, \; a \in [0, 5]
+  => (line (def := a 2) (range (a) (interval [] 0 5)))

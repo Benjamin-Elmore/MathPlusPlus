@@ -1,0 +1,207 @@
+---
+source: crates/mpp-syntax/tests/forms.rs
+expression: report(cases)
+---
+## not equal
+a \ne b
+  => (rel a ≠ b)
+a != b
+  => (same)
+a ≠ b
+  => (same)
+## greater or equal
+a \geq b
+  => (rel a ≥ b)
+a >= b
+  => (same)
+a ≥ b
+  => (same)
+## approximately
+a \approx b
+  => (rel a ≈ b)
+a approx b
+  => (same)
+a ≈ b
+  => (same)
+## similar
+a \sim b
+  => (rel a ∼ b)
+a sim b
+  => (same)
+a ∼ b
+  => (same)
+## proportional
+a \propto b
+  => (rel a ∝ b)
+a propto b
+  => (same)
+a ∝ b
+  => (same)
+## much less
+a \ll b
+  => (rel a ≪ b)
+a ll b
+  => (same)
+a ≪ b
+  => (same)
+## congruent
+a \cong b
+  => (rel a ≅ b)
+a cong b
+  => (same)
+a ≅ b
+  => (same)
+## not in
+x \notin A
+  => (rel x ∉ A)
+x notin A
+  => (same)
+x ∉ A
+  => (same)
+## subset
+A \subseteq B \subset C
+  => (rel A ⊆ B ⊂ C)
+A subseteq B subset C
+  => (same)
+A ⊆ B ⊂ C
+  => (same)
+## implies
+p \implies q
+  => (rel p ⇒ q)
+p => q
+  => (same)
+p ⇒ q
+  => (same)
+## iff
+p \iff q
+  => (rel p ⇔ q)
+p <=> q
+  => (same)
+p ⇔ q
+  => (same)
+## tends to
+x \to 0
+  => (rel x → 0)
+x -> 0
+  => (same)
+x → 0
+  => (same)
+## colon map
+f: \mathbb{R} \to \mathbb{R}
+  => (rel f : bb:R → bb:R)
+f: mathbb R -> mathbb R
+  => (same)
+f: ℝ → ℝ
+  => (same)
+## logic
+\neg p \land q \lor r
+  => (or (and (not p) q) r)
+neg p land q lor r
+  => (same)
+¬p ∧ q ∨ r
+  => (same)
+## additive
+a + b - c \pm d \mp e
+  => (∓ (± (- (+ a b) c) d) #e)
+a + b - c pm d mp e
+  => (same)
+a + b − c ± d ∓ e
+  => (same)
+## set operators
+A \cup B \cap C \setminus D
+  => (∖ (∪ A (∩ B C)) D)
+A cup B cap C setminus D
+  => (same)
+A ∪ B ∩ C ∖ D
+  => (same)
+## multiplicative
+a \cdot b \times c \div d / e
+  => (/ :slash (/ :obelus (× (* :cdot a b) c) d) #e)
+a * b times c div d / e
+  => (/ :slash (/ :obelus (× (* :star a b) c) d) #e)
+a · b × c ÷ d / e
+  => (same)
+## composition
+f \circ g + A \otimes B \oplus C
+  => (+ (∘ f g) (⊕ (⊗ A B) C))
+f circ g + A otimes B oplus C
+  => (same)
+f ∘ g + A ⊗ B ⊕ C
+  => (same)
+## implicit product
+2x y
+  => (* :implicit (* :implicit 2 x) y)
+2xy
+  => (same)
+2x y
+  => (same)
+## implicit product with pi
+2\pi r
+  => (* :implicit (* :implicit 2 #pi) r)
+2pi r
+  => (same)
+2πr
+  => (same)
+## unary minus
+-x^2
+  => (neg (^ x 2))
+-x^2
+  => (same)
+−x²
+  => (same)
+## sign after operator
+a \cdot -b + -c
+  => (+ (* :cdot a (neg b)) (neg c))
+a * -b + -c
+  => (+ (* :star a (neg b)) (neg c))
+## precedence
+a + b c^2 d
+  => (+ a (* :implicit (* :implicit b (^ c 2)) d))
+a + b c^2 d
+  => (same)
+a + b c² d
+  => (same)
+## power is right associative
+a^{b^c}
+  => (^ a (^ b c))
+a^b^c
+  => (same)
+## subscript expression
+x_{n+1}
+  => (_ x (+ n 1))
+x_(n+1)
+  => (same)
+xₙ₊₁
+  => (same)
+## subscript digit
+v_0 + v_{12}
+  => (+ (_ v 0) (_ v 12))
+v_0 + v_12
+  => (same)
+v₀ + v₁₂
+  => (same)
+## subscript label
+x_{max} + T_{in}
+  => (+ (_ x max) (_ T in))
+x_max + T_{in}
+  => (same)
+## subscript list
+a_{i,j}
+  => (_ a (tuple texgroup i j))
+## superscripts
+x^{2} + y^{-1}
+  => (+ (^ x 2) (^ y (neg 1)))
+x^2 + y^-1
+  => (same)
+x² + y⁻¹
+  => (same)
+## primes
+f'(x) + f''(x) + g^\prime
+  => (+ (+ (call (prime 1 f) x) (call (prime 2 f) x)) (prime 1 g))
+f'(x) + f''(x) + g'
+  => (same)
+f′(x) + f″(x) + g′
+  => (same)
+## factorial
+n! + (2n)!! + 3!
+  => (+ (+ (! n) (!! (group paren (* :implicit 2 n)))) (! 3))
