@@ -102,14 +102,18 @@ pub enum Kind {
         close: String,
         insert: usize,
     },
-    /// Quantities with units that cannot be combined. (Units are read by the
-    /// parser in a later version; nothing produces this yet.)
-    UnitMismatch { from: String, to: String },
+    /// Quantities with units that cannot be combined, or a conversion between
+    /// units of different kinds (`from` is the quantity's unit, `to` the other).
+    UnitMismatch {
+        from: String,
+        to: String,
+        /// A conversion (`… in s`) rather than a sum or a comparison.
+        convert: bool,
+    },
     /// A definition nothing uses.
     Unused { name: String },
-    /// A result that holds only under an assumption. (Assumptions come in a
-    /// later version; nothing produces this yet.)
-    Assumption,
+    /// A result that holds only under a condition (`x ≠ 0`), given as LaTeX.
+    Assumption { conditions: Vec<String> },
     /// A check that was tested with numbers only, not proved.
     NumericCheck { points: usize },
     /// Notation kept as written because it cannot be worked out yet.
@@ -437,6 +441,9 @@ pub fn classify(
     if bg.is_some_and(|b| !b.imports.is_empty()) && is_import_summary(msg) {
         return vec![];
     }
+    if let Some(p) = unit_mismatch(d, msg) {
+        return vec![p];
+    }
     // Names without values.
     if msg.contains("no value") {
         let names = backticked(msg);
@@ -516,6 +523,57 @@ pub fn classify(
     vec![Problem::new(d.span, level, Kind::Other, from_message(msg)).expecting(expected_of(d))]
 }
 
+/// Units in a sentence, upright.
+fn unit_latex(u: &str) -> String {
+    if u == "a plain number" {
+        "1".into()
+    } else {
+        format!("\\mathrm{{{u}}}")
+    }
+}
+
+/// "can't add m and s", "can't convert km to s": units that do not fit together.
+fn unit_mismatch(d: &Diagnostic, msg: &str) -> Option<Problem> {
+    let rest = msg.strip_prefix("can't ")?;
+    let (verb, pair) = rest.split_once(' ')?;
+    let convert = verb == "convert";
+    let (from, to) = if convert {
+        pair.split_once(" to ")?
+    } else {
+        pair.split_once(" and ")?
+    };
+    let (from, to) = (from.trim().to_string(), to.trim().to_string());
+    let rich = if convert {
+        Rich::text("Units of different kinds: ")
+            .m(unit_latex(&from))
+            .t(" cannot be written in ")
+            .m(unit_latex(&to))
+            .t(".")
+    } else {
+        Rich::text(format!("Units don't match: can't {verb} "))
+            .m(unit_latex(&from))
+            .t(" and ")
+            .m(unit_latex(&to))
+            .t(".")
+    };
+    let fix = if convert {
+        Rich::text("Press Ctrl+. to convert to ")
+            .m(unit_latex(&from))
+            .t(" instead, or pick a unit of the same kind.")
+    } else {
+        Rich::text("Check the units: both sides need the same kind of unit (lengths with lengths, times with times).")
+    };
+    Some(
+        Problem::new(
+            d.span,
+            Level::Error,
+            Kind::UnitMismatch { from, to, convert },
+            rich,
+        )
+        .fixing(fix),
+    )
+}
+
 /// True for the evaluator's summary of an imported file's errors (`3 errors in a.mpp`).
 fn is_import_summary(msg: &str) -> bool {
     let digits = msg.chars().take_while(char::is_ascii_digit).count();
@@ -572,9 +630,27 @@ fn missing_bracket(d: &Diagnostic, open: Option<usize>, close: &str, insert: usi
 fn undefined(span: Span, name: &str, known: &[String], bg: Option<&Background>) -> Problem {
     let sugg = suggest::suggester();
     let similar = sugg.names(name, known);
-    let defined_in = origins(name, bg);
+    let mut defined_in = origins(name, bg);
+    // A name the standard library defines can be imported from it.
+    if let Some(f) = crate::library::file_of(name) {
+        if !defined_in.iter().any(|d| d == f) {
+            defined_in.push(f.to_string());
+        }
+    }
     // Close names defined in other files of the folder (not imported yet).
     let mut similar_elsewhere: Vec<(String, String)> = vec![];
+    // ... and close names of the standard library ("did you mean A_circle from std/geometry.mpp").
+    if similar.is_empty() && defined_in.is_empty() {
+        for s in sugg
+            .names(name, crate::library::names())
+            .into_iter()
+            .take(2)
+        {
+            if let Some(f) = crate::library::file_of(&s) {
+                similar_elsewhere.push((s, f.to_string()));
+            }
+        }
+    }
     if let Some(b) = bg {
         for (file, _, names) in &b.index.files {
             for s in sugg.names(name, names) {
@@ -658,6 +734,30 @@ pub fn checks(doc: &Document, ev: &Evaluated) -> Vec<Problem> {
                         "Simplify one side by hand, or leave it: the check is very probably right.",
                     )),
                 ),
+                (LineKind::Query { .. }, _) if !line.conditions.is_empty() => {
+                    let conditions: Vec<String> =
+                        line.conditions.iter().map(|c| c.to_latex()).collect();
+                    let mut rich = Rich::text("Holds when ");
+                    for (i, c) in conditions.iter().enumerate() {
+                        if i > 0 {
+                            rich = rich.t(" and ");
+                        }
+                        rich = rich.m(c.clone());
+                    }
+                    out.push(
+                        Problem::new(
+                            line.span,
+                            Level::Warning,
+                            Kind::Assumption {
+                                conditions: conditions.clone(),
+                            },
+                            rich.t("."),
+                        )
+                        .fixing(Rich::text(
+                            "Add an assumption (Assume …) if you know which case applies.",
+                        )),
+                    );
+                }
                 (LineKind::Check, Some(Verdict::Unknown(why))) => out.push(
                     Problem::new(
                         line.span,

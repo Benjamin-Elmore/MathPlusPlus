@@ -169,6 +169,29 @@ pub fn quick_fixes(p: &Problem, src: &str, doc: &Document) -> Vec<QuickFix> {
                 },
             });
         }
+        Kind::UnitMismatch {
+            from,
+            convert: true,
+            ..
+        } => {
+            // Rewrite the target of `… \operatorname{in} …` as the quantity's own unit.
+            let text = src.get(p.span.start..p.span.end).unwrap_or("");
+            if let Some(at) = text.rfind("\\operatorname{in}") {
+                let start = p.span.start + at;
+                let unit = if from == "a plain number" {
+                    "1".to_string()
+                } else {
+                    format!("\\mathrm{{{from}}}")
+                };
+                out.push(QuickFix {
+                    title: Rich::text("Convert to ").m(unit.clone()),
+                    action: FixAction::Replace {
+                        span: Span::new(start, p.span.end),
+                        with: format!("\\operatorname{{in}} {unit}"),
+                    },
+                });
+            }
+        }
         Kind::EmptyBox { .. } => out.push(QuickFix {
             title: Rich::text("Go to the empty box"),
             action: FixAction::MoveCaret(p.span.start),

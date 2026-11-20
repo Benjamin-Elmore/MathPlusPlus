@@ -20,6 +20,7 @@ pub mod files;
 pub mod history;
 pub mod insert;
 pub mod layout;
+pub mod library;
 pub mod page;
 pub mod paint;
 pub mod problems;

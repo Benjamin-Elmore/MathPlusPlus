@@ -12,9 +12,10 @@ use mpp_syntax::Span;
 
 use crate::diagnostics::{self, Background, Counts, Problem};
 use crate::editor::Editor;
-use crate::eval::EvalWorker;
+use crate::eval::{EvalSettings, EvalWorker};
+use crate::figure::Figures;
 use crate::layout::DEBOUNCE_MS;
-use crate::page::{build_page, Page, PageInput};
+use crate::page::{build_page, Page, PageInput, ShowState};
 use crate::theme::Mode;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -27,6 +28,18 @@ struct CacheKey {
     limits: IntegralLimits,
     /// The template the caret is filling in (its problems are not shown yet).
     quiet: Option<(usize, usize)>,
+    /// Bumped when the view's display choices change.
+    show: u64,
+}
+
+impl PageCache {
+    /// Slider rows the page left under a figure.
+    pub fn doc_rows(&self, id: mpp_syntax::document::BlockId) -> usize {
+        self.rows
+            .iter()
+            .find(|(b, _)| *b == id)
+            .map_or(0, |(_, n)| *n)
+    }
 }
 
 /// A laid-out page with the parse it came from and its problems.
@@ -36,6 +49,8 @@ pub struct PageCache {
     pub page: Page,
     pub doc: Document,
     pub problems: Vec<Problem>,
+    /// Slider rows under each figure, as laid out.
+    rows: Vec<(mpp_syntax::document::BlockId, usize)>,
 }
 
 static NEXT_DOC_ID: AtomicU64 = AtomicU64::new(1);
@@ -69,6 +84,14 @@ pub struct Doc {
     /// The width, size and mode of the last page laid out (problem lists of
     /// files that are not on screen use them).
     last_layout: (f32, f32, Mode),
+    /// The view's display choices (number formats, unfolded steps, figure rows).
+    show: ShowState,
+    show_version: u64,
+    /// The figures of the last evaluation, with their cameras and slider values.
+    pub figures: Figures,
+    eval_settings: EvalSettings,
+    /// Automatic answers of the last evaluation are still being worked out.
+    pending: bool,
 }
 
 impl Doc {
@@ -93,6 +116,11 @@ impl Doc {
             want_x: None,
             integral_limits: IntegralLimits::AboveBelow,
             last_layout: (800.0, crate::layout::BODY_SIZE, Mode::Light),
+            show: ShowState::default(),
+            show_version: 0,
+            figures: Figures::default(),
+            eval_settings: EvalSettings::default(),
+            pending: false,
         };
         d.submit_now();
         d
@@ -171,7 +199,9 @@ impl Doc {
             self.eval_text = done.text;
             self.eval = Some(done.eval);
             self.background = Some(done.background);
+            self.pending = done.pending;
             self.eval_id += 1;
+            self.took_eval();
         }
         if self.submitted != Some(self.editor.revision()) {
             let wait = Duration::from_millis(DEBOUNCE_MS);
@@ -182,7 +212,117 @@ impl Doc {
                 return Some(wait - since);
             }
         }
-        self.worker.busy().then_some(Duration::from_millis(30))
+        (self.worker.busy() || self.pending).then_some(Duration::from_millis(30))
+    }
+
+    /// The evaluated line whose span holds `offset`: its block and index.
+    pub fn line_at(&self, offset: usize) -> Option<(mpp_syntax::document::BlockId, usize)> {
+        let ev = self.eval.as_ref()?;
+        ev.blocks.iter().find_map(|b| {
+            b.values
+                .iter()
+                .position(|v| v.span.start <= offset && offset <= v.span.end)
+                .map(|i| (b.id, i))
+        })
+    }
+
+    /// Ctrl+Enter: writes the answer shown on the line at `offset` into the file as
+    /// ordinary maths (a grey automatic answer, or a result shown in a format picked
+    /// with a right-click). True when the text changed.
+    pub fn keep_result_at(&mut self, offset: usize) -> bool {
+        if !self.eval_fresh() {
+            return false;
+        }
+        let Some(ev) = self.eval.clone() else {
+            return false;
+        };
+        let Some((block, i)) = self.line_at(offset) else {
+            return false;
+        };
+        let Some(v) = ev.block(block).and_then(|b| b.values.get(i)) else {
+            return false;
+        };
+        let original = self
+            .editor
+            .text()
+            .get(v.span.start..v.span.end)
+            .unwrap_or("")
+            .to_string();
+        let new = if v.auto {
+            ev.keep_result_text(block, i)
+        } else if let (mpp_eval::LineKind::Query { .. }, Some(fmt)) =
+            (&v.kind, self.show.format_for(v.span).copied())
+        {
+            let (_, latex) = v.reformat(&fmt);
+            match (latex, original.rfind('?')) {
+                (Some(l), Some(q)) => {
+                    let end = q + 1 + usize::from(original[q + 1..].starts_with('!'));
+                    format!("{}{l}{}", &original[..q], &original[end..])
+                }
+                _ => return false,
+            }
+        } else {
+            return false;
+        };
+        if new.is_empty() || new == original {
+            return false;
+        }
+        self.editor.replace_node(v.span, &new);
+        self.touched();
+        true
+    }
+
+    /// The evaluator's settings (auto-evaluation, steps, number format). A change
+    /// evaluates the file again.
+    pub fn set_eval_settings(&mut self, settings: EvalSettings) {
+        if settings != self.eval_settings {
+            self.eval_settings = settings;
+            self.worker.set_settings(settings);
+            self.submitted = None;
+            if self.show.show_steps != settings.show_steps {
+                self.show_mut().show_steps = settings.show_steps;
+            }
+        }
+    }
+
+    /// The evaluator's settings.
+    pub fn eval_settings(&self) -> EvalSettings {
+        self.eval_settings
+    }
+
+    /// True while automatic answers are still being worked out (spinners show).
+    pub fn pending(&self) -> bool {
+        self.pending
+    }
+
+    /// The page laid out last, if any.
+    pub fn page_cache(&self) -> Option<&Arc<PageCache>> {
+        self.cache.as_ref()
+    }
+
+    /// The view's display choices.
+    pub fn show(&self) -> &ShowState {
+        &self.show
+    }
+
+    /// Changes the view's display choices (the page is laid out again).
+    pub fn show_mut(&mut self) -> &mut ShowState {
+        self.show_version += 1;
+        &mut self.show
+    }
+
+    /// A new evaluation arrived: rebuild the figures and their slider rows.
+    fn took_eval(&mut self) {
+        if let Some(ev) = self.eval.clone() {
+            self.figures.sync(&ev);
+            let rows = self.figures.rows();
+            let threes = self.figures.three_d();
+            if rows != self.show.figure_rows || threes != self.show.figure_3d {
+                let show = self.show_mut();
+                show.figure_rows = rows;
+                show.figure_3d = threes;
+            }
+        }
     }
 
     /// Notes that the text changed just now (restarts the debounce).
@@ -204,7 +344,9 @@ impl Doc {
             self.eval_text = done.text;
             self.eval = Some(done.eval);
             self.background = Some(done.background);
+            self.pending = done.pending;
             self.eval_id += 1;
+            self.took_eval();
         }
         self.cache = None;
         self.spare = None;
@@ -265,6 +407,7 @@ impl Doc {
             mode,
             limits: self.integral_limits,
             quiet: self.quiet_range(),
+            show: self.show_version,
         };
         self.last_layout = (width, size, mode);
         if self.cache.as_ref().is_some_and(|c| c.key != key) {
@@ -280,6 +423,7 @@ impl Doc {
         let fresh = self.eval.is_some() && self.eval_text == editor.text();
         let limits = self.integral_limits;
         let background = self.background.clone();
+        let show = &self.show;
         self.cache
             .get_or_insert_with(|| {
                 let src = editor.text();
@@ -294,6 +438,7 @@ impl Doc {
                     width,
                     integral_limits: limits,
                     slot_labels: &labels,
+                    show,
                 };
                 let page = build_page(&input);
                 let inputs = diagnostics::Inputs {
@@ -310,6 +455,7 @@ impl Doc {
                     page,
                     doc,
                     problems,
+                    rows: show.figure_rows.clone(),
                 })
             })
             .clone()

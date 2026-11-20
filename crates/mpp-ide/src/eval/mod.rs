@@ -11,13 +11,42 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use mpp_eval::{Evaluated, Session};
+use mpp_eval::{Evaluated, NumberFormat, Session};
 
 use crate::diagnostics::background::{self, Background, FileCache};
 
 pub use mpp_eval::FileImporter as FsImporter;
 
+/// How the evaluator runs: the View menu's toggles and the default number format.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EvalSettings {
+    /// Grey answers after integrals, derivatives, limits and equations nobody asked for.
+    pub auto_eval: bool,
+    /// Record the working of every query (not only `= ?!` lines).
+    pub show_steps: bool,
+    /// The number format a file starts from (its `%` lines change it).
+    pub number_format: NumberFormat,
+    /// Time per block before its automatic answers are left pending (shown with a
+    /// spinner and finished in the background).
+    pub budget: Option<Duration>,
+}
+
+/// The time a block may spend on automatic answers before they are left pending.
+pub const AUTO_BUDGET: Duration = Duration::from_millis(150);
+
+impl Default for EvalSettings {
+    fn default() -> Self {
+        EvalSettings {
+            auto_eval: true,
+            show_steps: false,
+            number_format: NumberFormat::default(),
+            budget: Some(AUTO_BUDGET),
+        }
+    }
+}
+
 struct Job {
+    settings: EvalSettings,
     generation: u64,
     text: String,
     base: Option<PathBuf>,
@@ -32,6 +61,9 @@ pub struct Done {
     pub eval: Arc<Evaluated>,
     /// Problems of imported files and the names other files define.
     pub background: Arc<Background>,
+    /// Some automatic answers are still being worked out; a newer `Done` with the
+    /// same generation follows when they are ready.
+    pub pending: bool,
 }
 
 /// One evaluator thread with its own [`Session`] (so edits re-run only changed blocks).
@@ -41,6 +73,7 @@ pub struct EvalWorker {
     handle: Option<JoinHandle<()>>,
     sent: u64,
     received: u64,
+    settings: EvalSettings,
 }
 
 impl std::fmt::Debug for EvalWorker {
@@ -64,7 +97,11 @@ impl EvalWorker {
                 let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
                 let mut base: Option<PathBuf> = None;
                 let mut files = FileCache::default();
-                while let Ok(mut job) = jobs.recv() {
+                let mut applied: Option<EvalSettings> = None;
+                let Ok(mut job) = jobs.recv() else {
+                    return;
+                };
+                'jobs: loop {
                     while let Ok(newer) = jobs.try_recv() {
                         job = newer;
                     }
@@ -72,21 +109,60 @@ impl EvalWorker {
                         session.set_base_dir(job.base.clone());
                         base = job.base.clone();
                     }
+                    if applied != Some(job.settings) {
+                        let s = job.settings;
+                        session.set_auto_eval(s.auto_eval);
+                        session.set_show_steps(s.show_steps);
+                        session.set_number_format(s.number_format);
+                        session.set_auto_budget(s.budget);
+                        applied = Some(s);
+                    }
                     let eval = Arc::new(session.update(&job.text).clone());
-                    let extras = background::compute(
+                    let extras = Arc::new(background::compute(
                         &eval,
                         job.base.as_deref(),
                         job.path.as_deref(),
                         &mut files,
-                    );
+                    ));
                     let done = Done {
                         generation: job.generation,
-                        text: job.text,
+                        text: job.text.clone(),
                         eval,
-                        background: Arc::new(extras),
+                        background: extras.clone(),
+                        pending: session.has_pending(),
                     };
                     if done_tx.send(done).is_err() {
                         break;
+                    }
+                    // Finish the automatic answers that were left pending, unless a
+                    // newer edit arrives first.
+                    while session.has_pending() {
+                        match jobs.recv_timeout(Duration::from_millis(15)) {
+                            Ok(newer) => {
+                                job = newer;
+                                continue 'jobs;
+                            }
+                            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                if session.pending_ready() {
+                                    let eval = Arc::new(session.refresh().clone());
+                                    let done = Done {
+                                        generation: job.generation,
+                                        text: job.text.clone(),
+                                        eval,
+                                        background: extras.clone(),
+                                        pending: session.has_pending(),
+                                    };
+                                    if done_tx.send(done).is_err() {
+                                        break 'jobs;
+                                    }
+                                }
+                            }
+                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break 'jobs,
+                        }
+                    }
+                    match jobs.recv() {
+                        Ok(next) => job = next,
+                        Err(_) => break,
                     }
                 }
             })
@@ -97,6 +173,7 @@ impl EvalWorker {
             handle,
             sent: 0,
             received: 0,
+            settings: EvalSettings::default(),
         }
     }
 
@@ -105,11 +182,17 @@ impl EvalWorker {
         self.submit_file(text, base, None);
     }
 
+    /// The settings the next jobs run with.
+    pub fn set_settings(&mut self, settings: EvalSettings) {
+        self.settings = settings;
+    }
+
     /// Asks for the text of the file at `path` to be evaluated; imports resolve
     /// against `base` (its folder, or the folder an unsaved file belongs to).
     pub fn submit_file(&mut self, text: &str, base: Option<&Path>, path: Option<&Path>) {
         self.sent += 1;
         let job = Job {
+            settings: self.settings,
             generation: self.sent,
             text: text.to_string(),
             base: base.map(Path::to_path_buf),

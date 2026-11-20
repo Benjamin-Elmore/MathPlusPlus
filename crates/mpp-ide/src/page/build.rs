@@ -1,10 +1,10 @@
 //! Laying a parsed document out as a typeset page.
 
 use egui::{Pos2, Rect, Vec2};
-use mpp_eval::{BlockResult, Evaluated, LineKind};
+use mpp_eval::{BlockResult, Evaluated, LineKind, Value};
 use mpp_render::{
-    layout_math, CaretStop, DisplayList, FontId, IntegralLimits, LayoutOptions, LineResult,
-    MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
+    layout_latex, layout_math, CaretStop, DisplayList, FontId, IntegralLimits, LayoutOptions,
+    LineResult, MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
 };
 use mpp_syntax::document::{
     Align, Block, BlockKind, DisplayMath, Document, Inline, InlineKind, InlineMath, List,
@@ -14,7 +14,7 @@ use mpp_syntax::math::{parse_math, QueryMode, RelOp};
 use mpp_syntax::Span;
 
 use super::flow::{display_name, flow, flow_text, glyph_for, text_width, Cx, Style};
-use super::{BlockTag, Canvas, Page, PlacedBlock};
+use super::{BlockTag, Canvas, Page, PlacedBlock, ShowState, StepToggle};
 
 /// Everything the page builder reads.
 pub struct PageInput<'a> {
@@ -31,6 +31,8 @@ pub struct PageInput<'a> {
     pub integral_limits: IntegralLimits,
     /// Labels for the empty boxes of templates being edited, by offset.
     pub slot_labels: &'a [(usize, String)],
+    /// The view's own display choices (formats, unfolded steps, figure sliders).
+    pub show: &'a ShowState,
 }
 
 /// The column width for a window width: about 70 em, never wider than the window.
@@ -183,6 +185,14 @@ fn push_block(
     input: &PageInput<'_>,
 ) {
     page.chars.extend(canvas.chars.iter().copied());
+    let shift = Vec2::new(0.0, top);
+    page.step_toggles
+        .extend(canvas.toggles.iter().map(|t| StepToggle {
+            rect: t.rect.translate(shift),
+            line: t.line,
+        }));
+    page.spinners
+        .extend(canvas.spinners.iter().map(|p| *p + shift));
     for s in &canvas.stops {
         page.stops.push(CaretStop {
             x: s.x,
@@ -271,7 +281,7 @@ fn layout_block(
         | BlockKind::Assume(_)
         | BlockKind::Data(_) => {
             let inl = scan_inlines(input.src, b.span);
-            flow(
+            let h = flow(
                 cx,
                 &inl,
                 style(input, FontId::Text, 1.0),
@@ -279,7 +289,15 @@ fn layout_block(
                 0.0,
                 w,
                 &mut c,
-            )
+            );
+            // Helper sentences show what they found under the sentence.
+            let found = match (&b.kind, input.eval.and_then(|ev| ev.block(b.id))) {
+                (BlockKind::Helper(_) | BlockKind::Analyse(_) | BlockKind::Solve(_), Some(br)) => {
+                    layout_sentence_results(input, br, x0, h + size * 0.2, w, &mut c)
+                }
+                _ => 0.0,
+            };
+            h + found
         }
         BlockKind::List(list) => layout_list(input, cx, list, x0, 0.0, w, &mut c),
         BlockKind::Table(t) => {
@@ -402,8 +420,9 @@ fn layout_block(
             layout_display(input, b, m, x0, w, &mut c)
         }
         BlockKind::Figure(f) => {
-            let box_h = size * 9.0;
-            let box_w = (w * 0.7).min(size * 40.0);
+            let is_3d = input.show.figure_3d.contains(&b.id);
+            let box_h = if is_3d { size * 16.0 } else { size * 12.0 };
+            let box_w = (w * 0.8).min(size * 40.0);
             // The figure's maths (what is drawn, the ranges) as an editable line
             // above it, typeset, so its template boxes can be filled in.
             let spec = figure_spec_inlines(input.src, b, f);
@@ -426,6 +445,8 @@ fn layout_block(
                 offset: b.span.start,
             });
             let mut y = rect.bottom() + size * 0.4;
+            // Slider rows (drawn by the view) sit between the graph and the caption.
+            y += input.show.rows_for(b.id) as f32 * slider_row_height(size);
             if !f.caption.is_empty() {
                 let mut st = style(input, FontId::Text, 0.92);
                 st.color = input.theme.muted;
@@ -580,10 +601,10 @@ fn layout_display(
     c: &mut Canvas,
 ) -> f32 {
     let size = input.size;
-    let results = input
+    let extras = input
         .eval
         .and_then(|ev| ev.block(b.id))
-        .map(|br| results_for(br, m))
+        .map(|br| extras_for(br, m, input.show))
         .unwrap_or_default();
     let opts = LayoutOptions {
         style: MathStyle::Display,
@@ -591,7 +612,7 @@ fn layout_display(
         theme: input.theme,
         equation_number: m.number.map(|n| n.to_string()),
         width: Some(w),
-        results,
+        results: extras.results.clone(),
         slot_labels: input
             .slot_labels
             .iter()
@@ -613,12 +634,104 @@ fn layout_display(
             offset: m.raw.start,
         });
     }
-    dl.total_height() + 2.0 * pad
+    if extras.pending {
+        let right = ink_right(&dl);
+        c.spinners.push(Pos2::new(
+            x0 + (right + size * 0.9).min(w - size * 0.5),
+            pad + dl.total_height() / 2.0,
+        ));
+    }
+    if !extras.hints.is_empty() {
+        let tex = format!("\\text{{{}}}", extras.hints.join("; "));
+        let theme = Theme {
+            text: input.theme.placeholder_label,
+            ..input.theme
+        };
+        let hd = snippet(&tex, size * 0.85, theme);
+        let x = (ink_right(&dl) + size).min(w - hd.width).max(0.0);
+        c.merge(
+            &hd,
+            x0 + x,
+            pad + (dl.total_height() - hd.total_height()) / 2.0,
+            false,
+        );
+    }
+    let mut y = dl.total_height() + 2.0 * pad;
+    for rows in &extras.tables {
+        y += layout_table(input, rows, x0, y, w, c);
+    }
+    for (line, tree) in &extras.steps {
+        y += layout_steps(input, *line, tree, x0, y, w, c);
+    }
+    y
 }
 
-/// The results to fill into a maths block, from its evaluation.
-fn results_for(br: &BlockResult, m: &DisplayMath) -> Vec<LineResult> {
-    let mut out = vec![];
+/// The right edge of the ink of a display list: boxes, glyphs and rules.
+pub(crate) fn ink_right(dl: &DisplayList) -> f32 {
+    let glyphs = dl.items.iter().filter_map(|p| match p {
+        Primitive::Glyph { x, size, .. } => Some(x + size * 0.75),
+        Primitive::Rule { rect, .. } => Some(rect.x + rect.w),
+        _ => None,
+    });
+    dl.hits
+        .iter()
+        .map(|h| h.rect.x + h.rect.w)
+        .chain(glyphs)
+        .fold(0.0f32, f32::max)
+}
+
+/// The height of one slider row under a figure.
+pub fn slider_row_height(size: f32) -> f32 {
+    size * 1.7
+}
+
+/// What a maths block shows besides its own lines.
+#[derive(Debug, Default)]
+struct Extras {
+    results: Vec<LineResult>,
+    /// Tables of helper results (label, value LaTeX), shown under the equation.
+    tables: Vec<Vec<(String, String)>>,
+    /// Worked steps, by line span.
+    steps: Vec<(Span, mpp_core::tools::StepTree)>,
+    /// Some answer is still being worked out.
+    pending: bool,
+    /// What to fill in before there can be an answer ("fill in: upper bound").
+    hints: Vec<String>,
+}
+
+/// Text that can sit inside `\text{…}` without any markup showing.
+fn plain_text(s: &str) -> String {
+    s.chars()
+        .map(|ch| match ch {
+            '\\' | '{' | '}' | '$' | '_' | '^' | '`' | '#' | '%' | '&' | '~' => ' ',
+            other => other,
+        })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// True when a note is maths (it has markup a sentence would not).
+fn looks_like_maths(s: &str) -> bool {
+    s.contains(['\\', '^', '_', '='])
+}
+
+/// The result of the line at `offset` (a result box sits at the end of its line).
+pub(crate) fn result_line_at(br: &BlockResult, offset: usize) -> Option<usize> {
+    br.values
+        .iter()
+        .position(|v| v.span.end == offset)
+        .or_else(|| {
+            br.values
+                .iter()
+                .position(|v| v.span.start <= offset && offset <= v.span.end)
+        })
+}
+
+/// The results, tables, steps and spinners of a maths block, from its evaluation.
+fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState) -> Extras {
+    let mut ex = Extras::default();
     for v in &br.values {
         let Some(i) = m
             .ast
@@ -628,21 +741,54 @@ fn results_for(br: &BlockResult, m: &DisplayMath) -> Vec<LineResult> {
         else {
             continue;
         };
+        let (text, latex, approx) = match show.format_for(v.span) {
+            Some(f) => v.reformat_all(f),
+            None => (v.text.clone(), v.latex.clone(), v.approx.clone()),
+        };
+        if v.pending {
+            ex.pending = true;
+            ex.results.push(LineResult::ghost(i, "\\cdots"));
+            continue;
+        }
+        if let Some(Value::Table(t)) = &v.value {
+            if let Some(rows) = mpp_core::tools::table::rows(t) {
+                ex.tables.push(
+                    rows.iter()
+                        .map(|(label, e)| (label.clone(), e.to_latex()))
+                        .collect(),
+                );
+                ex.results.push(LineResult {
+                    kind: if v.auto {
+                        ResultKind::Ghost
+                    } else {
+                        ResultKind::Filled
+                    },
+                    ..LineResult::filled(i, "\\downarrow")
+                });
+                continue;
+            }
+        }
         match &v.kind {
-            LineKind::Query { mode, .. } => {
-                if let (QueryMode::Approx, Some(a)) = (mode, &v.approx) {
-                    out.push(LineResult {
+            LineKind::Query { mode, steps } => {
+                if let (QueryMode::Approx, Some(a)) = (mode, &approx) {
+                    ex.results.push(LineResult {
                         relation: Some(RelOp::Approx),
                         ..LineResult::filled(i, a.clone())
                     });
-                } else if let Some(l) = &v.latex {
+                } else if let Some(l) = &latex {
                     let mut r = LineResult::filled(i, l.clone());
-                    if let (Some(t), Some(a)) = (&v.text, &v.approx) {
+                    if let (Some(t), Some(a)) = (&text, &approx) {
                         if t != a {
                             r = LineResult::filled(i, format!("{l} \\approx {a}"));
                         }
                     }
-                    out.push(r);
+                    ex.results.push(r);
+                }
+                let wanted = *steps || show.show_steps;
+                if let (true, Some(tree)) = (wanted, v.step_tree()) {
+                    if !tree.roots.is_empty() {
+                        ex.steps.push((v.span, tree));
+                    }
                 }
             }
             LineKind::Check => {
@@ -652,21 +798,255 @@ fn results_for(br: &BlockResult, m: &DisplayMath) -> Vec<LineResult> {
                         Some(false) => "\\times",
                         None => "?",
                     };
-                    out.push(LineResult::filled(i, tex));
+                    ex.results.push(LineResult::filled(i, tex));
                 }
             }
-            LineKind::Relation if v.auto_eval => {
-                if let Some(l) = &v.latex {
-                    out.push(LineResult {
-                        kind: ResultKind::Ghost,
+            _ if v.auto => {
+                let is_equation = matches!(v.value, Some(Value::Relation(_)))
+                    || matches!(
+                        v.input.as_ref().map(mpp_core::Expr::node),
+                        Some(mpp_core::ExprNode::Relation(..))
+                    );
+                if let Some(l) = &latex {
+                    ex.results.push(LineResult {
+                        relation: is_equation.then_some(RelOp::Implies),
                         ..LineResult::ghost(i, l.clone())
+                    });
+                } else if let Some(a) = &approx {
+                    ex.results.push(LineResult {
+                        relation: Some(RelOp::Approx),
+                        ..LineResult::ghost(i, a.clone())
                     });
                 }
             }
-            _ => {}
+            _ => {
+                if let (Some(h), None) = (&v.hint, &v.value) {
+                    let h = plain_text(h);
+                    if !h.is_empty() && !ex.hints.contains(&h) {
+                        ex.hints.push(h);
+                    }
+                }
+            }
         }
     }
-    out
+    ex
+}
+
+/// A typeset snippet in inline style.
+fn snippet(latex: &str, size: f32, theme: Theme) -> DisplayList {
+    let opts = LayoutOptions {
+        theme,
+        ..LayoutOptions::inline(size)
+    };
+    layout_latex(latex, &opts)
+}
+
+/// A two-column table of helper results under an equation: labels in the margin
+/// colour, values typeset in the result colour. Returns its height.
+fn layout_table(
+    input: &PageInput<'_>,
+    rows: &[(String, String)],
+    x0: f32,
+    y0: f32,
+    w: f32,
+    c: &mut Canvas,
+) -> f32 {
+    let size = input.size;
+    let small = size * 0.95;
+    let label_theme = Theme {
+        text: input.theme.muted,
+        ..input.theme
+    };
+    let value_theme = Theme {
+        text: input.theme.result,
+        ..input.theme
+    };
+    let cells: Vec<(DisplayList, DisplayList)> = rows
+        .iter()
+        .map(|(label, value)| {
+            (
+                snippet(
+                    &format!("\\text{{{}}}", plain_text(label)),
+                    small,
+                    label_theme,
+                ),
+                snippet(value, small, value_theme),
+            )
+        })
+        .collect();
+    let label_w = cells.iter().map(|(l, _)| l.width).fold(0.0f32, f32::max);
+    let value_w = cells.iter().map(|(_, v)| v.width).fold(0.0f32, f32::max);
+    let gap = size * 1.2;
+    let table_w = (label_w + gap + value_w + size).min(w);
+    let left = x0 + ((w - table_w) / 2.0).max(0.0);
+    let mut y = y0 + size * 0.2;
+    c.items.push(Primitive::Rule {
+        rect: rrect(left, y, table_w, 0.8),
+        color: input.theme.rule,
+    });
+    y += size * 0.3;
+    for (label, value) in &cells {
+        let row_h = label.total_height().max(value.total_height()).max(small);
+        let ly = y + (row_h - label.total_height()) / 2.0;
+        let vy = y + (row_h - value.total_height()) / 2.0;
+        c.merge(label, left + size * 0.5, ly, false);
+        c.merge(value, left + size * 0.5 + label_w + gap, vy, false);
+        y += row_h + size * 0.25;
+    }
+    c.items.push(Primitive::Rule {
+        rect: rrect(left, y, table_w, 0.8),
+        color: input.theme.rule,
+    });
+    y + size * 0.3 - y0
+}
+
+/// The fold line of a line's working and, when unfolded, its steps. Returns the height.
+fn layout_steps(
+    input: &PageInput<'_>,
+    line: Span,
+    tree: &mpp_core::tools::StepTree,
+    x0: f32,
+    y0: f32,
+    w: f32,
+    c: &mut Canvas,
+) -> f32 {
+    let size = input.size;
+    let small = size * 0.9;
+    let muted = Theme {
+        text: input.theme.muted,
+        ..input.theme
+    };
+    let expanded = input.show.is_expanded(line);
+    let mut rules: Vec<String> = vec![];
+    for n in &tree.roots {
+        let r = plain_text(&n.rule);
+        if !r.is_empty() && !rules.contains(&r) {
+            rules.push(r);
+        }
+    }
+    let head = if rules.is_empty() {
+        "\\text{Working}".to_string()
+    } else {
+        format!("\\text{{Working: {}}}", rules.join(", "))
+    };
+    let left = x0 + size * 1.5;
+    let head_dl = snippet(&head, small, muted);
+    let mut y = y0 + size * 0.15;
+    let row_h = head_dl.total_height().max(small);
+    // The fold arrow: right when folded, down when open.
+    let (ax, ay, s) = (left - size * 0.9, y + row_h / 2.0, size * 0.28);
+    let cmds = if expanded {
+        vec![
+            mpp_render::PathCmd::MoveTo(ax - s, ay - s * 0.6),
+            mpp_render::PathCmd::LineTo(ax + s, ay - s * 0.6),
+            mpp_render::PathCmd::LineTo(ax, ay + s * 0.8),
+            mpp_render::PathCmd::Close,
+        ]
+    } else {
+        vec![
+            mpp_render::PathCmd::MoveTo(ax - s * 0.6, ay - s),
+            mpp_render::PathCmd::LineTo(ax + s * 0.8, ay),
+            mpp_render::PathCmd::LineTo(ax - s * 0.6, ay + s),
+            mpp_render::PathCmd::Close,
+        ]
+    };
+    c.items.push(Primitive::Path {
+        cmds,
+        color: input.theme.muted,
+        stroke: None,
+    });
+    c.merge(
+        &head_dl,
+        left,
+        y + (row_h - head_dl.total_height()) / 2.0,
+        false,
+    );
+    c.toggles.push(StepToggle {
+        rect: Rect::from_min_size(
+            Pos2::new(ax - s * 2.0, y),
+            Vec2::new(head_dl.width + (left - ax) + s * 2.0, row_h),
+        ),
+        line,
+    });
+    y += row_h + size * 0.2;
+    if expanded {
+        let mut stack: Vec<(usize, &mpp_core::tools::StepNode)> =
+            tree.roots.iter().rev().map(|n| (0, n)).collect();
+        while let Some((depth, n)) = stack.pop() {
+            let indent = left + depth as f32 * size * 1.2;
+            let avail = (w - (indent - x0)).max(size * 4.0);
+            let rule = plain_text(&n.rule);
+            let latex = if rule.is_empty() {
+                n.latex_line()
+            } else {
+                format!("\\text{{{rule}: }}\\; {}", n.latex_line())
+            };
+            let dl = snippet(&latex, small, input.theme);
+            let scale = if dl.width > avail {
+                avail / dl.width
+            } else {
+                1.0
+            };
+            let dl = if scale < 1.0 {
+                snippet(&latex, small * scale.max(0.6), input.theme)
+            } else {
+                dl
+            };
+            c.merge(&dl, indent, y, false);
+            y += dl.total_height().max(small) + size * 0.2;
+            if let Some(note) = &n.note {
+                let tex = if looks_like_maths(note) {
+                    note.clone()
+                } else {
+                    format!("\\text{{{}}}", plain_text(note))
+                };
+                let nd = snippet(&tex, small * 0.9, muted);
+                c.merge(&nd, indent + size, y, false);
+                y += nd.total_height().max(small * 0.9) + size * 0.2;
+            }
+            for child in n.children.iter().rev() {
+                stack.push((depth + 1, child));
+            }
+        }
+    }
+    y - y0
+}
+
+/// Results of a helper sentence (`Analyse …`, `Find the extrema of …`): tables as
+/// tables, anything else as a typeset line in the result colour. Returns the height.
+fn layout_sentence_results(
+    input: &PageInput<'_>,
+    br: &BlockResult,
+    x0: f32,
+    y0: f32,
+    w: f32,
+    c: &mut Canvas,
+) -> f32 {
+    let size = input.size;
+    let mut y = y0;
+    let value_theme = Theme {
+        text: input.theme.result,
+        ..input.theme
+    };
+    for v in &br.values {
+        if let Some(Value::Table(t)) = &v.value {
+            if let Some(rows) = mpp_core::tools::table::rows(t) {
+                let rows: Vec<(String, String)> = rows
+                    .iter()
+                    .map(|(label, e)| (label.clone(), e.to_latex()))
+                    .collect();
+                y += layout_table(input, &rows, x0, y, w, c);
+                continue;
+            }
+        }
+        if let Some(l) = &v.latex {
+            let dl = snippet(l, size, value_theme);
+            let x = x0 + ((w - dl.width) / 2.0).max(0.0);
+            c.merge(&dl, x, y + size * 0.2, false);
+            y += dl.total_height().max(size) + size * 0.4;
+        }
+    }
+    y - y0
 }
 
 /// Inline content for blocks that keep only their maths: `$…$` pairs become maths
@@ -773,6 +1153,7 @@ mod tests {
             width: 900.0,
             integral_limits: IntegralLimits::AboveBelow,
             slot_labels: &[],
+            show: &ShowState::default(),
         })
     }
 

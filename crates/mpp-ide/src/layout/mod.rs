@@ -6,6 +6,7 @@ pub mod docref;
 pub mod panes;
 pub mod persist;
 pub mod tiles;
+pub mod tools_tiles;
 
 pub use tiles::{Dir, Pane, Preset};
 

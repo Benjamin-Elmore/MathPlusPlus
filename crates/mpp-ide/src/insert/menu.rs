@@ -536,7 +536,8 @@ mod tests {
                 "Greek",
                 "Symbols",
                 "Helpers",
-                "Graphs"
+                "Graphs",
+                "Units"
             ]
         );
         let r = sections("matrix", &[]);

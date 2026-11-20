@@ -283,35 +283,72 @@ impl IdeApp {
         }
     }
 
-    /// A tile for a tool that is not built yet.
-    pub(crate) fn placeholder_tile(&mut self, ui: &mut Ui, theme: &Theme, title: &str, text: &str) {
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.add_space(10.0);
-            ui.label(
-                egui::RichText::new(title.to_uppercase())
-                    .size(13.5)
-                    .color(c32(theme.muted)),
-            );
-        });
-        ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.add_space(12.0);
-            ui.label(egui::RichText::new(text).color(c32(theme.muted)));
-        });
-    }
-
-    /// A figure pinned in its own tile; it redraws as the file changes.
+    /// A figure pinned in its own tile: live (it redraws as the file changes and
+    /// shares its camera and sliders with the page), with scroll to zoom.
     pub(crate) fn graph_tile(&mut self, ui: &mut Ui, doc: u64, figure: usize, theme: &Theme) {
-        let figs = self.figures_of(doc);
-        let Some(f) = figs.get(figure) else {
-            ui.add_space(12.0);
-            ui.weak("This figure is not in the file any more.");
+        let (mode, size) = (self.mode, self.size);
+        let Some(d) = self.docs.iter_mut().find(|d| d.id == doc) else {
             return;
         };
-        let rect = ui.available_rect_before_wrap().shrink(14.0);
+        let Some(st) = d.figures.list.get_mut(figure) else {
+            ui.add_space(12.0);
+            ui.label(
+                egui::RichText::new("This figure is not in the file any more.")
+                    .color(c32(theme.muted)),
+            );
+            return;
+        };
+        let rows = st.sliders().len() as f32 * crate::page::slider_row_height(size);
+        let area = ui.available_rect_before_wrap().shrink(14.0);
+        let rect = area.with_max_y((area.bottom() - rows).max(area.top() + 20.0));
         if rect.width() > 20.0 && rect.height() > 20.0 {
-            self.figures.draw(ui, rect, f, theme);
+            let id = egui::Id::unique(("graph-tile", doc, figure));
+            let action = crate::figure::figure_ui(ui, rect, id, st, mode, true);
+            if rows > 0.0 {
+                let top = egui::pos2(rect.left(), rect.bottom() + size * 0.2);
+                crate::figure::sliders_ui(ui, top, rect.width(), size, st, mode);
+            }
+            match action {
+                Some(crate::figure::FigureAction::ExportPng) => {
+                    self.export_figure_of(doc, figure, false)
+                }
+                Some(crate::figure::FigureAction::ExportSvg) => {
+                    self.export_figure_of(doc, figure, true)
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// Asks where to save figure `figure` of document `idx` and writes it.
+    pub(crate) fn export_figure(&mut self, idx: usize, figure: usize, svg: bool) {
+        if let Some(id) = self.docs.get(idx).map(|d| d.id) {
+            self.export_figure_of(id, figure, svg);
+        }
+    }
+
+    fn export_figure_of(&mut self, doc: u64, figure: usize, svg: bool) {
+        let (ext, label) = if svg {
+            ("svg", "SVG image")
+        } else {
+            ("png", "PNG image")
+        };
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(label, &[ext])
+            .set_file_name(format!("figure-{}.{ext}", figure + 1))
+            .save_file()
+        else {
+            return;
+        };
+        let mode = self.mode;
+        let result = self
+            .docs
+            .iter()
+            .find(|d| d.id == doc)
+            .and_then(|d| d.figures.list.get(figure))
+            .map(|st| crate::figure::export(st, &path, mode));
+        if let Some(Err(m)) = result {
+            self.message = Some(m);
         }
     }
 }

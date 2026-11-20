@@ -10,11 +10,13 @@ mod build;
 mod flow;
 
 use egui::{Pos2, Rect, Vec2};
+use mpp_eval::NumberFormat;
 use mpp_render::{CaretStop, DisplayList, HitBox, HitKind, Primitive, Theme};
 use mpp_syntax::document::BlockId;
 use mpp_syntax::Span;
 
-pub use build::{build_page, column_width, scan_inlines, PageInput};
+pub(crate) use build::result_line_at;
+pub use build::{build_page, column_width, scan_inlines, slider_row_height, PageInput};
 pub use flow::{glyph_for, text_width};
 
 /// What kind of thing a block is, for the view.
@@ -25,6 +27,68 @@ pub enum BlockTag {
     /// A figure: the rectangle (block-local) the figure drawer fills.
     Figure(Rect),
     Rule,
+}
+
+/// How results are shown, beyond what the file says: the view's own choices.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ShowState {
+    /// Slider rows under each figure (a row per `:=` variable with a range).
+    pub figure_rows: Vec<(BlockId, usize)>,
+    /// Figures drawn in 3D (they get a taller box).
+    pub figure_3d: Vec<BlockId>,
+    /// Number formats picked for single results (right-click), by line span.
+    pub formats: Vec<(Span, NumberFormat)>,
+    /// Lines whose working is unfolded, by line span.
+    pub expanded: Vec<Span>,
+    /// Show the working of every query that has it, not only `= ?!` lines.
+    pub show_steps: bool,
+}
+
+impl ShowState {
+    /// The number format picked for the result of the line at `span`.
+    pub fn format_for(&self, span: Span) -> Option<&NumberFormat> {
+        self.formats
+            .iter()
+            .find(|(s, _)| *s == span)
+            .map(|(_, f)| f)
+    }
+
+    /// Picks a number format for one line.
+    pub fn set_format(&mut self, span: Span, fmt: NumberFormat) {
+        self.formats.retain(|(s, _)| *s != span);
+        self.formats.push((span, fmt));
+    }
+
+    /// True when the working of the line at `span` is unfolded.
+    pub fn is_expanded(&self, span: Span) -> bool {
+        self.expanded.contains(&span)
+    }
+
+    /// Folds or unfolds the working of one line.
+    pub fn toggle_steps(&mut self, span: Span) {
+        if let Some(i) = self.expanded.iter().position(|s| *s == span) {
+            self.expanded.remove(i);
+        } else {
+            self.expanded.push(span);
+        }
+    }
+
+    /// Slider rows under a figure.
+    pub fn rows_for(&self, id: BlockId) -> usize {
+        self.figure_rows
+            .iter()
+            .find(|(b, _)| *b == id)
+            .map_or(0, |(_, n)| *n)
+    }
+}
+
+/// A clickable fold line under an equation: unfolds the working of one line.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StepToggle {
+    /// Page coordinates.
+    pub rect: Rect,
+    /// The span of the line whose working it folds.
+    pub line: Span,
 }
 
 /// One laid-out block.
@@ -53,6 +117,10 @@ pub struct Page {
     /// Source ranges that are maths (edited structurally; live symbol replacement applies).
     pub math_ranges: Vec<Span>,
     pub theme: Option<Theme>,
+    /// Fold lines of worked steps, in page coordinates.
+    pub step_toggles: Vec<StepToggle>,
+    /// Where a spinner turns while an answer is being worked out (page coordinates).
+    pub spinners: Vec<Pos2>,
 }
 
 /// Drawing primitives and boxes being collected for one block.
@@ -63,6 +131,10 @@ pub struct Canvas {
     pub stops: Vec<CaretStop>,
     /// Source ranges of the visible prose characters.
     pub chars: Vec<Span>,
+    /// Fold lines of worked steps (block-local).
+    pub toggles: Vec<StepToggle>,
+    /// Spinners for answers still being worked out (block-local).
+    pub spinners: Vec<Pos2>,
 }
 
 impl Canvas {

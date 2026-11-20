@@ -1761,6 +1761,7 @@ dependencies = [
  "lyon_tessellation",
  "mpp-core",
  "mpp-eval",
+ "mpp-plot",
  "mpp-render",
  "mpp-syntax",
  "notify",

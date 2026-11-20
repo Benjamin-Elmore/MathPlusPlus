@@ -12,7 +12,7 @@ use egui::{
     Vec2,
 };
 use mpp_render::Theme;
-use mpp_syntax::document::{Block, BlockKind, Document, Figure};
+use mpp_syntax::document::BlockId;
 
 use crate::copy::{clipboard_text, CopyFormat};
 use crate::defs;
@@ -20,7 +20,6 @@ use crate::diagnostics::fixes::{self, Applied};
 use crate::diagnostics::ui::{self as dui, DiagUi, FixMenu, MenuOutcome};
 use crate::doc::{Doc, PageCache};
 use crate::editor::symbols::{completions, live_replacement, word_at, Completion};
-use crate::figure::FigureDrawer;
 use crate::insert::{self, InsertUi};
 use crate::page::BlockTag;
 use crate::paint::{c32, paint_display_list, paint_text};
@@ -44,6 +43,8 @@ pub enum ViewEvent {
     OpenLinkAt(usize),
     /// "Open in tile" on a figure (counting figures from 0).
     OpenFigureTile(usize),
+    /// Export a figure (counting from 0) as PNG (`false`) or SVG (`true`).
+    ExportFigure(usize, bool),
     Save,
     /// Open a file (a quick fix: "Open mechanics.mpp").
     Open(std::path::PathBuf),
@@ -53,7 +54,6 @@ pub enum ViewEvent {
 pub struct ViewCtx<'a> {
     pub mode: Mode,
     pub size: f32,
-    pub figures: &'a dyn FigureDrawer,
     pub completion: &'a mut Option<CompletionState>,
     /// The last copy made inside the app: (what other apps got, the source).
     pub clip: &'a mut Option<(String, String)>,
@@ -67,14 +67,88 @@ pub struct ViewCtx<'a> {
     pub active: bool,
 }
 
-fn find_block(doc: &Document, id: mpp_syntax::document::BlockId) -> Option<&Block> {
-    let mut found = None;
-    doc.walk(&mut |b| {
-        if b.id == id && found.is_none() {
-            found = Some(b);
+/// The step fold line under a screen point.
+fn toggle_at(pc: &PageCache, origin: Pos2, pos: Pos2) -> Option<mpp_syntax::Span> {
+    let local = pos - origin.to_vec2();
+    pc.page
+        .step_toggles
+        .iter()
+        .find(|t| t.rect.contains(local))
+        .map(|t| t.line)
+}
+
+/// The evaluated line whose result box is under a screen point.
+fn result_at(doc: &Doc, pc: &PageCache, origin: Pos2, pos: Pos2) -> Option<(BlockId, usize)> {
+    let local = pos - origin.to_vec2();
+    let (b, h) = pc.page.hit_at(local)?;
+    if h.kind != mpp_render::HitKind::Result {
+        return None;
+    }
+    let br = doc.eval.as_ref()?.block(b.id)?;
+    let i = crate::page::result_line_at(br, h.span.start)?;
+    Some((b.id, i))
+}
+
+/// A typeset sentence about a check: proved, agrees at points, or the
+/// counterexample.
+fn verdict_latex(v: &mpp_eval::Verdict) -> String {
+    let num = |s: &str| {
+        s.chars()
+            .filter(|c| c.is_ascii_digit() || matches!(c, '.' | '-' | 'e' | 'E' | '+'))
+            .collect::<String>()
+    };
+    match v {
+        mpp_eval::Verdict::Proved => "\\checkmark\\; \\text{proved symbolically}".into(),
+        mpp_eval::Verdict::Holds { points } => {
+            format!("\\checkmark\\; \\text{{agrees at {points} random points}}")
         }
-    });
-    found
+        mpp_eval::Verdict::Fails { at, lhs, rhs } => {
+            let point: Vec<String> = at
+                .iter()
+                .map(|(n, x)| format!("{} = {}", mpp_plot::view2d::name_latex(n), num(x)))
+                .collect();
+            let place = if point.is_empty() {
+                String::new()
+            } else {
+                format!("\\text{{ at }} {}", point.join(",\\; "))
+            };
+            format!(
+                "\\times{place}\\text{{: left side }} {}\\text{{, right side }} {}",
+                num(lhs),
+                num(rhs)
+            )
+        }
+        mpp_eval::Verdict::Unknown(_) => "\\text{could not decide}".into(),
+    }
+}
+
+/// The card shown over a check's ✓ or ✗.
+fn verdict_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, size: f32) {
+    let Some(pos) = ui.input(|i| i.pointer.hover_pos()) else {
+        return;
+    };
+    let Some((block, i)) = result_at(doc, pc, origin, pos) else {
+        return;
+    };
+    let Some(verdict) = doc
+        .eval
+        .as_ref()
+        .and_then(|ev| ev.block(block))
+        .and_then(|b| b.values.get(i))
+        .and_then(|v| v.verdict.clone())
+    else {
+        return;
+    };
+    let tex = verdict_latex(&verdict);
+    let theme = *theme;
+    egui::Area::new(egui::Id::unique("verdict-card"))
+        .order(egui::Order::Tooltip)
+        .fixed_pos(pos + Vec2::new(12.0, 16.0))
+        .show(ui.ctx(), |ui| {
+            card_frame(ui).show(ui, |ui| {
+                typeset::show(ui, &tex, size * 0.9, theme);
+            });
+        });
 }
 
 /// Draws the page and handles input. Returns the requests for the app.
@@ -128,7 +202,14 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                         .is_some_and(|p| r.contains(p))
             });
             let mut moved = false;
-            if bulb_clicked {
+            let step_click = ui
+                .input(|i| i.pointer.primary_pressed())
+                .then(|| resp.interact_pointer_pos().or_else(|| resp.hover_pos()))
+                .flatten()
+                .and_then(|p| toggle_at(&pc0, origin, p));
+            if let Some(line) = step_click {
+                doc.show_mut().toggle_steps(line);
+            } else if bulb_clicked {
                 if let Some((r, span)) = bulb {
                     open_fix_menu(doc, &pc0, cx, span, r.right_bottom());
                 }
@@ -156,6 +237,8 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             // The text may have changed: draw the up-to-date page.
             let pc = doc.page(avail_w, cx.size, cx.mode);
             paint_page(ui, &painter, doc, &pc, origin, cx, &theme, focused);
+            figures_pass(ui, doc, &pc, origin, cx, resp.id, &mut events);
+            spinners(ui, &painter, &pc, origin, &theme);
 
             let caret_rect = pc.page.caret_stop(doc.editor.caret()).map(|s| {
                 Rect::from_min_max(
@@ -186,6 +269,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 });
                 if !cx.diag.menu_open() {
                     hover_card(ui, doc, &pc, origin, &theme, cx);
+                    verdict_card(ui, doc, &pc, origin, &theme, cx.size);
                 }
             }
             if cx.active {
@@ -212,6 +296,81 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
         dui::paint_scrollbar_marks(&painter, track, content_h, &problems, &theme);
     }
     events
+}
+
+/// Draws the figures of the page and their sliders, and handles their mouse.
+fn figures_pass(
+    ui: &mut Ui,
+    doc: &mut Doc,
+    pc: &PageCache,
+    origin: Pos2,
+    cx: &ViewCtx<'_>,
+    view_id: egui::Id,
+    events: &mut Vec<ViewEvent>,
+) {
+    let clip = ui.clip_rect();
+    let mut index = 0;
+    for b in &pc.page.blocks {
+        let BlockTag::Figure(r) = b.tag else {
+            continue;
+        };
+        let n = index;
+        index += 1;
+        let rect = r.translate(Vec2::new(origin.x, origin.y + b.top));
+        let rows = pc.doc_rows(b.id);
+        let full =
+            rect.with_max_y(rect.bottom() + rows as f32 * crate::page::slider_row_height(cx.size));
+        if !full.intersects(clip) {
+            continue;
+        }
+        let Some(st) = doc.figures.of_block(b.id) else {
+            continue;
+        };
+        let id = view_id.with(("figure", n));
+        match crate::figure::figure_ui(ui, rect, id, st, cx.mode, false) {
+            Some(crate::figure::FigureAction::OpenInTile) => {
+                events.push(ViewEvent::OpenFigureTile(n))
+            }
+            Some(crate::figure::FigureAction::ExportPng) => {
+                events.push(ViewEvent::ExportFigure(n, false))
+            }
+            Some(crate::figure::FigureAction::ExportSvg) => {
+                events.push(ViewEvent::ExportFigure(n, true))
+            }
+            None => {}
+        }
+        if rows > 0 {
+            let top = Pos2::new(rect.left(), rect.bottom() + cx.size * 0.2);
+            if crate::figure::sliders_ui(ui, top, rect.width(), cx.size, st, cx.mode) {
+                ui.ctx().request_repaint();
+            }
+        }
+    }
+}
+
+/// Spinners beside answers that are still being worked out.
+fn spinners(ui: &Ui, painter: &egui::Painter, pc: &PageCache, origin: Pos2, theme: &Theme) {
+    if pc.page.spinners.is_empty() {
+        return;
+    }
+    let t = ui.input(|i| i.time) as f32;
+    for p in &pc.page.spinners {
+        let c = origin + p.to_vec2();
+        let r = 6.0;
+        let start = t * 5.0;
+        let pts: Vec<Pos2> = (0..=20)
+            .map(|k| {
+                let a = start + k as f32 / 20.0 * std::f32::consts::PI * 1.5;
+                c + Vec2::new(a.cos(), a.sin()) * r
+            })
+            .collect();
+        painter.add(egui::Shape::line(
+            pts,
+            Stroke::new(1.8, c32(theme.auto_result)),
+        ));
+    }
+    ui.ctx()
+        .request_repaint_after(std::time::Duration::from_millis(30));
 }
 
 /// The figure (counting figures from 0) under a screen point, if any.
@@ -382,7 +541,12 @@ fn context_menu(
     events: &mut Vec<ViewEvent>,
 ) {
     let fig_key = resp.id.with("figure-menu");
+    let result_key = resp.id.with("result-menu");
     if resp.secondary_clicked() {
+        let line = resp
+            .interact_pointer_pos()
+            .and_then(|p| result_at(doc, pc, origin, p));
+        ui.data_mut(|d| d.insert_temp(result_key, line));
         let fig = resp
             .interact_pointer_pos()
             .and_then(|p| figure_at(pc, origin, p));
@@ -399,6 +563,15 @@ fn context_menu(
     }
     let at = resp.interact_pointer_pos();
     resp.context_menu(|ui| {
+        let line = ui
+            .data(|d| d.get_temp::<Option<(BlockId, usize)>>(result_key))
+            .flatten();
+        if let Some((block, i)) = line {
+            if result_menu(ui, doc, block, i) {
+                ui.close();
+            }
+            ui.separator();
+        }
         if ui
             .button(egui::RichText::new("Insert\u{2026}").font(crate::theme::sans(14.0)))
             .clicked()
@@ -417,6 +590,61 @@ fn context_menu(
             }
         }
     });
+}
+
+/// The right-click items of a result: exact or decimal, more or fewer digits,
+/// and keeping what is shown. True when an item was chosen.
+fn result_menu(ui: &mut Ui, doc: &mut Doc, block: BlockId, i: usize) -> bool {
+    let Some(v) = doc
+        .eval
+        .as_ref()
+        .and_then(|ev| ev.block(block))
+        .and_then(|b| b.values.get(i))
+        .cloned()
+    else {
+        return false;
+    };
+    let item = |ui: &mut Ui, text: &str| {
+        ui.button(egui::RichText::new(text).font(crate::theme::sans(14.0)))
+            .clicked()
+    };
+    let numeric = v.value.is_some() && v.verdict.is_none();
+    let current = doc
+        .show()
+        .format_for(v.span)
+        .copied()
+        .or_else(|| v.format().copied())
+        .unwrap_or_default();
+    let mut picked = None;
+    if numeric {
+        let decimal = current.style != mpp_core::display::Style::Exact;
+        if item(
+            ui,
+            if decimal {
+                "Show exactly"
+            } else {
+                "Show as a decimal"
+            },
+        ) {
+            picked = Some(mpp_eval::numfmt::toggle_exact_decimal(&current));
+        }
+        if item(ui, "More digits") {
+            picked = Some(mpp_eval::numfmt::more_digits(&current));
+        }
+        if item(ui, "Fewer digits") {
+            picked = Some(mpp_eval::numfmt::fewer_digits(&current));
+        }
+    }
+    if let Some(f) = picked {
+        doc.show_mut().set_format(v.span, f);
+        return true;
+    }
+    let keepable = v.auto || doc.show().format_for(v.span).is_some();
+    if keepable && item(ui, "Keep this result   Ctrl+Enter") {
+        doc.keep_result_at(v.span.start);
+        return true;
+    }
+    false
 }
 
 /// The Insert menu, at the caret (or where it was opened).
@@ -542,17 +770,6 @@ fn paint_page(
             continue;
         }
         let at = Pos2::new(origin.x, top);
-        if let BlockTag::Figure(r) = b.tag {
-            if let Some(Block {
-                kind: BlockKind::Figure(f),
-                ..
-            }) = find_block(&pc.doc, b.id)
-            {
-                let rect = r.translate(at.to_vec2());
-                let f: &Figure = f;
-                cx.figures.draw(ui, rect, f, theme);
-            }
-        }
         paint_display_list(painter, &b.dl, at);
     }
     // Problems: underlines under the typeset element, a bar in the margin,
@@ -702,11 +919,13 @@ fn update_completion(doc: &Doc, in_math: bool, cx: &mut ViewCtx<'_>) {
     let Some(range) = word_at(text, caret) else {
         return;
     };
-    let names: Vec<String> = doc
+    let mut names: Vec<String> = doc
         .eval
         .as_ref()
         .map(|e| e.bindings.keys().cloned().collect())
         .unwrap_or_default();
+    // Names from the standard library come after the file's own.
+    names.extend(crate::library::names().iter().cloned());
     let items = completions(&text[range.clone()], names.iter().map(String::as_str), 6);
     if !items.is_empty() {
         *cx.completion = Some(CompletionState {
@@ -859,6 +1078,7 @@ fn key_pressed(
                 }
                 return true;
             }
+            Key::Enter => return doc.keep_result_at(caret),
             _ => return false,
         }
     }

@@ -22,10 +22,11 @@ pub enum Group {
     Symbols,
     Helpers,
     Graphs,
+    Units,
 }
 
 impl Group {
-    pub const ALL: [Group; 8] = [
+    pub const ALL: [Group; 9] = [
         Group::Calculus,
         Group::Sums,
         Group::Algebra,
@@ -34,6 +35,7 @@ impl Group {
         Group::Symbols,
         Group::Helpers,
         Group::Graphs,
+        Group::Units,
     ];
 
     /// The heading shown in the menu.
@@ -47,6 +49,7 @@ impl Group {
             Group::Symbols => "Symbols",
             Group::Helpers => "Helpers",
             Group::Graphs => "Graphs",
+            Group::Units => "Units",
         }
     }
 }
@@ -1514,6 +1517,27 @@ fn build_catalogue() -> Vec<Template> {
             k(),
         ),
     ]);
+    // ----- Units: a quantity's unit after its number, and conversions -----
+    for (id, name, latex, words) in UNITS {
+        v.push(item(
+            &format!("unit.{id}"),
+            &[Group::Units],
+            name,
+            latex,
+            &format!("unit {words}"),
+            Body::Symbol(latex),
+            k(),
+        ));
+    }
+    v.push(item(
+        "unit.convert",
+        &[Group::Units],
+        "Convert to another unit",
+        r"\operatorname{in}\,\mathrm{}",
+        "unit convert in change units",
+        Body::Symbol(r"\operatorname{in}\,\mathrm{}"),
+        k(),
+    ));
     // ----- Greek and symbols, from the symbol table -----
     let mut seen: Vec<&str> = vec![];
     for s in SYMBOLS {
@@ -1543,6 +1567,61 @@ fn build_catalogue() -> Vec<Template> {
     }
     v
 }
+
+/// The units of the Insert menu: id, name, what is inserted after a number, search words.
+const UNITS: [(&str, &str, &str, &str); 26] = [
+    ("m", "Metre", r"\,\mathrm{m}", "length metre meter"),
+    ("km", "Kilometre", r"\,\mathrm{km}", "length kilometre"),
+    ("cm", "Centimetre", r"\,\mathrm{cm}", "length centimetre"),
+    ("mm", "Millimetre", r"\,\mathrm{mm}", "length millimetre"),
+    ("s", "Second", r"\,\mathrm{s}", "time second"),
+    ("min", "Minute", r"\,\mathrm{min}", "time minute"),
+    ("h", "Hour", r"\,\mathrm{h}", "time hour"),
+    ("kg", "Kilogram", r"\,\mathrm{kg}", "mass kilogram"),
+    ("g", "Gram", r"\,\mathrm{g}", "mass gram"),
+    (
+        "ms",
+        "Metres per second",
+        r"\,\mathrm{m/s}",
+        "speed velocity",
+    ),
+    (
+        "kmh",
+        "Kilometres per hour",
+        r"\,\mathrm{km/h}",
+        "speed velocity",
+    ),
+    (
+        "ms2",
+        "Metres per second squared",
+        r"\,\mathrm{m/s^2}",
+        "acceleration",
+    ),
+    ("N", "Newton", r"\,\mathrm{N}", "force newton"),
+    ("J", "Joule", r"\,\mathrm{J}", "energy work joule"),
+    ("W", "Watt", r"\,\mathrm{W}", "power watt"),
+    ("Pa", "Pascal", r"\,\mathrm{Pa}", "pressure pascal"),
+    (
+        "kPa",
+        "Kilopascal",
+        r"\,\mathrm{kPa}",
+        "pressure kilopascal",
+    ),
+    ("V", "Volt", r"\,\mathrm{V}", "voltage volt"),
+    ("A", "Ampere", r"\,\mathrm{A}", "current ampere"),
+    ("ohm", "Ohm", r"\,\Omega", "resistance ohm"),
+    ("Hz", "Hertz", r"\,\mathrm{Hz}", "frequency hertz"),
+    ("K", "Kelvin", r"\,\mathrm{K}", "temperature kelvin"),
+    (
+        "degC",
+        "Degree Celsius",
+        r"\,{}^\circ\mathrm{C}",
+        "temperature celsius",
+    ),
+    ("L", "Litre", r"\,\mathrm{L}", "volume litre liter"),
+    ("mol", "Mole", r"\,\mathrm{mol}", "amount mole"),
+    ("rad", "Radian", r"\,\mathrm{rad}", "angle radian"),
+];
 
 fn is_greek(s: &str) -> bool {
     s.chars()

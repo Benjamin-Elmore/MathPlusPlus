@@ -8,7 +8,6 @@ use crate::copy::CopyFormat;
 use crate::defs::{self, DefInfo};
 use crate::doc::Doc;
 use crate::explorer;
-use crate::figure::{FigureDrawer, PlaceholderFigure};
 use crate::files::Recent;
 use crate::insert::{InsertSettings, InsertUi};
 use crate::layout::{BODY_SIZE, MAX_SIZE, MIN_SIZE};
@@ -40,9 +39,10 @@ pub struct IdeApp {
     pub copy_format: CopyFormat,
     /// The read-only raw text pop-out. Off at every start and never saved.
     pub show_file_text: bool,
+    /// Auto-evaluation, steps and the default number format, for every file.
+    pub eval_settings: crate::eval::EvalSettings,
     pub recent: Recent,
     pub ws: Workspace,
-    pub(crate) figures: Box<dyn FigureDrawer>,
     pub(crate) completion: Option<CompletionState>,
     pub(crate) clip: Option<(String, String)>,
     pub(crate) message: Option<String>,
@@ -73,9 +73,9 @@ impl IdeApp {
             size: BODY_SIZE,
             copy_format: CopyFormat::Unicode,
             show_file_text: false,
+            eval_settings: crate::eval::EvalSettings::default(),
             recent: Recent::default(),
             ws: Workspace::default(),
-            figures: Box::new(PlaceholderFigure),
             completion: None,
             clip: None,
             message: None,
@@ -92,11 +92,6 @@ impl IdeApp {
         let mut a = IdeApp::new();
         a.docs.clear();
         a
-    }
-
-    /// Replaces the figure drawer (the plot crate plugs in here).
-    pub fn set_figure_drawer(&mut self, drawer: Box<dyn FigureDrawer>) {
-        self.figures = drawer;
     }
 
     /// Sets the theme choice (Light, Dark or Follow Windows) and updates the mode.
@@ -483,6 +478,15 @@ impl IdeApp {
                     ui.checkbox(&mut s.fourier_k, "Fourier transforms use k (not \u{3c9})");
                 });
                 ui.separator();
+                ui.checkbox(&mut self.eval_settings.auto_eval, "Auto-evaluate");
+                ui.checkbox(&mut self.eval_settings.show_steps, "Show steps");
+                ui.menu_button("Numbers", |ui| {
+                    use mpp_core::display::Style;
+                    let style = &mut self.eval_settings.number_format.style;
+                    ui.radio_value(style, Style::Exact, "Exact (fractions and roots)");
+                    ui.radio_value(style, Style::Decimal, "Decimals");
+                });
+                ui.separator();
                 ui.checkbox(&mut self.show_file_text, "Show file text");
             });
             let ctx = ui.ctx().clone();
@@ -491,6 +495,14 @@ impl IdeApp {
                 self.insert.menu.open_at(None);
             }
         });
+    }
+
+    /// Gives every open file the evaluator settings (each re-evaluates on a change).
+    pub fn apply_eval_settings(&mut self) {
+        let s = self.eval_settings;
+        for d in &mut self.docs {
+            d.set_eval_settings(s);
+        }
     }
 
     /// Draws the whole window into `ui`.
@@ -504,6 +516,7 @@ impl IdeApp {
             self.applied_mode = Some(self.mode);
         }
         let theme = self.mode.theme();
+        self.apply_eval_settings();
 
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
         self.status_ui(ui);

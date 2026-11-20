@@ -2,13 +2,11 @@
 //! open files, and carries the commands (split, maximise, move focus, named
 //! layouts).
 
-use std::collections::HashMap;
 use std::path::PathBuf;
 
 use egui::{Align2, Color32, Context, Key, KeyboardShortcut, Modifiers, Stroke, Ui, WidgetText};
 use egui_tiles::{Behavior, TabState, TileId, Tiles, Tree, UiResponse};
 use mpp_render::Theme;
-use mpp_syntax::document::Figure;
 
 use super::persist::{self, LayoutFile};
 use super::tiles::{self, Dir, Pane, Preset};
@@ -52,7 +50,6 @@ pub struct TileState {
     /// The text of the "save layout as" box, while it is open.
     pub naming: Option<String>,
     last_tab_click: Option<(TileId, std::time::Instant)>,
-    graphs: HashMap<u64, (u64, Vec<Figure>)>,
 }
 
 impl std::fmt::Debug for TileState {
@@ -136,18 +133,8 @@ impl Behavior<Pane> for AppBehavior<'_> {
             Pane::Outline => self.app.outline_tile(ui, &theme),
             Pane::Variables => self.app.variables_tile(ui, &theme),
             Pane::Problems => self.app.problems_tile(ui, &theme),
-            Pane::Steps => self.app.placeholder_tile(
-                ui,
-                &theme,
-                "Steps",
-                "Step-by-step solutions will show here once the steps tool is built.",
-            ),
-            Pane::Library => self.app.placeholder_tile(
-                ui,
-                &theme,
-                "Standard library",
-                "The constants and formulas library will show here once it is built.",
-            ),
+            Pane::Steps => self.app.steps_tile(ui, &theme),
+            Pane::Library => self.app.library_tile(ui, &theme),
         }
         if self.many_tiles && self.focused == Some(tile_id) {
             ui.painter().rect_stroke(
@@ -909,6 +896,7 @@ impl IdeApp {
                 ViewEvent::OpenLinkAt(o) => self.open_link_at(o),
                 ViewEvent::Save => self.save(),
                 ViewEvent::OpenFigureTile(f) => self.open_graph_tile(idx, f),
+                ViewEvent::ExportFigure(f, svg) => self.export_figure(idx, f, svg),
                 ViewEvent::Open(p) => {
                     if let Err(m) = self.open_file(&p, false) {
                         self.message = Some(m);
@@ -932,34 +920,11 @@ impl IdeApp {
         }
     }
 
-    /// The figures of a file (parsed again only when the text changes).
-    pub(crate) fn figures_of(&mut self, doc: u64) -> Vec<Figure> {
-        let Some(d) = self.docs.iter().find(|d| d.id == doc) else {
-            return vec![];
-        };
-        let rev = d.editor.revision();
-        if let Some((r, f)) = self.ws.tiles.graphs.get(&doc) {
-            if *r == rev {
-                return f.clone();
-            }
-        }
-        let parsed = mpp_syntax::document::parse_document(d.editor.text());
-        let mut figs = vec![];
-        parsed.walk(&mut |b| {
-            if let mpp_syntax::document::BlockKind::Figure(f) = &b.kind {
-                figs.push(f.clone());
-            }
-        });
-        self.ws.tiles.graphs.insert(doc, (rev, figs.clone()));
-        figs
-    }
-
     /// One equation view: the typeset page of document `idx`.
     /// `active` marks the view that owns the Insert menu, the quick-fix menu
     /// and the other pop-ups (the focused view, or the active file's).
     pub(crate) fn equation_ui(&mut self, ui: &mut Ui, idx: usize, active: bool) -> Vec<ViewEvent> {
         let (mode, size, copy_format) = (self.mode, self.size, self.copy_format);
-        let figures = self.figures.as_ref();
         let Some(doc) = self.docs.get_mut(idx) else {
             return vec![];
         };
@@ -971,7 +936,6 @@ impl IdeApp {
         let mut cx = ViewCtx {
             mode,
             size,
-            figures,
             completion: &mut self.completion,
             clip: &mut self.clip,
             copy_format,

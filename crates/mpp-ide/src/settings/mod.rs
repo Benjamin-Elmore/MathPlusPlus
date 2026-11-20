@@ -48,6 +48,12 @@ pub struct Settings {
     pub insert: String,
     /// Copy maths as LaTeX instead of Unicode.
     pub copy_latex: bool,
+    /// Grey automatic answers (View → Auto-evaluate).
+    pub auto_eval: bool,
+    /// The working of every query (View → Show steps).
+    pub show_steps: bool,
+    /// Results as decimals by default (View → Numbers).
+    pub decimals: bool,
 }
 
 impl Default for Settings {
@@ -65,6 +71,9 @@ impl Default for Settings {
             theme: crate::theme::ThemeChoice::default().to_stored().into(),
             insert: String::new(),
             copy_latex: false,
+            auto_eval: true,
+            show_steps: false,
+            decimals: false,
         }
     }
 }

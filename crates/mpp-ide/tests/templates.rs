@@ -14,6 +14,7 @@ fn page_with(ed: &Editor, limits: IntegralLimits) -> Page {
     let doc = parse_document(ed.text());
     let labels = ed.slot_labels();
     build_page(&PageInput {
+        show: &mpp_ide::page::ShowState::default(),
         src: ed.text(),
         doc: &doc,
         eval: None,

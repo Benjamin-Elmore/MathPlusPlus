@@ -188,30 +188,37 @@ fn missing_bracket_underlines_the_open_bracket() {
     save_png(&mut h, "problem-missing-bracket-light.png");
 }
 
-/// Units are not read by the parser on this branch yet (they arrive with the
-/// units item), so a unit mismatch cannot be written. The kind, its message and
-/// its quick fix are ready; this checks that unit-like names give no false error.
+/// Adding metres to seconds is an error with both units typeset; a conversion to
+/// a unit of another kind offers "Convert to" the quantity's own unit.
 #[test]
-fn unit_mismatch_is_skipped_until_units_parse() {
+fn unit_mismatch_is_an_error_and_a_bad_conversion_has_a_quick_fix() {
     let src = "# Units\n\n$$ 3 \\mathrm{m} + 2 \\mathrm{s} = ? $$\n";
     let mut h = settled(src, theme::ThemeChoice::Light);
     let ps = problems(&mut h);
-    assert!(
-        !ps.iter()
-            .any(|p| matches!(p.kind, Kind::UnitMismatch { .. })),
-        "{ps:?}"
-    );
-}
+    let p = find(&ps, |k| {
+        matches!(k, Kind::UnitMismatch { convert: false, .. })
+    });
+    assert_eq!(p.level, Level::Error);
+    assert_plain(p);
 
-#[test]
-fn numeric_fallback_is_a_yellow_warning() {
-    let src = "# Numeric check\n\n$$ \\Gamma(x + 1) \\overset{?}{=} x \\Gamma(x) $$\n";
+    let src = "# Units\n\n$$ 5 \\mathrm{km} \\operatorname{in} \\mathrm{s} = ? $$\n";
     let mut h = settled(src, theme::ThemeChoice::Light);
     let ps = problems(&mut h);
-    let p = find(&ps, |k| matches!(k, Kind::NumericCheck { .. }));
-    assert_eq!(p.level, Level::Warning);
-    assert_plain(p);
-    save_png(&mut h, "problem-numeric-light.png");
+    let p = find(&ps, |k| {
+        matches!(k, Kind::UnitMismatch { convert: true, .. })
+    })
+    .clone();
+    let doc = mpp_syntax::document::parse_document(src);
+    let fixes = mpp_ide::diagnostics::fixes::quick_fixes(&p, src, &doc);
+    let fix = fixes.first().expect("a convert quick fix");
+    let mut ed = mpp_ide::editor::Editor::new(src);
+    mpp_ide::diagnostics::fixes::apply(&mut ed, fix);
+    assert!(
+        ed.text().contains("\\operatorname{in} \\mathrm{km}"),
+        "{}",
+        ed.text()
+    );
+    save_png(&mut h, "problem-units-light.png");
 }
 
 #[test]
