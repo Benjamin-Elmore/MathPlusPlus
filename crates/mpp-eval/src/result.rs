@@ -101,6 +101,17 @@ impl LineResult {
         }
     }
 
+    /// The working as a foldable tree (top-level steps with their sub-steps), ending at
+    /// the answer; `None` when no steps were recorded.
+    pub fn step_tree(&self) -> Option<mpp_core::tools::StepTree> {
+        let steps = self.steps.as_ref()?;
+        let tree = match (&self.input, &self.value) {
+            (Some(q), Some(v)) => mpp_core::tools::StepTree::for_answer(steps, q, &v.expr()),
+            _ => mpp_core::tools::StepTree::from_steps(steps),
+        };
+        Some(tree)
+    }
+
     /// Sets the value with its LaTeX and plain text.
     pub fn set_value(&mut self, value: Value) {
         match &value {

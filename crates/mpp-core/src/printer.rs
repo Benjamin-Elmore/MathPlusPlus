@@ -455,9 +455,12 @@ fn plain_product(e: &Expr) -> (String, Prec) {
     if let Some(q) = &p.den_coeff {
         den.push(q.to_string());
     }
+    // A lone denominator that is itself a product (in a tree built for the steps)
+    // needs brackets: `a/(2*x)`, not `a/2*x`.
+    let lone = p.den.len() == 1 && p.den_coeff.is_none();
     for f in &p.den {
         let (s, pr) = plain(f);
-        den.push(paren(s, pr, Prec::Mul));
+        den.push(paren(s, pr, if lone { Prec::Pow } else { Prec::Mul }));
     }
     let mut out = String::new();
     if p.negative {

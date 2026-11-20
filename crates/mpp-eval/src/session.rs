@@ -39,6 +39,8 @@ pub struct Session {
     cache: HashMap<BlockId, Cached>,
     sequences: BTreeSet<String>,
     evaluated: Evaluated,
+    /// "Show steps": every `= ?` query records its working, as if written `= ?!`.
+    show_steps: bool,
 }
 
 impl std::fmt::Debug for Session {
@@ -70,7 +72,22 @@ impl Session {
             cache: HashMap::new(),
             sequences: BTreeSet::new(),
             evaluated: Evaluated::empty(),
+            show_steps: false,
         }
+    }
+
+    /// Turns the "Show steps" option on or off: when on, every `= ?` query records its
+    /// working as if it were written `= ?!` (forgets cached results).
+    pub fn set_show_steps(&mut self, on: bool) {
+        if self.show_steps != on {
+            self.show_steps = on;
+            self.cache.clear();
+        }
+    }
+
+    /// True when the "Show steps" option is on.
+    pub fn show_steps(&self) -> bool {
+        self.show_steps
     }
 
     /// Replaces the holder registry (and forgets cached results).
@@ -196,6 +213,7 @@ impl Session {
             chain: &self.chain,
             doc_name: self.doc_name.as_deref(),
             lines: &lines,
+            show_steps: self.show_steps,
         };
 
         let pass = if own_stack {

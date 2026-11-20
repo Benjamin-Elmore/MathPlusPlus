@@ -39,6 +39,8 @@ pub(crate) struct Inputs<'a> {
     pub chain: &'a [PathBuf],
     pub doc_name: Option<&'a str>,
     pub lines: &'a LineIndex,
+    /// The session's "Show steps" option: record the working of every `= ?` query.
+    pub show_steps: bool,
 }
 
 /// Bindings a block observed before it ran, by name.
@@ -850,7 +852,8 @@ impl Run<'_, '_> {
         };
         lr.input = Some(input.clone());
         let numeric = mode == QueryMode::Approx;
-        let resolved = self.resolve_full(&input, s.locals, &[], steps, numeric);
+        let logging = steps || self.inputs.show_steps;
+        let resolved = self.resolve_full(&input, s.locals, &[], logging, numeric);
         for note in &resolved.notes {
             self.warn(expr.span, note.clone());
         }
