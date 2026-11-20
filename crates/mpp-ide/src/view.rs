@@ -38,6 +38,8 @@ pub struct CompletionState {
 pub enum ViewEvent {
     /// Go to the definition of the name at this source offset.
     GotoAt(usize),
+    /// A click landed here; if it is on an import, open that file.
+    OpenLinkAt(usize),
     Save,
 }
 
@@ -242,6 +244,8 @@ fn handle_pointer(
         if let Some(o) = pc.page.offset_at(local) {
             if command {
                 events.push(ViewEvent::GotoAt(o));
+            } else if !shift {
+                events.push(ViewEvent::OpenLinkAt(o));
             }
             doc.editor.move_caret(o, shift);
             doc.want_x = None;

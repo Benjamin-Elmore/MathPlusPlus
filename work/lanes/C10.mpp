@@ -1,0 +1,17 @@
+# Lane notes: C10, N13, N10 (ide-a)
+
+## Shared-file requests for the integrator
+
+- Cargo.lock: `mpp-ide` now also depends on `egui_tiles` 0.18 (serde feature), `serde` 1, `serde_json` 1, `notify` 8 and `trash` 5. Regenerate the lockfile after merging.
+- eframe is used without its `persistence` feature, so settings and the session live in our own JSON file in the app-data folder (`settings/`), never inside a project.
+- Guide text (docs/guide.mpp): the explorer, tabs and navigation keys are listed in the module doc of `workspace/ui.rs` and in the C10 row.
+
+## Keys added (C10)
+
+- `Ctrl+B` side bar, `Ctrl+P` quick open, `Ctrl+Shift+F` search all files, `Ctrl+Shift+E` explorer, `F2` rename, `Alt+Left` and `Alt+Right` back and forward, `Ctrl+Tab` and `Ctrl+Shift+Tab` cycle tabs, `Ctrl+W` close tab, `Shift+F12` find all uses, `Ctrl+0` reset zoom.
+
+## Merge notes
+
+- `app.rs`: the old `side_panel`, `close_tab`, `folder`/`files` fields are gone. The window is now `menu`, `status_ui`, `side_ui`, `header_ui`, central page. `IdeApp::ws` holds the project, side bar, search and history state.
+- `view.rs`: one new `ViewEvent::OpenLinkAt` and one call that emits it on a click.
+- `doc.rs`: `Doc::id`, `Doc::reload`, `Doc::problems`.

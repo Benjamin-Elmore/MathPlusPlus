@@ -20,10 +20,12 @@ pub mod layout;
 pub mod page;
 pub mod paint;
 mod sample;
+pub mod settings;
 pub mod tabs;
 pub mod theme;
 pub mod typeset;
 pub mod view;
+pub mod workspace;
 
 pub use app::IdeApp;
 pub use doc::{Doc, PageCache};
@@ -41,6 +43,11 @@ impl EframeApp {
         }
         theme::install_fonts(&cc.egui_ctx);
         theme::apply(&cc.egui_ctx, app.mode);
+        // The page zooms its own text (Ctrl+= and friends); egui must not also scale.
+        cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
+        if let Some(dir) = settings::app_data_dir() {
+            app.restore_session(&dir, Some(&cc.egui_ctx));
+        }
         if !paths.is_empty() {
             app.docs.clear();
             for p in paths {

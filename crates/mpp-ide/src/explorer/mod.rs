@@ -1,5 +1,17 @@
-//! The files panel: a flat list of the `.mpp` files in the project folder.
-//! (A tree with folders replaces it later; keep this module's surface small.)
+//! The explorer: the project folder as a tree, file operations that keep
+//! imports correct, search, outline and quick open.
+
+pub mod icons;
+pub mod links;
+pub mod ops;
+pub mod outline;
+pub mod panel;
+pub mod quick_open;
+pub mod search;
+pub mod tree;
+pub mod watch;
+
+pub use panel::{ExplorerAction, ExplorerCtx, ExplorerState, OpenFile};
 
 use std::path::{Path, PathBuf};
 

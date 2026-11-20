@@ -1,6 +1,7 @@
 //! One open document: its text, its evaluation and its laid-out page.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -33,9 +34,13 @@ pub struct PageCache {
     pub problems: Vec<Problem>,
 }
 
+static NEXT_DOC_ID: AtomicU64 = AtomicU64::new(1);
+
 /// An open file (or an unsaved new one).
 #[derive(Debug)]
 pub struct Doc {
+    /// A number that stays with this document while it is open (tiles point at it).
+    pub id: u64,
     pub path: Option<PathBuf>,
     pub editor: Editor,
     saved: String,
@@ -58,6 +63,7 @@ impl Doc {
     /// A document with the given text.
     pub fn with_text(text: &str, path: Option<PathBuf>) -> Self {
         let mut d = Doc {
+            id: NEXT_DOC_ID.fetch_add(1, Ordering::Relaxed),
             path,
             editor: Editor::new(text),
             saved: text.to_string(),
@@ -98,6 +104,25 @@ impl Doc {
     /// True when there are changes that are not saved.
     pub fn is_dirty(&self) -> bool {
         self.editor.text() != self.saved
+    }
+
+    /// Replaces the text with what is on disk now (the file changed outside the
+    /// app and there were no unsaved edits). The caret stays where it was.
+    pub fn reload(&mut self, text: &str) {
+        let caret = self.editor.caret();
+        let end = self.editor.text().len();
+        self.editor.replace_node(Span::new(0, end), text);
+        self.editor.move_caret(caret, false);
+        self.saved = text.to_string();
+        self.touched();
+    }
+
+    /// The problems of the current page (empty before the first layout).
+    pub fn problems(&self) -> Vec<Problem> {
+        self.cache
+            .as_ref()
+            .map(|c| c.problems.clone())
+            .unwrap_or_default()
     }
 
     /// Writes the file to its path.

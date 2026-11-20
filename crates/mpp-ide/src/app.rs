@@ -10,18 +10,18 @@ use crate::doc::Doc;
 use crate::explorer;
 use crate::figure::{FigureDrawer, PlaceholderFigure};
 use crate::files::Recent;
-use crate::layout::{BODY_SIZE, MAX_SIZE, MIN_SIZE, SIDE_PANEL_WIDTH};
+use crate::layout::{BODY_SIZE, MAX_SIZE, MIN_SIZE};
 use crate::sample::WELCOME;
-use crate::tabs::{self, Tab, TabAction};
 use crate::theme::{self, Mode};
-use crate::typeset;
 use crate::view::{self, CompletionState, ViewCtx, ViewEvent};
+use crate::workspace::Workspace;
 
 const SAVE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::S);
 const OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::O);
 const NEW: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
 const ZOOM_IN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Equals);
 const ZOOM_OUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Minus);
+const ZOOM_RESET: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Num0);
 
 /// The Math++ IDE.
 pub struct IdeApp {
@@ -33,12 +33,11 @@ pub struct IdeApp {
     /// The read-only raw text pop-out. Off at every start and never saved.
     pub show_file_text: bool,
     pub recent: Recent,
-    folder: Option<PathBuf>,
-    files: Vec<PathBuf>,
+    pub ws: Workspace,
     figures: Box<dyn FigureDrawer>,
     completion: Option<CompletionState>,
     clip: Option<(String, String)>,
-    message: Option<String>,
+    pub(crate) message: Option<String>,
     applied_mode: Option<Mode>,
 }
 
@@ -59,8 +58,7 @@ impl IdeApp {
             copy_format: CopyFormat::Unicode,
             show_file_text: false,
             recent: Recent::default(),
-            folder: None,
-            files: vec![],
+            ws: Workspace::default(),
             figures: Box::new(PlaceholderFigure),
             completion: None,
             clip: None,
@@ -147,21 +145,19 @@ impl IdeApp {
         self.docs.push(doc);
         self.active = self.docs.len() - 1;
         self.recent.touch(path);
-        self.set_folder(path.parent());
+        self.adopt_folder(path.parent());
         Ok(self.active)
     }
 
-    fn set_folder(&mut self, dir: Option<&Path>) {
-        self.folder = dir.map(Path::to_path_buf);
-        self.refresh_files();
-    }
-
-    fn refresh_files(&mut self) {
-        self.files = self
-            .folder
-            .as_deref()
-            .map(explorer::list_mpp)
-            .unwrap_or_default();
+    /// With no project folder yet, the folder of the file just opened becomes it.
+    fn adopt_folder(&mut self, dir: Option<&Path>) {
+        if self.ws.explorer.root.is_none() {
+            if let Some(d) = dir {
+                self.open_folder(d, None);
+            }
+        } else {
+            self.ws.explorer.mark_stale();
+        }
     }
 
     /// A new empty file.
@@ -184,7 +180,7 @@ impl IdeApp {
         } else {
             self.message = None;
         }
-        self.refresh_files();
+        self.ws.explorer.mark_stale();
     }
 
     /// Saves under a new name chosen in a dialog.
@@ -207,7 +203,7 @@ impl IdeApp {
         match doc.save_as(path) {
             Ok(()) => {
                 self.recent.touch(path);
-                self.set_folder(path.parent());
+                self.adopt_folder(path.parent());
                 self.message = None;
             }
             Err(e) => self.message = Some(format!("Could not save: {e}")),
@@ -225,17 +221,21 @@ impl IdeApp {
         }
     }
 
-    fn close_tab(&mut self, i: usize) {
-        if i < self.docs.len() {
-            self.docs.remove(i);
-            if self.active >= self.docs.len() {
-                self.active = self.docs.len().saturating_sub(1);
-            }
+    fn open_folder_dialog(&mut self, ctx: &Context) {
+        if let Some(dir) = rfd::FileDialog::new().pick_folder() {
+            self.open_folder(&dir, Some(ctx));
+            self.show_side(crate::settings::SideView::Explorer);
         }
     }
 
     /// Jumps to a definition: in this file, or in the file it came from.
     pub fn goto_definition(&mut self, info: &DefInfo) {
+        self.note_place();
+        self.goto_definition_inner(info);
+        self.note_place();
+    }
+
+    fn goto_definition_inner(&mut self, info: &DefInfo) {
         match &info.file {
             None => {
                 if let Some(doc) = self.docs.get_mut(self.active) {
@@ -246,7 +246,7 @@ impl IdeApp {
             }
             Some(f) => {
                 let path = PathBuf::from(f);
-                match self.open_path(&path) {
+                match self.open_file(&path, false) {
                     Ok(i) => {
                         if let Some(doc) = self.docs.get_mut(i) {
                             doc.editor.move_caret(info.span.start, false);
@@ -300,15 +300,24 @@ impl IdeApp {
     }
 
     fn shortcuts(&mut self, ctx: &Context) {
-        let (save, open, new, zin, zout) = ctx.input_mut(|i| {
+        self.workspace_shortcuts(ctx);
+        let (save, open, new, zin, zout, zreset, zdelta) = ctx.input_mut(|i| {
             (
                 i.consume_shortcut(&SAVE),
                 i.consume_shortcut(&OPEN),
                 i.consume_shortcut(&NEW),
                 i.consume_shortcut(&ZOOM_IN),
                 i.consume_shortcut(&ZOOM_OUT),
+                i.consume_shortcut(&ZOOM_RESET),
+                i.zoom_delta(),
             )
         });
+        if zreset {
+            self.size = BODY_SIZE;
+        }
+        if (zdelta - 1.0).abs() > 0.001 {
+            self.size = (self.size * zdelta).clamp(MIN_SIZE, MAX_SIZE);
+        }
         if save {
             self.save();
         }
@@ -337,6 +346,10 @@ impl IdeApp {
                     self.open_dialog();
                     ui.close();
                 }
+                if ui.button("Open Folder\u{2026}").clicked() {
+                    self.open_folder_dialog(ui.ctx());
+                    ui.close();
+                }
                 ui.menu_button("Open recent", |ui| {
                     let paths: Vec<PathBuf> = self.recent.paths().to_vec();
                     if paths.is_empty() {
@@ -362,7 +375,7 @@ impl IdeApp {
                 }
                 ui.separator();
                 if ui.button("Close tab").clicked() {
-                    self.close_tab(self.active);
+                    self.request_close(self.active);
                     ui.close();
                 }
                 if ui.button("Quit").clicked() {
@@ -392,43 +405,24 @@ impl IdeApp {
                     self.size = (self.size - 1.0).max(MIN_SIZE);
                 }
                 ui.separator();
+                if ui
+                    .add(egui::Button::new("Side bar").shortcut_text("Ctrl+B"))
+                    .clicked()
+                {
+                    self.toggle_side();
+                    ui.close();
+                }
+                if ui
+                    .add(egui::Button::new("Go to file\u{2026}").shortcut_text("Ctrl+P"))
+                    .clicked()
+                {
+                    self.ws.quick.open = true;
+                    ui.close();
+                }
+                ui.separator();
                 ui.checkbox(&mut self.show_file_text, "Show file text");
             });
         });
-    }
-
-    fn side_panel(&mut self, ui: &mut Ui) {
-        let theme = self.mode.theme();
-        ui.heading("Files");
-        let current = self.doc().and_then(|d| d.path.clone());
-        if let Some(f) = explorer::show(ui, &self.files, current.as_deref()) {
-            if let Err(m) = self.open_path(&f) {
-                self.message = Some(m);
-            }
-        }
-        ui.add_space(10.0);
-        ui.separator();
-        ui.heading("Variables");
-        let vars: Vec<DefInfo> = self
-            .doc()
-            .and_then(|d| d.eval.as_ref().map(|e| defs::all(e)))
-            .unwrap_or_default();
-        if vars.is_empty() {
-            ui.weak("Nothing defined yet.");
-        }
-        let mut jump = None;
-        egui::ScrollArea::vertical().id_salt("vars").show(ui, |ui| {
-            for d in &vars {
-                let r = typeset::show(ui, &defs::summary_latex(d), 17.0, theme);
-                if r.clicked() {
-                    jump = Some(d.clone());
-                }
-                ui.add_space(3.0);
-            }
-        });
-        if let Some(d) = jump {
-            self.goto_definition(&d);
-        }
     }
 
     /// Draws the whole window into `ui`.
@@ -441,60 +435,12 @@ impl IdeApp {
         self.shortcuts(&ctx);
         let theme = self.mode.theme();
 
-        egui::Panel::top("menu").show(ui, |ui| {
-            self.menu(ui);
-            if !self.docs.is_empty() {
-                let tab_list: Vec<Tab> = self
-                    .docs
-                    .iter()
-                    .map(|d| Tab {
-                        title: d.title(),
-                        dirty: d.is_dirty(),
-                        errors: d.error_count(),
-                    })
-                    .collect();
-                match tabs::show(ui, &tab_list, self.active, crate::paint::c32(theme.error)) {
-                    Some(TabAction::Select(i)) => self.active = i,
-                    Some(TabAction::Close(i)) => self.close_tab(i),
-                    None => {}
-                }
-            }
-        });
+        egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
+        self.status_ui(ui);
+        self.side_ui(ui);
+        self.header_ui(ui);
 
-        egui::Panel::bottom("status").show(ui, |ui| {
-            ui.horizontal(|ui| {
-                let evaluating = self.doc().is_some_and(Doc::evaluating);
-                if evaluating {
-                    ui.spinner();
-                    ui.label("Working\u{2026}");
-                } else if let Some(d) = self.doc() {
-                    let n = d.error_count();
-                    if n == 0 {
-                        ui.label("Ready");
-                    } else {
-                        ui.colored_label(
-                            crate::paint::c32(theme.error),
-                            if n == 1 {
-                                "1 problem".to_string()
-                            } else {
-                                format!("{n} problems")
-                            },
-                        );
-                    }
-                }
-                if let Some(m) = &self.message {
-                    ui.separator();
-                    ui.colored_label(crate::paint::c32(theme.error), m);
-                }
-            });
-        });
-
-        egui::Panel::left("side")
-            .default_size(SIDE_PANEL_WIDTH)
-            .resizable(true)
-            .show(ui, |ui| self.side_panel(ui));
-
-        egui::CentralPanel::default()
+        let central = egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(crate::paint::c32(theme.background)))
             .show(ui, |ui| {
                 let (mode, size, copy_format) = (self.mode, self.size, self.copy_format);
@@ -514,12 +460,22 @@ impl IdeApp {
                 for e in events {
                     match e {
                         ViewEvent::GotoAt(o) => self.goto_at(o),
+                        ViewEvent::OpenLinkAt(o) => self.open_link_at(o),
                         ViewEvent::Save => self.save(),
                     }
                 }
             });
+        if let Some(src) = central.response.dnd_release_payload::<PathBuf>() {
+            self.add_import(&src);
+        }
 
         self.file_text_window(&ctx);
+        self.overlays(&ctx);
+        if self.ws.explorer.poll() {
+            self.reload_changed();
+        }
+        self.settle_preview();
+        self.persist_settings();
 
         let mut wait: Option<std::time::Duration> = None;
         for d in &mut self.docs {
