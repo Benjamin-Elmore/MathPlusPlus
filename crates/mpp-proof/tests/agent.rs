@@ -461,8 +461,10 @@ fn live_agent_run() {
     let cut = sqrt2
         .rfind("**Proof.**")
         .map_or(sqrt2.clone(), |at| sqrt2[..at].to_string());
-    let mut cfg = AgentConfig::default();
-    cfg.spend_cap_usd = 3.0;
+    let cfg = AgentConfig {
+        spend_cap_usd: 3.0,
+        ..AgentConfig::default()
+    };
     let report = agent::run(
         &Task {
             path: base.join("historic/sqrt2-irrational.mpp"),
