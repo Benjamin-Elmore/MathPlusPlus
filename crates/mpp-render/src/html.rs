@@ -333,7 +333,10 @@ impl Renderer<'_> {
                     _ => "theorem",
                 };
                 let title = match &t.title {
-                    Some(title) => format!(" <span class=\"thm-title\">({})</span>", self.inlines(title)),
+                    Some(title) => format!(
+                        " <span class=\"thm-title\">({})</span>",
+                        self.inlines(title)
+                    ),
                     None => String::new(),
                 };
                 let _ = writeln!(
