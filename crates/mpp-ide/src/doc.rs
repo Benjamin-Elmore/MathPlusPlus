@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use mpp_eval::Evaluated;
+use mpp_render::IntegralLimits;
 use mpp_syntax::document::{parse_document, Document};
 use mpp_syntax::Span;
 
@@ -22,6 +23,7 @@ struct CacheKey {
     width: u32,
     size: u32,
     mode: Mode,
+    limits: IntegralLimits,
 }
 
 /// A laid-out page with the parse it came from and its problems.
@@ -52,6 +54,8 @@ pub struct Doc {
     pub scroll_to: Option<Span>,
     /// The x the caret keeps while moving up and down.
     pub want_x: Option<f32>,
+    /// Integral bounds above and below the sign (default) or at its side.
+    pub integral_limits: IntegralLimits,
 }
 
 impl Doc {
@@ -71,6 +75,7 @@ impl Doc {
             highlight: None,
             scroll_to: None,
             want_x: None,
+            integral_limits: IntegralLimits::AboveBelow,
         };
         d.submit_now();
         d
@@ -198,6 +203,7 @@ impl Doc {
             width: width.to_bits(),
             size: size.to_bits(),
             mode,
+            limits: self.integral_limits,
         };
         if self.cache.as_ref().is_some_and(|c| c.key != key) {
             self.cache = None;
@@ -205,10 +211,12 @@ impl Doc {
         let editor = &self.editor;
         let eval = self.eval.as_deref();
         let fresh = self.eval.is_some() && self.eval_text == editor.text();
+        let limits = self.integral_limits;
         self.cache
             .get_or_insert_with(|| {
                 let src = editor.text();
                 let doc = parse_document(src);
+                let labels = editor.slot_labels();
                 let input = PageInput {
                     src,
                     doc: &doc,
@@ -216,9 +224,15 @@ impl Doc {
                     theme: mode.theme(),
                     size,
                     width,
+                    integral_limits: limits,
+                    slot_labels: &labels,
                 };
                 let page = build_page(&input);
-                let problems = diagnostics::collect(&doc, eval, fresh, &page);
+                let quiet = diagnostics::Quiet {
+                    src,
+                    ranges: editor.quiet_ranges(),
+                };
+                let problems = diagnostics::collect(&doc, eval, fresh, &page, &quiet);
                 Arc::new(PageCache {
                     key,
                     page,

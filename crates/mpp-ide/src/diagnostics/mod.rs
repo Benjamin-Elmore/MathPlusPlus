@@ -27,10 +27,14 @@ pub fn collect(
     eval: Option<&Evaluated>,
     eval_fresh: bool,
     page: &Page,
+    quiet: &Quiet<'_>,
 ) -> Vec<Problem> {
     let mut seen: Vec<(Span, String)> = vec![];
     let mut out = vec![];
     let mut add = |d: &mpp_syntax::Diagnostic| {
+        if quiet.hides(d.span) {
+            return;
+        }
         let key = (d.span, d.message.clone());
         if seen.contains(&key) {
             return;
@@ -55,6 +59,29 @@ pub fn collect(
         ev.all_diagnostics().into_iter().for_each(&mut add);
     }
     out
+}
+
+/// Problems that are not shown as errors: the empty boxes of templates. An
+/// empty box shows its grey label and the block a "fill in" hint instead.
+#[derive(Debug, Clone, Default)]
+pub struct Quiet<'a> {
+    /// The document text (an empty `{}` box is recognised in it).
+    pub src: &'a str,
+    /// Templates that still have empty boxes.
+    pub ranges: Vec<std::ops::Range<usize>>,
+}
+
+impl Quiet<'_> {
+    /// True when a problem at `span` is an unfilled template box.
+    pub fn hides(&self, span: Span) -> bool {
+        let at = span.start;
+        let empty_box = at > 0 && self.src.get(at - 1..at + 1) == Some("{}") && span.end <= at + 1;
+        empty_box
+            || self
+                .ranges
+                .iter()
+                .any(|r| r.start <= span.start && span.end <= r.end)
+    }
 }
 
 /// Draws a wavy line along the bottom of `rect`.
@@ -94,6 +121,6 @@ mod tests {
         let doc = parse_document(src);
         let page = Page::default();
         // No page boxes: nothing can be placed, but nothing panics either.
-        let _ = collect(&doc, None, false, &page);
+        let _ = collect(&doc, None, false, &page, &Quiet::default());
     }
 }

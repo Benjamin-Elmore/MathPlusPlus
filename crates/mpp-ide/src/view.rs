@@ -20,8 +20,9 @@ use crate::defs;
 use crate::doc::{Doc, PageCache};
 use crate::editor::symbols::{completions, live_replacement, word_at, Completion};
 use crate::figure::FigureDrawer;
+use crate::insert::{self, InsertUi};
 use crate::page::BlockTag;
-use crate::paint::{c32, paint_display_list};
+use crate::paint::{c32, paint_display_list, paint_text};
 use crate::theme::Mode;
 use crate::typeset;
 
@@ -50,6 +51,8 @@ pub struct ViewCtx<'a> {
     /// The last copy made inside the app: (what other apps got, the source).
     pub clip: &'a mut Option<(String, String)>,
     pub copy_format: CopyFormat,
+    /// The Insert menu and its settings.
+    pub insert: &'a mut InsertUi,
 }
 
 fn find_block(doc: &Document, id: mpp_syntax::document::BlockId) -> Option<&Block> {
@@ -101,11 +104,16 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             }
 
             let mut moved = handle_pointer(ui, &resp, doc, &pc0, origin, &mut events);
-            if focused {
+            if focused && !cx.insert.menu.open {
                 moved |= handle_keys(ui, doc, &pc0, cx, &mut events);
             }
             if resp.dragged() || resp.clicked() {
                 doc.highlight = None;
+            }
+            context_menu(&resp, doc, &pc0, origin, cx);
+            if moved {
+                // Leaving a template drops its empty optional parts.
+                doc.editor.finalize_outside();
             }
 
             // The text may have changed: draw the up-to-date page.
@@ -136,8 +144,111 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 hover_card(ui, doc, &pc, origin, &theme, cx.size);
             }
             completion_popup(ui, doc, &pc, origin, cx, &theme, caret_rect);
+            if focused || cx.insert.menu.open {
+                template_toolbar(ui, doc, &pc, origin, cx, resp.id);
+            }
+            insert_menu(ui, doc, cx, caret_rect, resp.id);
         });
     events
+}
+
+/// Right-click: puts the caret there and offers Insert.
+fn context_menu(
+    resp: &egui::Response,
+    doc: &mut Doc,
+    pc: &PageCache,
+    origin: Pos2,
+    cx: &mut ViewCtx<'_>,
+) {
+    if resp.secondary_clicked() {
+        if let Some(p) = resp.interact_pointer_pos() {
+            let at = pc.page.offset_at(p - origin.to_vec2());
+            let inside_selection = at
+                .zip(doc.editor.selection())
+                .is_some_and(|(o, s)| s.start <= o && o <= s.end);
+            if let (Some(o), false) = (at, inside_selection) {
+                doc.editor.move_caret(o, false);
+            }
+        }
+    }
+    let at = resp.interact_pointer_pos();
+    resp.context_menu(|ui| {
+        if ui
+            .button(egui::RichText::new("Insert\u{2026}").font(crate::theme::sans(14.0)))
+            .clicked()
+        {
+            cx.insert.menu.open_at(at);
+            ui.close();
+        }
+    });
+}
+
+/// The Insert menu, at the caret (or where it was opened).
+fn insert_menu(
+    ui: &Ui,
+    doc: &mut Doc,
+    cx: &mut ViewCtx<'_>,
+    caret_rect: Option<Rect>,
+    page_id: egui::Id,
+) {
+    if !cx.insert.menu.open {
+        return;
+    }
+    let anchor = cx
+        .insert
+        .menu
+        .at
+        .or_else(|| caret_rect.map(|r| Pos2::new(r.left(), r.bottom() + 4.0)))
+        .unwrap_or_else(|| ui.max_rect().left_top() + Vec2::new(40.0, 40.0));
+    let recent = cx.insert.settings.recent.clone();
+    match insert::menu::show(ui.ctx(), &mut cx.insert.menu, &recent, anchor, cx.mode) {
+        insert::menu::Outcome::Insert { id, knobs } => {
+            if let Some(t) = insert::find(&id) {
+                let caret = doc.editor.caret();
+                let bcx = cx.insert.settings.build_cx(doc.editor.text(), caret);
+                let pc = doc.page(ui.available_width().max(200.0), cx.size, cx.mode);
+                insert::insert(&mut doc.editor, &pc.page, t, knobs, &bcx);
+                cx.insert.settings.touch(&id);
+                doc.touched();
+            }
+            ui.memory_mut(|m| m.request_focus(page_id));
+        }
+        insert::menu::Outcome::Closed => ui.memory_mut(|m| m.request_focus(page_id)),
+        insert::menu::Outcome::Nothing => {}
+    }
+}
+
+/// The controls of the template the caret is in (mode, rows, infinity buttons).
+fn template_toolbar(
+    ui: &Ui,
+    doc: &mut Doc,
+    pc: &PageCache,
+    origin: Pos2,
+    cx: &mut ViewCtx<'_>,
+    page_id: egui::Id,
+) {
+    let caret = doc.editor.caret();
+    let Some(s) = doc.editor.session_at(caret) else {
+        return;
+    };
+    let controls = insert::controls(&s.template, s.knobs);
+    if controls.is_empty() {
+        return;
+    }
+    let (id, range) = (s.id, s.range.clone());
+    let Some(r) = pc
+        .page
+        .rect_of_span(mpp_syntax::Span::new(range.start, range.end))
+    else {
+        return;
+    };
+    let rect = r.translate(origin.to_vec2());
+    if let Some(i) = insert::menu::toolbar(ui.ctx(), &controls, rect) {
+        let bcx = cx.insert.settings.build_cx(doc.editor.text(), caret);
+        insert::apply(&mut doc.editor, id, &controls[i].action, &bcx);
+        doc.touched();
+        ui.memory_mut(|m| m.request_focus(page_id));
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -158,6 +269,18 @@ fn paint_page(
         if let Some(r) = page.rect_of_span(span) {
             let c = c32(cx.mode.palette().highlight);
             painter.rect_filled(r.translate(off).expand(3.0), 4.0, c);
+        }
+    }
+    // The template box the caret is in is lightly highlighted.
+    if focused {
+        let caret = doc.editor.caret();
+        let current = doc.editor.session_at(caret).and_then(|s| {
+            let b = &s.boxes[s.box_at(caret)?];
+            Some(mpp_syntax::Span::new(b.range.start, b.range.end))
+        });
+        if let Some(r) = current.and_then(|span| page.rect_of_span(span)) {
+            let c = c32(cx.mode.palette().row_selected);
+            painter.rect_filled(r.translate(off).expand(2.0), 3.0, c);
         }
     }
     // Selection.
@@ -203,6 +326,40 @@ fn paint_page(
             Severity::Warning => c32(theme.warning),
         };
         crate::diagnostics::paint_squiggle(painter, p.rect.translate(off), color);
+    }
+    // Unfilled template boxes: a typeset hint beside the equation, no answer.
+    for b in &page.blocks {
+        if b.tag != BlockTag::Math {
+            continue;
+        }
+        let span = b.span.start..b.span.end;
+        let Some(hint) = insert::fill_in_hint(&doc.editor, page, &span) else {
+            continue;
+        };
+        // The right edge of the ink: boxes, plus glyphs without one (the `?`).
+        let glyphs = b.dl.items.iter().filter_map(|p| match p {
+            mpp_render::Primitive::Glyph { x, size, .. } => Some(x + size * 0.75),
+            mpp_render::Primitive::Rule { rect, .. } => Some(rect.x + rect.w),
+            _ => None,
+        });
+        let right =
+            b.dl.hits
+                .iter()
+                .map(|h| h.rect.x + h.rect.w)
+                .chain(glyphs)
+                .fold(0.0f32, f32::max);
+        let size = cx.size * 0.85;
+        let w = crate::page::text_width(mpp_render::FontId::TextItalic, &hint) * size;
+        let x = (right + cx.size).min(page.width - w).max(0.0);
+        let y = origin.y + b.top + b.height / 2.0 + size * 0.3;
+        paint_text(
+            painter,
+            &hint,
+            Pos2::new(origin.x + x, y),
+            size,
+            mpp_render::FontId::TextItalic,
+            c32(theme.placeholder_label),
+        );
     }
     // Caret.
     if focused {
@@ -262,6 +419,13 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     for ch in text.chars().filter(|c| !c.is_control()) {
         let s = ch.to_string();
         doc.editor.insert_text(&s);
+        if in_math && cx.insert.settings.shortcuts {
+            let caret = doc.editor.caret();
+            let bcx = cx.insert.settings.build_cx(doc.editor.text(), caret);
+            if insert::shortcut(&mut doc.editor, ch, &bcx) {
+                continue;
+            }
+        }
         if in_math {
             let caret = doc.editor.caret();
             if let Some(r) = live_replacement(doc.editor.text(), caret, &s) {
@@ -388,6 +552,11 @@ fn key_pressed(
     let shift = mods.shift;
     if mods.command {
         match key {
+            Key::Space => {
+                cx.insert.menu.open_at(None);
+                *cx.completion = None;
+                return false;
+            }
             Key::A => {
                 let n = doc.editor.text().len();
                 doc.editor.select(0..n);
@@ -438,7 +607,16 @@ fn key_pressed(
             *cx.completion = None;
             false
         }
-        Key::Tab => accept_completion(doc, cx),
+        Key::Tab => {
+            if accept_completion(doc, cx) {
+                return true;
+            }
+            if !doc.editor.tab(!shift) {
+                tab_to_slot(doc, page, !shift);
+            }
+            doc.want_x = None;
+            true
+        }
         Key::Enter => {
             if accept_completion(doc, cx) {
                 return true;
@@ -449,6 +627,11 @@ fn key_pressed(
         }
         Key::Backspace | Key::Delete => {
             let fwd = key == Key::Delete;
+            if !fwd && in_math && doc.editor.backspace_in_template() {
+                doc.touched();
+                *cx.completion = None;
+                return true;
+            }
             if doc.editor.selection().is_some() {
                 doc.editor.delete(caret, false);
             } else if in_math {
@@ -512,6 +695,28 @@ fn key_pressed(
             true
         }
         _ => false,
+    }
+}
+
+/// Tab outside a tracked template: the next (or previous) empty box on the page.
+fn tab_to_slot(doc: &mut Doc, page: &crate::page::Page, forward: bool) {
+    let caret = doc.editor.caret();
+    let mut slots: Vec<usize> = page
+        .blocks
+        .iter()
+        .flat_map(|b| b.dl.hits.iter())
+        .filter(|h| h.kind == mpp_render::HitKind::Slot)
+        .map(|h| h.span.start)
+        .collect();
+    slots.sort_unstable();
+    slots.dedup();
+    let target = if forward {
+        slots.into_iter().find(|&o| o > caret)
+    } else {
+        slots.into_iter().rev().find(|&o| o < caret)
+    };
+    if let Some(o) = target {
+        doc.editor.move_caret(o, false);
     }
 }
 

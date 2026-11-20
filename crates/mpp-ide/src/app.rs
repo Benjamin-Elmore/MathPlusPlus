@@ -10,6 +10,7 @@ use crate::doc::Doc;
 use crate::explorer;
 use crate::figure::{FigureDrawer, PlaceholderFigure};
 use crate::files::Recent;
+use crate::insert::{InsertSettings, InsertUi};
 use crate::layout::{BODY_SIZE, MAX_SIZE, MIN_SIZE, SIDE_PANEL_WIDTH};
 use crate::sample::WELCOME;
 use crate::tabs::{self, Tab, TabAction};
@@ -53,6 +54,8 @@ pub struct IdeApp {
     /// Set by Ctrl+K while waiting for the second key of a chord (time of press).
     chord_k: Option<f64>,
     system_theme: Option<egui::Theme>,
+    /// The Insert menu, its recently used items and its settings.
+    pub insert: InsertUi,
 }
 
 impl Default for IdeApp {
@@ -82,6 +85,7 @@ impl IdeApp {
             applied_mode: None,
             chord_k: None,
             system_theme: None,
+            insert: InsertUi::default(),
         }
     }
 
@@ -128,6 +132,9 @@ impl IdeApp {
         {
             self.size = s.clamp(MIN_SIZE, MAX_SIZE);
         }
+        if let Some(s) = storage.get_string("insert") {
+            self.insert.settings = InsertSettings::from_stored(&s);
+        }
         if let Some(s) = storage.get_string("copy_latex") {
             self.copy_format = if s == "1" {
                 CopyFormat::Latex
@@ -142,6 +149,7 @@ impl IdeApp {
         storage.set_string("recent", self.recent.to_stored());
         storage.set_string("theme", self.theme_choice.to_stored().into());
         storage.set_string("size", self.size.to_string());
+        storage.set_string("insert", self.insert.settings.to_stored());
         storage.set_string(
             "copy_latex",
             if self.copy_format == CopyFormat::Latex {
@@ -445,8 +453,24 @@ impl IdeApp {
                     self.size = (self.size - 1.0).max(MIN_SIZE);
                 }
                 ui.separator();
+                ui.menu_button("Insert settings", |ui| {
+                    let s = &mut self.insert.settings;
+                    ui.label("Integral bounds");
+                    ui.radio_value(&mut s.integral_side, false, "Above and below the sign");
+                    ui.radio_value(&mut s.integral_side, true, "At the side of the sign");
+                    ui.separator();
+                    ui.checkbox(
+                        &mut s.shortcuts,
+                        "Typing shortcuts: int + space for \u{222b}, / for a fraction",
+                    );
+                    ui.checkbox(&mut s.fourier_k, "Fourier transforms use k (not \u{3c9})");
+                });
+                ui.separator();
                 ui.checkbox(&mut self.show_file_text, "Show file text");
             });
+            if crate::insert::menu::insert_button(ui).clicked() {
+                self.insert.menu.open_at(None);
+            }
         });
     }
 
@@ -569,6 +593,11 @@ impl IdeApp {
                     ui.centered_and_justified(|ui| ui.weak("No file open"));
                     return;
                 };
+                doc.integral_limits = if self.insert.settings.integral_side {
+                    mpp_render::IntegralLimits::Side
+                } else {
+                    mpp_render::IntegralLimits::AboveBelow
+                };
                 let mut cx = ViewCtx {
                     mode,
                     size,
@@ -576,6 +605,7 @@ impl IdeApp {
                     completion: &mut self.completion,
                     clip: &mut self.clip,
                     copy_format,
+                    insert: &mut self.insert,
                 };
                 let events = view::show(ui, doc, &mut cx);
                 for e in events {

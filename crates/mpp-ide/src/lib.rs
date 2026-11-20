@@ -16,6 +16,7 @@ pub mod eval;
 pub mod explorer;
 pub mod figure;
 pub mod files;
+pub mod insert;
 pub mod layout;
 pub mod page;
 pub mod paint;

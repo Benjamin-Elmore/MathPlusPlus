@@ -777,7 +777,13 @@ impl<'a> Engine<'a> {
     /// An empty slot: a faint dotted box with a grey label.
     pub fn slot(&self, label: Option<&str>, st: Style, span: Span, path: &NodePath) -> LBox {
         let s = self.scale(st);
-        let label = label.filter(|l| !l.is_empty());
+        let named = self
+            .opts
+            .slot_labels
+            .iter()
+            .find(|(at, _)| *at == span.start)
+            .map(|(_, l)| l.as_str());
+        let label = named.or(label).filter(|l| !l.is_empty());
         let lab = label.map(|l| {
             let mut e = self.clone_shallow();
             e.color = self.opts.theme.placeholder_label;

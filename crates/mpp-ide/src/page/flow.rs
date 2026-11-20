@@ -21,6 +21,8 @@ pub struct Style {
 pub struct Cx<'a> {
     pub src: &'a str,
     pub theme: Theme,
+    /// Labels for the empty boxes of templates being edited, by offset.
+    pub slot_labels: &'a [(usize, String)],
 }
 
 #[derive(Debug)]
@@ -212,6 +214,12 @@ pub fn display_name(path: &str) -> String {
 fn math_atom(cx: &Cx<'_>, ast: &MathAst, raw: Span, size: f32) -> Atom {
     let opts = LayoutOptions {
         theme: cx.theme,
+        slot_labels: cx
+            .slot_labels
+            .iter()
+            .filter(|(o, _)| raw.start <= *o && *o <= raw.end)
+            .cloned()
+            .collect(),
         ..LayoutOptions::inline(size)
     };
     Atom::Math {
@@ -422,6 +430,7 @@ mod tests {
         let cx = Cx {
             src,
             theme: Theme::LIGHT,
+            slot_labels: &[],
         };
         let style = Style {
             font: FontId::Text,
@@ -460,6 +469,7 @@ mod tests {
         let cx = Cx {
             src: &src,
             theme: Theme::LIGHT,
+            slot_labels: &[],
         };
         let style = Style {
             font: FontId::Text,
