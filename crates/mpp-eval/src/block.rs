@@ -1,6 +1,7 @@
 //! Running one block: its statements, in order, against the environment.
 
 mod sentences;
+mod units;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -585,6 +586,9 @@ impl Run<'_, '_> {
             },
         );
         lr.input = Some(value);
+        if self.present_units(&mut lr, &shown, QueryMode::Exact, body.span) {
+            return self.push(lr);
+        }
         if shown.is_constant() && !is_exact_rational(&shown) && !contains_holder(&shown) {
             lr.approx = approximate(&shown).ok();
         }
@@ -859,7 +863,13 @@ impl Run<'_, '_> {
         let value = match resolved.value.and_then(|v| self.finish_value(v)) {
             Ok(v) => v,
             Err(err) => {
-                self.error(expr.span, err);
+                let span = match err {
+                    EvalError::Math(MathError::Dimension(_)) => {
+                        self.dimension_span(expr, s.names, s.locals)
+                    }
+                    _ => expr.span,
+                };
+                self.error(span, err);
                 return self.push(lr);
             }
         };
@@ -887,6 +897,9 @@ impl Run<'_, '_> {
             }
             lr.steps = Some(log.clone());
             self.result.steps.push((self.result.values.len(), log));
+        }
+        if self.present_units(&mut lr, &value, mode, expr.span) {
+            return self.push(lr);
         }
         match mode {
             QueryMode::Exact => {

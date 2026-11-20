@@ -12,9 +12,12 @@ use crate::result::{LineKind, LineResult};
 use crate::value::Value;
 
 impl Run<'_, '_> {
-    /// The pass every result goes through: matrix arithmetic whose order doesn't matter.
+    /// The pass every result goes through: matrix arithmetic whose order doesn't matter,
+    /// and the dimension check of values with units.
     pub(super) fn finish_value(&self, value: Expr) -> Result<Expr, EvalError> {
-        crate::domains_wire::finish(&value).map_err(EvalError::Math)
+        let value = crate::domains_wire::finish(&value).map_err(EvalError::Math)?;
+        crate::units_wire::check(&value).map_err(EvalError::Math)?;
+        Ok(value)
     }
 
     /// `Solve $x^2 = 4$ for $x$.`, `Solve $x + y = 3, x - y = 1$ for $x, y$.` and a

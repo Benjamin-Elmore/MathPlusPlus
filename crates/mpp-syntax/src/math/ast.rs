@@ -314,6 +314,26 @@ pub enum NodeKind {
         first: Box<Node>,
         rest: Vec<(RelOp, Node)>,
     },
+    /// A number with a unit: `9.81\,\mathrm{m/s^2}`, `100 km/h`, `30^\circ`.
+    Quantity {
+        value: Box<Node>,
+        unit: UnitText,
+    },
+    /// A conversion: `v \operatorname{in} \mathrm{km/h}`, `T in {}^\circ\mathrm{F}`.
+    Convert {
+        expr: Box<Node>,
+        unit: UnitText,
+    },
+}
+
+/// A unit as written after a number or after `in`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitText {
+    /// The unit for the core to read (`m/s^2`, `\mathrm{km/h}`, `°C`).
+    pub text: String,
+    /// Written in plain letters (`m/s`) rather than `\mathrm{}` or a degree sign.
+    pub plain: bool,
+    pub span: Span,
 }
 
 /// A name: a letter, a Greek letter, or a longer upright name, with decorations.

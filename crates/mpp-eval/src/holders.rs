@@ -178,6 +178,7 @@ impl Default for Holders {
         h.register(named_ops);
         h.register(crate::calculus::evaluate);
         h.register(crate::domains_wire::evaluate);
+        h.register(crate::units_wire::evaluate);
         h
     }
 }

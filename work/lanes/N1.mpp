@@ -16,36 +16,17 @@ Lane `domains` (branch `wip/domains`). The units live in `crates/mpp-core/src/un
 - Offset rule: an affine unit (°C, °F) is absolute only when it stands alone with exponent 1; inside a product (J/(kg·°C)) or on the right of `+`/`−` it is a temperature difference (20 °C + 5 K = 25 °C).
 - Simplification rule (scoring): a result made only of coherent SI units is rewritten as the candidate with the fewest unit symbols, then the smallest total of exponent sizes, among the base form and one named derived unit (N, J, W, Pa, C, V, Ω, T, F, Wb, H, S) to the power ±1 times base units. Hz is never picked automatically (1/s stays 1/s). Ties keep what was written.
 
-## Grammar addendum (for `docs/grammar.mpp`, new section 2.x "Units")
+## Grammar addendum
 
-Proposed text:
+Applied to `docs/grammar.mpp` as section 2.3 "Units" (integrator-approved), with the rules the implementation settled on: plain one-letter units need a space and give way to a name in scope, `in`/`sec`/`hr`/`deg`/`l` are never plain units, a bare `in` needs a compound unit, and `10^{3}\,\mathrm{m}` takes the unit.
 
-> ### Units
->
-> A quantity is a number followed by a unit: `9.81\,\mathrm{m/s^2}`, `9.81 m/s^2`, `100\,\mathrm{km/h}`, `25\,{}^\circ\mathrm{C}`, `30^\circ`.
->
-> ```
-> quantity      = number [ space ] unit_text ;
-> unit_atom     = "\mathrm{" unit_text "}" | unit_name ;     (* also allowed alone, e.g. v in \mathrm{m/s} *)
-> unit_text     = unit_product { "/" unit_product } ;        (* a / b c means a / (b·c) *)
-> unit_product  = unit_factor { [ "·" | "\cdot" | "*" | "\," | " " ] unit_factor } ;
-> unit_factor   = ( "(" unit_text ")" | unit_name | "1" ) [ unit_power ] ;
-> unit_power    = "^" ( [ "-" ] integer | "{" [ "-" ] integer [ "/" integer ] "}" | "(" … ")" ) | superscripts ;
-> unit_name     = [ si_prefix ] symbol ;                     (* km, µs, kΩ; symbols from the unit table *)
-> conversion    = expr ( "\operatorname{in}" | "in" ) unit_atom ;   (* lowest precedence, below relations' operands *)
-> ```
->
-> - **No clashes:** a letter is read as a unit only (1) straight after a number, (2) inside `\mathrm{}` / `\text{}`, or (3) when it was inserted from the Units picker (the picker writes `\mathrm{…}`). Anywhere else `m` is the variable `m`. So `m \equiv 70\,\mathrm{kg}` and `W := m g` work as expected.
-> - `30^\circ` is 30 degrees; `{}^\circ\mathrm{C}` and `\mathrm{^\circ C}` are degrees Celsius.
-> - `x \operatorname{in} \mathrm{km/h}` (or the prose form "$v$ in km/h") converts; it binds more loosely than `+` and `·`, so `v t \operatorname{in} \mathrm{m}` converts the product.
+## Wiring (done in the domains lane)
 
-## Parser change (for `mpp-syntax`, made by the integrator)
-
-1. Lexer: after a number token, if the next characters (optionally after one space, `\,` or `\;`) start a unit (`\mathrm{`, `^\circ`, or a run of letters for which `mpp_core::units::is_unit` is true, followed by `/`, `^`, `·`, superscripts, space or the end), read the longest run that `mpp_core::units::parse_unit` accepts and emit `NodeKind::Quantity { value, unit_text }`. A run that is not a unit (`2x`) stays an implicit product, so `2x` and `3 m` both behave. `mpp-syntax` doesn't depend on `mpp-core`, so either pass a `fn(&str) -> bool` unit test into the parser, or copy the symbol list (`mpp_core::units::table::symbols()` plus the SI prefixes) into the symbol table.
-2. `\mathrm{…}` (and `\text{…}`) whose content parses as a unit becomes `NodeKind::Unit(unit_text)`; a `\mathrm{}` that is not a unit stays an upright name as now.
-3. `\operatorname{in}` (and a bare `in` between an expression and a unit) becomes a binary `Convert(expr, unit)` with the lowest precedence above relations.
-4. Lowering (`mpp-eval`): `Quantity` → `Quantity::parse(value, unit_text)`; arithmetic on values that carry units goes through `Quantity`; `Convert` → `convert_to`; built-in calls on quantities → `apply_function`; derivatives and integrals → `units::calculus`.
-5. Diagnostics: the `MathError::Dimension` message is shown in place at the offending term (N9).
+- **Parser** (`mpp-syntax`): `src/units.rs` decides where a unit is written (after a number, after `in`); it keeps its own copy of the unit symbols, checked against the core table by `mpp-eval/tests/units.rs`. New nodes `NodeKind::Quantity { value, unit: UnitText }` and `NodeKind::Convert { expr, unit }` (`UnitText { text, plain, span }`). Crates that match `NodeKind` exhaustively (the renderer) need the two arms: a quantity typesets as value, thin space, upright unit; a conversion as `expr \;\text{in}\; unit`.
+- **Values** (`mpp-eval/src/units_wire.rs`): a quantity lowers to `value · ⟨unit⟩`, where the unit factor is `Apply("unit:<text>", [])`, so arithmetic, substitution and calculus carry units like constants. A zero keeps its unit (`unit as(0, ⟨°C⟩)`). Results are read back as `Quantity` to check dimensions and to show them: one written unit stays as written (`981/100 m/s^2`), computed units are simplified (`kg·m/s²` → `N`), a conversion keeps the requested unit exactly (`1 N·m`).
+- **Errors** point at the offending term: the smallest part of the statement that fails on its own, and the right-hand term of a sum (`3 m + t` points at `t`). Names without a value have no known dimension, so they are never reported as mismatches.
+- **Calculus**: `h(t) := 20 m − ½·9.8 m/s²·t²` gives `h'(2 s) = −98/5 m/s`; a definite integral with unit bounds is integrated over the plain values with the unit factored out, and bounds of different kinds are an error ("the bounds of this integral don't match: one is in s and the other in m").
+- `≈ ?` with units gives the decimal value with its unit (`27.77777778 m/s`).
 
 ## Guide section (for `docs/guide.mpp`)
 

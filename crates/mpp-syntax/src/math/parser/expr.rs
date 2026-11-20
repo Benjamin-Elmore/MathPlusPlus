@@ -4,7 +4,7 @@ use super::{Ctx, Parser};
 use crate::lexer::{Delim, Op, Tok};
 use crate::math::ast::{
     Accent, BinOp, Bracket, DerivNotation, Derivative, FracStyle, MulStyle, Name, Node, NodeKind,
-    RelOp, UnaryOp,
+    RelOp, UnaryOp, UnitText,
 };
 use crate::span::Span;
 use crate::symbols::{Font, SymbolKind};
@@ -19,6 +19,7 @@ impl Parser<'_> {
     /// A relation chain (`a = b < c`), stopping before `= ?` so a query can see it.
     pub(super) fn parse_relation(&mut self) -> Node {
         let first = self.parse_expr();
+        let first = self.maybe_convert(first);
         self.relation_tail(first)
     }
 
@@ -28,7 +29,8 @@ impl Parser<'_> {
         let first = if self.at(|t| matches!(t, Tok::Rel(_))) {
             Node::new(NodeKind::Continuation, Span::point(self.cur_span().start))
         } else {
-            self.parse_expr()
+            let e = self.parse_expr();
+            self.maybe_convert(e)
         };
         self.relation_tail(first)
     }
@@ -44,6 +46,7 @@ impl Parser<'_> {
             }
             self.bump();
             let rhs = self.parse_expr();
+            let rhs = self.maybe_convert(rhs);
             rest.push((op, rhs));
         }
         if rest.is_empty() {
@@ -194,6 +197,9 @@ impl Parser<'_> {
     /// An atom followed by `^`, `_`, primes, `!`, Unicode scripts, accents and call brackets.
     pub(super) fn parse_postfix(&mut self) -> Node {
         let mut node = self.parse_atom();
+        if matches!(node.kind, NodeKind::Number(_)) {
+            node = self.with_unit(node);
+        }
         let mut count = 0;
         while let Some(tok) = self.peek().cloned() {
             if !self.chain_ok(count) {
@@ -258,7 +264,142 @@ impl Parser<'_> {
                 _ => break,
             };
         }
+        if is_power_of_ten(&node) {
+            // `1.5 \times 10^{3}\,\mathrm{m}`: the unit belongs to the whole number.
+            node = self.with_unit(node);
+        }
         node
+    }
+
+    /// A number followed by a unit becomes a quantity (`9.81 m/s^2`, `30^\circ`).
+    fn with_unit(&mut self, value: Node) -> Node {
+        // The end of the last token read (a braced exponent's `}` included).
+        let start = self.prev_end().max(value.span.end);
+        let Some(text) = start.checked_sub(self.base).and_then(|r| self.src.get(r..)) else {
+            return value;
+        };
+        let Some(found) = crate::units::after_number(text) else {
+            return value;
+        };
+        let end = start + found.len;
+        if !self.consume_to(end) {
+            return value;
+        }
+        let unit = UnitText {
+            text: found.text,
+            plain: found.plain,
+            span: Span::new(start + found.lead, end),
+        };
+        let span = value.span.join(unit.span);
+        Node::new(
+            NodeKind::Quantity {
+                value: Box::new(value),
+                unit,
+            },
+            span,
+        )
+    }
+
+    /// Consumes the tokens up to the byte offset `end`, which must fall between tokens.
+    fn consume_to(&mut self, end: usize) -> bool {
+        let mut k = self.pos;
+        let mut last = None;
+        while k < self.stop {
+            let Some(t) = self.toks.get(k) else { break };
+            if t.span.start >= end {
+                break;
+            }
+            if t.span.end > end {
+                return false;
+            }
+            last = Some(t.span.end);
+            k += 1;
+        }
+        if last != Some(end) {
+            return false;
+        }
+        self.pos = k;
+        true
+    }
+
+    /// True when the next token is a bare `in` followed by a unit that reads as a
+    /// conversion target (see [`Parser::maybe_convert`]).
+    pub(super) fn at_unit_conversion(&self) -> bool {
+        let Some(tok) = self.toks.get(self.pos).filter(|_| self.pos < self.stop) else {
+            return false;
+        };
+        if !matches!(tok.kind, Tok::Rel(RelOp::In)) || self.text(tok.span) != "in" {
+            return false;
+        }
+        tok.span
+            .end
+            .checked_sub(self.base)
+            .and_then(|r| self.src.get(r..))
+            .and_then(crate::units::conversion_target)
+            .is_some_and(|f| !f.plain || crate::units::is_compound(&f.text))
+    }
+
+    /// `expr \operatorname{in} unit`, `expr in unit` or `expr \text{ in } unit`: a
+    /// conversion. A bare `in` that is not followed by a unit stays the relation `∈`.
+    pub(super) fn maybe_convert(&mut self, expr: Node) -> Node {
+        let Some(tok) = self.toks.get(self.pos).filter(|_| self.pos < self.stop) else {
+            return expr;
+        };
+        let tok_span = tok.span;
+        let explicit = match &tok.kind {
+            Tok::OperatorName(n) if n == "in" => true,
+            Tok::Text(t) if t.trim() == "in" => true,
+            Tok::Rel(RelOp::In) if self.text(tok_span) == "in" => false,
+            _ => return expr,
+        };
+        let Some(text) = tok_span
+            .end
+            .checked_sub(self.base)
+            .and_then(|r| self.src.get(r..))
+        else {
+            return expr;
+        };
+        let Some(found) = crate::units::conversion_target(text) else {
+            if explicit {
+                self.bump();
+                // Read what was written there, so it is reported once.
+                let what = if self.can_start_factor() {
+                    self.parse_postfix().span
+                } else {
+                    Span::point(tok_span.end)
+                };
+                self.error(
+                    what,
+                    "expected a unit after `in`".to_string(),
+                    &["a unit such as `\\mathrm{km/h}`"],
+                );
+            }
+            return expr;
+        };
+        // `x in S` is membership: after a bare `in`, a one-letter plain unit is not enough.
+        if !explicit && found.plain && !crate::units::is_compound(&found.text) {
+            return expr;
+        }
+        let end = tok_span.end + found.len;
+        let saved = self.pos;
+        self.bump();
+        if !self.consume_to(end) {
+            self.pos = saved;
+            return expr;
+        }
+        let unit = UnitText {
+            text: found.text,
+            plain: found.plain,
+            span: Span::new(tok_span.end + found.lead, end),
+        };
+        let span = expr.span.join(unit.span);
+        Node::new(
+            NodeKind::Convert {
+                expr: Box::new(expr),
+                unit,
+            },
+            span,
+        )
     }
 
     /// `^\prime` or `^{\prime\prime}`: returns the prime count and consumes it.
@@ -386,6 +527,9 @@ impl Parser<'_> {
             Tok::DoublePipe => !self.ctx.norms,
             Tok::Sym(s) if self.ctx.func_arg && s.kind == SymbolKind::Function => false,
             Tok::OperatorName(_) if self.ctx.func_arg => false,
+            // `v \operatorname{in} \mathrm{km/h}`: the conversion ends the product.
+            Tok::OperatorName(n) if n == "in" => false,
+            Tok::Text(t) if t.trim() == "in" => false,
             t => starts_operand(t),
         }
     }
@@ -478,6 +622,19 @@ fn mul_op(op: Op) -> Option<MulOp> {
         Op::Mod => MulOp::Bin(BinOp::Mod),
         _ => return None,
     })
+}
+
+/// `10^{3}` or `10^{-6}`: a power of ten that a unit may follow.
+fn is_power_of_ten(node: &Node) -> bool {
+    let NodeKind::Pow { base, exp } = &node.kind else {
+        return false;
+    };
+    let exp = match &exp.ungrouped().kind {
+        NodeKind::Unary { operand, .. } => operand.ungrouped(),
+        _ => exp.ungrouped(),
+    };
+    matches!(&base.kind, NodeKind::Number(t) if t == "10")
+        && matches!(&exp.kind, NodeKind::Number(_))
 }
 
 /// Names (and primed names) can be called: `f(x)`, `f'(x)`, `v_0(t)`.

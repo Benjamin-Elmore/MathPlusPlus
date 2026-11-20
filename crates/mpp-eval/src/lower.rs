@@ -16,7 +16,7 @@ use mpp_core::{BigOpKind, Expr, ExprNode, Func, LimitDir, LogicOp, MathError, Nu
 use mpp_syntax::math::{
     BigOp, BigOpKind as SynBigOp, BinOp, CaseCondition, CaseRow, Constant, DerivNotation,
     Derivative, Fence, FuncApp, IntKind, Integral, Limit, MatrixEnv, NablaOp, Name, NamedOp, Node,
-    NodeKind, RelOp as SynRel, Side, UnaryOp,
+    NodeKind, RelOp as SynRel, Side, UnaryOp, UnitText,
 };
 use mpp_syntax::Span;
 
@@ -299,7 +299,37 @@ impl<'a> Lowerer<'a> {
                 EvalError::Unsupported("an accent on this expression".into()),
             )),
             K::Relation { first, rest } => self.relation(first, rest),
+            K::Quantity { value, unit } => self.quantity(value, unit),
+            K::Convert { expr, unit } => {
+                let e = self.lower(expr)?;
+                crate::units_wire::convert_expr(e, &unit.text).map_err(math(unit.span))
+            }
         }
+    }
+
+    /// `9.81 m/s^2`. A plain one-letter unit that is a name in scope here (a parameter,
+    /// an index or a defined variable) is that name instead: `3 t` with `f(t) := 3 t`.
+    fn quantity(&mut self, value: &Node, unit: &UnitText) -> LowerResult {
+        let v = self.lower(value)?;
+        if unit.plain && !unit.text.contains(['/', '·']) {
+            let letters: Vec<String> = unit
+                .text
+                .chars()
+                .take_while(char::is_ascii_alphabetic)
+                .map(String::from)
+                .collect();
+            let named = |s: &Self, n: &str| s.is_local(n) || s.scope.binding(n).is_some();
+            let as_names = !letters.is_empty() && letters.iter().all(|l| named(self, l));
+            if as_names {
+                // Read the "unit" again as maths: `3 t^2` is three times t squared.
+                let (node, diags) = mpp_syntax::math::parse_expr(&unit.text, unit.span.start);
+                if diags.is_empty() {
+                    let names = self.lower(&node)?;
+                    return Ok(v * names);
+                }
+            }
+        }
+        crate::units_wire::quantity_expr(v, &unit.text).map_err(math(unit.span))
     }
 
     fn name(&mut self, n: &Name, span: Span) -> LowerResult {

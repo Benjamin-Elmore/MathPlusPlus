@@ -253,6 +253,8 @@ impl Printer {
             K::Accented { accent, inner } => self.prefixed(accent.name(), inner),
             K::Styled { font, inner } => self.prefixed(font_name(*font), inner),
             K::Relation { first, rest } => self.relation(first, rest),
+            K::Quantity { value, unit } => self.prefixed(&format!("quantity {}", unit.text), value),
+            K::Convert { expr, unit } => self.prefixed(&format!("in {}", unit.text), expr),
         }
     }
 

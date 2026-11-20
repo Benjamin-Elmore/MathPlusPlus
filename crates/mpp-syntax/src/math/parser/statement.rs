@@ -380,7 +380,12 @@ impl Parser<'_> {
             if self.eat(|t| matches!(t, Tok::Comma)).is_some() {
                 continue;
             }
-            if self.eat(|t| matches!(t, Tok::Rel(RelOp::In))).is_some() {
+            if self.at(|t| matches!(t, Tok::Rel(RelOp::In))) {
+                // `v in km/h` is a conversion, not a range.
+                if names.len() == 1 && self.at_unit_conversion() {
+                    break;
+                }
+                self.bump();
                 let set = expr::as_interval(self.parse_expr());
                 let span = Span::new(start, set.span.end);
                 return Some(Range { names, set, span });

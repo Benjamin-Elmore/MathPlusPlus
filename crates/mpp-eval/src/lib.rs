@@ -30,6 +30,7 @@ pub mod numeric;
 pub mod resolve;
 pub mod result;
 mod session;
+pub mod units_wire;
 pub mod value;
 #[cfg(feature = "watch")]
 pub mod watch;
