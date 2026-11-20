@@ -1,0 +1,59 @@
+# Lane notes: N14 (maths font throughout + dark mode)
+
+## What was built
+
+- One colour table: `mpp-ide/src/theme/palette.rs` (`Palette::LIGHT`, `Palette::DARK`). It wraps the
+  render `Theme` (page, ink, results, ghost results, placeholder outlines, error/warning/info, graph
+  colours) and adds the interface colours (panel, widgets, border, tooltip, selection, selected row,
+  highlight, scrollbar, edge). A test scans `mpp-ide/src` and fails on any colour literal outside `theme/`.
+- Fonts: `theme/fonts.rs`. Latin Modern Roman is the Proportional family (every part of the UI),
+  Latin Modern Math is its fallback, Latin Modern Sans is the family `theme::sans(size)` (used for the
+  status bar only; at 14 px it reads better than Roman, decided from the screenshots), Latin Modern Mono is
+  the Monospace family and only the View, Show file text pop-out uses it. Fonts live in
+  `crates/mpp-render/fonts` with the GUST licence; mpp-render exports `LM_SANS` and `LM_MONO`.
+- Theme settings: `ThemeChoice` (Light, Dark, Follow Windows; default Follow Windows), saved under the
+  key `theme` (the old `dark` key is still read). View, Theme sub-menu; a moon button in the status bar
+  (drawn as a shape, because Latin Modern and egui's default fonts have no moon glyph); chord
+  Ctrl+K then Ctrl+T cycles Light, Dark, Follow Windows. `IdeApp::mode` is now the resolved mode, set every
+  frame from `theme_choice` and the system theme; call `set_theme_choice` instead of writing `mode`.
+- Dark-mode ink bug: maths and prose were the same colour, but light hairline glyphs on a dark page look thinner.
+  `paint_glyph` now thickens the glyph edge in dark mode, so maths matches the text weight.
+- egui keeps one text style per theme; `install_fonts` now sets sizes for both (dark mode had been using
+  egui defaults).
+- Contrast: `palette.rs` tests check every text pair at 4.5:1 and every line pair at 3:1 in both themes.
+  Light ghost results, placeholder outline and label, and the warning colour were darkened to pass.
+
+## For the plot lane (M13): palette requirements
+
+Take everything from `mpp_render::Theme` (passed in as `&Theme`); never name a colour.
+
+- Figure background: `theme.background` (the page), or `theme.code_background` for a boxed figure.
+- Grid lines: `theme.grid` (quiet, 1.2:1 or better against the background, always quieter than the axes).
+- Axes, ticks and frame: `theme.axis` (3:1 or better; ink-like).
+- Axis labels, tick labels, legend text and titles: `theme.text` (4.5:1), set in Latin Modern Roman,
+  with maths labels in Latin Modern Math.
+- Curves: `theme.series[i % 8]`, in order. All eight are 3:1 or better against `theme.background` in both
+  themes and are chosen for dark backgrounds in `Theme::DARK` (lighter tints). Use a line width of at
+  least 1.5 px, and a dash or marker as well as colour when more than four curves share a plot.
+- 3D surfaces: colour maps should run from `series[0]` through `series[4]` or a perceptual map whose
+  ends contrast with `theme.background`; wire frames use `theme.axis`; the plane under the surface uses `theme.grid`.
+- Legend and annotation boxes: `theme.code_background` fill, `theme.rule` outline.
+- Errors drawn on a plot (a gap, a domain error): `theme.error`; warnings `theme.warning`.
+- Export (N8) draws with `Theme::LIGHT` unless the user asks for dark.
+
+## Note for N8 (export)
+
+Export stays light by default: call the renderers with `Theme::LIGHT` regardless of the IDE mode, with an
+"export in dark" option that passes `Theme::DARK`. The fonts are the same Latin Modern files
+(embed Roman, Math, and Sans only if a figure uses it). Also embed `GUST-FONT-LICENSE.txt`.
+
+## Shared-file requests for the integrator
+
+- None: no new dependencies, and no change to Cargo.toml, Cargo.lock, the grammar or the guide.
+- docs/guide.mpp: a short "Theme" paragraph: View, Theme (Light, Dark, Follow Windows), the moon button in
+  the status bar, and Ctrl+K then Ctrl+T.
+
+## Screenshots
+
+`cargo test -p mpp-ide --test ui` writes ide-light/dark, ide-errors-light/dark and
+ide-completion-light/dark PNGs to `target/ide-snapshots/`.

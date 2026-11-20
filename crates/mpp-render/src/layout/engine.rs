@@ -788,20 +788,35 @@ impl<'a> Engine<'a> {
     /// An empty slot: a faint dotted box with a grey label.
     pub fn slot(&self, label: Option<&str>, st: Style, span: Span, path: &NodePath) -> LBox {
         let s = self.scale(st);
-        let label = label.filter(|l| !l.is_empty());
+        let named = self
+            .opts
+            .slot_labels
+            .iter()
+            .find(|(at, _)| *at == span.start)
+            .map(|(_, l)| l.as_str());
+        let label = named.or(label).filter(|l| !l.is_empty());
+        // Labels are set at 60% of the current size, but never smaller than a
+        // legible floor: a box in a script position (the bounds of an integral)
+        // keeps a readable label instead of shrinking with the script.
+        let label_em = slot_label_em(s, self.opts.sanitized_size());
         let lab = label.map(|l| {
             let mut e = self.clone_shallow();
             e.color = self.opts.theme.placeholder_label;
             let mut b = e.text(l, FontId::TextItalic, st);
-            // Labels are set at 60% of the current size.
-            scale_box(&mut b, 0.6);
+            scale_box(&mut b, label_em / s);
             b
         });
-        let pad = 0.12 * s;
+        let pad = (0.12 * s).max(0.22 * label_em);
         let lw = lab.as_ref().map(|b| b.width).unwrap_or(0.0);
         let width = (lw + 2.0 * pad).max(0.7 * s);
-        let height = 0.72 * s;
-        let depth = 0.16 * s;
+        let (height, depth) = match &lab {
+            // Room for the label's ink plus padding above and below it.
+            Some(l) => (
+                (0.72 * s).max(l.height + 0.5 * pad + 0.16 * s),
+                (0.16 * s).max(l.depth + 0.5 * pad),
+            ),
+            None => (0.72 * s, 0.16 * s),
+        };
         let mut children = vec![Placed {
             x: 0.0,
             y: 0.0,
@@ -841,6 +856,19 @@ impl<'a> Engine<'a> {
             hits: self.hits,
         }
     }
+}
+
+/// Smallest slot label, in pixels at any zoom.
+const SLOT_LABEL_MIN_PX: f32 = 10.0;
+/// Smallest slot label relative to the base size: the same as a label at full
+/// size (12 px at 20 px), so every label on a template reads alike.
+const SLOT_LABEL_MIN_EM: f32 = 0.6;
+
+/// The size of a slot's label in ems of the base size, for a slot at style
+/// scale `s` laid out at `px` pixels per em.
+pub(crate) fn slot_label_em(s: f32, px: f32) -> f32 {
+    let floor = SLOT_LABEL_MIN_EM.max(SLOT_LABEL_MIN_PX / px.max(1.0));
+    (0.6 * s).max(floor)
 }
 
 /// Scales a box and everything in it (used for slot labels).

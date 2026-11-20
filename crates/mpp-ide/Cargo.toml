@@ -1,0 +1,32 @@
+[package]
+name = "mpp-ide"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Math++ IDE: a live, typeset equation view you type straight into"
+
+[lib]
+name = "mpp_ide"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mathpp-ide"
+path = "src/main.rs"
+
+[dependencies]
+mpp-core = { path = "../mpp-core" }
+mpp-eval = { path = "../mpp-eval" }
+mpp-render = { path = "../mpp-render" }
+mpp-syntax = { path = "../mpp-syntax" }
+eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
+egui = "0.37"
+lyon_tessellation = "1"
+rfd = "0.18"
+egui_tiles = { version = "0.18", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+notify = "8"
+trash = "5"
+
+[dev-dependencies]
+egui_kittest = { version = "0.37", features = ["wgpu", "snapshot"] }
