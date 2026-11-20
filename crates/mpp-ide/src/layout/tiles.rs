@@ -350,8 +350,11 @@ pub fn sync_docs(tree: &mut Tree<Pane>, docs: &[u64], focused: Option<TileId>) -
         if has {
             continue;
         }
+        // Find the group first: the new pane is not in any group yet, and
+        // looking for "an equation view" must not find it.
+        let group = editor_group(tree, focused);
         let id = tree.tiles.insert_pane(Pane::Equation { doc: *d, view: 0 });
-        match editor_group(tree, focused) {
+        match group {
             Some(g) => add_to_group(tree, g, id),
             None => {
                 let new_group = tree.tiles.insert_tab_tile(vec![id]);

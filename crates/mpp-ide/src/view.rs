@@ -62,6 +62,9 @@ pub struct ViewCtx<'a> {
     pub insert: &'a mut InsertUi,
     /// The quick-fix menu and the problem card kept open by F8.
     pub diag: &'a mut DiagUi,
+    /// True for the one view that owns the Insert menu, the quick-fix menu,
+    /// the F8 card and autocomplete (several views can be on screen in tiles).
+    pub active: bool,
 }
 
 fn find_block(doc: &Document, id: mpp_syntax::document::BlockId) -> Option<&Block> {
@@ -90,7 +93,9 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             );
             let col_left = ((avail_w - pc0.page.width) / 2.0).max(0.0);
             let origin = resp.rect.min + Vec2::new(col_left, 0.0);
-            cx.diag.origin = origin;
+            if cx.active {
+                cx.diag.origin = origin;
+            }
 
             if ui.memory(|m| m.focused().is_none()) {
                 ui.memory_mut(|m| m.request_focus(resp.id));
@@ -136,6 +141,9 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             if focused && !cx.insert.menu.open && !cx.diag.menu_open() {
                 moved |= handle_keys(ui, doc, &pc0, cx, &mut events);
             }
+            if cx.active && !focused {
+                f8_from_elsewhere(ui, doc, &pc0, cx, resp.id);
+            }
             if resp.dragged() || resp.clicked() {
                 doc.highlight = None;
             }
@@ -180,13 +188,15 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                     hover_card(ui, doc, &pc, origin, &theme, cx);
                 }
             }
-            peek_card(ui, doc, &pc, origin, &theme, cx);
-            fix_menu(ui, doc, cx, &mut events, resp.id);
-            completion_popup(ui, doc, &pc, origin, cx, &theme, caret_rect);
-            if focused || cx.insert.menu.open {
-                template_toolbar(ui, doc, &pc, origin, cx, resp.id);
+            if cx.active {
+                peek_card(ui, doc, &pc, origin, &theme, cx);
+                fix_menu(ui, doc, cx, &mut events, resp.id);
+                completion_popup(ui, doc, &pc, origin, cx, &theme, caret_rect);
+                if focused || cx.insert.menu.open {
+                    template_toolbar(ui, doc, &pc, origin, cx, resp.id);
+                }
+                insert_menu(ui, doc, cx, caret_rect, resp.id);
             }
-            insert_menu(ui, doc, cx, caret_rect, resp.id);
             (pc.page.height, pc.problems.clone())
         });
     // Problem marks beside the scrollbar: where each problem is on the page.
@@ -317,6 +327,43 @@ fn peek_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, cx
         },
         n,
     );
+}
+
+/// F8 and Shift+F8 while the keyboard is somewhere else (the explorer, a tab):
+/// the active view moves to the next problem and takes the keyboard. A text
+/// box with the keyboard (rename, search) keeps its F8.
+fn f8_from_elsewhere(
+    ui: &Ui,
+    doc: &mut Doc,
+    pc: &PageCache,
+    cx: &mut ViewCtx<'_>,
+    page_id: egui::Id,
+) {
+    let typing = ui
+        .memory(|m| m.focused())
+        .is_some_and(|id| egui::text_edit::TextEditState::load(ui.ctx(), id).is_some());
+    if typing || cx.insert.menu.open || cx.diag.menu_open() {
+        return;
+    }
+    let forward = ui.input_mut(|i| {
+        if i.consume_key(egui::Modifiers::NONE, Key::F8) {
+            Some(true)
+        } else if i.consume_key(egui::Modifiers::SHIFT, Key::F8) {
+            Some(false)
+        } else {
+            None
+        }
+    });
+    let Some(forward) = forward else {
+        return;
+    };
+    if let Some(p) = dui::next_problem(&pc.problems, doc.editor.caret(), forward) {
+        doc.editor.move_caret(dui::caret_target(&pc.page, p), false);
+        doc.scroll_to = Some(p.span);
+        cx.diag.peek = Some(p.span);
+        doc.want_x = None;
+    }
+    ui.memory_mut(|m| m.request_focus(page_id));
 }
 
 /// The text size of problem cards and menus.

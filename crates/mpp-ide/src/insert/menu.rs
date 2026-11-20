@@ -259,8 +259,12 @@ pub fn show(
                     }
                     ui.add_space(4.0);
                     let mut chosen: Option<&'static Template> = None;
+                    // The area remembers its last size: when the list grows
+                    // (a new search, the menu opened again) it must not stay
+                    // as short as it was.
                     egui::ScrollArea::vertical()
                         .max_height(MENU_HEIGHT)
+                        .min_scrolled_height(MENU_HEIGHT)
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
                             let mut index = 0usize;

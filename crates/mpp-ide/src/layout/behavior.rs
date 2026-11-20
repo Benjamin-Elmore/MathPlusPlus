@@ -81,6 +81,8 @@ struct AppBehavior<'a> {
     many_tiles: bool,
     /// Problem counts of the files with problems (for the tab titles).
     counts: Vec<(PathBuf, Counts)>,
+    /// The equation view that owns the Insert menu, quick fixes and popups.
+    active_view: Option<TileId>,
 }
 
 impl AppBehavior<'_> {
@@ -118,7 +120,8 @@ impl Behavior<Pane> for AppBehavior<'_> {
                                 ui.add_space(3.0);
                             }
                         }
-                        for e in self.app.equation_ui(ui, idx) {
+                        let active = self.active_view == Some(tile_id);
+                        for e in self.app.equation_ui(ui, idx, active) {
                             self.events.push((idx, e));
                         }
                     });
@@ -824,6 +827,7 @@ impl IdeApp {
             .count()
             > 1;
         let counts = self.file_counts();
+        let active_view = active_view(&tree, focused, maximised, active_doc);
         let mut b = AppBehavior {
             app: self,
             theme,
@@ -835,6 +839,7 @@ impl IdeApp {
             empty_groups,
             many_tiles: many,
             counts,
+            active_view,
         };
         match maximised {
             Some(m) => draw_maximised(&mut b, &mut tree, ui, m),
@@ -950,7 +955,9 @@ impl IdeApp {
     }
 
     /// One equation view: the typeset page of document `idx`.
-    pub(crate) fn equation_ui(&mut self, ui: &mut Ui, idx: usize) -> Vec<ViewEvent> {
+    /// `active` marks the view that owns the Insert menu, the quick-fix menu
+    /// and the other pop-ups (the focused view, or the active file's).
+    pub(crate) fn equation_ui(&mut self, ui: &mut Ui, idx: usize, active: bool) -> Vec<ViewEvent> {
         let (mode, size, copy_format) = (self.mode, self.size, self.copy_format);
         let figures = self.figures.as_ref();
         let Some(doc) = self.docs.get_mut(idx) else {
@@ -970,6 +977,7 @@ impl IdeApp {
             copy_format,
             insert: &mut self.insert,
             diag: &mut self.diag,
+            active,
         };
         let events = view::show(ui, doc, &mut cx);
         let dropped = ui.interact(
@@ -989,6 +997,27 @@ impl IdeApp {
         self.ws.explorer.reveal(p);
         self.ws.explorer.selected = Some(p.to_path_buf());
     }
+}
+
+/// The equation view that owns the pop-ups this frame: the focused tile when
+/// it is an equation view, otherwise a visible view of the active file.
+fn active_view(
+    tree: &Tree<Pane>,
+    focused: Option<TileId>,
+    maximised: Option<TileId>,
+    active_doc: Option<u64>,
+) -> Option<TileId> {
+    let is_view = |t: TileId| matches!(tiles::pane_of(tree, t), Some(Pane::Equation { .. }));
+    if let Some(m) = maximised {
+        return is_view(m).then_some(m);
+    }
+    let shown = tree.active_tiles();
+    if let Some(f) = focused.filter(|f| is_view(*f) && shown.contains(f)) {
+        return Some(f);
+    }
+    shown.into_iter().find(|t| {
+        matches!(tiles::pane_of(tree, *t), Some(Pane::Equation { doc, .. }) if Some(*doc) == active_doc)
+    })
 }
 
 fn draw_maximised(b: &mut AppBehavior<'_>, tree: &mut Tree<Pane>, ui: &mut Ui, id: TileId) {

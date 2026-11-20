@@ -32,3 +32,16 @@
 - Tutorial: eleven lessons plus `constants.mpp` in `tutorial/lessons.rs`, written to `<app data>/tutorial/` on first launch and from Help → Tutorial. The units and steps lessons describe the tools in words until those lanes are integrated; update them then.
 - Did you mean: `suggest::Suggester` has `names`, `symbols`, `units`, `phrases` and `files` with the same shapes as ide-b's `diagnostics::suggest::Suggest` plug point. After the merge, implement that trait for `Suggester` and call `set_suggester(Arc::new(Suggester))` in `EframeApp::new`; autocomplete in `editor/symbols.rs` can call `Suggester::names` and `phrases` too. In this lane it is used by the search view ("Did you mean …?") and by the missing-import message.
 - Shared scratch note: two lanes wrote scripts to the same scratchpad folder; keep lane scripts in a per-lane subfolder.
+
+## After the merge with ide-b (fonts, dark mode, Insert menu, live problems)
+
+- The Problems tile hosts `problems::ProblemsView` (all open files and their imports, grouped by file). Ctrl+Shift+M, View, Problems and a click on the status bar count open it; `IdeApp::toggle_problems` keeps `problems.open` in step with the tile.
+- Tabs and explorer rows (open files and the tree) show error counts (warnings when there are no errors) from `IdeApp::file_counts`, which covers imported files that are not open.
+- The status bar keeps imports, definitions and the spinner and adds the problem summary and the theme button; it is set in Latin Modern Sans.
+- `suggest::Suggester` implements `diagnostics::suggest::Suggest` (defined names only, Greek look-alikes first) and is installed at start-up; autocomplete falls back to it when nothing starts with what was typed (`lamda` offers the letter).
+- One undo history: Edit, History lists the editor's own undo steps (a template insert is one step) and walks them with undo and redo. Typing groups word by word: a word and the space or punctuation after it are one step; a new line is its own step. The old separate timeline is gone.
+- Several equation views can be on screen: the Insert menu, quick-fix menu, F8 card, autocomplete and template toolbar belong to one view, the focused tile (or a visible view of the active file). F8 also works when the keyboard is in the explorer or a tab strip.
+- Ctrl+K then Ctrl+T (theme) and Ctrl+K then an arrow (focus) share the chord in the tile shortcuts.
+- Theme choice, Insert settings and the copy format are saved in the settings JSON (eframe storage is not used).
+- No colour is named outside `theme/`: `theme::CLEAR` replaces the transparent literal.
+- Screenshots: `cargo test -p mpp-ide --test merged_ui` writes `merged-*.png` to `target/ide-snapshots/`.

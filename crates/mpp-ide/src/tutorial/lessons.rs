@@ -51,7 +51,9 @@ $$ \\alpha + \\beta = ? $$
 
 const L03: &str = "# The Insert menu
 
-You do not need to remember how to write a fraction, an integral or a matrix. Put the cursor anywhere in the page and open the Insert menu. Pick a template and empty boxes appear where the parts go; press Tab to jump to the next box.
+You do not need to remember how to write a fraction, an integral or a matrix. Put the cursor anywhere in the page and open the Insert menu: the Insert button at the top, right-click and choose Insert, or Ctrl+Space. Start typing to search (integral, matrix, alpha) and press Enter. Empty boxes appear where the parts go; press Tab to jump to the next box. Undo takes the whole template away in one step.
+
+While a box is still empty it shows a grey word for what goes in it. Once you leave the template, anything still missing gets a red wavy line: hover over it to read what is wrong, press F8 to jump to the next problem, and Ctrl+. to pick a fix.
 
 An integral has boxes for the limits and the thing being integrated:
 

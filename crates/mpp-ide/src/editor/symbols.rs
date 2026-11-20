@@ -2,7 +2,9 @@
 
 use std::ops::Range;
 
-use mpp_syntax::symbols::{lookup_name, SymbolKind, SYMBOLS};
+use mpp_syntax::symbols::{lookup_char, lookup_name, SymbolKind, SYMBOLS};
+
+use crate::suggest::Suggester;
 
 /// A text replacement the editor should apply.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,8 +122,9 @@ pub fn completions<'a>(
     if p.len() < 2 {
         return vec![];
     }
+    let scope: Vec<String> = scope.into_iter().map(str::to_string).collect();
     let mut out = vec![];
-    for name in scope {
+    for name in &scope {
         if name.starts_with(p) && name != p {
             out.push(Completion {
                 latex: name.to_string(),
@@ -142,8 +145,42 @@ pub fn completions<'a>(
             });
         }
     }
+    if out.is_empty() && p.chars().count() >= 3 {
+        misspelt(p, &scope, &mut out);
+    }
     out.truncate(limit);
     out
+}
+
+/// Nothing starts with what was typed: offer the closest names and symbols
+/// instead (`lamda` offers λ, `velcoity` offers `velocity`).
+fn misspelt(p: &str, scope: &[String], out: &mut Vec<Completion>) {
+    let s = Suggester;
+    for name in s.names(p, scope) {
+        if scope.contains(&name) {
+            out.push(Completion {
+                latex: name.clone(),
+                label: name.clone(),
+                insert: name,
+            });
+        }
+    }
+    for letter in s.symbols(p) {
+        let mut chars = letter.chars();
+        let (Some(c), None) = (chars.next(), chars.next()) else {
+            continue;
+        };
+        let Some(sym) = lookup_char(c).filter(|sym| replaceable(sym.kind)) else {
+            continue;
+        };
+        if !out.iter().any(|o| o.insert == sym.unicode) {
+            out.push(Completion {
+                latex: sym.latex.to_string(),
+                label: sym.name.to_string(),
+                insert: sym.unicode.to_string(),
+            });
+        }
+    }
 }
 
 #[cfg(test)]
@@ -184,6 +221,14 @@ mod tests {
     #[test]
     fn relations_replace_on_a_delimiter() {
         assert_eq!(typed("x in R").as_deref(), Some("x ∈ R"));
+    }
+
+    #[test]
+    fn misspellings_offer_the_closest_name_or_symbol() {
+        let c = completions("lamda", ["x"], 8);
+        assert!(c.iter().any(|c| c.insert == "\u{3bb}"), "{c:?}");
+        let c = completions("velcoity", ["velocity", "mass"], 8);
+        assert_eq!(c.first().map(|c| c.insert.as_str()), Some("velocity"));
     }
 
     #[test]

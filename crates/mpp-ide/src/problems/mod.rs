@@ -1,7 +1,7 @@
 //! The Problems panel (`Ctrl+Shift+M`): every problem in the project, grouped
-//! by file, typeset, click to jump. It is a widget any host can show (a bottom
-//! panel today, a tile of the tile manager later), plus the counts that tabs,
-//! the explorer and the status bar show.
+//! by file, typeset, click to jump. It is a widget any host can show (the
+//! Problems tile of the tile manager), plus the counts that tabs, the
+//! explorer and the status bar show.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};

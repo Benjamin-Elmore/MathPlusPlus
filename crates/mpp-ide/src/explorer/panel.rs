@@ -53,6 +53,16 @@ impl ExplorerCtx<'_> {
     }
 }
 
+/// Room kept free for a file's count at the right of its row.
+fn count_width(c: Counts) -> f32 {
+    let n = if c.errors > 0 { c.errors } else { c.warnings };
+    if n == 0 {
+        0.0
+    } else {
+        8.0 + 8.0 * n.to_string().len() as f32
+    }
+}
+
 /// Paints a file's error count (or its warning count when it has no errors)
 /// right-aligned at `right`; returns the width used.
 fn paint_count(p: &egui::Painter, right: egui::Pos2, c: Counts, t: &Theme) -> f32 {
@@ -283,7 +293,16 @@ impl ExplorerState {
                 let color = if f.broken { c32(t.error) } else { ink };
                 let galley = text_galley(&p, &f.title, 15.0, color, f.preview);
                 let text_pos = egui::pos2(x + 24.0, rect.center().y - galley.size().y / 2.0);
-                p.galley(text_pos, galley, color);
+                // The name stops short of the count and the close button.
+                let room = f
+                    .path
+                    .as_ref()
+                    .map_or(0.0, |path| count_width(cx.counts_of(path)));
+                let clip = Rect::from_min_max(
+                    rect.min,
+                    egui::pos2(rect.right() - 24.0 - room, rect.bottom()),
+                );
+                p.with_clip_rect(clip).galley(text_pos, galley, color);
                 let close = Rect::from_center_size(
                     egui::pos2(rect.right() - 12.0, rect.center().y),
                     Vec2::splat(16.0),
@@ -484,7 +503,17 @@ impl ExplorerState {
             let galley = text_galley(&p, &r.name, 15.0, text_color, false);
             let ty = rect.center().y - galley.size().y / 2.0;
             let w = galley.size().x;
-            p.galley(egui::pos2(x, ty), galley, text_color);
+            let room = if r.is_dir {
+                0.0
+            } else {
+                count_width(cx.counts_of(&r.path))
+            };
+            let clip = Rect::from_min_max(
+                rect.min,
+                egui::pos2(rect.right() - 6.0 - room, rect.bottom()),
+            );
+            p.with_clip_rect(clip)
+                .galley(egui::pos2(x, ty), galley, text_color);
             if cx.linked.iter().any(|l| l == &r.path) {
                 let m = Rect::from_center_size(
                     egui::pos2(x + w + 12.0, rect.center().y),
