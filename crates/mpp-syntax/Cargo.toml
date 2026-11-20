@@ -1,0 +1,8 @@
+[package]
+name = "mpp-syntax"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Lexer and parser for Math++ source files"
+
+[dependencies]
