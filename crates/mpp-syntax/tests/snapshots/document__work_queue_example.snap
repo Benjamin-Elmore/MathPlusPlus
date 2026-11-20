@@ -1,0 +1,26 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: clean(EXAMPLE)
+---
+[0..19] Heading(1) "Projectile motion"
+[20..84] Let "Let " (math (def ≡ g 9.81)) " be gravity and " (math (def := (initial v 0) 20)) " the launch speed."
+[85..131] Using names=[θ, (call R θ)] aliases=- path="launch.mpp"
+[132..150] EmbedImport "constants.mpp"
+[152..215] DisplayMath number=None label=None noeval=false closed=true raw=154..213
+  (def := (fn-head y x) (- (* x (tan θ)) (/ (* g (^ x 2)) (* (* 2 (^ (_ v 0) 2)) (^ (cos θ) 2)))))
+[216..243] DisplayMath number=None label=None noeval=false closed=true raw=218..241
+  (def := E (* (* (/ 1 2) m) (^ (_ v 0) 2)))
+[245..272] DisplayMath number=None label=None noeval=false closed=true raw=247..270
+  (query =? (deriv (by x) (call y x)))
+[273..308] DisplayMath number=None label=None noeval=false closed=true raw=275..306
+  (query ≈? (int :lower 0 :upper R (call y x) (d x)))
+[309..352] DisplayMath number=None label=None noeval=false closed=true raw=311..350
+  (query =? (sum :index n :from 1 :to #inf (/ 1 (^ n 2))))
+[353..393] DisplayMath number=None label=None noeval=false closed=true raw=355..391
+  (query =? (lim x 0 (/ (sin x) x)))
+[395..426] Figure
+  expr (call y x)
+  range x in (interval [] 0 R)
+[427..471] Figure
+  expr (rel z = (- (^ x 2) (^ y 2)))
+  range x, y in (interval [] (neg 2) 2)

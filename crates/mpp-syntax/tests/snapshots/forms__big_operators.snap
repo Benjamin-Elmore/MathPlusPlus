@@ -1,0 +1,161 @@
+---
+source: crates/mpp-syntax/tests/forms.rs
+expression: report(cases)
+---
+## sum
+\sum_{n=1}^{\infty} \frac{1}{n^2}
+  => (sum :index n :from 1 :to #inf (/ :frac 1 (^ n 2)))
+sum_(n=1)^inf 1/n^2
+  => (sum :index n :from 1 :to #inf (/ :slash 1 (^ n 2)))
+∑_(n=1)^∞ 1/n²
+  => (sum :index n :from 1 :to #inf (/ :slash 1 (^ n 2)))
+## sum takes the term
+\sum_{k=0}^{n} k + 1
+  => (+ (sum :index k :from 0 :to n k) 1)
+sum_(k=0)^n k + 1
+  => (same)
+## sum over a set
+\sum_{x \in S} x
+  => (sum :over (rel x ∈ S) x)
+sum_(x in S) x
+  => (same)
+∑_(x ∈ S) x
+  => (same)
+## sum with bare index
+\sum_k a_k b_k
+  => (sum :index k (* :implicit (_ a k) (_ b k)))
+sum_k a_k b_k
+  => (same)
+## index i is a name in the body
+\sum_{i=1}^{n} i^2
+  => (sum :index i :from 1 :to n (^ i 2))
+sum_(i=1)^n i^2
+  => (same)
+∑_(i=1)^n i²
+  => (same)
+## nested sums
+\sum_{n=0}^{N-1} \sum_{m=0}^{n} a_{nm}
+  => (sum :index n :from 0 :to (- N 1) (sum :index m :from 0 :to n (_ a nm)))
+## product
+\prod_{i=1}^{n} i
+  => (prod :index i :from 1 :to n i)
+prod_(i=1)^n i
+  => (same)
+∏_(i=1)^n i
+  => (same)
+## definite integral
+\int_0^1 x^2 + 1 \, dx
+  => (int :lower 0 :upper 1 (+ (^ x 2) 1) (d x))
+int_0^1 x^2 + 1 dx
+  => (same)
+∫₀¹ x² + 1 dx
+  => (same)
+## indefinite integral
+\int \sin x \, dx
+  => (int (sin x) (d x))
+int sin x dx
+  => (same)
+∫ sin x dx
+  => (same)
+## upright d
+\int_0^1 f(x) \, \mathrm{d}x
+  => (int :lower 0 :upper 1 (call f x) (d x))
+int_0^1 f(x) dx
+  => (same)
+## double integral over region
+\iint_D f \, dA
+  => (iint :lower D f (d A))
+iint_D f dA
+  => (same)
+∬_D f dA
+  => (same)
+## region as condition
+\iint_{x^2 + y^2 \le 1} f \, dA
+  => (iint :lower (rel (+ (^ x 2) (^ y 2)) ≤ 1) f (d A))
+iint_(x^2 + y^2 <= 1) f dA
+  => (same)
+∬_(x² + y² ≤ 1) f dA
+  => (same)
+## iterated integral
+\int_0^1 \int_0^x xy \, dy \, dx
+  => (int :lower 0 :upper 1 (int :lower 0 :upper x (* :implicit x y) (d y)) (d x))
+int_0^1 int_0^x x y dy dx
+  => (same)
+## double integral two differentials
+\iint_R f \, dx \, dy
+  => (iint :lower R f (d x y))
+∬_R f dx dy
+  => (same)
+## triple integral
+\iiint_V \rho \, dV
+  => (iiint :lower V ρ (d V))
+iiint_V rho dV
+  => (same)
+∭_V ρ dV
+  => (same)
+## line integral
+\oint_C \mathbf{F} \cdot d\mathbf{r}
+  => (oint :lower C bf:F (·d bf:r))
+oint_C mathbf F cdot d mathbf r
+  => (same)
+∮_C 𝐅 · d𝐫
+  => (same)
+## surface integral
+\oiint_S \mathbf{F} \cdot d\mathbf{S}
+  => (oiint :lower S bf:F (·d bf:S))
+∯_S 𝐅 · d𝐒
+  => (same)
+## differential first
+\int dx \, f(x)
+  => (int (call f x) (d x))
+## differential in numerator
+\int \frac{dx}{x}
+  => (int :d-in-numerator (/ :frac 1 x) (d x))
+## limit
+\lim_{x \to 0} \frac{\sin x}{x}
+  => (lim x 0 (/ :frac (sin x) x))
+lim_(x->0) sin(x)/x
+  => (lim x 0 (/ :slash (sin :paren x) x))
+lim_(x→0) sin(x)/x
+  => (lim x 0 (/ :slash (sin :paren x) x))
+## limit from the right
+\lim_{x \to 0^+} \frac{1}{x}
+  => (lim x 0 :right (/ :frac 1 x))
+lim_(x->0^+) 1/x
+  => (lim x 0 :right (/ :slash 1 x))
+lim_(x->0+) 1/x
+  => (lim x 0 :right (/ :slash 1 x))
+lim_(x→0⁺) 1/x
+  => (lim x 0 :right (/ :slash 1 x))
+## limit from the left
+\lim_{x \to 0^{-}} \frac{1}{x}
+  => (lim x 0 :left (/ :frac 1 x))
+lim_(x->0^-) 1/x
+  => (lim x 0 :left (/ :slash 1 x))
+lim_(x→0⁻) 1/x
+  => (lim x 0 :left (/ :slash 1 x))
+## limit at infinity
+\lim_{n \to \infty} \left(1 + \frac{1}{n}\right)^n
+  => (lim n #inf (^ (group paren :sized (+ 1 (/ :frac 1 n))) n))
+lim_(n->inf) (1 + 1/n)^n
+  => (lim n #inf (^ (group paren (+ 1 (/ :slash 1 n))) n))
+lim_(n→∞) (1 + 1/n)ⁿ
+  => (lim n #inf (^ (group paren (+ 1 (/ :slash 1 n))) n))
+## named operator
+\operatorname{crit} f = ?
+  => (query =? (op crit f))
+## named operator on interval
+\operatorname{extrema}_{[0,4]} f = ?
+  => (query =? (op extrema :sub (interval [] 0 4) f))
+## named operator at point
+\operatorname{tangent}_{x=1} f = ?
+  => (query =? (op tangent :sub (rel x = 1) f))
+## solve
+\operatorname{solve}_x (x^2 = 4) = ?
+  => (query =? (op solve :paren :sub x (rel (^ x 2) = 4)))
+## series
+\operatorname{series}_{x=0}^{5} e^x = ?
+  => (query =? (op series :sub (rel x = 0) :sup 5 (^ #e x)))
+## mod
+a \equiv b \pmod{n}
+  => (rel a ≡ (* :implicit b (op mod :paren n)))

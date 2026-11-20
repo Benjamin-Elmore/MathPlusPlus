@@ -1,0 +1,8 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(concat!(\"> A quote with $x$\\n\", \"> over two lines.\\n\", \">\\n\",\n\"> Second paragraph.\\n\", \"\\n\", \"[^1]: The note, with *emphasis*.\\n\",))"
+---
+[0..58] Quote
+  "A quote with " (math x) <br> "over two lines."
+  "Second paragraph."
+[60..92] FootnoteDef "1" "The note, with " (em "emphasis") "."

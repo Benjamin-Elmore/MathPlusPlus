@@ -1,0 +1,235 @@
+---
+source: crates/mpp-syntax/tests/forms.rs
+expression: report(cases)
+---
+## numbers
+3.14 + 2.5e-3 + 42
+  => (+ (+ 3.14 2.5e-3) 42)
+## constants
+\pi + e + i + \infty
+  => (+ (+ (+ #pi #e) #i) #inf)
+pi + e + i + inf
+  => (same)
+π + e + i + ∞
+  => (same)
+## euler identity
+e^{i\pi} + 1 = 0
+  => (rel (+ (^ #e (* :implicit #i #pi)) 1) = 0)
+e^(i pi) + 1 = 0
+  => (same)
+## greek names
+\alpha + \Omega + \varepsilon
+  => (+ (+ α Ω) ε)
+alpha + Omega + varepsilon
+  => (same)
+α + Ω + ε
+  => (same)
+## letter runs split
+x y z
+  => (* :implicit (* :implicit x y) z)
+xyz
+  => (same)
+## call
+f(x, y)
+  => (call f x y)
+f(x, y)
+  => (same)
+## nested call
+g(f(x))
+  => (call g (call f x))
+## call with subscript name
+v_{0}(t)
+  => (call (_ v 0) t)
+v_0(t)
+  => (same)
+v₀(t)
+  => (same)
+## groups
+\left( a + b \right) c
+  => (* :implicit (group paren :sized (+ a b)) c)
+(a + b) c
+  => (* :implicit (group paren (+ a b)) c)
+(a + b)c
+  => (* :implicit (group paren (+ a b)) c)
+## square group
+[a + b] c
+  => (* :implicit (group square (+ a b)) c)
+\left[ a + b \right] c
+  => (* :implicit (group square :sized (+ a b)) c)
+## absolute value
+\left| x - 1 \right|
+  => (abs :sized (- x 1))
+|x - 1|
+  => (abs (- x 1))
+abs(x - 1)
+  => (abs :word (- x 1))
+## absolute value forms
+\lvert x \rvert
+  => (abs x)
+\abs{x}
+  => (abs :cmd x)
+|x|
+  => (same)
+## nested bars
+||x| - 1|
+  => (abs (- (abs x) 1))
+\left| |x| - 1 \right|
+  => (abs :sized (- (abs x) 1))
+## bars side by side
+|a| |b|
+  => (* :implicit (abs a) (abs b))
+|a||b|
+  => (same)
+## norm
+\| v \|
+  => (norm v)
+norm(v)
+  => (norm :word v)
+‖v‖
+  => (same)
+## sized norm
+\left\| v \right\|
+  => (norm :sized v)
+\lVert v \rVert
+  => (norm v)
+## floor and ceiling
+\lfloor x \rfloor + \lceil y \rceil
+  => (+ (floor x) (ceil y))
+floor(x) + ceil(y)
+  => (+ (floor :word x) (ceil :word y))
+⌊x⌋ + ⌈y⌉
+  => (same)
+## fraction
+\frac{a+b}{c}
+  => (/ :frac (+ a b) c)
+(a+b)/c
+  => (/ :slash (group paren (+ a b)) c)
+## fraction styles
+\tfrac12 + \dfrac{1}{x}
+  => (+ (/ :tfrac 1 2) (/ :dfrac 1 x))
+1/2 + 1/x
+  => (+ (/ :slash 1 2) (/ :slash 1 x))
+1 ÷ 2 + 1 ÷ x
+  => (+ (/ :obelus 1 2) (/ :obelus 1 x))
+## fraction of function
+\frac{\sin x}{x}
+  => (/ :frac (sin x) x)
+sin(x)/x
+  => (/ :slash (sin :paren x) x)
+sin x/x
+  => (/ :slash (sin x) x)
+## square root
+\sqrt{x+1}
+  => (sqrt (+ x 1))
+sqrt(x+1)
+  => (sqrt :word (+ x 1))
+√(x+1)
+  => (sqrt :radical (+ x 1))
+## nth root
+\sqrt[3]{x}
+  => (root 3 x)
+root(3, x)
+  => (root :word 3 x)
+∛x
+  => (root :radical 3 x)
+## binomial
+\binom{n}{k}
+  => (binom n k)
+binom(n, k)
+  => (binom :word n k)
+## set literal
+\{1, 2, 3\}
+  => (set :escaped 1 2 3)
+{1, 2, 3}
+  => (set :braces 1 2 3)
+## empty set
+\emptyset
+  => (set :empty)
+emptyset
+  => (same)
+∅
+  => (same)
+## closed interval
+[0, 1]
+  => (interval [] 0 1)
+\left[ 0, 1 \right]
+  => (interval [] :sized 0 1)
+## half-open intervals
+[0, 1) \cup (1, 2]
+  => (∪ (interval [) 0 1) (interval (] 1 2))
+\left[0, 1\right) \cup \left(1, 2\right]
+  => (∪ (interval [) :sized 0 1) (interval (] :sized 1 2))
+## tuple
+(1, 2, 3)
+  => (tuple paren 1 2 3)
+\left(1, 2, 3\right)
+  => (tuple paren :sized 1 2 3)
+## angle tuple
+\langle u, v \rangle
+  => (tuple angle u v)
+langle u, v rangle
+  => (same)
+⟨u, v⟩
+  => (same)
+## list
+[1, 2, 3]
+  => (tuple square 1 2 3)
+## accents
+\hat{x} + \bar{y} + \vec{v} + \tilde{z}
+  => (+ (+ (+ (hat x) (bar y)) (vec v)) (tilde z))
+hat x + bar y + vec v + tilde z
+  => (same)
+x̂ + ȳ + v⃗ + z̃
+  => (same)
+## accent over expression
+\overline{z + w}
+  => (overline (+ z w))
+## fonts
+\mathbf{F} + \mathbb{R} + \mathcal{L} + \mathfrak{g}
+  => (+ (+ (+ bf:F bb:R) cal:L) frak:g)
+mathbf F + mathbb R + mathcal L + mathfrak g
+  => (same)
+𝐅 + ℝ + ℒ + 𝔤
+  => (same)
+## number sets
+\mathbb{N} \subset \mathbb{Z} \subset \mathbb{Q}
+  => (rel bb:N ⊂ bb:Z ⊂ bb:Q)
+ℕ ⊂ ℤ ⊂ ℚ
+  => (same)
+## upright names
+\mathrm{Re} + \operatorname{Var}
+  => (+ rm:Re rm:Var)
+## text
+\text{speed} = 3
+  => (rel (text "speed") = 3)
+## ellipsis
+1 + 2 + \cdots + n
+  => (+ (+ (+ 1 2) (dots centre)) n)
+1 + 2 + ... + n
+  => (+ (+ (+ 1 2) (dots low)) n)
+1 + 2 + … + n
+  => (+ (+ (+ 1 2) (dots low)) n)
+## quantifier
+\forall x \in S
+  => (rel (* :implicit (sym ∀) x) ∈ S)
+forall x in S
+  => (same)
+∀x ∈ S
+  => (same)
+## matrix
+\begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}
+  => (matrix :pmatrix (row 1 2) (row 3 4))
+## bracket matrix
+\begin{bmatrix} a & b \\ c & d \\ \end{bmatrix}
+  => (matrix :bmatrix (row a b) (row c d))
+## determinant
+\begin{vmatrix} a & b \\ c & d \end{vmatrix}
+  => (matrix :vmatrix (row a b) (row c d))
+## plain matrix
+\begin{matrix} x \\ y \end{matrix}
+  => (matrix :matrix (row x) (row y))
+## cases
+f(x) := \begin{cases} x & x > 0 \\ -x & \text{otherwise} \end{cases}
+  => (def := (fn-head f x) (cases (case x (rel x > 0)) (case (neg x) otherwise)))
+f(x) := \begin{cases} x, & \text{if } x > 0 \\ -x & otherwise \end{cases}
+  => (same)

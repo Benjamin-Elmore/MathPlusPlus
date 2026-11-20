@@ -1,0 +1,11 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: dump(&doc)
+---
+[0..21] Paragraph "Text " (math (/ 1 (error))) " more."
+[23..30] DisplayMath number=None label=None noeval=false closed=true raw=25..28
+  (error)
+[32..44] Heading(1) "Still here"
+error at 14..14: expected the denominator of `\frac` after `}`
+error at 27..27: expected an expression after `(`
+error at 27..27: expected `)` to close the `(`

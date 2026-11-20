@@ -1,0 +1,30 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(concat!(\"**Definition.** A *group* is a set $G$ with an operation.\\n\\n\",\n\"**Theorem.** For all $x$:\\n\", \"$$ x = x \\\\label{eq:id} $$\\n\\n\",\n\"**Lemma.** Small.\\n\", \"**Corollary.** Immediate.\\n\",\n\"**Proposition.** p\\n\\n**Example.** e\\n\\n**Remark.** r\\n\\n\",\n\"**Proof.** First paragraph, uses \\\\eqref{eq:id}.\\n\\n\",\n\"Second paragraph with display\\n\", \"$$ 1 = 1 $$\\n\\n\", \"Done. $\\\\qed$\\n\\n\",\n\"After the proof.\\n\\n\", \"**Proof.** Short. ∎\\n\",\n\"Next paragraph is outside.\\n\",))"
+---
+[0..57] Theorem Definition closed=true
+  [16..57] Paragraph "A " (em "group") " is a set " (math G) " with an operation."
+[59..110] Theorem Theorem closed=true
+  [72..84] Paragraph "For all " (math x) ":"
+  [85..110] DisplayMath number=Some(1) label=Some("eq:id") noeval=false closed=true raw=87..108
+    (rel x = x) | (label eq:id)
+[112..129] Theorem Lemma closed=true
+  [123..129] Paragraph "Small."
+[130..155] Theorem Corollary closed=true
+  [145..155] Paragraph "Immediate."
+[156..174] Theorem Proposition closed=true
+  [173..174] Paragraph "p"
+[176..190] Theorem Example closed=true
+  [189..190] Paragraph "e"
+[192..205] Theorem Remark closed=true
+  [204..205] Paragraph "r"
+[207..311] Theorem Proof closed=true
+  [218..254] Paragraph "First paragraph, uses " (eqref "eq:id" Some(1)) "."
+  [256..285] Paragraph "Second paragraph with display"
+  [286..297] DisplayMath number=None label=None noeval=false closed=true raw=288..295
+    (rel 1 = 1)
+  [299..311] Paragraph "Done. " (math (sym ∎))
+[313..329] Paragraph "After the proof."
+[331..352] Theorem Proof closed=true
+  [342..352] Paragraph "Short. ∎"
+[353..379] Paragraph "Next paragraph is outside."

@@ -1,0 +1,9 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "outline(concat!(\"Dollar $ never closed, [[wiki never closed, `code never closed, **strong never.\\n\\n\",\n\"```\\nfence never closed\\n\\n\", \"$$ last\",))"
+---
+[0..79] Paragraph "Dollar $ never closed, [[wiki never closed, `code never closed, **strong never."
+[81..112] Verbatim info="" closed=false text="fence never closed\n\n$$ last"
+error at 7..8: this `$` is never closed
+error at 23..25: this `[[` is never closed
+error at 81..84: this code fence is never closed

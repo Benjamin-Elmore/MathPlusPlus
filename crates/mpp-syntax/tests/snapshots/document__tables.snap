@@ -1,0 +1,8 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(concat!(\"| Name | Value | Mid | Right |\\n\", \"|---|:--|:-:|--:|\\n\",\n\"| $a \\\\mid b$ | *x* | `p|q` | 1 \\\\| 2 |\\n\", \"| last | 1 | 2 | 3 |\\n\",))"
+---
+[0..107] Table [Default, Left, Center, Right]
+  head: "Name" | "Value" | "Mid" | "Right"
+  row: (math (rel a ∣ b)) | (em "x") | (code "p|q") | "1 " (escape '|') " 2"
+  row: "last" | "1" | "2" | "3"

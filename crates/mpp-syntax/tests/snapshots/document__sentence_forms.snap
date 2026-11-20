@@ -1,0 +1,16 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(concat!(\"Using $\\\\theta, R(\\\\theta)$ from [[launch.mpp]].\\n\\n\",\n\"using $a, b$ as $c, d$ from [[x.mpp]]\\n\\n\",\n\"Find the domain of $f(x) = \\\\sqrt{x}$.\\n\\n\",\n\"Compute the tangent line of $x^2$ at $x = 1$.\\n\\n\",\n\"determine the extrema of $x^3 - 3x$ on $[0, 4]$.\\n\\n\",\n\"Find the linearization of $\\\\sin x$ on $[0, 1]$ at $x = 0$.\\n\\n\",\n\"Analyse $x^2 e^{-x}$ on $[0, 5]$.\\n\\n\", \"Analyze $\\\\ln x$.\\n\\n\",\n\"Solve $x^2 = 4$ for $x$.\\n\\n\", \"Solve $x^2 - y = 0$.\\n\\n\",\n\"Let $a = 3$.\\n\\n\",\n\"Let $g \\\\equiv 9.81$ be gravity and $v_0 := 20$ the launch speed.\\n\",))"
+---
+[0..46] Using names=[θ, (call R θ)] aliases=- path="launch.mpp"
+[48..85] Using names=[a, b] aliases=[c, d] path="x.mpp"
+[87..124] Helper Find Domain target=(rel (call f x) = (sqrt x)) on=- at=-
+[126..171] Helper Compute TangentLine target=(^ x 2) on=- at=(where x 1)
+[173..221] Helper Determine Extrema target=(- (^ x 3) (* 3 x)) on=(interval [] 0 4) at=-
+[223..281] Helper Find Linearisation target=(sin x) on=(interval [] 0 1) at=(where x 0)
+[283..316] Analyse target=(* (^ x 2) (^ #e (neg x))) on=(interval [] 0 5)
+[318..334] Analyse target=(ln x) on=-
+[336..360] Solve equation=(rel (^ x 2) = 4) for=[x]
+[362..382] Solve equation=(rel (- (^ x 2) y) = 0) for=-
+[384..396] Let "Let " (math (rel a = 3)) "."
+[398..462] Let "Let " (math (def ≡ g 9.81)) " be gravity and " (math (def := (initial v 0) 20)) " the launch speed."

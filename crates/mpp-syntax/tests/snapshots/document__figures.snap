@@ -1,0 +1,19 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(concat!(\"Figure: $y(x)$, $x \\\\in [0, R]$.\\n\",\n\"Figure: $z = x^2 - y^2$, $x, y \\\\in [-2, 2]$. A saddle, with *caption*.\\n\",\n\"Figure: polar $r = 1 + \\\\cos\\\\theta$, $\\\\theta \\\\in [0, 2\\\\pi]$.\\n\",\n\"Figure: $f(x)$, tangent at $x = 1$, riemann left, slope field.\\n\",))"
+---
+[0..31] Figure
+  expr (call y x)
+  range x in (interval [] 0 R)
+[32..102] Figure
+  expr (rel z = (- (^ x 2) (^ y 2)))
+  range x, y in (interval [] (neg 2) 2)
+  caption: "A saddle, with " (em "caption") "."
+[103..162] Figure
+  keyword "polar" (where r (+ 1 (cos θ)))
+  range θ in (interval [] 0 (* 2 #pi))
+[163..225] Figure
+  expr (call f x)
+  keyword "tangent at" (where x 1)
+  keyword "riemann left"
+  keyword "slope field"

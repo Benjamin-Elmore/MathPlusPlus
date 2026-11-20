@@ -1,0 +1,10 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "outline(\"| a | b |\\n|---|\\n| 1 |\\n\\nNot a table: |x| is the absolute value.\\n\")"
+---
+[0..21] Table [Default]
+  head: "a" | "b"
+  row: "1"
+[23..62] Paragraph "Not a table: |x| is the absolute value."
+error at 0..9: the header has 2 columns but the rule row under it has 1
+warning at 16..21: this row has 1 cells but the header has 2

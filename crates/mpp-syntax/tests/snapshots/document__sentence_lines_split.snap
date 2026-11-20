@@ -1,0 +1,7 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(\"Using $a$ from [[x.mpp]].\\nFind the range of $f$.\\nSolve $f = 0$.\\n\")"
+---
+[0..25] Using names=[a] aliases=- path="x.mpp"
+[26..48] Helper Find Range target=f on=- at=-
+[49..63] Solve equation=(rel f = 0) for=-

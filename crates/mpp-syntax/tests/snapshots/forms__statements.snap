@@ -1,0 +1,141 @@
+---
+source: crates/mpp-syntax/tests/forms.rs
+expression: report(cases)
+---
+## definition :=
+a := 3
+  => (def := a 3)
+a ≔ 3
+  => (same)
+## function definition
+f(x, y) := x^2 + y^2
+  => (def := (fn-head f x y) (+ (^ x 2) (^ y 2)))
+f(x, y) := x^2 + y^2
+  => (same)
+f(x, y) ≔ x² + y²
+  => (same)
+## constant ≡
+g \equiv 9.81
+  => (def ≡ g 9.81)
+g equiv 9.81
+  => (same)
+g ≡ 9.81
+  => (same)
+## recurrence
+a_{n+1} := 2 a_n
+  => (def := (recur a n 1) (* :implicit 2 (_ a n)))
+a_(n+1) := 2 a_n
+  => (same)
+aₙ₊₁ ≔ 2aₙ
+  => (same)
+## parameter i is a name in the body
+f(i) := 2i + 1
+  => (def := (fn-head f i) (+ (* :implicit 2 i) 1))
+f(i) ≔ 2i + 1
+  => (same)
+## initial term
+a_1 := 1
+  => (def := (initial a 1) 1)
+a_1 := 1
+  => (same)
+a₁ ≔ 1
+  => (same)
+## query exact
+\int_0^1 x^2 \, dx = ?
+  => (query =? (int :lower 0 :upper 1 (^ x 2) (d x)))
+int_0^1 x^2 dx = ?
+  => (same)
+∫₀¹ x² dx = ?
+  => (same)
+## query approx
+\sqrt{2} \approx ?
+  => (query ≈? (sqrt 2))
+sqrt(2) approx ?
+  => (query ≈? (sqrt :word 2))
+√2 ≈ ?
+  => (query ≈? (sqrt :radical 2))
+## query with steps
+\frac{d}{dx} x^3 = ?!
+  => (query =?! (deriv :op-frac (by x) (^ x 3)))
+d/dx x^3 = ?!
+  => (query =?! (deriv :op-slash (by x) (^ x 3)))
+d/dx x³ = ?!
+  => (query =?! (deriv :op-slash (by x) (^ x 3)))
+## check
+\sin^2 x + \cos^2 x \overset{?}{=} 1
+  => (check (+ (^ (sin x) 2) (^ (cos x) 2)) 1)
+sin^2 x + cos^2 x ?= 1
+  => (same)
+sin² x + cos² x ≟ 1
+  => (same)
+## relation chain
+0 < x \le 1
+  => (rel 0 < x ≤ 1)
+0 < x <= 1
+  => (same)
+0 < x ≤ 1
+  => (same)
+## where clause
+A = \pi r^2, \quad r = 3
+  => (line (rel A = (* :implicit #pi (^ r 2))) (where r 3))
+A = pi r^2, r = 3
+  => (same)
+A = πr², r = 3
+  => (same)
+## range clause
+a := 2, \; a \in [0, 5]
+  => (line (def := a 2) (range (a) (interval [] 0 5)))
+a := 2, a in [0, 5]
+  => (same)
+a ≔ 2, a ∈ [0, 5]
+  => (same)
+## condition clause
+f(x) = \frac{1}{x}, x > 0
+  => (line (rel (call f x) = (/ :frac 1 x)) (if (rel x > 0)))
+f(x) = 1/x, x > 0
+  => (line (rel (call f x) = (/ :slash 1 x)) (if (rel x > 0)))
+## range statement
+x, y \in [-2, 2]
+  => (range (x y) (interval [] (neg 2) 2))
+x, y in [-2, 2]
+  => (same)
+x, y ∈ [−2, 2]
+  => (same)
+## open-interval range
+t \in \left(0, \infty\right)
+  => (range (t) (interval () :sized 0 #inf))
+t in (0, inf)
+  => (range (t) (interval () 0 #inf))
+t ∈ (0, ∞)
+  => (range (t) (interval () 0 #inf))
+## name list
+\theta, R(\theta)
+  => (names θ (call R θ))
+theta, R(theta)
+  => (same)
+θ, R(θ)
+  => (same)
+## noeval
+x^2 + 1 %noeval
+  => (line (+ (^ x 2) 1) :noeval)
+## label
+E = mc^2 \label{eq:energy}
+  => (rel E = (* :implicit m (^ c 2)))
+     (label eq:energy)
+## aligned lines
+\begin{aligned} f(x) &= (x+1)^2 \\ &= x^2 + 2x + 1 \end{aligned}
+  => (rel (call f x) = (^ (group paren (+ x 1)) 2))
+     (rel (cont) = (+ (+ (^ x 2) (* :implicit 2 x)) 1))
+     :aligned
+f(x) &= (x+1)^2 \\ &= x^2 + 2x + 1
+  => (rel (call f x) = (^ (group paren (+ x 1)) 2))
+     (rel (cont) = (+ (+ (^ x 2) (* :implicit 2 x)) 1))
+## two statements
+a := 1 \\ b := a + 1
+  => (def := a 1)
+     (def := b (+ a 1))
+## trailing full stop
+y = x^2.
+  => (rel y = (^ x 2))
+y = x^2
+  => (same)
