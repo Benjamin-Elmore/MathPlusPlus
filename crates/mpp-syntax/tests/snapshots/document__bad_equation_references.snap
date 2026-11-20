@@ -1,0 +1,11 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: dump(&doc)
+---
+[0..17] Paragraph "See " (eqref "nope" None) "."
+[19..40] DisplayMath number=Some(1) label=Some("x") noeval=false closed=true raw=21..38
+  (rel a = 1) | (label x)
+[42..63] DisplayMath number=Some(2) label=Some("x") noeval=false closed=true raw=44..61
+  (rel b = 2) | (label x)
+error at 4..16: no equation has the label `nope`
+error at 51..60: the label `x` is already used by an earlier equation

@@ -1,0 +1,9 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "outline(\"**Proof.** Never ends.\\n\\nMore.\\n\\n# Heading\\n\")"
+---
+[0..30] Theorem Proof closed=false
+  [11..22] Paragraph "Never ends."
+  [24..29] Paragraph "More."
+[31..40] Heading(1) "Heading"
+warning at 0..11: this proof is not closed with `∎` or `\qed`

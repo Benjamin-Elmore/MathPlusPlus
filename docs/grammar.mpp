@@ -33,14 +33,15 @@ paragraph     = paragraph_text ;                           (* lines up to a BLAN
 paragraph_text= inline { NL inline } ( BLANK | EOF ) ;
 ```
 
-A paragraph that matches one of the sentence forms in §3 (imports and helpers) is read as that form; any other paragraph is plain prose. A `**Proof.**` block ends at the `∎` (or `\qed`) that closes it.
+A paragraph that matches one of the sentence forms in §3 (imports and helpers) is read as that form; any other paragraph is plain prose. A sentence form that fills a whole line is a block of its own even without a blank line around it, and a paragraph that starts `Let $…$` is read as definitions (the maths in it defines variables). `%noeval` marks the maths block right after it. An unclosed `$$`, `` ``` `` fence or `**Proof.**` is reported and recovers at the next blank line, heading or end of file. A `**Proof.**` block ends at the `∎` (or `\qed`) that closes it.
 
 ### Inline markup
 
 ```
 inline        = { inline_item } ;
-inline_item   = text | emphasis | strong | inline_math | wiki_link
+inline_item   = text | emphasis | strong | inline_math | code | wiki_link
               | link | footnote_ref | eqref | escape ;
+code          = "`" { any_char } "`" ;                     (* shown as typed; no markup inside *)
 emphasis      = "*" inline "*" ;
 strong        = "**" inline "**" ;
 inline_math   = "$" math_text "$" ;

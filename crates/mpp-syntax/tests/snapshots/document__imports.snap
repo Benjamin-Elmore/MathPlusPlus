@@ -1,0 +1,6 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(\"![[constants.mpp]]\\n\\n  ![[ sub/dir.mpp ]]\\n\")"
+---
+[0..18] EmbedImport "constants.mpp"
+[22..40] EmbedImport "sub/dir.mpp"

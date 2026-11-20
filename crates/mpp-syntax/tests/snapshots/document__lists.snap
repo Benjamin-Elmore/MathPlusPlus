@@ -1,0 +1,17 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(concat!(\"- one\\n\", \"- two with a\\n  wrapped line\\n\", \"  - nested a\\n\",\n\"  - nested b\\n\", \"    1. deep ordered\\n\", \"    2. second\\n\", \"- three\\n\",\n\"\\n\", \"3. starts at three\\n\", \"4. four\\n\", \"* star item\\n\",))"
+---
+[0..101] List
+  - "one"
+  - "two with a" <br> "  wrapped line"
+    - "nested a"
+    - "nested b"
+      1. "deep ordered"
+      2. "second"
+  - "three"
+[103..129] List
+  3. "starts at three"
+  4. "four"
+[130..141] List
+  - "star item"

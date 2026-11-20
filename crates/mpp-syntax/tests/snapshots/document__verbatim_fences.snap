@@ -1,0 +1,6 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(concat!(\"```rust\\n\", \"let x = $$ not maths $$;\\n\", \"# not a heading\\n\",\n\"```\\n\", \"\\n\", \"```\\n\", \"```\\n\",))"
+---
+[0..52] Verbatim info="rust" closed=true text="let x = $$ not maths $$;\n# not a heading"
+[54..61] Verbatim info="" closed=true text=""

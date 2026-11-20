@@ -1,0 +1,10 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: dump(&doc)
+---
+[0..11] Directive Comment "a comment"
+[12..19] Directive NoEval "noeval"
+[20..35] DisplayMath number=None label=None noeval=true closed=true raw=22..33
+  (line (query =? (+ 1 1)) :noeval)
+[37..52] DisplayMath number=None label=None noeval=false closed=true raw=39..50
+  (query =? (+ 2 2))

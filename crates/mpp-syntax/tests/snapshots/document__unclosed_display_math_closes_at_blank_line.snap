@@ -1,0 +1,8 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: dump(&doc)
+---
+[0..8] DisplayMath number=None label=None noeval=false closed=false raw=2..8
+  (rel a = 1)
+[10..25] Paragraph "Next paragraph."
+error at 0..2: this `$$` is never closed

@@ -1,0 +1,10 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(\"# One\\n## Two *em*\\n###### Six\\n####### seven hashes\\n#nospace\\n\\n---\\n-----\\n\")"
+---
+[0..5] Heading(1) "One"
+[6..17] Heading(2) "Two " (em "em")
+[18..28] Heading(6) "Six"
+[29..58] Paragraph "####### seven hashes" <br> "#nospace"
+[60..63] Rule
+[64..69] Rule

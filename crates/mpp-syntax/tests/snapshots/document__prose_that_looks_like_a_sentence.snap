@@ -1,0 +1,8 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(\"Using $x$ we get the answer.\\n\\nLet us begin.\\n\\nFind the domain of nothing.\\n\\nSolve it.\\n\")"
+---
+[0..28] Paragraph "Using " (math x) " we get the answer."
+[30..43] Paragraph "Let us begin."
+[45..72] Paragraph "Find the domain of nothing."
+[74..83] Paragraph "Solve it."

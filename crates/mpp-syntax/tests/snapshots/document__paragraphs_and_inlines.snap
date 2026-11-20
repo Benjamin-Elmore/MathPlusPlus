@@ -1,0 +1,5 @@
+---
+source: crates/mpp-syntax/tests/document.rs
+expression: "clean(concat!(\"Plain *emphasis*, **strong**, **strong with *nested* em** and `code`.\\n\",\n\"A second line with $x^2 + 1$ maths, a [[other.mpp]] link, [[a.mpp|an alias]],\\n\",\n\"a [link](https://example.com/a_b), a note[^1] and \\\\eqref stays.\\n\",\n\"Escapes: \\\\$ \\\\* \\\\[ \\\\] \\\\\\\\ \\\\| \\\\# \\\\% and a lone * star, 2 * 3 * 4.\\n\",))"
+---
+[0..274] Paragraph "Plain " (em "emphasis") ", " (strong "strong") ", " (strong "strong with " (em "nested") " em") " and " (code "code") "." <br> "A second line with " (math (+ (^ x 2) 1)) " maths, a " (wiki "other.mpp") " link, " (wiki "a.mpp" "an alias") "," <br> "a " (link "https://example.com/a_b" "link") ", a note" (fnref "1") " and \\eqref stays." <br> "Escapes: " (escape '$') " " (escape '*') " " (escape '[') " " (escape ']') " " (escape '\\') " " (escape '|') " " (escape '#') " " (escape '%') " and a lone * star, 2 * 3 * 4."
