@@ -172,3 +172,37 @@ fn parameters_and_constants() {
     );
     assert_eq!(lim(&a, &n(2), LimitDir::Both), Ok(a));
 }
+
+#[test]
+fn limits_that_need_dominant_terms_or_series() {
+    let ex = f("exp", x());
+    let emx = f("exp", -x());
+    let tanh_like = (ex.clone() - emx.clone()) / (ex.clone() + emx.clone());
+    let table: Vec<(Expr, Expr, LimitDir, Expr)> = vec![
+        (tanh_like.clone(), inf(), LimitDir::Both, n(1)),
+        (tanh_like, ninf(), LimitDir::Both, n(-1)),
+        (
+            (f("exp", n(2) * x()) + ex.clone()) / (n(3) * f("exp", n(2) * x()) - n(1)),
+            inf(),
+            LimitDir::Both,
+            q(1, 3),
+        ),
+        ((ex.clone() + emx.clone()) / ex, inf(), LimitDir::Both, n(1)),
+    ];
+    for (e, at, dir, expected) in table {
+        let got = lim(&e, &at, dir);
+        assert_eq!(got, Ok(expected), "lim {e} as x → {at}");
+    }
+    // (1 − cos x)⁷/x¹⁴ needs 14 rounds of L'Hôpital's rule, more than it is allowed; the
+    // series (x²/2)⁷ settles it, and the abandoned L'Hôpital steps are not shown.
+    let e = (n(1) - f("cos", x())).pow(n(7)) / x().pow(n(14));
+    let mut steps = Steps::new();
+    let got = limit(&e, "x", &n(0), LimitDir::Both, Some(&mut steps));
+    assert_eq!(got, Ok(q(1, 128)));
+    let rules: Vec<&str> = steps.iter().map(|s| s.rule.as_str()).collect();
+    assert!(rules.contains(&"series expansion"), "{rules:?}");
+    assert!(!rules.contains(&"L'Hôpital's rule"), "{rules:?}");
+    // L'Hôpital's rule still shows when it works.
+    let e = (f("tan", f("sin", x())) - f("sin", f("tan", x()))) / x().pow(n(7));
+    assert_eq!(lim(&e, &n(0), LimitDir::Both), Ok(q(1, 30)));
+}

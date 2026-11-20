@@ -1,15 +1,24 @@
-//! Calculus: derivatives, partial derivatives and their arrays, limits and integrals.
+//! Calculus: derivatives, partial derivatives and their arrays, limits, integrals, sums and
+//! products, series (Taylor, Laurent, Fourier) and recurrences.
 
 pub mod diff;
+pub mod fourier;
 pub mod integrate;
 pub mod limit;
+pub mod recurrence;
+pub mod series;
+pub mod sum;
 
 pub use diff::{derivative_holder, diff};
+pub use fourier::{fourier_series, FourierSeries};
 pub use integrate::{
     integrate, integrate_definite, integrate_multiple, integrate_with_constant, line_integral,
     line_integral_scalar, numeric_integrate, IntegralResult,
 };
 pub use limit::limit;
+pub use recurrence::Recurrence;
+pub use series::{series, Series};
+pub use sum::{convergence, product, sum, ConvergenceReport};
 
 use crate::error::{MathError, MathResult};
 use crate::expr::{Expr, ExprNode};

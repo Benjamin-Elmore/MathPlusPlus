@@ -19,6 +19,8 @@ use crate::steps::Steps;
 
 /// Most applications of L'Hôpital's rule in one limit.
 const MAX_LHOPITAL: u32 = 12;
+/// Largest combined size (in nodes) of the derivatives L'Hôpital's rule may produce.
+const MAX_LHOPITAL_SIZE: usize = 600;
 /// Recursion guard for the limit engine.
 const MAX_DEPTH: u32 = 400;
 
@@ -789,7 +791,104 @@ impl<'s> Ctx<'s> {
                     _ => {}
                 }
             }
+            if let Some(lv) = self.divide_by_dominant_exp(n, d, &quotient)? {
+                return Ok(lv);
+            }
         }
+        let entry = self.lhopital;
+        let mark = self.log.as_ref().map(|l| l.len());
+        let result = self.lhopital_step(n, d, &quotient);
+        match result {
+            // L'Hôpital's rule cycled or blew up: drop its steps and read the answer off
+            // the series instead.
+            Err(MathError::Unsupported(_)) if entry == 0 => {
+                if let (Some(log), Some(mark)) = (self.log.as_deref_mut(), mark) {
+                    log.0.truncate(mark);
+                }
+                match self.series_quotient(n, d, &quotient) {
+                    Some(lv) => Ok(lv),
+                    None => result,
+                }
+            }
+            other => other,
+        }
+    }
+
+    /// At `+∞`, divides top and bottom by the fastest-growing exponential `e^{λx}`.
+    fn divide_by_dominant_exp(
+        &mut self,
+        n: &Expr,
+        d: &Expr,
+        quotient: &Expr,
+    ) -> MathResult<Option<Lv>> {
+        let var = self.var.clone();
+        let mut best: Option<(Expr, f64)> = None;
+        for side in [n, d] {
+            collect_exp_rates(side, &var, &mut best);
+        }
+        let Some((rate, _)) = best else {
+            return Ok(None);
+        };
+        let damp = pow(
+            Expr::e(),
+            mul(vec![Expr::int(-1), rate.clone(), Expr::sym(&var)]),
+        );
+        let n2 = simplify(&expand(&mul(vec![n.clone(), damp.clone()]))?);
+        let d2 = simplify(&expand(&mul(vec![d.clone(), damp]))?);
+        if &n2 == n && &d2 == d {
+            return Ok(None);
+        }
+        let shown = Expr::new(ExprNode::Mul(vec![
+            n2.clone(),
+            Expr::new(ExprNode::Pow(d2.clone(), Expr::int(-1))),
+        ]));
+        self.record(
+            "divide by the dominant exponential",
+            quotient,
+            &shown,
+            Some(format!("divide the top and bottom by e^({rate}·{var})")),
+        );
+        self.lim_quotient(&n2, &d2).map(Some)
+    }
+
+    /// The limit of `n/d` from the leading terms of their series.
+    fn series_quotient(&mut self, n: &Expr, d: &Expr, quotient: &Expr) -> Option<Lv> {
+        let at = self.point_expr();
+        let (cn, vn) = crate::calc::series::leading_term(n, &self.var, &at, 30)?;
+        let (cd, vd) = crate::calc::series::leading_term(d, &self.var, &at, 30)?;
+        let c = simplify(&mul(vec![cn, pow(cd, Expr::int(-1))]));
+        let p = vn - vd;
+        let base = match &self.point {
+            Point::Finite(a, _) => add(vec![
+                Expr::sym(&self.var),
+                mul(vec![Expr::int(-1), a.clone()]),
+            ]),
+            Point::PosInf => pow(Expr::sym(&self.var), Expr::int(-1)),
+        };
+        let lead = mul(vec![c.clone(), pow(base, Expr::int(p))]);
+        let lv = match p.cmp(&0) {
+            Ordering::Greater => Lv::Fin(Expr::zero()),
+            Ordering::Equal => lv_of(c),
+            Ordering::Less => {
+                let mut s = sign_of(&c)?;
+                if self.side == Side::Minus && matches!(self.point, Point::Finite(..)) && p % 2 != 0
+                {
+                    s = s.reverse();
+                }
+                self.infinite(Some(s)).ok()?
+            }
+        };
+        self.record(
+            "series expansion",
+            quotient,
+            &lead,
+            Some("keep the leading terms of the top and bottom series".into()),
+        );
+        Some(lv)
+    }
+
+    fn lhopital_step(&mut self, n: &Expr, d: &Expr, quotient: &Expr) -> MathResult<Lv> {
+        let var = self.var.clone();
         if self.lhopital >= MAX_LHOPITAL {
             return Err(MathError::Unsupported(
                 "this limit (L'Hôpital's rule did not settle it)".into(),
@@ -801,11 +900,16 @@ impl<'s> Ctx<'s> {
         if dd.is_zero() {
             return Err(unsupported());
         }
+        if dn.size() + dd.size() > MAX_LHOPITAL_SIZE {
+            return Err(MathError::Unsupported(
+                "this limit (the derivatives in L'Hôpital's rule grow too large)".into(),
+            ));
+        }
         let shown = Expr::new(ExprNode::Mul(vec![
             dn.clone(),
             Expr::new(ExprNode::Pow(dd.clone(), Expr::int(-1))),
         ]));
-        self.record("L'Hôpital's rule", &quotient, &shown, None);
+        self.record("L'Hôpital's rule", quotient, &shown, None);
         let next = mul(vec![dn, pow(dd, Expr::int(-1))]);
         self.lim(&next)
     }
@@ -984,6 +1088,26 @@ fn at_infinity(f: Func, positive: bool) -> MathResult<Lv> {
             f.name(),
             if positive { "∞" } else { "−∞" }
         ))),
+    }
+}
+
+/// The largest positive rate `λ` among the exponentials `e^{λx + …}` inside `e`.
+fn collect_exp_rates(e: &Expr, var: &str, best: &mut Option<(Expr, f64)>) {
+    if let ExprNode::Pow(b, x) = e.node() {
+        if matches!(b.node(), ExprNode::Const(Constant::E)) {
+            if let Some((c, p)) = leading(x, var) {
+                if p == BigRational::from_integer(1.into()) {
+                    if let Some(v) = numeric(&c).filter(|v| *v > 0.0) {
+                        if best.as_ref().is_none_or(|(_, b)| v > *b) {
+                            *best = Some((c, v));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    for c in e.children() {
+        collect_exp_rates(c, var, best);
     }
 }
 
