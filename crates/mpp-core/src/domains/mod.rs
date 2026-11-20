@@ -9,9 +9,11 @@
 
 pub mod assume;
 pub mod calculus;
+pub mod intervals;
 pub mod linalg;
 pub mod number_theory;
 pub mod ode;
+pub mod piecewise;
 pub mod sets;
 pub mod solve;
 pub mod stats;

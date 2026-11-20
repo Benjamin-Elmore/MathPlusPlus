@@ -300,6 +300,22 @@ impl<'a> Lowerer<'a> {
             )),
             K::Relation { first, rest } => self.relation(first, rest),
             K::Quantity { value, unit } => self.quantity(value, unit),
+            K::SetBuilder {
+                var,
+                domain,
+                condition,
+            } => {
+                let x = self.bound_name(Some(var), span, "set")?;
+                let d = match domain {
+                    Some(d) => self.lower(d)?,
+                    None => Expr::new(ExprNode::Tuple(Vec::new())),
+                };
+                let c = self.bound(std::slice::from_ref(&x), |s| s.lower(condition))?;
+                Ok(Expr::apply(
+                    crate::domains_wire::SET_OF,
+                    vec![Expr::sym(&x), d, c],
+                ))
+            }
             K::Convert { expr, unit } => {
                 let e = self.lower(expr)?;
                 crate::units_wire::convert_expr(e, &unit.text).map_err(math(unit.span))
@@ -486,7 +502,9 @@ impl<'a> Lowerer<'a> {
         }
         let b = self.lower(base)?;
         let e = self.lower(exp)?;
-        if let Some(m) = crate::domains_wire::matrix_power(&b, &e, self.scope) {
+        if let Some(m) = crate::domains_wire::matrix_power(&b, &e, self.scope)
+            .or_else(|| crate::domains_wire::set_power(&b, &e))
+        {
             return Ok(m);
         }
         Ok(b.pow(e))

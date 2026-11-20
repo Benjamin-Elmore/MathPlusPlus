@@ -911,6 +911,12 @@ impl Run<'_, '_> {
         if self.present_units(&mut lr, &value, mode, expr.span) {
             return self.push(lr);
         }
+        if let Some((text, latex)) = crate::domains_wire::present_set(&value) {
+            lr.set_value(Value::from_expr(value));
+            lr.text = Some(text);
+            lr.latex = Some(latex);
+            return self.push(lr);
+        }
         match mode {
             QueryMode::Exact => {
                 if value.is_constant() && !is_exact_rational(&value) && !contains_holder(&value) {

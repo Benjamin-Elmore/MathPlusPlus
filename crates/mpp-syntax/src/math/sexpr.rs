@@ -256,6 +256,19 @@ impl Printer {
             K::Relation { first, rest } => self.relation(first, rest),
             K::Quantity { value, unit } => self.prefixed(&format!("quantity {}", unit.text), value),
             K::Convert { expr, unit } => self.prefixed(&format!("in {}", unit.text), expr),
+            K::SetBuilder {
+                var,
+                domain,
+                condition,
+            } => match domain {
+                Some(d) => format!(
+                    "(setof {} {} {})",
+                    self.node(var),
+                    self.node(d),
+                    self.node(condition)
+                ),
+                None => self.pair("setof", var, condition),
+            },
         }
     }
 

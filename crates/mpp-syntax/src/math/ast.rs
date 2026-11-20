@@ -327,6 +327,12 @@ pub enum NodeKind {
         expr: Box<Node>,
         unit: UnitText,
     },
+    /// Set-builder notation: `\{x \in \mathbb{R} : x^2 < 4\}`, `\{x \mid x > 0\}`.
+    SetBuilder {
+        var: Box<Node>,
+        domain: Option<Box<Node>>,
+        condition: Box<Node>,
+    },
 }
 
 /// A unit as written after a number or after `in`.

@@ -35,6 +35,19 @@ pub const MAT_POW: &str = "matrix power";
 /// Transpose `(a)`.
 pub const MAT_T: &str = "matrix transpose";
 
+/// `set of(x, domain, condition)`: set-builder notation (`domain` is `()` when absent).
+pub const SET_OF: &str = "set of";
+
+/// Set operators whose arguments may be written `(a, b)` for an open interval or `ℝ`.
+const SET_OPS: &[&str] = &[
+    "union",
+    "intersect",
+    "setminus",
+    "complement",
+    "subset",
+    "card",
+];
+
 /// Operators that take their unknowns from the subscript of `\operatorname{op}_{x}`.
 const UNKNOWN_OPS: &[&str] = &["solve", "nsolve", "roots", "linsolve"];
 
@@ -51,6 +64,9 @@ pub fn registry() -> &'static Registry {
 
 /// Evaluates registry operators and the ordered matrix operations.
 pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    if let Some(r) = piecewise_calculus(e, ctx) {
+        return Some(r);
+    }
     let ExprNode::Apply(name, args) = e.node() else {
         return None;
     };
@@ -72,7 +88,15 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
             }
             _ => None,
         },
-        "in" if is_decidable_member(args) => Some(call("member", args, ctx)),
+        SET_OF => Some(set_builder(args)),
+        op if SET_OPS.contains(&op) => {
+            let args: Vec<Expr> = args.iter().map(as_real_set).collect();
+            Some(call(op, &args, ctx))
+        }
+        "in" if is_decidable_member(args) => {
+            let args: Vec<Expr> = args.iter().map(as_real_set).collect();
+            Some(call("member", &args, ctx))
+        }
         "notin" if is_decidable_member(args) => Some(call("member", args, ctx).map(|b| negate(&b))),
         "subset" | "subseteq" => Some(call("subset", args, ctx)),
         "supset" | "supseteq" => {
@@ -203,6 +227,7 @@ pub fn bound_names(name: &str, args: &[Expr]) -> Vec<Name> {
         {
             syms(sub)
         }
+        (SET_OF, [var, ..]) => syms(var),
         _ => Vec::new(),
     }
 }
@@ -231,6 +256,192 @@ fn protect(e: &Expr) -> Expr {
             }
         }
         _ => Expr::new(e.map_children(&mut protect)),
+    }
+}
+
+// ---- sets ------------------------------------------------------------------------
+
+/// `(a, b)` where a set is expected is the open interval, and `ℝ` is the whole line.
+fn as_real_set(e: &Expr) -> Expr {
+    match e.node() {
+        ExprNode::Tuple(items)
+            if items.len() == 2
+                && items
+                    .iter()
+                    .all(|i| mpp_core::domains::util::numeric(i).is_some() || i.is_infinite()) =>
+        {
+            Expr::new(ExprNode::Interval {
+                lo: items[0].clone(),
+                hi: items[1].clone(),
+                lo_closed: false,
+                hi_closed: false,
+            })
+        }
+        ExprNode::Sym(s) if matches!(&**s, "ℝ" | "R") => {
+            mpp_core::domains::RealSet::reals().to_expr()
+        }
+        _ => e.clone(),
+    }
+}
+
+/// Most integers listed for a set-builder over ℤ.
+const MAX_LISTED: i64 = 10_000;
+
+/// `\{x \in D : cond\}`: the condition solved for `x`, within `D` (an interval, ℝ, or
+/// ℤ / ℕ, whose members are listed when there are finitely many).
+fn set_builder(args: &[Expr]) -> MathResult<Expr> {
+    use mpp_core::domains::intervals::solve_inequality;
+    use mpp_core::domains::RealSet;
+    let [var, domain, cond] = args else {
+        return Err(MathError::WrongArity {
+            function: "a set-builder".into(),
+            expected: "3".into(),
+            got: args.len(),
+        });
+    };
+    let x = var
+        .as_sym()
+        .ok_or_else(|| MathError::Unsupported(format!("a set-builder over {var}")))?;
+    let set = solve_inequality(cond, x)?;
+    match domain.as_sym() {
+        Some("ℤ" | "Z" | "ℕ" | "N") => {
+            let natural = matches!(domain.as_sym(), Some("ℕ" | "N"));
+            let pieces = set.pieces();
+            let (Some(first), Some(last)) = (pieces.first(), pieces.last()) else {
+                return Ok(Expr::new(ExprNode::Set(Vec::new())));
+            };
+            let lo = if natural && first.lo.is_infinite() {
+                0.0
+            } else {
+                mpp_core::domains::util::numeric(&first.lo).ok_or_else(|| {
+                    MathError::TooLarge("the list of integers (there are infinitely many)".into())
+                })?
+            };
+            let hi = mpp_core::domains::util::numeric(&last.hi).ok_or_else(|| {
+                MathError::TooLarge("the list of integers (there are infinitely many)".into())
+            })?;
+            let (lo, hi) = (lo.floor() as i64, hi.ceil() as i64);
+            if hi.saturating_sub(lo) > MAX_LISTED {
+                return Err(MathError::TooLarge("the list of integers".into()));
+            }
+            let start = if natural { lo.max(0) } else { lo };
+            let mut members = Vec::new();
+            for k in start..=hi {
+                if set.contains(&Expr::int(k))? {
+                    members.push(Expr::int(k));
+                }
+            }
+            Ok(Expr::new(ExprNode::Set(members)))
+        }
+        _ => {
+            let within = if is_empty_tuple(domain) {
+                RealSet::reals()
+            } else {
+                RealSet::from_expr(&as_real_set(domain))?
+            };
+            Ok(set.intersection(&within)?.to_expr())
+        }
+    }
+}
+
+/// `A^c` and `A^\complement` for a set.
+pub fn set_power(base: &Expr, exp: &Expr) -> Option<Expr> {
+    let set_like = matches!(base.node(), ExprNode::Interval { .. } | ExprNode::Set(_))
+        || matches!(base.node(), ExprNode::Apply(n, _) if matches!(&**n, "union" | "intersect" | "setminus" | SET_OF));
+    if set_like && matches!(exp.as_sym(), Some("c" | "∁" | "complement")) {
+        return Some(Expr::apply("complement", vec![base.clone()]));
+    }
+    None
+}
+
+/// `[0, 1) ∪ (2, 3]` for a union of intervals, which the core keeps as `union(…)`.
+pub fn present_set(e: &Expr) -> Option<(String, String)> {
+    let ExprNode::Apply(name, parts) = e.node() else {
+        return None;
+    };
+    if &**name != "union" || parts.len() < 2 {
+        return None;
+    }
+    let text: Vec<String> = parts.iter().map(ToString::to_string).collect();
+    let latex: Vec<String> = parts.iter().map(Expr::to_latex).collect();
+    Some((text.join(" ∪ "), latex.join(" \\cup ")))
+}
+
+// ---- piecewise calculus ------------------------------------------------------------
+
+/// Derivatives and integrals of a piecewise function, piece by piece, with what happens
+/// at the joins noted for the reader.
+fn piecewise_calculus(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    use mpp_core::domains::piecewise;
+    match e.node() {
+        ExprNode::Derivative { expr, vars }
+            if matches!(expr.node(), ExprNode::Piecewise { .. }) =>
+        {
+            let [(var, order)] = vars.as_slice() else {
+                return None;
+            };
+            let mut current = expr.clone();
+            for _ in 0..*order {
+                match piecewise::derivative(&current, var) {
+                    Ok(Some((d, joins))) => {
+                        for j in &joins {
+                            if current == *expr {
+                                ctx.note(j.describe(var));
+                            }
+                        }
+                        current = d;
+                    }
+                    Ok(None) => return None,
+                    Err(err) => return Some(Err(err)),
+                }
+            }
+            ctx.log("differentiate each piece", e, &current, None);
+            Some(Ok(current))
+        }
+        ExprNode::Integral { expr, var, bounds }
+            if matches!(expr.node(), ExprNode::Piecewise { .. }) =>
+        {
+            match bounds {
+                Some((lo, hi)) => match piecewise::integrate_definite(expr, var, lo, hi) {
+                    Ok(Some(v)) => {
+                        ctx.log(
+                            "integrate each piece over its part of the range",
+                            e,
+                            &v,
+                            None,
+                        );
+                        Some(Ok(v))
+                    }
+                    Ok(None) => None,
+                    Err(err) => Some(Err(err)),
+                },
+                None => {
+                    match piecewise::antiderivative(expr, var) {
+                        Ok(Some(f)) => {
+                            let c = if f.contains_sym("C") { "C_1" } else { "C" };
+                            let value =
+                                mpp_core::simplify(&mpp_core::add(vec![f.clone(), Expr::sym(c)]));
+                            ctx.show_as(
+                                &value,
+                                format!("{f} + {c}"),
+                                format!("{} + {c}", f.to_latex()),
+                            );
+                            ctx.note("the pieces' constants are chosen so the antiderivative is continuous");
+                            ctx.log(
+                                "integrate each piece and join them continuously",
+                                e,
+                                &value,
+                                None,
+                            );
+                            Some(Ok(value))
+                        }
+                        Ok(None) => None,
+                        Err(err) => Some(Err(err)),
+                    }
+                }
+            }
+        }
+        _ => None,
     }
 }
 

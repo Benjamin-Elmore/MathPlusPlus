@@ -295,7 +295,8 @@ fn k_range(fam: &Expr, param: &str, lo: f64, hi: f64) -> std::ops::RangeInclusiv
 }
 
 /// Exact methods in turn; `Ok(None)` when none applies.
-fn solve_exact(f: &Expr, var: &str, ctx: &mut Ctx<'_>) -> MathResult<Option<Solutions>> {
+/// The exact solutions, or `None` when only a numeric search would find them.
+pub(crate) fn solve_exact(f: &Expr, var: &str, ctx: &mut Ctx<'_>) -> MathResult<Option<Solutions>> {
     // 1. Polynomials.
     if let Some(coeffs) = f.as_poly(var) {
         if coeffs.len() >= 2 {
@@ -625,6 +626,22 @@ impl Domain for Solving {
     }
 }
 
+/// True for an inequality (`<`, `≤`, `>`, `≥`, `≠`) or a chain or combination of them.
+fn is_inequality(e: &Expr) -> bool {
+    match e.node() {
+        ExprNode::Relation(op, ..) => {
+            !matches!(op, crate::expr::RelOp::Eq | crate::expr::RelOp::Approx)
+        }
+        ExprNode::Logic(_, parts) => {
+            parts.iter().any(is_inequality)
+                && parts
+                    .iter()
+                    .all(|p| matches!(p.node(), ExprNode::Relation(..) | ExprNode::Logic(..)))
+        }
+        _ => false,
+    }
+}
+
 /// Equations and unknowns from a list argument.
 fn list(e: &Expr) -> Vec<Expr> {
     match e.node() {
@@ -656,6 +673,20 @@ fn guess_var(eq: &Expr) -> MathResult<String> {
 
 fn solve_op(args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
     expect_args_between("solve", args, 1, 3)?;
+    if is_inequality(&args[0]) {
+        let var = match args.get(1) {
+            Some(v) => sym_arg("solve", v)?,
+            None => guess_var(&args[0])?,
+        };
+        let set = crate::domains::intervals::solve_inequality(&args[0], &var)?;
+        ctx.step(
+            "solve the inequality",
+            &args[0],
+            &set.to_expr(),
+            Some("between the points where the sides are equal or undefined, the sign is tested once".into()),
+        );
+        return Ok(set.to_expr());
+    }
     let eqs = list(&args[0]);
     if eqs.len() > 1 {
         let vars: Vec<String> = match args.get(1) {

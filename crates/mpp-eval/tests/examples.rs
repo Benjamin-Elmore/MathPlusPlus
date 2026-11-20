@@ -60,3 +60,8 @@ fn units_example() {
 fn assumptions_example() {
     check("assumptions");
 }
+
+#[test]
+fn piecewise_sets_example() {
+    check("piecewise-sets");
+}

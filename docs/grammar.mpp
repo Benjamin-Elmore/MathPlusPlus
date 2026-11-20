@@ -161,6 +161,7 @@ row           = expr { "&" expr } ;
 cases         = "\begin{cases}" case_row { "\\" case_row } "\end{cases}" ;
 case_row      = expr "&" ( relation_chain | "\text{otherwise}" | "otherwise" ) ;
 set_lit       = "\{" [ expr { "," expr } ] "\}" | "∅" | "\emptyset" ;
+set_builder   = "\{" name [ "\in" set ] ( ":" | "\mid" ) relation_chain "\}" ;   (* {x ∈ ℝ : x^2 < 4} *)
 interval      = ( "[" | "(" ) expr "," expr ( "]" | ")" ) ;
 accent        = ( "\hat" | "\bar" | "\vec" | "\dot" | "\ddot" | "\tilde" ) "{" name "}" ;
 font_name     = ( "\mathbf" | "\mathcal" | "\mathfrak" ) "{" letters "}" ;

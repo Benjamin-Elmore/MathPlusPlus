@@ -63,15 +63,15 @@ pub fn is_zero(e: &Expr) -> bool {
     if n.is_zero() {
         return true;
     }
-    if n.is_number() || !n.is_constant() {
+    if n.is_number() || !n.is_constant() || n.is_infinite() {
         return false;
     }
     match n.eval_complex(&EmptyEnv) {
-        Ok(v) => {
+        Ok(v) if v.norm().is_finite() => {
             let scale = magnitude_scale(&n).max(1.0);
             v.norm() <= ZERO_TOL * scale
         }
-        Err(_) => false,
+        _ => false,
     }
 }
 

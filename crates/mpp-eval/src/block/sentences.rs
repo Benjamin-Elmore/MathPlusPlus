@@ -137,6 +137,14 @@ fn solution_text(unknowns: &[String], v: &Expr) -> Option<(String, String)> {
     let [x] = unknowns else {
         return None;
     };
+    let interval_like = matches!(v.node(), ExprNode::Interval { .. })
+        || matches!(v.node(), ExprNode::Apply(n, _) if &**n == "union");
+    if interval_like {
+        let (text, latex) =
+            crate::domains_wire::present_set(v).unwrap_or_else(|| (v.to_string(), v.to_latex()));
+        let lx = Expr::sym(x).to_latex();
+        return Some((format!("{x} ∈ {text}"), format!("{lx} \\in {latex}")));
+    }
     let ExprNode::Set(values) = v.node() else {
         return None;
     };
