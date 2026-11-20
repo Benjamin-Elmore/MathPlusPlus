@@ -50,9 +50,47 @@ impl LibEntry {
     /// The entry typeset for the list (LaTeX), with `\overset{?}{=}` read as `=`.
     pub fn latex(&self) -> String {
         match self.entry.kind {
-            EntryKind::Theorem => format!("\\text{{{}}}", plain(&self.entry.name)),
+            EntryKind::Theorem => mixed(&self.entry.name),
             _ => self.entry.name.replace("\\overset{?}{=}", "="),
         }
+    }
+}
+
+/// Prose with `$…$` maths as one LaTeX line: the words in `\text{…}`, the maths
+/// typeset (a description such as "the positive root of $x^2 = x + 1$").
+pub fn mixed(s: &str) -> String {
+    let mut out = String::new();
+    for (i, part) in s.split('$').enumerate() {
+        if i % 2 == 1 {
+            if !part.trim().is_empty() {
+                out.push_str(&format!("{{{part}}}"));
+            }
+        } else {
+            let t: String = part
+                .chars()
+                .map(|c| match c {
+                    '\\' | '{' | '}' | '_' | '^' | '`' | '*' | '#' | '%' | '&' | '~' => ' ',
+                    c => c,
+                })
+                .collect();
+            if !t.trim().is_empty() {
+                out.push_str(&format!("\\text{{{t}}}"));
+            }
+        }
+    }
+    out
+}
+
+impl LibEntry {
+    /// The head a `Using …` sentence names (`A_{\text{circle}}` for a function).
+    pub fn head_latex(&self) -> String {
+        let t = self.insert_text();
+        t.split('(').next().unwrap_or(&t).trim().to_string()
+    }
+
+    /// The description as LaTeX (see [`mixed`]).
+    pub fn description_latex(&self) -> String {
+        mixed(&self.entry.description)
     }
 }
 

@@ -73,7 +73,8 @@ pub fn import_entry(doc: &mut Doc, e: &LibEntry) {
     };
     let src = doc.editor.text().to_string();
     let parsed = mpp_syntax::document::parse_document(&src);
-    let latex = crate::diagnostics::fixes::name_latex(key);
+    let _ = key;
+    let latex = e.head_latex();
     let (span, with) = crate::diagnostics::fixes::import_edit(&src, &parsed, &latex, e.entry.file);
     doc.editor.replace_node(span, &with);
     doc.touched();
@@ -182,16 +183,11 @@ impl IdeApp {
                                 ui.horizontal(|ui| {
                                     typeset::show(ui, &e.latex(), size, *theme);
                                 });
-                                let desc = library::plain(&e.entry.description);
+                                let desc = e.description_latex();
                                 if !desc.is_empty() {
                                     ui.horizontal_wrapped(|ui| {
                                         ui.add_space(8.0);
-                                        typeset::show(
-                                            ui,
-                                            &format!("\\text{{{desc}}}"),
-                                            size * 0.8,
-                                            muted,
-                                        );
+                                        typeset::show(ui, &desc, size * 0.8, muted);
                                     });
                                 }
                                 ui.horizontal(|ui| {

@@ -492,6 +492,123 @@ fn graph_slope(knobs: Knobs, _: &BuildCx) -> String {
     )
 }
 
+// ----- graph helpers: one figure keyword each -----
+
+fn graph_h_tangent(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: ${⟨*function⟩}$, tangent at $x = {⟨*point#point⟩}$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push('.');
+    s
+}
+
+fn graph_h_riemann(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: ${⟨*function⟩}$, riemann mid $n = {⟨n=8#n⟩}$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push('.');
+    s
+}
+
+fn graph_h_trapezoid(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: ${⟨*function⟩}$, riemann trapezoid $n = {⟨n=8#n⟩}$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push('.');
+    s
+}
+
+fn graph_h_area(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: ${⟨*top#top⟩}$, ${⟨*bottom#bottom⟩}$, area between");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push('.');
+    s
+}
+
+fn graph_h_revolve(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: ${⟨*function⟩}$, revolve about $y = {⟨axis=0#axis⟩}$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push('.');
+    s
+}
+
+fn graph_h_vector(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: vector field $({⟨*P#P⟩}, {⟨*Q#Q⟩})$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push_str(", ");
+    s.push_str(&range("y"));
+    s.push('.');
+    s
+}
+
+fn graph_h_gradient(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: gradient field ${⟨*function⟩}$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push_str(", ");
+    s.push_str(&range("y"));
+    s.push('.');
+    s
+}
+
+fn graph_h_contour(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: ${⟨*function⟩}$, contour");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push_str(", ");
+    s.push_str(&range("y"));
+    s.push('.');
+    s
+}
+
+fn graph_h_tplane(_: Knobs, _: &BuildCx) -> String {
+    let mut s =
+        String::from(r"Figure: $z = {⟨*function⟩}$, tangent plane at $({⟨*x0#x0⟩}, {⟨*y0#y0⟩})$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push_str(", ");
+    s.push_str(&range("y"));
+    s.push('.');
+    s
+}
+
+fn graph_h_taylor(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: ${⟨*function⟩}$, taylor $n = {⟨n=5#n⟩}$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push('.');
+    s
+}
+
+fn graph_h_newton(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: ${⟨*function⟩}$, newton from $x_0 = {⟨*start#start⟩}$");
+    s.push_str(", ");
+    s.push_str(&range("x"));
+    s.push('.');
+    s
+}
+
+fn graph_h_scatter(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: scatter ${⟨*xcolumn#xcol⟩}, {⟨*ycolumn#ycol⟩}$");
+    s.push('.');
+    s
+}
+
+fn graph_h_histogram(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: histogram ${⟨*column#col⟩}$");
+    s.push('.');
+    s
+}
+
+fn graph_h_boxplot(_: Knobs, _: &BuildCx) -> String {
+    let mut s = String::from(r"Figure: box plot ${⟨*column#col⟩}$");
+    s.push('.');
+    s
+}
+
 // ----- helpers (C2–C4) -----
 
 /// Where a helper argument goes.
@@ -1514,6 +1631,132 @@ fn build_catalogue() -> Vec<Template> {
             r"y' = f(x, y)",
             "plot direction field ode figure",
             Body::Figure(graph_slope),
+            k(),
+        ),
+        item(
+            "graph.tangent",
+            &[Graphs],
+            "Tangent line",
+            r"y - y_0 = m(x - x_0)",
+            "tangent line derivative graph figure",
+            Body::Figure(graph_h_tangent),
+            k(),
+        ),
+        item(
+            "graph.riemann",
+            &[Graphs],
+            "Riemann sum",
+            r"\sum f(x_i)\,\Delta x",
+            "riemann sum rectangles midpoint area graph figure",
+            Body::Figure(graph_h_riemann),
+            k(),
+        ),
+        item(
+            "graph.trapezoid",
+            &[Graphs],
+            "Trapezoid rule",
+            r"\tfrac{\Delta x}{2}(y_0 + y_1)",
+            "riemann trapezoid area graph figure",
+            Body::Figure(graph_h_trapezoid),
+            k(),
+        ),
+        item(
+            "graph.area",
+            &[Graphs],
+            "Area between curves",
+            r"\int (f - g)\,dx",
+            "area between curves shade graph figure",
+            Body::Figure(graph_h_area),
+            k(),
+        ),
+        item(
+            "graph.revolve",
+            &[Graphs],
+            "Solid of revolution",
+            r"V = \pi \int f^2\,dx",
+            "revolve solid volume disk shell graph figure",
+            Body::Figure(graph_h_revolve),
+            k(),
+        ),
+        item(
+            "graph.vector",
+            &[Graphs],
+            "Vector field",
+            r"\mathbf{F} = (P, Q)",
+            "vector field arrows graph figure",
+            Body::Figure(graph_h_vector),
+            k(),
+        ),
+        item(
+            "graph.gradient",
+            &[Graphs],
+            "Gradient field",
+            r"\nabla f",
+            "gradient field arrows graph figure",
+            Body::Figure(graph_h_gradient),
+            k(),
+        ),
+        item(
+            "graph.contour",
+            &[Graphs],
+            "Contour plot",
+            r"f(x, y) = c",
+            "contour level curves graph figure",
+            Body::Figure(graph_h_contour),
+            k(),
+        ),
+        item(
+            "graph.tplane",
+            &[Graphs],
+            "Tangent plane",
+            r"z = f(x_0, y_0) + \ldots",
+            "tangent plane surface 3d graph figure",
+            Body::Figure(graph_h_tplane),
+            k(),
+        ),
+        item(
+            "graph.taylor",
+            &[Graphs],
+            "Taylor polynomials",
+            r"\sum \tfrac{f^{(k)}(a)}{k!} x^k",
+            "taylor series polynomial graph figure",
+            Body::Figure(graph_h_taylor),
+            k(),
+        ),
+        item(
+            "graph.newton",
+            &[Graphs],
+            "Newton's method",
+            r"x_{n+1} = x_n - \tfrac{f(x_n)}{f'(x_n)}",
+            "newton method root graph figure",
+            Body::Figure(graph_h_newton),
+            k(),
+        ),
+        item(
+            "graph.scatter",
+            &[Graphs],
+            "Scatter plot",
+            r"(x_i, y_i)",
+            "scatter data points plot figure",
+            Body::Figure(graph_h_scatter),
+            k(),
+        ),
+        item(
+            "graph.histogram",
+            &[Graphs],
+            "Histogram",
+            r"\text{frequency}",
+            "histogram data bins plot figure",
+            Body::Figure(graph_h_histogram),
+            k(),
+        ),
+        item(
+            "graph.boxplot",
+            &[Graphs],
+            "Box plot",
+            r"Q_1, Q_2, Q_3",
+            "box plot whisker data quartiles figure",
+            Body::Figure(graph_h_boxplot),
             k(),
         ),
     ]);

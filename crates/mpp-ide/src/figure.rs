@@ -51,6 +51,19 @@ impl FigureState {
             .collect()
     }
 
+    /// What the figure computed for its helpers (a Riemann sum, an area, a tangent).
+    pub fn readouts(&self) -> Vec<String> {
+        self.figure
+            .as_ref()
+            .map(|f| f.readouts().to_vec())
+            .unwrap_or_default()
+    }
+
+    /// Rows under the figure: one per slider, then one per readout.
+    pub fn rows(&self) -> usize {
+        self.sliders().len() + self.readouts().len()
+    }
+
     /// Moves one slider and redraws the figure for it.
     pub fn set_value(&mut self, name: &str, value: f64) {
         self.values.insert(name.to_string(), value);
@@ -137,7 +150,7 @@ impl Figures {
     pub fn rows(&self) -> Vec<(BlockId, usize)> {
         self.list
             .iter()
-            .map(|f| (f.block, f.sliders().len()))
+            .map(|f| (f.block, f.rows()))
             .filter(|(_, n)| *n > 0)
             .collect()
     }
@@ -545,7 +558,7 @@ pub fn sliders_ui(
     let mut changed = None;
     for (i, s) in st.sliders().into_iter().enumerate() {
         let y = top_left.y + i as f32 * row_h;
-        let tex = format!("{} =", mpp_plot::view2d::name_latex(&s.name));
+        let tex = mpp_plot::view2d::name_latex(&s.name);
         let dl = crate::typeset::layout(&tex, size * 0.95, theme);
         let label_w = size * 3.0;
         let ty = y + (row_h - dl.total_height()) / 2.0;
@@ -559,16 +572,43 @@ pub fn sliders_ui(
             Vec2::new((width - label_w).max(size * 4.0), row_h * 0.7),
         );
         let mut v = s.value;
-        let step = s.step();
+        let step = if s.integer { 1.0 } else { s.step() };
         ui.scope_builder(egui::UiBuilder::new().max_rect(r), |ui| {
             ui.spacing_mut().slider_width = (r.width() - size * 4.5).max(size * 3.0);
             let slider = egui::Slider::new(&mut v, s.min..=s.max)
                 .step_by(step)
+                .show_value(false)
                 .clamping(egui::SliderClamping::Always);
-            if ui.add(slider).changed() {
+            let resp = ui.add(slider);
+            let name = s.name.clone();
+            ui.ctx()
+                .accesskit_node_builder(resp.id, |n| n.set_label(format!("slider for {name}")));
+            if resp.changed() {
                 changed = Some((s.name.clone(), v));
             }
+            // The value, typeset, after the slider.
+            let shown = if s.integer || step >= 1.0 {
+                format!("{}", v.round())
+            } else {
+                let t = format!("{v:.3}");
+                t.trim_end_matches('0').trim_end_matches('.').to_string()
+            };
+            let vd = crate::typeset::layout(&shown, size * 0.9, theme);
+            let at = Pos2::new(
+                resp.rect.right() + size * 0.6,
+                resp.rect.center().y - vd.total_height() / 2.0,
+            );
+            paint_display_list(ui.painter(), &vd, at);
         });
+    }
+    // The helpers' readouts, typeset: the label as words, the rest as maths.
+    let base = top_left.y + st.sliders().len() as f32 * row_h;
+    for (i, r) in st.readouts().iter().enumerate() {
+        let tex = readout_latex(r);
+        let dl = crate::typeset::layout(&tex, size * 0.9, theme);
+        let y = base + i as f32 * row_h + (row_h - dl.total_height()) / 2.0;
+        let x = top_left.x + ((width - dl.width) / 2.0).max(0.0);
+        paint_display_list(ui.painter(), &dl, Pos2::new(x, y));
     }
     match changed {
         Some((name, v)) => {
@@ -577,6 +617,42 @@ pub fn sliders_ui(
         }
         None => false,
     }
+}
+
+/// A readout such as `tangent at x = 1: y = 2x - 1` as LaTeX: words before the
+/// colon in text, the rest as maths.
+pub fn readout_latex(r: &str) -> String {
+    let clean = |s: &str| {
+        s.chars()
+            .filter(|c| !matches!(c, '\\' | '$' | '{' | '}' | '`'))
+            .collect::<String>()
+    };
+    match r.split_once(':') {
+        Some((label, rest)) => {
+            let (words, maths) = split_words(label.trim());
+            let mut out = format!("\\text{{{}}}", clean(words));
+            if !maths.is_empty() {
+                out.push_str(&format!("\\; {}", clean(maths)));
+            }
+            out.push_str(&format!("\\text{{:}}\\; {}", clean(rest.trim())));
+            out
+        }
+        None => format!("\\text{{{}}}", clean(r)),
+    }
+}
+
+/// `tangent at x = 1` → (`tangent at`, `x = 1`): the leading words and the maths.
+fn split_words(s: &str) -> (&str, &str) {
+    let mut end = 0;
+    for w in s.split(' ') {
+        if w.chars().count() > 2 && w.chars().all(char::is_alphabetic) {
+            end += w.len() + 1;
+        } else {
+            break;
+        }
+    }
+    let end = end.min(s.len());
+    (s[..end].trim(), s[end..].trim())
 }
 
 /// Writes the figure to a PNG or SVG file (by the extension), at a print size.

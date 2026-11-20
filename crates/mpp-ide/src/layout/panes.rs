@@ -298,7 +298,7 @@ impl IdeApp {
             );
             return;
         };
-        let rows = st.sliders().len() as f32 * crate::page::slider_row_height(size);
+        let rows = st.rows() as f32 * crate::page::slider_row_height(size);
         let area = ui.available_rect_before_wrap().shrink(14.0);
         let rect = area.with_max_y((area.bottom() - rows).max(area.top() + 20.0));
         if rect.width() > 20.0 && rect.height() > 20.0 {
