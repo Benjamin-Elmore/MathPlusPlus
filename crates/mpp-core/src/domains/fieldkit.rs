@@ -222,18 +222,66 @@ impl Env for FieldEnv<'_> {
 }
 
 /// The value of `e` with `names` bound to `values`. Relations and logical
-/// combinations count as 1 when true and 0 when false (an indicator).
+/// combinations, anywhere in `e`, count as 1 when true and 0 when false (indicators).
 pub fn eval_at(e: &Expr, names: &[String], values: &[f64]) -> MathResult<f64> {
-    let env = FieldEnv::new(names, values);
-    eval_env(e, &env)
+    NumericFn::new(e, names).eval(values)
 }
 
-fn eval_env(e: &Expr, env: &FieldEnv<'_>) -> MathResult<f64> {
+/// An expression prepared for repeated numeric evaluation: each relation inside it is
+/// replaced by a placeholder whose value (1 or 0) is worked out per point.
+pub struct NumericFn {
+    body: Expr,
+    conds: Vec<Expr>,
+    names: Vec<String>,
+}
+
+/// Prefix of the placeholder names (`#` never appears in a parsed name).
+const PLACEHOLDER: &str = "#ind";
+
+fn lift_conditions(e: &Expr, conds: &mut Vec<Expr>) -> Expr {
     match e.node() {
         ExprNode::Relation(..) | ExprNode::Logic(..) | ExprNode::Bool(_) => {
-            Ok(if truth_of(e, env)? { 1.0 } else { 0.0 })
+            conds.push(e.clone());
+            Expr::sym(&format!("{PLACEHOLDER}{}", conds.len() - 1))
         }
-        _ => e.eval_f64(env),
+        _ if e.children().is_empty() => e.clone(),
+        _ => Expr::new(e.map_children(&mut |c| lift_conditions(c, conds))),
+    }
+}
+
+impl NumericFn {
+    /// Prepares `e` for evaluation with `names` bound in this order.
+    pub fn new(e: &Expr, names: &[String]) -> NumericFn {
+        let mut conds = Vec::new();
+        let body = lift_conditions(e, &mut conds);
+        let mut all = names.to_vec();
+        all.extend((0..conds.len()).map(|k| format!("{PLACEHOLDER}{k}")));
+        NumericFn {
+            body,
+            conds,
+            names: all,
+        }
+    }
+
+    /// The value at `values` (one per name given to [`NumericFn::new`]).
+    pub fn eval(&self, values: &[f64]) -> MathResult<f64> {
+        let n_vars = self.names.len() - self.conds.len();
+        if values.len() != n_vars {
+            return Err(crate::domains::util::arity(
+                "evaluation",
+                &n_vars.to_string(),
+                values.len(),
+            ));
+        }
+        if self.conds.is_empty() {
+            return self.body.eval_f64(&FieldEnv::new(&self.names, values));
+        }
+        let env = FieldEnv::new(&self.names[..n_vars], values);
+        let mut all = values.to_vec();
+        for c in &self.conds {
+            all.push(if truth_of(c, &env)? { 1.0 } else { 0.0 });
+        }
+        self.body.eval_f64(&FieldEnv::new(&self.names, &all))
     }
 }
 
@@ -273,17 +321,6 @@ fn truth_of(e: &Expr, env: &FieldEnv<'_>) -> MathResult<bool> {
             Ok(false)
         }
         _ => Ok(e.eval_f64(env)? != 0.0),
-    }
-}
-
-/// The value of a constant expression, with the wider-field functions available.
-pub fn eval_const(op: &str, e: &Expr) -> MathResult<f64> {
-    let v = eval_env(e, &FieldEnv::empty())
-        .map_err(|_| domain_err(op, format!("{e} is not a real number")))?;
-    if v.is_finite() {
-        Ok(v)
-    } else {
-        Err(domain_err(op, format!("{e} is not a finite real number")))
     }
 }
 

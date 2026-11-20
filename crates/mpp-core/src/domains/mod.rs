@@ -15,6 +15,7 @@ pub mod linalg;
 pub mod nt_ext;
 pub mod number_theory;
 pub mod ode;
+pub mod probability;
 pub mod sets;
 pub mod solve;
 pub mod special;
@@ -32,6 +33,7 @@ pub use linalg::{LinearAlgebra, Matrix};
 pub use nt_ext::NumberTheoryExt;
 pub use number_theory::NumberTheory;
 pub use ode::Odes;
+pub use probability::Probability;
 pub use sets::{RealSet, Sets};
 pub use solve::{Solutions, Solving};
 pub use special::SpecialFunctions;
@@ -145,6 +147,7 @@ impl Registry {
         r.register(Box::new(NumberTheoryExt));
         r.register(Box::new(Analysis));
         r.register(Box::new(Discrete));
+        r.register(Box::new(Probability));
         r
     }
 
