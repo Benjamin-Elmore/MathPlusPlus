@@ -1071,7 +1071,12 @@ impl Run<'_, '_> {
             lr.approx = approximate(&value).ok();
         }
         let shown = resolved.shown.iter().find(|s| s.value == value).cloned();
+        let differential = crate::differential::present(&input, &value);
         lr.set_value(Value::from_expr(value));
+        if let Some((text, latex)) = differential {
+            lr.text = Some(text);
+            lr.latex = Some(latex);
+        }
         if approximate_only && lr.approx.is_some() {
             // A numerical fallback (no closed form) is shown with ≈ only.
             lr.text = None;

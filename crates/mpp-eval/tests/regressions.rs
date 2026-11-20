@@ -144,3 +144,11 @@ fn a_numeric_query_with_an_unknown_name_shows_no_result() {
     assert_eq!(line.answer(), None, "{:?}", line.text);
     assert!(line.value.is_none());
 }
+
+#[test]
+fn total_differential_reads_like_a_textbook() {
+    let ev = run(concat!(r"$$ f(x, y) := x^2 y $$", "\n\n", r"$$ df = ? $$"));
+    assert!(ev.errors().is_empty());
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.latex.as_deref(), Some(r"2 x y\,dx + x^{2}\,dy"));
+}

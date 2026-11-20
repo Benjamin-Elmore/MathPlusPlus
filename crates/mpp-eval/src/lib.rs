@@ -22,6 +22,7 @@ pub mod calc;
 pub mod calculus;
 pub mod check;
 pub mod data;
+mod differential;
 pub mod dispatch;
 pub mod domains_wire;
 pub mod error;
