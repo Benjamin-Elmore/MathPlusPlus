@@ -37,6 +37,8 @@ pub enum MathError {
     NoClosedForm(String),
     /// An improper integral (or other limit process) has no finite value.
     Divergent(String),
+    /// Neither convergence nor divergence could be established (no wrong answer is given).
+    Undetermined(String),
 }
 
 impl fmt::Display for MathError {
@@ -68,6 +70,7 @@ impl fmt::Display for MathError {
             }
             MathError::NoClosedForm(what) => write!(f, "no closed form was found for {what}"),
             MathError::Divergent(what) => write!(f, "{what} diverges"),
+            MathError::Undetermined(what) => write!(f, "could not determine {what}"),
         }
     }
 }

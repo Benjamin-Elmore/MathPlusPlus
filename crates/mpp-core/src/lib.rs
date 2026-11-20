@@ -18,6 +18,7 @@ pub mod simplify;
 pub mod steps;
 pub mod subs;
 pub mod tools;
+pub mod tools_b;
 
 pub use domains::{Ctx, Domain, Registry};
 pub use error::{MathError, MathResult};

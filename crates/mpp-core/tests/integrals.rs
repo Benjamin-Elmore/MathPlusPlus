@@ -232,7 +232,7 @@ fn constant_is_added_on_request() {
 
 #[test]
 fn no_closed_form_is_reported() {
-    for e in [exp(x().pow(2)), sin(x()) / x(), (n(1) + x().pow(3)).sqrt()] {
+    for e in [exp(x().pow(2)), exp(x().pow(3)), (n(1) + x().pow(3)).sqrt()] {
         match integrate(&e, "x", None) {
             Err(MathError::NoClosedForm(_)) => {}
             other => panic!("∫ {e} dx should have no closed form, got {other:?}"),
@@ -286,8 +286,8 @@ fn definite_integrals_with_known_values() {
 #[test]
 fn numeric_definite_integrals() {
     let gauss = definite(exp(-x().pow(2)), Expr::neg_infinity(), Expr::infinity()).unwrap();
-    approx(&gauss, std::f64::consts::PI.sqrt());
-    assert!(gauss.as_number().is_some_and(|n| !n.is_exact()));
+    // Exact through the error function: √π/2 (erf(∞) − erf(−∞)) = √π.
+    assert_eq!(gauss, Expr::pi().sqrt());
     let v = definite(sin(x().pow(2)), n(0), n(1)).unwrap();
     approx(&v, 0.310_268_301_723_381_1);
     let (v, err) = numeric_integrate(&exp(-x().pow(2)), "x", 0.0, 1.0, 1e-12).unwrap();

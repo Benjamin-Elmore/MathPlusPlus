@@ -970,6 +970,9 @@ fn latex_func_name(f: Func) -> Option<&'static str> {
         Func::Acosh => "\\operatorname{arcosh}",
         Func::Atanh => "\\operatorname{artanh}",
         Func::Sign => "\\operatorname{sgn}",
+        Func::Erf => "\\operatorname{erf}",
+        Func::Si => "\\operatorname{Si}",
+        Func::Ci => "\\operatorname{Ci}",
         Func::Lcm => "\\operatorname{lcm}",
         _ => return None,
     })

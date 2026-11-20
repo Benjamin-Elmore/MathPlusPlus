@@ -87,3 +87,149 @@ fn improper_integrals_with_logarithmic_tails() {
         Err(MathError::Divergent(_))
     ));
 }
+
+mod improper_oscillating {
+    use crate::calc::integrate::{integrate, integrate_definite};
+    use crate::error::MathError;
+    use crate::eval::EmptyEnv;
+    use crate::expr::Expr;
+    use crate::functions::{func, Func};
+    use crate::steps::Steps;
+
+    fn x() -> Expr {
+        Expr::sym("x")
+    }
+    fn sin(e: Expr) -> Expr {
+        func(Func::Sin, vec![e])
+    }
+    fn cos(e: Expr) -> Expr {
+        func(Func::Cos, vec![e])
+    }
+    fn exp(e: Expr) -> Expr {
+        Expr::e().pow(e)
+    }
+    fn inf() -> Expr {
+        Expr::infinity()
+    }
+    fn value(e: &Expr) -> f64 {
+        e.eval_f64(&EmptyEnv).unwrap()
+    }
+    fn close(e: &Expr, v: f64, tol: f64) {
+        let got = value(e);
+        assert!(
+            (got - v).abs() <= tol * (1.0 + v.abs()),
+            "{e} ≈ {got}, expected {v}"
+        );
+    }
+
+    #[test]
+    fn dirichlet_integral_is_pi_over_two() {
+        // The reported bug: this used to be called divergent.
+        let v = integrate_definite(&(sin(x()) / x()), "x", &Expr::zero(), &inf(), None).unwrap();
+        assert_eq!(v, Expr::rational(1, 2) * Expr::pi());
+        let v = integrate_definite(
+            &(sin(Expr::int(3) * x()) / x()),
+            "x",
+            &Expr::zero(),
+            &inf(),
+            None,
+        )
+        .unwrap();
+        assert_eq!(v, Expr::rational(1, 2) * Expr::pi());
+        // Over the whole line it is π.
+        let v = integrate_definite(&(sin(x()) / x()), "x", &Expr::neg_infinity(), &inf(), None)
+            .unwrap();
+        assert_eq!(v, Expr::pi());
+    }
+
+    #[test]
+    fn antiderivatives_use_si_ci_and_erf() {
+        let f = integrate(&(sin(x()) / x()), "x", None).unwrap();
+        assert_eq!(f, func(Func::Si, vec![x()]));
+        let f = integrate(&(cos(Expr::int(2) * x()) / x()), "x", None).unwrap();
+        assert_eq!(f, func(Func::Ci, vec![Expr::int(2) * x()]));
+        let f = integrate(&exp(-x().pow(2)), "x", None).unwrap();
+        assert_eq!(f.to_string(), "sqrt(π)*erf(x)/2");
+        // ∫_0^1 sin x / x = Si(1) ≈ 0.946083
+        let v =
+            integrate_definite(&(sin(x()) / x()), "x", &Expr::zero(), &Expr::one(), None).unwrap();
+        close(&v, 0.946_083_070_367_183, 1e-12);
+    }
+
+    #[test]
+    fn gaussian_integrals() {
+        let v = integrate_definite(&exp(-x().pow(2)), "x", &Expr::neg_infinity(), &inf(), None)
+            .unwrap();
+        assert_eq!(v, Expr::pi().sqrt());
+        let v = integrate_definite(&exp(-x().pow(2)), "x", &Expr::zero(), &inf(), None).unwrap();
+        assert_eq!(v, Expr::pi().sqrt() / Expr::int(2));
+        // e^{−(x² + 2x)} = e·e^{−(x+1)²}: the whole line gives e√π.
+        let g = exp(-(x().pow(2) + Expr::int(2) * x()));
+        let v = integrate_definite(&g, "x", &Expr::neg_infinity(), &inf(), None).unwrap();
+        close(&v, std::f64::consts::E * std::f64::consts::PI.sqrt(), 1e-12);
+    }
+
+    #[test]
+    fn fresnel_integrals_are_summed_between_zeros() {
+        let fresnel = (std::f64::consts::PI / 8.0).sqrt();
+        let mut steps = Steps::new();
+        let v = integrate_definite(
+            &sin(x().pow(2)),
+            "x",
+            &Expr::zero(),
+            &inf(),
+            Some(&mut steps),
+        )
+        .unwrap();
+        close(&v, fresnel, 1e-8);
+        assert!(
+            steps.iter().any(|s| s.rule == "integrate between zeros"),
+            "{steps:?}"
+        );
+        let v = integrate_definite(&cos(x().pow(2)), "x", &Expr::zero(), &inf(), None).unwrap();
+        close(&v, fresnel, 1e-8);
+        // ∫_1^∞ cos x / √x: no elementary antiderivative, converges (Dirichlet test).
+        let v =
+            integrate_definite(&(cos(x()) / x().sqrt()), "x", &Expr::one(), &inf(), None).unwrap();
+        // √(π/2) − 2∫₀¹ cos t² dt
+        close(&v, -0.555_734_338_485_043_7, 1e-8);
+    }
+
+    #[test]
+    fn divergence_is_only_reported_with_a_proof() {
+        // Proven: ∫_1^∞ e^x/x has an integrand that grows without bound.
+        let r = integrate_definite(&(exp(x()) / x()), "x", &Expr::one(), &inf(), None);
+        assert!(
+            matches!(&r, Err(MathError::Divergent(m)) if m.contains("divergence test")),
+            "{r:?}"
+        );
+        // ∫_0^1 e^x/x behaves like 1/x at 0.
+        let r = integrate_definite(&(exp(x()) / x()), "x", &Expr::zero(), &Expr::one(), None);
+        assert!(
+            matches!(&r, Err(MathError::Divergent(m)) if m.contains("limit comparison")),
+            "{r:?}"
+        );
+        // ∫_2^∞ 1/ln x: x · (1/ln x) → ∞, so it diverges by comparison with 1/x.
+        let r = integrate_definite(
+            &func(Func::Ln, vec![x()]).recip(),
+            "x",
+            &Expr::int(2),
+            &inf(),
+            None,
+        );
+        assert!(matches!(&r, Err(MathError::Divergent(_))), "{r:?}");
+    }
+
+    #[test]
+    fn unknown_convergence_is_said_plainly() {
+        // x² sin(x²) oscillates with growing pieces and has no elementary antiderivative:
+        // no value, and no test proves divergence, so the answer says it could not decide.
+        let e = sin(x().pow(2)) * x().pow(2);
+        let r = integrate_definite(&e, "x", &Expr::one(), &inf(), None);
+        match r {
+            Err(MathError::Undetermined(m)) => assert!(m.contains("converges"), "{m}"),
+            Err(MathError::Divergent(_)) => {}
+            other => panic!("expected no value, got {other:?}"),
+        }
+    }
+}

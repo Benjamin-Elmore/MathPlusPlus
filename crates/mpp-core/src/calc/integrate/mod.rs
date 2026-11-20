@@ -15,6 +15,7 @@ mod definite;
 mod engine;
 mod multiple;
 mod numeric;
+mod oscillatory;
 mod parts;
 mod radical;
 pub(crate) mod rational;

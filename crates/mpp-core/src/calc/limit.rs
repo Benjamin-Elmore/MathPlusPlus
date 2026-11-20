@@ -1089,7 +1089,9 @@ impl<'s> Ctx<'s> {
                 }
             }
             Lv::Bounded => match f {
-                Func::Sin | Func::Cos | Func::Atan | Func::Tanh => Ok(Lv::Bounded),
+                Func::Sin | Func::Cos | Func::Atan | Func::Tanh | Func::Si | Func::Erf => {
+                    Ok(Lv::Bounded)
+                }
                 _ => Err(unsupported()),
             },
             lv => at_infinity(f, matches!(lv, Lv::PosInf)),
@@ -1121,7 +1123,9 @@ fn at_infinity(f: Func, positive: bool) -> MathResult<Lv> {
         Func::Tan | Func::Sec | Func::Csc | Func::Cot => {
             Err(not_exist("the function keeps repeating its poles"))
         }
-        Func::Atan => Ok(Lv::Fin(half_pi)),
+        Func::Atan | Func::Si => Ok(Lv::Fin(half_pi)),
+        Func::Erf => Ok(Lv::Fin(Expr::int(if positive { 1 } else { -1 }))),
+        Func::Ci if positive => Ok(Lv::Fin(Expr::zero())),
         Func::Tanh => Ok(Lv::Fin(Expr::int(if positive { 1 } else { -1 }))),
         Func::Sign => Ok(Lv::Fin(Expr::int(if positive { 1 } else { -1 }))),
         Func::Sinh | Func::Asinh | Func::Floor | Func::Ceil => Ok(signed(positive)),

@@ -1,0 +1,52 @@
+# C7 differential equations solver: notes for the integrator
+
+Lane `tools-b` (branch `wip/tools-b`). Core code is in `crates/mpp-core/src/tools_b/ode/`; the operator forms are in `crates/mpp-eval/src/helpers_b.rs` (section "differential equations").
+
+## Layout
+
+| File | Job |
+|---|---|
+| `parse.rs` | finds the unknown `y`, the variable and the order; turns the equation into `F(x, y, y′, …) = 0` with placeholder symbols; primes in an equation written in `t` mean d/dt |
+| `first_order.rs` | separable, linear (integrating factor), Bernoulli, homogeneous, exact (+ integrating factors μ(x), μ(y)), Riccati (given or guessed particular solution), Clairaut (+ singular solution) |
+| `linear.rs` | constant coefficients of any order (real, repeated, complex roots), undetermined coefficients, variation of parameters (any order, Wronskian), Cauchy–Euler, reduction of order (given or guessed y₁) |
+| `laplace.rs` | transform table (tⁿ, e^{at}, sin, cos, sinh, cosh, products, `H(t − a)`, `δ(t − a)`), inverse by partial fractions with the shift rule, the transform method for IVPs |
+| `systems.rs` | `x′ = Ax + f` by `e^{At} = L⁻¹{(sI − A)⁻¹}`; eigenvalues; for 2×2 the equilibrium type and sample trajectories (`PhasePortrait`, for C5) |
+| `series.rs` | power series about an ordinary point; Frobenius series about a regular singular point |
+| `numeric.rs` | adaptive Dormand–Prince RK45 with Hairer-style stiffness detection, switching to the L-stable Rosenbrock ROS2 (numerical Jacobian); sampled solution (`NumericSolution.points`, for graphs) |
+| `pde.rs` | heat, wave and Laplace equations by separation of variables and Fourier sine series |
+| `verify.rs` | every exact solution is substituted back (symbolic, else at sample points with sample constants); solutions with steps are checked on each interval; series by the size of their residual near the centre |
+| `mod.rs` | `dsolve(eq, conditions, options, steps)`: tries the methods, keeps the first answer that passes its check, fixes constants from IVP/BVP conditions (linear system, or one equation for one constant), re-checks; also reduces equations without `y` |
+
+Entry points: `mpp_core::tools_b::ode::{dsolve, solve_parsed, solve_numeric, parse, Condition, Options, OdeSolution}`, `systems::solve_system`, `laplace::{transform, inverse}`, `pde::{heat, wave, laplace_rectangle}`.
+
+## Edits outside the lane's folders
+
+- `crates/mpp-core/src/calc/integrate/mod.rs`: `rational` became `pub(crate)`, and `rational::decompose` became `pub(crate)` (partial fractions for the inverse Laplace transform). No behaviour change.
+- No new dependencies.
+
+## Requests (engine lane / integrator)
+
+1. **Conditions `y(0) = 1` in documents.** Lowering turns `y(0)` into `y·0` when `y` is not a function, so today the conditions are written as a tuple `(x₀, y₀, y′₀, …)`: `\operatorname{dsolve}(y'' + y = 0, (0, 1, 0))`. Please lower `y(a)` and `y'(a)` as `Apply(y, [a])` and `subs(d/dx y, x = a)` **inside a statement whose relation has a derivative of an undefined name `y`** (and inside `dsolve`/`solve` arguments). helpers_b already reads both forms (`condition_of`), so nothing else changes. A `0 = 1`-style relation gets a clear error pointing to the tuple form meanwhile.
+2. **ODE queries without an operator.** `$$ y'' + y = 0 = ? $$`, `$$ y' = 2y, \quad y(0) = 1 $$` and `Solve $y' = 2y$.` should call `mpp_eval::helpers_b::ode_statement(relation, conditions, ctx)`; it returns `None` when the statement is not a differential equation, so it can sit in front of the existing query path (one line in `block.rs::query`, and in the C8 auto-evaluation). `\operatorname{solve}(y' = 2y) = ?` and `\operatorname{dsolve}(…)` already work through the holder.
+3. **Derivatives of unknown functions.** helpers_b keeps `d/dx y` unevaluated when `y` has no value (before, it became 0 because `y` was treated as a constant). Everything else still differentiates as before; the workspace tests pass.
+4. **Step and delta functions.** `\operatorname{H}(t - a)` and `\operatorname{delta}(t - a)` reach the solver as `Apply("H")`/`Apply("delta")`. Please add `H`, `heaviside`, `delta` to the symbol table (so `H(t - 1)` without `\operatorname` is a call) and give them numeric values in `eval` (`H` = 0/1, `δ` not evaluable) so solutions can be graphed.
+5. **Name overlap with C4 (tools-a).** C4 lists "Laplace transforms for ODEs". helpers_b registers `laplace` and `invlaplace`; if tools-a adds the same names, keep one (the core code here is `tools_b::ode::laplace`), whichever the integrator prefers.
+6. **Primes on a function named `x`.** `x'` lowers to `d/dx x = 1`, so systems use other names with primes (`u' = v`) or `\frac{dx}{dt}`.
+
+## Guide text (for `docs/guide.mpp`)
+
+### Differential equations
+
+`\operatorname{dsolve}(\text{equation}, \text{conditions})` solves an ordinary differential equation exactly when it can, names the method, and checks the answer by putting it back into the equation (the note says whether the check was exact or numerical). `\operatorname{solve}` does the same when its equation has a derivative in it.
+
+$$ \operatorname{dsolve}(y'' + 2y' + 5y = 0) = ? $$
+
+gives $y(x) = C_1 e^{-x}\cos 2x + C_2 e^{-x}\sin 2x$ (constant coefficients). Starting values are a tuple $(x_0, y_0, y'_0, \dots)$: `\operatorname{dsolve}(y'' + y = 0, (0, 1, 0))` gives $y(x) = \cos x$.
+
+**Methods.** First order: separable, linear (integrating factor), Bernoulli, homogeneous $y' = F(y/x)$, exact (and made exact by an integrating factor), Riccati (give a known solution as `y_1 = …` or let Math++ find a simple one), Clairaut (with its singular solution). Higher order: constant coefficients of any order, undetermined coefficients, variation of parameters, Cauchy–Euler, reduction of order, and equations without $y$. Laplace transforms handle step and delta forcing (`\operatorname{H}(t - 1)`, `\operatorname{delta}(t - \pi)`); ask for them with `\operatorname{dsolve}_{laplace}`. Linear systems $\mathbf x' = A\mathbf x + \mathbf f$ are a tuple of equations: `\operatorname{dsolve}((u' = v, v' = -u), (1, 0))`; the note names the type of equilibrium. Equations with variable coefficients and no closed form get a power series (or a Frobenius series, `_{frobenius}`).
+
+**When there is no closed form**, Math++ says so. With starting values it solves numerically (adaptive RK45, switching to a stiff solver when needed) and shows $y$ at the end of the interval, `\operatorname{dsolve}(y' = \sin(xy), (0, 1), [0, 2])`; the samples are there for a graph.
+
+**Transforms:** `\operatorname{laplace}(t^2 e^{-t})` and `\operatorname{invlaplace}(\frac{1}{s^2 + 4})`.
+
+**PDEs:** `\operatorname{heat}(f, L, k)`, `\operatorname{wave}(f, g, L, c)` and `\operatorname{laplacerect}(f, a, b)` give the Fourier-series solutions of $u_t = k u_{xx}$, $u_{tt} = c^2 u_{xx}$ (ends held at 0) and $u_{xx} + u_{yy} = 0$ on a rectangle (top edge $f$, other edges 0).
