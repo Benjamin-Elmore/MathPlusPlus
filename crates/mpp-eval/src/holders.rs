@@ -23,6 +23,7 @@ use std::cell::RefCell;
 use std::fmt;
 use std::sync::Arc;
 
+use mpp_core::domains::Assumptions;
 use mpp_core::{add, mul, BigOpKind, Expr, ExprNode, MathError, MathResult, RelOp, Steps};
 
 /// Most terms a finite sum or product is expanded into exactly.
@@ -37,6 +38,7 @@ pub struct Ctx<'a> {
     steps: Option<RefCell<Steps>>,
     notes: RefCell<Vec<String>>,
     shown: RefCell<Vec<Shown>>,
+    assumptions: Option<Arc<Assumptions>>,
 }
 
 /// How to show a value whose canonical form reads badly (a Taylor series about
@@ -68,7 +70,21 @@ impl<'a> Ctx<'a> {
             steps: None,
             notes: RefCell::new(Vec::new()),
             shown: RefCell::new(Vec::new()),
+            assumptions: None,
         }
+    }
+
+    /// Facts about names in force for this statement (`Assume $x > 0$.`).
+    pub fn with_assumptions(mut self, assumptions: Arc<Assumptions>) -> Self {
+        if !assumptions.is_empty() {
+            self.assumptions = Some(assumptions);
+        }
+        self
+    }
+
+    /// The facts in force (none when nothing is assumed).
+    pub fn assumptions(&self) -> Option<&Assumptions> {
+        self.assumptions.as_deref()
     }
 
     /// Turns the step log on.
@@ -179,6 +195,7 @@ impl Default for Holders {
         h.register(crate::calculus::evaluate);
         h.register(crate::domains_wire::evaluate);
         h.register(crate::units_wire::evaluate);
+        h.register(crate::assume::evaluate);
         h
     }
 }

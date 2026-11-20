@@ -7,6 +7,7 @@
 //! relations already live in the expression tree, so a domain result can flow straight
 //! back into the evaluator, the printer and other domains.
 
+pub mod assume;
 pub mod calculus;
 pub mod linalg;
 pub mod number_theory;
@@ -20,6 +21,7 @@ use crate::error::{MathError, MathResult};
 use crate::expr::Expr;
 use crate::steps::Steps;
 
+pub use assume::Assumptions;
 pub use calculus::{BasicCalculus, Calculus, FullCalculus};
 pub use linalg::{LinearAlgebra, Matrix};
 pub use number_theory::NumberTheory;

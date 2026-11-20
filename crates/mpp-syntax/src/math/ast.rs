@@ -117,6 +117,9 @@ pub enum Clause {
     Range(Range),
     /// Any other relation chain, e.g. `x > 0`.
     Condition(Node),
+    /// A condition in brackets after a query or check, `(x > 0)`: an assumption that
+    /// holds for the whole display block.
+    Assumption(Node),
 }
 
 impl Clause {
@@ -125,7 +128,7 @@ impl Clause {
         match self {
             Clause::Where { span, .. } => *span,
             Clause::Range(r) => r.span,
-            Clause::Condition(n) => n.span,
+            Clause::Condition(n) | Clause::Assumption(n) => n.span,
         }
     }
 }

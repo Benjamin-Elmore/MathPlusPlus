@@ -166,6 +166,9 @@ fn block(out: &mut String, b: &Block, depth: usize) {
                     .map_or("-".to_string(), |u| format!("[{}]", nodes(u)))
             );
         }
+        BlockKind::Assume(a) => {
+            let _ = writeln!(out, "Assume [{}]", nodes(&a.conditions));
+        }
         BlockKind::Let(l) => {
             let _ = writeln!(out, "Let {}", inlines(&l.content));
         }

@@ -1,5 +1,6 @@
 //! Running one block: its statements, in order, against the environment.
 
+mod assume;
 mod sentences;
 mod units;
 
@@ -74,6 +75,7 @@ pub(crate) fn run_block(block: &Block, env: &mut Env, inputs: &Inputs<'_>) -> Ou
         effects: Vec::new(),
         positional: false,
         volatile: false,
+        local_assumptions: Vec::new(),
     };
     run.block(block);
     run.finish()
@@ -97,6 +99,8 @@ struct Run<'a, 'e> {
     effects: Vec<(String, Arc<Binding>)>,
     positional: bool,
     volatile: bool,
+    /// Conditions in brackets after a query in the display block being run.
+    local_assumptions: Vec<Expr>,
 }
 
 /// A read-only view of the environment that records what it is asked.
@@ -276,7 +280,9 @@ impl Run<'_, '_> {
         numeric: bool,
     ) -> Resolved {
         let view = self.view();
-        let mut ctx = Ctx::new(self.inputs.holders).numeric(numeric);
+        let mut ctx = Ctx::new(self.inputs.holders)
+            .numeric(numeric)
+            .with_assumptions(std::sync::Arc::new(self.assumptions()));
         if steps {
             ctx = ctx.with_steps();
         }
@@ -319,7 +325,7 @@ impl Run<'_, '_> {
 
     fn block(&mut self, block: &Block) {
         match &block.kind {
-            BlockKind::DisplayMath(m) => self.math(&m.ast, Place::Display { noeval: m.noeval }),
+            BlockKind::DisplayMath(m) => self.display_block(&m.ast, m.noeval),
             BlockKind::Let(l) => {
                 for m in l.math() {
                     self.math(&m.ast, Place::Let);
@@ -357,6 +363,7 @@ impl Run<'_, '_> {
                 self.helper(&nodes);
             }
             BlockKind::Solve(s) => self.solve_sentence(s),
+            BlockKind::Assume(a) => self.assume_sentence(a),
             BlockKind::Theorem(_)
             | BlockKind::Directive(_)
             | BlockKind::Rule
@@ -429,6 +436,8 @@ impl Run<'_, '_> {
                 }
                 Clause::Range(r) => self.range(r, RangeKind::Slider, &where_names),
                 Clause::Condition(n) => conditions.push(n),
+                // Read for the whole block before it runs (see `display_block`).
+                Clause::Assumption(_) => {}
             }
         }
         let noeval = line.noeval || place == Place::Display { noeval: true };
@@ -856,11 +865,12 @@ impl Run<'_, '_> {
         };
         lr.input = Some(input.clone());
         let numeric = mode == QueryMode::Approx;
-        let resolved = self.resolve_full(&input, s.locals, &[], steps, numeric);
+        let mut resolved = self.resolve_full(&input, s.locals, &[], steps, numeric);
         for note in &resolved.notes {
             self.warn(expr.span, note.clone());
         }
-        let value = match resolved.value.and_then(|v| self.finish_value(v)) {
+        let raw = resolved.value.clone();
+        let value = match raw.and_then(|v| self.finish_logged(v, resolved.steps.as_mut())) {
             Ok(v) => v,
             Err(err) => {
                 let span = match err {

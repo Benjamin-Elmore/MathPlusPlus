@@ -221,7 +221,11 @@ helper_name   = "the domain" | "the range" | "the intercepts" | "the critical po
 analyse       = ("Analyse" | "Analyze") " " "$" expr "$" [ " on " "$" interval "$" ] "." ;
 solve         = "Solve" " " "$" equations "$" [ " for " "$" name_list "$" ] "." ;
 equations     = expr { "," expr } | cases ;                (* several equations are a system *)
+assume        = "Assume" [ " that" ] " " "$" condition "$" { ( "," [ " and" ] | " and" ) " " "$" condition "$" } "." ;
+condition     = relation_chain | name "\in" ( mathbb | interval ) ;   (* a bound on one name *)
 ```
+
+**Assumptions** hold from the sentence to the end of the document (and in files that import it), like definitions. A condition in round brackets after a query or check, `\sqrt{y^2} = ? \quad (y < 0)`, holds for that display block only. Each condition bounds one name: `x > 0`, `0 < x \le 1`, `2x - 1 \ge 0`, `a \neq 0`, `n \in \mathbb{Z}`, `n \in \mathbb{N}`, `x \in [0, 1]`, `x \in \mathbb{R}`. Conditions that contradict the ones in force are an error, and so is assuming something about a name that already has a value.
 
 Every helper has an operator form that means the same thing: `\operatorname{crit} f = ?`, `\operatorname{extrema}_{[0,4]} f = ?`, `\operatorname{tangent}_{x=1} f = ?`, `\operatorname{solve}_x (x^2 = 4) = ?`.
 

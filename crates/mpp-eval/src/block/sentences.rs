@@ -15,9 +15,19 @@ impl Run<'_, '_> {
     /// The pass every result goes through: matrix arithmetic whose order doesn't matter,
     /// and the dimension check of values with units.
     pub(super) fn finish_value(&self, value: Expr) -> Result<Expr, EvalError> {
+        self.finish_logged(value, None)
+    }
+
+    /// [`Run::finish_value`], with the simplifications the assumptions allow recorded
+    /// in `steps` (and the reasons the safe form stays, when they don't).
+    pub(super) fn finish_logged(
+        &self,
+        value: Expr,
+        steps: Option<&mut mpp_core::Steps>,
+    ) -> Result<Expr, EvalError> {
         let value = crate::domains_wire::finish(&value).map_err(EvalError::Math)?;
         crate::units_wire::check(&value).map_err(EvalError::Math)?;
-        Ok(value)
+        Ok(self.with_assumptions(value, steps))
     }
 
     /// `Solve $x^2 = 4$ for $x$.`, `Solve $x + y = 3, x - y = 1$ for $x, y$.` and a

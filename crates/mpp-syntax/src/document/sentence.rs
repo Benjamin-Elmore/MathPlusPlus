@@ -1,5 +1,5 @@
 //! The sentence forms of grammar §3: `Using … from`, the helpers, `Analyse`,
-//! `Solve` and the `Let` convenience definition.
+//! `Solve`, `Assume` and the `Let` convenience definition.
 //!
 //! A sentence is recognised by its shape alone (words and `$…$` spans). Only
 //! once the shape fits is the maths parsed, so prose that merely starts with
@@ -48,6 +48,9 @@ pub(crate) fn parse_sentence(
         return Some(kind);
     }
     if let Some(kind) = solve(src, range, diags) {
+        return Some(kind);
+    }
+    if let Some(kind) = assume(src, range, diags) {
         return Some(kind);
     }
     let_sentence(src, range, diags)
@@ -169,6 +172,35 @@ fn solve(src: &str, range: Span, diags: &mut Vec<Diagnostic>) -> Option<BlockKin
         list
     });
     Some(BlockKind::Solve(Solve { equation, unknowns }))
+}
+
+/// `Assume $x > 0$.`, `Assume $n \in \mathbb{Z}$, $a \neq 0$ and $b > 1$.`
+fn assume(src: &str, range: Span, diags: &mut Vec<Diagnostic>) -> Option<BlockKind> {
+    let mut c = Cursor::new(src, range);
+    if !c.word("assume") {
+        return None;
+    }
+    let _ = c.word("that");
+    let mut spans = vec![c.math()?];
+    loop {
+        if c.eat(',') {
+            let _ = c.word("and");
+        } else if !c.word("and") {
+            break;
+        }
+        spans.push(c.math()?);
+    }
+    if !c.finish_sentence() {
+        return None;
+    }
+    let mut conditions = Vec::with_capacity(spans.len());
+    for s in spans {
+        // `$x, y > 0$` inside one span is two conditions sharing the relation.
+        let (node, d) = parse_expr(text(src, s), s.start);
+        diags.extend(d);
+        conditions.push(node);
+    }
+    Some(BlockKind::Assume(Assume { conditions }))
 }
 
 /// The equations of `Solve $…$`: one equation, or several separated by top-level

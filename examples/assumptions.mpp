@@ -1,0 +1,43 @@
+# Assumptions
+
+Without knowing anything about $x$, Math++ keeps the safe form and says why in the working (a query that ends in `?!` shows it):
+
+$$ \sqrt{x^2} = ? $$
+
+A power integral has two cases, so the answer is piecewise:
+
+$$ \int x^n \, dx = ? $$
+
+An improper integral that depends on a parameter:
+
+$$ \int_1^\infty x^{-p} \, dx = ? $$
+
+A condition in brackets holds for its block only:
+
+$$ \sqrt{y^2} = ? \quad (y < 0) $$
+
+From here on, $x$ is positive, $n$ is an integer and $a$ is negative.
+
+Assume $x > 0$.
+
+Assume $n \in \mathbb{Z}$, $a < 0$.
+
+$$ \sqrt{x^2} = ? $$
+
+$$ \ln(e^x) = ? $$
+
+$$ \cos(n \pi) = ? $$
+
+$$ \lim_{x \to \infty} e^{a x} = ? $$
+
+$$ \int_0^\infty e^{a x} \, dx = ? $$
+
+Assume $p > 1$.
+
+$$ \int_1^\infty x^{-p} \, dx = ? $$
+
+## Mistakes the checker catches
+
+Assumptions that contradict the ones above are an error:
+
+Assume $x < 0$.

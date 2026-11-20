@@ -59,6 +59,8 @@ pub enum BlockKind {
     Analyse(Analyse),
     /// `Solve $x^2 = 4$ for $x$.`
     Solve(Solve),
+    /// `Assume $x > 0$.`, `Assume $n \in \mathbb{Z}$, $a \neq 0$.`
+    Assume(Assume),
     /// `Let $a = 3$.` and prose that starts the same way.
     Let(Let),
     FootnoteDef {
@@ -260,6 +262,12 @@ pub struct Analyse {
 pub struct Solve {
     pub equation: Node,
     pub unknowns: Option<Vec<Node>>,
+}
+
+/// `Assume $cond$ {, $cond$} [and $cond$].`: facts about names, in force from here on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Assume {
+    pub conditions: Vec<Node>,
 }
 
 /// A paragraph that starts `Let $…$`: the maths in it defines variables.

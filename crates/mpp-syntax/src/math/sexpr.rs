@@ -164,6 +164,7 @@ impl Printer {
             }
             Clause::Range(r) => self.range(r),
             Clause::Condition(n) => format!("(if {})", self.node(n)),
+            Clause::Assumption(n) => format!("(assume {})", self.node(n)),
         }
     }
 
