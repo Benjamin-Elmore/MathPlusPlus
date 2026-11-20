@@ -127,8 +127,8 @@ mod tests {
         assert!((entropy(&[0.125; 8], 2.0).unwrap() - 3.0).abs() < 1e-14);
         assert_eq!(entropy(&[1.0, 0.0], 2.0).unwrap(), 0.0);
         assert!(entropy(&[0.5, 0.6], 2.0).is_err());
-        // BSC(0.11): 1 − H₂(0.11) = 0.5000847 (closed form, Cover & Thomas §7.1.4).
-        assert!((bsc_capacity(0.11).unwrap() - 0.500_084_7).abs() < 1e-6);
+        // BSC(0.11): 1 − H₂(0.11) = 0.50008404 (closed form, Cover & Thomas §7.1.4).
+        assert!((bsc_capacity(0.11).unwrap() - 0.500_084_04).abs() < 1e-8);
         // Independent X, Y: I = 0; X = Y uniform on 2: I = 1 bit.
         let ind = vec![vec![0.25, 0.25], vec![0.25, 0.25]];
         assert!(mutual_information(&ind).unwrap().abs() < 1e-15);

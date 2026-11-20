@@ -45,17 +45,6 @@ pub fn complex(z: Complex64) -> Expr {
     }
 }
 
-/// A matrix of approximate numbers.
-pub fn float_matrix_expr(rows: &[Vec<f64>]) -> Expr {
-    let r = rows.len();
-    let c = rows.first().map_or(0, Vec::len);
-    Expr::new(ExprNode::Matrix {
-        rows: r,
-        cols: c,
-        data: rows.iter().flatten().map(|&x| Expr::float(x)).collect(),
-    })
-}
-
 /// A matrix of exact expressions given row by row (rows must have equal length).
 pub fn matrix_expr(rows: Vec<Vec<Expr>>) -> Expr {
     let r = rows.len();
@@ -81,13 +70,6 @@ pub fn usize_arg(op: &str, e: &Expr, max: usize) -> MathResult<usize> {
     Ok(v)
 }
 
-/// A signed machine integer argument.
-pub fn i64_arg(op: &str, e: &Expr) -> MathResult<i64> {
-    int_arg(op, e)?
-        .to_i64()
-        .ok_or_else(|| MathError::TooLarge(format!("{e} in {op}")))
-}
-
 /// A positive integer argument.
 pub fn positive_int(op: &str, e: &Expr) -> MathResult<BigInt> {
     let n = int_arg(op, e)?;
@@ -110,11 +92,6 @@ pub fn complex_arg(op: &str, e: &Expr) -> MathResult<Complex64> {
     } else {
         Err(domain_err(op, format!("{e} is not a finite number")))
     }
-}
-
-/// A list of reals: one tuple/vector argument, or the arguments themselves.
-pub fn real_list(op: &str, args: &[Expr]) -> MathResult<Vec<f64>> {
-    items(op, args)?.iter().map(|x| real_arg(op, x)).collect()
 }
 
 /// The items of one list-like argument (tuple, set or vector).

@@ -1,0 +1,62 @@
+# Functions across the fields
+
+A tour of the wider function library: number theory, special functions, analysis, discrete maths, probability and information, algebra and applied maths. Each line asks for a value with `= ?`.
+
+## Number theory
+
+The divisor count, the divisor sum, the Möbius function and the prime count:
+$\operatorname{divcount}(360) = ?$, $\operatorname{divsum}(28) = ?$, $\operatorname{mobius}(30) = ?$, $\operatorname{primepi}(1000) = ?$.
+
+The 2-adic absolute value of 8 is $\operatorname{padicabs}(2, 8) = ?$.
+
+$\sqrt 7$ has a periodic continued fraction (the inner group repeats): $\operatorname{contfrac}(\sqrt 7) = ?$. The convergents of the golden ratio are ratios of Fibonacci numbers:
+$\operatorname{convergents}\big(\tfrac{1 + \sqrt 5}{2}, 6\big) = ?$.
+
+In the Gaussian integers 5 splits: $\operatorname{gaussfactor}(5) = ?$. In $\mathbb F_8 = \mathbb F_2[x]/(x^3 + x + 1)$, $x \cdot x^2$ is $\operatorname{gfmul}(2, 3, (0, 1, 0), (0, 0, 1)) = ?$.
+
+$\zeta(2) = ?$, $\zeta(3) = ?$, and the Leibniz series $L(1, \chi_4) = \operatorname{dirichletl}(1, (1, 0, -1, 0)) = ?$.
+
+## Special functions
+
+$\operatorname{erf}(\tfrac12) = ?$, $\operatorname{lambertw}(1) = ?$, $\operatorname{lambertw}(-\tfrac1{10}, -1) = ?$, $\operatorname{besselj}(0, 1) = ?$, $\operatorname{beta}(\tfrac12, \tfrac12) = ?$, $\operatorname{legendrep}(2, x) = ?$.
+
+The pendulum lab needs the complete elliptic integral with modulus $\sin 15°$: $\operatorname{ellipk}(\sin\tfrac{\pi}{12}) = ?$.
+
+## Analysis
+
+Pairing $\delta'$ with $\sin$ gives $-\cos 0$: $\operatorname{diracpair}(\sin x, x, 1) = ?$.
+
+$\operatorname{dft}((1, 2, 3, 4)) = ?$
+
+## Discrete maths
+
+$\operatorname{catalan}(10) = ?$, and the standard Young tableaux of shape $(4, 3, 1)$: $\operatorname{hooklength}((4, 3, 1)) = ?$.
+
+$K_4$ has $\operatorname{spanningtrees}(((1,2), (1,3), (1,4), (2,3), (2,4), (3,4))) = ?$ spanning trees, and every 2-colouring of $K_6$ has a one-colour triangle: $\operatorname{ramsey}(3, 3, 6) = ?$.
+
+$$ G := \begin{pmatrix} 1 & 0 & 0 & 0 & 1 & 1 & 0 \\ 0 & 1 & 0 & 0 & 1 & 0 & 1 \\ 0 & 0 & 1 & 0 & 0 & 1 & 1 \\ 0 & 0 & 0 & 1 & 1 & 1 & 1 \end{pmatrix} $$
+$\operatorname{codeparams}(G, 2) = ?$
+
+## Probability and information
+
+$$ P := \begin{pmatrix} \tfrac12 & \tfrac12 \\ \tfrac14 & \tfrac34 \end{pmatrix} $$
+$\operatorname{stationary}(P) = ?$
+
+%seed 42
+
+$\operatorname{montecarlo}\big(4 \cdot \mathbf 1[x^2 + y^2 \le 1], ((x, 0, 1), (y, 0, 1)), 10^5, 42\big) = ?$
+
+$\operatorname{entropy}((\tfrac12, \tfrac14, \tfrac14)) = ?$ bits, and a binary symmetric channel with flip probability 0.11 carries $\operatorname{bsccapacity}(0.11) = ?$ bits per use.
+
+## Algebra
+
+$$ J := \begin{pmatrix} 0 & -1 \\ 1 & 0 \end{pmatrix} $$
+$\operatorname{expm}(J, t) = ?$, $\operatorname{chartable}(S_3) = ?$.
+
+## Applied maths
+
+$\operatorname{gamevalue}\begin{pmatrix} 3 & 1 \\ 2 & 4 \end{pmatrix} = ?$
+
+Hamilton's equations for the oscillator $H = \tfrac12(p^2 + q^2)$: $\operatorname{hamilton}(H, q, p) = ?$.
+
+A call at 10 on a spot of 100, strike 100, $r = 5\%$, one year: the put is $\operatorname{putfromcall}(10, 100, 100, \tfrac1{20}, 1) = ?$.
