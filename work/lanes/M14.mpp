@@ -1,0 +1,17 @@
+# Lane request: M14 (ide)
+
+## Blocking: merge of wip/render into feat/engine does not compile
+
+`crates/mpp-eval/src/lower.rs` line 171 matches `NodeKind` exhaustively. wip/render
+added `NodeKind::Placeholder { .. }` to mpp-syntax, so the match fails (E0004).
+Needed one-line change, owned by the engine lane / integrator:
+
+    K::Error | K::Placeholder { .. } => Err(fail(span, EvalError::Silent)),
+
+The ide lane does not own mpp-eval, so it has not made this edit. Once it is on
+feat/engine (or applied by the integrator), merge it into wip/ide and the ide lane
+continues.
+
+## Dependencies the ide crate adds (Cargo.lock is integrator-only)
+
+eframe 0.37, egui 0.37, lyon_tessellation 1, rfd 0.18; dev: egui_kittest 0.37.
