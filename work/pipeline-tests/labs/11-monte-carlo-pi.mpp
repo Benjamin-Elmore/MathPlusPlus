@@ -1,0 +1,22 @@
+Title: Lab 11: Estimating pi by Monte Carlo
+Author: Math++ pipeline test (probability / maths)
+
+%{
+**Pipeline expectations.** With seed 42 and $N = 10^6$ samples, the estimate is within $3\sigma \approx 0.0049$ of $\pi$. The standard error formula gives $\sigma \approx 0.00164$. The same seed always gives the same estimate (reproducible). A convergence plot shows the error shrinking like $1/\sqrt N$. Needs seeded random sampling (N5/N16).
+%}
+
+%seed 42
+
+## Setup
+Let $N := 10^6$. Draw points $(X_j, Y_j)$ uniformly from the unit square, $j = 1, \dots, N$.
+
+$$ X_j, Y_j \sim \mathrm{Uniform}[0, 1] $$
+
+A point lands in the quarter circle when $X_j^2 + Y_j^2 \le 1$, which happens with probability $p = \pi/4$.
+
+## Results
+$$ \hat\pi := \frac{4}{N} \sum_{j=1}^{N} \mathbf 1\big[X_j^2 + Y_j^2 \le 1\big] \approx ? $$
+$$ \sigma := 4\sqrt{\frac{p(1 - p)}{N}} \approx ? \qquad |\hat\pi - \pi| < 3\sigma \overset{?}{=} \text{true} $$
+
+Figure: the first 2000 points, inside and outside the quarter circle.
+Figure: $|\hat\pi_n - \pi|$ against $n$ on log axes, with $3\sigma(n)$.

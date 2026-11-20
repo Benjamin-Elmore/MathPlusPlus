@@ -1,0 +1,26 @@
+Title: The square root of 2 is irrational
+Author: Pythagorean school (5th century BC), as in Euclid, *Elements* X; written out for the Math++ pipeline tests
+Abstract: The classic parity argument. Tests a proof by contradiction with a lemma that is proved inline and checked by algebra.
+
+%{
+**Pipeline expectations.** Status: **proved**, with no cited results and no gaps. Lemma 1 is checked symbolically: $(2m+1)^2 = 2(2m^2+2m)+1$. Theorem 2's steps 2 and 4 are checked by algebra; the rest are checked as structure.
+%}
+
+**Lemma 1.** If $p^2$ is even, then $p$ is even.
+
+**Proof.**
+1. Suppose $p$ is odd, so $p = 2m + 1$ for an integer $m$ — by assumption.
+2. $p^2 = 4m^2 + 4m + 1 = 2(2m^2 + 2m) + 1$, which is odd — by algebra.
+3. That contradicts $p^2$ being even, so $p$ is even — by contradiction.
+∎
+
+**Theorem 2.** $\sqrt 2$ is irrational.
+
+**Proof.**
+1. Suppose $\sqrt 2 = p / q$ with integers $p, q$, $q \ne 0$ and $\gcd(p, q) = 1$ — by assumption (any fraction can be put in lowest terms).
+2. Then $p^2 = 2 q^2$, so $p^2$ is even — by algebra.
+3. So $p = 2r$ for an integer $r$ — by Lemma 1.
+4. Then $4 r^2 = 2 q^2$, so $q^2 = 2 r^2$ is even — by algebra.
+5. So $q$ is even — by Lemma 1.
+6. So $2 \mid \gcd(p, q)$, contradicting $\gcd(p, q) = 1$ — by contradiction.
+∎
