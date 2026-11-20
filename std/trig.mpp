@@ -1,0 +1,171 @@
+# Trigonometry
+
+Special-angle values, the identities, the laws for solving triangles, and degree–radian conversion. Angles are in radians unless written with a degree sign ($30^\circ$). Import with `![[std/trig.mpp]]`.
+
+## Special angles
+
+The sine, cosine and tangent at the standard angles $0$, $\pi/6$, $\pi/4$, $\pi/3$ and $\pi/2$.
+
+$$ \sin 0 \overset{?}{=} 0 $$
+
+$$ \sin\frac{\pi}{6} \overset{?}{=} \frac{1}{2} $$
+
+$$ \sin\frac{\pi}{4} \overset{?}{=} \frac{\sqrt{2}}{2} $$
+
+$$ \sin\frac{\pi}{3} \overset{?}{=} \frac{\sqrt{3}}{2} $$
+
+$$ \sin\frac{\pi}{2} \overset{?}{=} 1 $$
+
+$$ \cos 0 \overset{?}{=} 1 $$
+
+$$ \cos\frac{\pi}{6} \overset{?}{=} \frac{\sqrt{3}}{2} $$
+
+$$ \cos\frac{\pi}{4} \overset{?}{=} \frac{1}{\sqrt{2}} $$
+
+$$ \cos\frac{\pi}{3} \overset{?}{=} \frac{1}{2} $$
+
+$$ \cos\frac{\pi}{2} \overset{?}{=} 0 $$
+
+$$ \tan\frac{\pi}{6} \overset{?}{=} \frac{1}{\sqrt{3}} $$
+
+$$ \tan\frac{\pi}{4} \overset{?}{=} 1 $$
+
+$$ \tan\frac{\pi}{3} \overset{?}{=} \sqrt{3} $$
+
+$$ \sin \pi \overset{?}{=} 0 $$
+
+$$ \cos \pi \overset{?}{=} -1 $$
+
+## Degrees and radians
+
+Degrees to radians and back: a full turn is $360^\circ = 2\pi$.
+
+$$ \theta_{\text{rad}}(d) := \frac{\pi d}{180} $$
+
+$$ \theta_{\text{rad}}(30) \overset{?}{=} \frac{\pi}{6} $$
+
+$$ \theta_{\text{deg}}(r) := \frac{180 r}{\pi} $$
+
+$$ \theta_{\text{deg}}(\tfrac{\pi}{4}) \overset{?}{=} 45 $$
+
+$$ \sin(\theta_{\text{rad}}(30)) \overset{?}{=} \frac{1}{2} $$
+
+## Reciprocal functions and their inverses
+
+The secant, cosecant and cotangent.
+
+$$ \sec x \overset{?}{=} \frac{1}{\cos x} $$
+
+$$ \csc x \overset{?}{=} \frac{1}{\sin x} $$
+
+$$ \cot x \overset{?}{=} \frac{\cos x}{\sin x} $$
+
+$$ \sec\frac{\pi}{3} \overset{?}{=} 2 $$
+
+Their inverses, through the inverse sine, cosine and tangent.
+
+$$ \mathrm{arcsec}(x) \overset{?}{=} \arccos\frac{1}{x} $$
+
+$$ \mathrm{arccsc}(x) \overset{?}{=} \arcsin\frac{1}{x} $$
+
+$$ \sec^{-1}(2) \overset{?}{=} \frac{\pi}{3} $$
+
+$$ \cot^{-1}(1) \overset{?}{=} \frac{\pi}{4} $$
+
+$$ \arcsin\frac{1}{2} \overset{?}{=} \frac{\pi}{6} $$
+
+$$ \arctan 1 \overset{?}{=} \frac{\pi}{4} $$
+
+## Pythagorean identities
+
+$$ \sin^2 x + \cos^2 x \overset{?}{=} 1 $$
+
+$$ 1 + \tan^2 x \overset{?}{=} \sec^2 x $$
+
+$$ 1 + \cot^2 x \overset{?}{=} \csc^2 x $$
+
+## Sum and difference formulas
+
+$$ \sin(a + b) \overset{?}{=} \sin a \cos b + \cos a \sin b $$
+
+$$ \sin(a - b) \overset{?}{=} \sin a \cos b - \cos a \sin b $$
+
+$$ \cos(a + b) \overset{?}{=} \cos a \cos b - \sin a \sin b $$
+
+$$ \cos(a - b) \overset{?}{=} \cos a \cos b + \sin a \sin b $$
+
+$$ \tan(a + b) \overset{?}{=} \frac{\tan a + \tan b}{1 - \tan a \tan b} $$
+
+## Double- and half-angle formulas
+
+$$ \sin(2x) \overset{?}{=} 2 \sin x \cos x $$
+
+$$ \cos(2x) \overset{?}{=} \cos^2 x - \sin^2 x $$
+
+$$ \cos(2x) \overset{?}{=} 1 - 2\sin^2 x $$
+
+$$ \tan(2x) \overset{?}{=} \frac{2 \tan x}{1 - \tan^2 x} $$
+
+$$ \sin^2\frac{x}{2} \overset{?}{=} \frac{1 - \cos x}{2} $$
+
+$$ \cos^2\frac{x}{2} \overset{?}{=} \frac{1 + \cos x}{2} $$
+
+$$ \tan\frac{x}{2} \overset{?}{=} \frac{\sin x}{1 + \cos x} $$
+
+## Power-reducing formulas
+
+$$ \sin^2 x \overset{?}{=} \frac{1 - \cos(2x)}{2} $$
+
+$$ \cos^2 x \overset{?}{=} \frac{1 + \cos(2x)}{2} $$
+
+$$ \sin^3 x \overset{?}{=} \frac{3 \sin x - \sin(3x)}{4} $$
+
+$$ \cos^3 x \overset{?}{=} \frac{3 \cos x + \cos(3x)}{4} $$
+
+## Product-to-sum and sum-to-product formulas
+
+$$ \sin a \cos b \overset{?}{=} \frac{\sin(a + b) + \sin(a - b)}{2} $$
+
+$$ \cos a \cos b \overset{?}{=} \frac{\cos(a - b) + \cos(a + b)}{2} $$
+
+$$ \sin a \sin b \overset{?}{=} \frac{\cos(a - b) - \cos(a + b)}{2} $$
+
+$$ \sin a + \sin b \overset{?}{=} 2 \sin\frac{a + b}{2} \cos\frac{a - b}{2} $$
+
+$$ \cos a + \cos b \overset{?}{=} 2 \cos\frac{a + b}{2} \cos\frac{a - b}{2} $$
+
+## Solving triangles
+
+In a triangle with sides $a$, $b$, $c$ opposite the angles $A$, $B$, $C$:
+
+The law of cosines gives the third side from two sides and the angle between them.
+
+$$ c_{\text{cos}}(a, b, C) := \sqrt{a^2 + b^2 - 2ab \cos C} $$
+
+$$ c_{\text{cos}}(3, 4, \tfrac{\pi}{2}) \overset{?}{=} 5 $$
+
+$$ c_{\text{cos}}(1, 1, \tfrac{\pi}{3}) \overset{?}{=} 1 $$
+
+The law of sines gives a side from another side and two angles: $a / \sin A = b / \sin B$.
+
+$$ b_{\text{sin}}(a, A, B) := \frac{a \sin B}{\sin A} $$
+
+$$ b_{\text{sin}}(1, \tfrac{\pi}{6}, \tfrac{\pi}{2}) \overset{?}{=} 2 $$
+
+The law of tangents.
+
+$$ \frac{a - b}{a + b} \overset{?}{=} \frac{\tan\frac{A - B}{2}}{\tan\frac{A + B}{2}}, \quad a = \frac{\sin A}{\sin C}, \quad b = \frac{\sin B}{\sin C} $$
+
+The area from two sides and the angle between them.
+
+$$ A_{\text{SAS}}(a, b, C) := \frac{1}{2} a b \sin C $$
+
+$$ A_{\text{SAS}}(2, 3, \tfrac{\pi}{6}) \overset{?}{=} \frac{3}{2} $$
+
+Heron's formula: the area from the three sides, with the semi-perimeter $s = (a + b + c)/2$.
+
+$$ A_{\text{Heron}}(a, b, c) := \frac{1}{4}\sqrt{(a + b + c)(-a + b + c)(a - b + c)(a + b - c)} $$
+
+$$ A_{\text{Heron}}(3, 4, 5) \overset{?}{=} 6 $$
+
+$$ A_{\text{Heron}}(13, 14, 15) \overset{?}{=} 84 $$

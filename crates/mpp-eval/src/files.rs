@@ -273,9 +273,11 @@ impl Default for FileImporter {
 }
 
 impl FileImporter {
-    /// An importer reading files from disk.
+    /// An importer reading files from disk, with the standard library (`std/…`) first.
     pub fn new() -> Self {
-        FileImporter::with_source(Arc::new(FsSource))
+        FileImporter::with_source(Arc::new(LayeredSource::over_files(
+            crate::stdlib::embedded(),
+        )))
     }
 
     /// An importer reading through `source`.

@@ -1,0 +1,287 @@
+# Physics
+
+Physical constants with their units, and the formula sheet of mechanics, waves, gases and circuits. Constants are the CODATA 2022 recommended values (NIST, May 2024); the seven SI defining constants and the ones built from them are exact, the measured ones carry their last digits as published. Formulas take SI values (metres, kilograms, seconds, newtons …), with or without units written. Import with `![[std/physics.mpp]]` or `Using $c, h$ from [[std/physics.mpp]].`
+
+Name clashes: the elementary charge is `q_e` here, so $e$ stays Euler's number; the Stefan–Boltzmann constant is `\sigma_{\text{SB}}`, so $\sigma(n)$ stays the divisor sum; $G$ is the gravitational constant here and Catalan's constant in [[std/constants.mpp]].
+
+## Exact constants (SI 2019)
+
+The speed of light in vacuum.
+
+$$ c \equiv 299792458\,\mathrm{m/s} $$
+
+The Planck constant, and the reduced Planck constant $\hbar = h/(2\pi)$.
+
+$$ h \equiv 6.62607015 \times 10^{-34}\,\mathrm{J\,s} $$
+
+$$ \hbar \equiv \frac{h}{2\pi} $$
+
+$$ \frac{\hbar}{h} \overset{?}{=} \frac{1}{2\pi} $$
+
+$$ \frac{\hbar}{1\,\mathrm{J\,s}} \overset{?}{=} 1.054571817646156 \times 10^{-34} $$
+
+The elementary charge.
+
+$$ q_e \equiv 1.602176634 \times 10^{-19}\,\mathrm{C} $$
+
+The Boltzmann constant and the Avogadro constant, and the molar gas constant $R = N_A k_B$.
+
+$$ k_B \equiv 1.380649 \times 10^{-23}\,\mathrm{J/K} $$
+
+$$ N_A \equiv 6.02214076 \times 10^{23}\,\mathrm{mol^{-1}} $$
+
+$$ R \equiv N_A k_B $$
+
+$$ \frac{R}{N_A k_B} \overset{?}{=} 1 $$
+
+$$ \frac{N_A}{1\,\mathrm{mol^{-1}}} \cdot \frac{k_B}{1\,\mathrm{J/K}} \overset{?}{=} 8.31446261815324 $$
+
+Standard gravity (exact by definition, CGPM 1901).
+
+$$ g_0 \equiv 9.80665\,\mathrm{m/s^2} $$
+
+The Stefan–Boltzmann constant, exact from $2\pi^5 k_B^4/(15 h^3 c^2)$.
+
+$$ \sigma_{\text{SB}} \equiv 5.670374419184429 \times 10^{-8}\,\mathrm{W/(m^2\,K^4)} $$
+
+$$ \frac{2 \pi^5 (1.380649 \times 10^{-23})^4}{15 (6.62607015 \times 10^{-34})^3 \cdot 299792458^2} \overset{?}{=} 5.670374419184429 \times 10^{-8} $$
+
+## Measured constants (CODATA 2022)
+
+The Newtonian constant of gravitation, $\pm 0.00015 \times 10^{-11}$.
+
+$$ G \equiv 6.67430 \times 10^{-11}\,\mathrm{m^3/(kg\,s^2)} $$
+
+The vacuum permittivity and permeability; $c^2 \mu_0 \varepsilon_0 = 1$ to within their uncertainty.
+
+$$ \varepsilon_0 \equiv 8.8541878188 \times 10^{-12}\,\mathrm{F/m} $$
+
+$$ \mu_0 \equiv 1.25663706127 \times 10^{-6}\,\mathrm{N/A^2} $$
+
+$$ 299792458^2 \cdot 1.25663706127 \times 10^{-6} \cdot 8.8541878188 \times 10^{-12} \overset{?}{=} 1 $$
+
+The electron and proton masses.
+
+$$ m_e \equiv 9.1093837139 \times 10^{-31}\,\mathrm{kg} $$
+
+$$ m_p \equiv 1.67262192595 \times 10^{-27}\,\mathrm{kg} $$
+
+$$ \frac{m_p}{m_e} \overset{?}{=} 1836.152673426 $$
+
+The fine-structure constant, $\alpha = q_e^2/(4\pi\varepsilon_0\hbar c)$, a pure number.
+
+$$ \alpha_{\text{fs}} \equiv 7.2973525643 \times 10^{-3} $$
+
+$$ \frac{(1.602176634 \times 10^{-19})^2 \cdot 2\pi}{4 \pi \cdot 8.8541878188 \times 10^{-12} \cdot 6.62607015 \times 10^{-34} \cdot 299792458} \overset{?}{=} \alpha_{\text{fs}} $$
+
+$$ \frac{1}{\alpha_{\text{fs}}} \overset{?}{=} 137.035999177 $$
+
+## Kinematics (suvat)
+
+Constant acceleration $a$ from initial velocity $u$, after time $t$: the final velocity, the displacement, the velocity after a displacement $s$, and the displacement from the two velocities.
+
+$$ v_{\text{suvat}}(u, a, t) := u + a t $$
+
+$$ v_{\text{suvat}}(0, 9.8, 3) \overset{?}{=} 29.4 $$
+
+$$ s_{\text{suvat}}(u, a, t) := u t + \frac{1}{2} a t^2 $$
+
+$$ s_{\text{suvat}}(0, 9.8, 2) \overset{?}{=} 19.6 $$
+
+$$ v_{\text{from s}}(u, a, s) := \sqrt{u^2 + 2 a s} $$
+
+$$ v_{\text{from s}}(3, 2, 4) \overset{?}{=} 5 $$
+
+$$ s_{\text{avg}}(u, v, t) := \frac{(u + v) t}{2} $$
+
+$$ s_{\text{avg}}(2, 8, 3) \overset{?}{=} 15 $$
+
+The four agree: the displacement from the average velocity equals the suvat displacement.
+
+$$ s_{\text{avg}}(u, v_{\text{suvat}}(u, a, t), t) \overset{?}{=} s_{\text{suvat}}(u, a, t) $$
+
+The time of flight and range of a projectile launched at speed $v$ and angle $\theta$ over level ground, with gravitational acceleration $a$.
+
+$$ T_{\text{flight}}(v, \theta, a) := \frac{2 v \sin\theta}{a} $$
+
+$$ T_{\text{flight}}(10, \tfrac{\pi}{6}, 10) \overset{?}{=} 1 $$
+
+$$ R_{\text{range}}(v, \theta, a) := \frac{v^2 \sin(2\theta)}{a} $$
+
+$$ R_{\text{range}}(10, \tfrac{\pi}{4}, 10) \overset{?}{=} 10 $$
+
+## Forces, energy and momentum
+
+Newton's second law, $F = m a$.
+
+$$ F_{\text{net}}(m, a) := m a $$
+
+$$ F_{\text{net}}(2, 3) \overset{?}{=} 6 $$
+
+The work done by a force $F$ through a distance $d$ at angle $\theta$, and power as work per time.
+
+$$ W_{\text{work}}(F, d, \theta) := F d \cos\theta $$
+
+$$ W_{\text{work}}(10, 5, \tfrac{\pi}{3}) \overset{?}{=} 25 $$
+
+$$ P_{\text{power}}(W, t) := \frac{W}{t} $$
+
+$$ P_{\text{power}}(600, 2) \overset{?}{=} 300 $$
+
+Kinetic energy, and potential energy at height $h$ with gravitational acceleration $a$.
+
+$$ E_{\text{k}}(m, v) := \frac{1}{2} m v^2 $$
+
+$$ E_{\text{k}}(2, 3) \overset{?}{=} 9 $$
+
+$$ E_{\text{p}}(m, a, h) := m a h $$
+
+$$ E_{\text{p}}(2, 9.8, 10) \overset{?}{=} 196 $$
+
+Energy conservation: a body falling from rest through height $h$ arrives with $E_k = E_p$.
+
+$$ E_{\text{k}}(m, v_{\text{from s}}(0, a, h)) \overset{?}{=} E_{\text{p}}(m, a, h), \quad m = 3, \quad a = 9.8, \quad h = 5 $$
+
+Momentum, and the velocity after a perfectly inelastic collision.
+
+$$ p_{\text{mom}}(m, v) := m v $$
+
+$$ p_{\text{mom}}(3, 4) \overset{?}{=} 12 $$
+
+$$ v_{\text{inelastic}}(m_1, v_1, m_2, v_2) := \frac{m_1 v_1 + m_2 v_2}{m_1 + m_2} $$
+
+$$ v_{\text{inelastic}}(2, 3, 1, 0) \overset{?}{=} 2 $$
+
+Mass–energy and the photon: $E = m c^2$, $E = h f$, and the de Broglie wavelength $\lambda = h/p$.
+
+$$ E_{\text{rest}}(m) := m c^2 $$
+
+$$ \frac{E_{\text{rest}}(2)}{c^2} \overset{?}{=} 2 $$
+
+$$ E_{\text{photon}}(f) := h f $$
+
+$$ \frac{E_{\text{photon}}(5 \times 10^{14})}{h} \overset{?}{=} 5 \times 10^{14} $$
+
+$$ \lambda_{\text{dB}}(p) := \frac{h}{p} $$
+
+$$ \lambda_{\text{dB}}(h) \overset{?}{=} 1 $$
+
+## Circular motion and gravitation
+
+Centripetal acceleration and force, and angular speed from the period.
+
+$$ a_{\text{c}}(v, r) := \frac{v^2}{r} $$
+
+$$ a_{\text{c}}(10, 5) \overset{?}{=} 20 $$
+
+$$ F_{\text{c}}(m, v, r) := \frac{m v^2}{r} $$
+
+$$ F_{\text{c}}(2, 10, 5) \overset{?}{=} 40 $$
+
+$$ \omega_{\text{ang}}(T) := \frac{2\pi}{T} $$
+
+$$ \omega_{\text{ang}}(\pi) \overset{?}{=} 2 $$
+
+Newton's law of gravitation, and the surface gravity of a body of mass $M$ and radius $r$.
+
+$$ F_{\text{grav}}(m_1, m_2, r) := \frac{G m_1 m_2}{r^2} $$
+
+$$ \frac{F_{\text{grav}}(3, 4, 2)}{G} \overset{?}{=} 3 $$
+
+$$ g_{\text{surface}}(M, r) := \frac{G M}{r^2} $$
+
+$$ \frac{g_{\text{surface}}(5.972 \times 10^{24}, 6.371 \times 10^{6})}{G} \overset{?}{=} \frac{5.972 \times 10^{24}}{(6.371 \times 10^{6})^2} $$
+
+The period of a circular orbit of radius $r$ about a mass $M$ (Kepler's third law).
+
+$$ T_{\text{orbit}}(M, r) := 2\pi \sqrt{\frac{r^3}{G M}} $$
+
+$$ T_{\text{orbit}}(M, r)^2 \cdot G \overset{?}{=} \frac{4\pi^2 r^3}{M}, \quad M = 2, \quad r = 3 $$
+
+## Waves and oscillations
+
+Wave speed from frequency and wavelength, and the period of a frequency.
+
+$$ v_{\text{wave}}(f, \lambda) := f \lambda $$
+
+$$ v_{\text{wave}}(440, 0.78) \overset{?}{=} 343.2 $$
+
+$$ T_{\text{period}}(f) := \frac{1}{f} $$
+
+$$ T_{\text{period}}(50) \overset{?}{=} 0.02 $$
+
+The periods of a simple pendulum (small swings) and of a mass on a spring.
+
+$$ T_{\text{pendulum}}(L, a) := 2\pi \sqrt{\frac{L}{a}} $$
+
+$$ T_{\text{pendulum}}(1, \pi^2) \overset{?}{=} 2 $$
+
+$$ T_{\text{spring}}(m, k) := 2\pi \sqrt{\frac{m}{k}} $$
+
+$$ T_{\text{spring}}(1, 4\pi^2) \overset{?}{=} 1 $$
+
+## Gases
+
+The ideal gas law $P V = n R T$, solved for the pressure.
+
+$$ P_{\text{ideal}}(n, T, V) := \frac{n R T}{V} $$
+
+$$ \frac{P_{\text{ideal}}(2, 300, 0.05)}{R} \overset{?}{=} 12000 $$
+
+## Electricity
+
+Ohm's law, $V = I R$ (the resistance is the second argument).
+
+$$ V_{\text{Ohm}}(I, r) := I r $$
+
+$$ V_{\text{Ohm}}(2, 6) \overset{?}{=} 12 $$
+
+Electrical power three ways.
+
+$$ P_{\text{elec}}(V, I) := V I $$
+
+$$ P_{\text{elec}}(12, 2) \overset{?}{=} V_{\text{Ohm}}(2, 6) \cdot 2 $$
+
+Resistors in series and in parallel (inductors combine the same way).
+
+$$ R_{\text{series}}(a, b) := a + b $$
+
+$$ R_{\text{series}}(3, 6) \overset{?}{=} 9 $$
+
+$$ R_{\text{parallel}}(a, b) := \frac{a b}{a + b} $$
+
+$$ R_{\text{parallel}}(3, 6) \overset{?}{=} 2 $$
+
+$$ \frac{1}{R_{\text{parallel}}(a, b)} \overset{?}{=} \frac{1}{a} + \frac{1}{b} $$
+
+Capacitors combine the other way round.
+
+$$ C_{\text{series}}(a, b) := \frac{a b}{a + b} $$
+
+$$ C_{\text{series}}(2, 2) \overset{?}{=} 1 $$
+
+$$ C_{\text{parallel}}(a, b) := a + b $$
+
+$$ C_{\text{parallel}}(2, 2) \overset{?}{=} 4 $$
+
+$$ L_{\text{series}}(a, b) := a + b $$
+
+$$ L_{\text{series}}(1, 2) \overset{?}{=} 3 $$
+
+The time constant of an RC circuit and the charge left after time $t$.
+
+$$ \tau_{\text{RC}}(r, C) := r C $$
+
+$$ \tau_{\text{RC}}(1000, 0.001) \overset{?}{=} 1 $$
+
+$$ Q_{\text{RC}}(Q_0, t, r, C) := Q_0 e^{-t / (r C)} $$
+
+$$ Q_{\text{RC}}(1, 1, 1000, 0.001) \overset{?}{=} e^{-1} $$
+
+Coulomb's law, $F = q_1 q_2/(4\pi\varepsilon_0 r^2)$.
+
+$$ F_{\text{Coulomb}}(q_1, q_2, r) := \frac{q_1 q_2}{4 \pi \varepsilon_0 r^2} $$
+
+$$ F_{\text{Coulomb}}(1, 1, 1) \cdot 4 \pi \varepsilon_0 \overset{?}{=} 1 $$
+
+$$ F_{\text{Coulomb}}(2, 3, 2) \cdot 4 \pi \varepsilon_0 \overset{?}{=} \frac{3}{2} $$

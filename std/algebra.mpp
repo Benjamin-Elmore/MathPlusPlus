@@ -1,0 +1,139 @@
+# Algebra
+
+Formulas for solving polynomial equations, expanding powers, summing series and working with logarithms and exponents. Import with `![[std/algebra.mpp]]`.
+
+## The quadratic formula
+
+The discriminant of $a x^2 + b x + c$: two real roots when it is positive, one when it is zero, none when it is negative.
+
+$$ \Delta(a, b, c) := b^2 - 4ac $$
+
+$$ \Delta(1, -3, 2) \overset{?}{=} 1 $$
+
+The larger root of $a x^2 + b x + c = 0$ (for $a > 0$), from the quadratic formula.
+
+$$ x_{\text{plus}}(a, b, c) := \frac{-b + \sqrt{b^2 - 4ac}}{2a} $$
+
+$$ x_{\text{plus}}(1, -3, 2) \overset{?}{=} 2 $$
+
+The smaller root.
+
+$$ x_{\text{minus}}(a, b, c) := \frac{-b - \sqrt{b^2 - 4ac}}{2a} $$
+
+$$ x_{\text{minus}}(1, -3, 2) \overset{?}{=} 1 $$
+
+Vieta's formulas: the roots add to $-b/a$ and multiply to $c/a$.
+
+$$ x_{\text{plus}}(a, b, c) + x_{\text{minus}}(a, b, c) \overset{?}{=} -\frac{b}{a} $$
+
+$$ x_{\text{plus}}(a, b, c) \cdot x_{\text{minus}}(a, b, c) \overset{?}{=} \frac{c}{a} $$
+
+Completing the square.
+
+$$ a x^2 + b x + c \overset{?}{=} a \left(x + \frac{b}{2a}\right)^2 + c - \frac{b^2}{4a} $$
+
+## The cubic formula
+
+Cardano's formula: a real root of the depressed cubic $t^3 + p t + q = 0$ when $q^2/4 + p^3/27 \ge 0$ (every cubic becomes depressed after $x = t - b/(3a)$).
+
+$$ t_{\text{Cardano}}(p, q) := \mathrm{cbrt}\left(-\frac{q}{2} + \sqrt{\frac{q^2}{4} + \frac{p^3}{27}}\right) + \mathrm{cbrt}\left(-\frac{q}{2} - \sqrt{\frac{q^2}{4} + \frac{p^3}{27}}\right) $$
+
+$t^3 - 3t - 18 = 0$ has the root $t = 3$.
+
+$$ t_{\text{Cardano}}(-3, -18) \overset{?}{=} 3 $$
+
+$$ t_{\text{Cardano}}(-6, -9) \overset{?}{=} 3 $$
+
+## Powers and products
+
+The binomial theorem, written out for $n = 5$; the coefficients are a row of Pascal's triangle.
+
+$$ (a + b)^5 \overset{?}{=} \sum_{k=0}^{5} \binom{5}{k} a^k b^{5-k} $$
+
+$$ (a + b)^3 \overset{?}{=} a^3 + 3a^2 b + 3a b^2 + b^3 $$
+
+$$ \sum_{k=0}^{10} \binom{10}{k} \overset{?}{=} 2^{10} $$
+
+Difference of squares, difference and sum of cubes.
+
+$$ a^2 - b^2 \overset{?}{=} (a - b)(a + b) $$
+
+$$ a^3 - b^3 \overset{?}{=} (a - b)(a^2 + ab + b^2) $$
+
+$$ a^3 + b^3 \overset{?}{=} (a + b)(a^2 - ab + b^2) $$
+
+## Series
+
+The sum of the first $n$ terms of the arithmetic series $a, a + d, a + 2d, …$
+
+$$ S_{\text{arith}}(a, d, n) := \frac{n}{2}(2a + (n - 1)d) $$
+
+$$ \sum_{k=0}^{n-1} (a + k d) \overset{?}{=} S_{\text{arith}}(a, d, n) $$
+
+$$ S_{\text{arith}}(1, 1, 100) \overset{?}{=} 5050 $$
+
+The sum of the first $n$ terms of the geometric series $a, a r, a r^2, …$ ($r \ne 1$).
+
+$$ S_{\text{geom}}(a, r, n) := a \frac{1 - r^n}{1 - r} $$
+
+$$ \sum_{k=0}^{n-1} a r^k \overset{?}{=} S_{\text{geom}}(a, r, n) $$
+
+$$ S_{\text{geom}}(1, 2, 10) \overset{?}{=} 1023 $$
+
+The sum of the whole geometric series, for $|r| < 1$.
+
+$$ S_{\infty}(a, r) := \frac{a}{1 - r} $$
+
+$$ \sum_{k=0}^{\infty} 3 \left(\frac{1}{2}\right)^k \overset{?}{=} S_{\infty}(3, \tfrac{1}{2}) $$
+
+Sums of the first $n$ whole numbers and their squares.
+
+$$ \sum_{k=1}^{n} k \overset{?}{=} \frac{n(n + 1)}{2} $$
+
+$$ \sum_{k=1}^{n} k^2 \overset{?}{=} \frac{n(n + 1)(2n + 1)}{6} $$
+
+## Logarithms and exponents
+
+The laws of exponents.
+
+$$ a^m a^n \overset{?}{=} a^{m + n} $$
+
+$$ (a^2)^3 \overset{?}{=} a^6 $$
+
+$$ a^{-n} \overset{?}{=} \frac{1}{a^n} $$
+
+$$ (ab)^3 \overset{?}{=} a^3 b^3 $$
+
+The laws of logarithms (for positive numbers): a product becomes a sum, a quotient a difference, a power a multiple.
+
+$$ \ln(2 \cdot 3) \overset{?}{=} \ln 2 + \ln 3 $$
+
+$$ \ln\frac{7}{5} \overset{?}{=} \ln 7 - \ln 5 $$
+
+$$ \ln(5^3) \overset{?}{=} 3 \ln 5 $$
+
+$$ \ln(e^x) \overset{?}{=} x $$
+
+Logarithms to other bases are built in ($\log_2 x$, $\log_{10} x$); the change-of-base rule turns them into natural logarithms.
+
+$$ \log_2 1024 \overset{?}{=} 10 $$
+
+$$ \log_{10} 1000 \overset{?}{=} \frac{\ln 1000}{\ln 10} $$
+
+## Means
+
+The arithmetic mean and the geometric mean of two numbers.
+
+$$ M_{\text{AM}}(a, b) := \frac{a + b}{2} $$
+
+$$ M_{\text{GM}}(a, b) := \sqrt{ab} $$
+
+The gap between them is a square, which is why the arithmetic mean is never smaller: for 4 and 9 it is $(2 - 3)^2/2$.
+
+$$ M_{\text{AM}}(4, 9) - M_{\text{GM}}(4, 9) \overset{?}{=} \frac{(\sqrt{4} - \sqrt{9})^2}{2} $$
+
+$$ M_{\text{AM}}(2, 8) \overset{?}{=} 5 $$
+
+$$ M_{\text{GM}}(2, 8) \overset{?}{=} 4 $$
+
+**Theorem.** (AM–GM inequality) For non-negative real numbers $a_1, …, a_n$, the arithmetic mean is at least the geometric mean, with equality exactly when all the numbers are equal.

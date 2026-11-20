@@ -4,6 +4,7 @@ mod assume;
 mod auto;
 mod data;
 mod ode;
+mod seed;
 mod sentences;
 mod units;
 
@@ -284,6 +285,7 @@ impl Run<'_, '_> {
             .with_locals(locals.iter().cloned())
             .with_unknown_functions(self.unknown_fns.iter().cloned())
             .lower(node)
+            .map(|e| self.seeded(e, node.span))
     }
 
     fn lower_in_function(
@@ -311,7 +313,7 @@ impl Run<'_, '_> {
             .defining(name, params)
             .with_unknown_functions(self.unknown_fns.iter().cloned());
         let e = lowerer.lower(node)?;
-        Ok((e, lowerer.take_denominators()))
+        Ok((self.seeded(e, node.span), lowerer.take_denominators()))
     }
 
     /// Lowers the function a helper analyses (see [`Lowerer::lower_helper_target`]).
@@ -418,10 +420,8 @@ impl Run<'_, '_> {
             BlockKind::Solve(s) => self.solve_sentence(s),
             BlockKind::Assume(a) => self.assume_sentence(a),
             BlockKind::Data(d) => self.data_import(d),
-            BlockKind::Theorem(_)
-            | BlockKind::Directive(_)
-            | BlockKind::Rule
-            | BlockKind::Verbatim(_) => {}
+            BlockKind::Directive(d) => self.seed_directive(d, block.span),
+            BlockKind::Theorem(_) | BlockKind::Rule | BlockKind::Verbatim(_) => {}
         }
     }
 
