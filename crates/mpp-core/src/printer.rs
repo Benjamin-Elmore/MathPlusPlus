@@ -961,6 +961,7 @@ fn latex_func_name(f: Func) -> Option<&'static str> {
         Func::Max => "\\max",
         Func::Gcd => "\\gcd",
         Func::Gamma => "\\Gamma",
+        Func::Digamma => "\\psi",
         Func::Atan2 => "\\operatorname{atan2}",
         Func::Asinh => "\\operatorname{arsinh}",
         Func::Acosh => "\\operatorname{arcosh}",

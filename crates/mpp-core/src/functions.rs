@@ -44,6 +44,8 @@ pub enum Func {
     Ceil,
     Factorial,
     Gamma,
+    /// The digamma function ψ = Γ′/Γ.
+    Digamma,
     Min,
     Max,
     Gcd,
@@ -61,7 +63,7 @@ pub enum Arity {
 
 impl Func {
     /// Every function, for tables and tests.
-    pub const ALL: [Func; 29] = [
+    pub const ALL: [Func; 30] = [
         Func::Sin,
         Func::Cos,
         Func::Tan,
@@ -86,6 +88,7 @@ impl Func {
         Func::Ceil,
         Func::Factorial,
         Func::Gamma,
+        Func::Digamma,
         Func::Min,
         Func::Max,
         Func::Gcd,
@@ -120,6 +123,7 @@ impl Func {
             Func::Ceil => "ceil",
             Func::Factorial => "factorial",
             Func::Gamma => "Gamma",
+            Func::Digamma => "digamma",
             Func::Min => "min",
             Func::Max => "max",
             Func::Gcd => "gcd",
@@ -155,6 +159,7 @@ impl Func {
             "ceil" => Func::Ceil,
             "factorial" => Func::Factorial,
             "Gamma" | "gamma" | "Γ" => Func::Gamma,
+            "digamma" | "psi" => Func::Digamma,
             "min" => Func::Min,
             "max" => Func::Max,
             "gcd" => Func::Gcd,
@@ -276,6 +281,7 @@ pub fn func(f: Func, args: Vec<Expr>) -> Expr {
         Func::Floor | Func::Ceil => floor_ceil(f, &args[0]),
         Func::Factorial => factorial(&args[0]),
         Func::Gamma => gamma(&args[0]),
+        Func::Digamma => None,
         Func::Min | Func::Max => return min_max(f, args),
         Func::Gcd | Func::Lcm => gcd_lcm(f, &args),
         Func::Binomial => binomial(&args[0], &args[1]),
@@ -791,6 +797,41 @@ pub fn gamma_f64(x: f64) -> MathResult<f64> {
     Ok(gamma_complex(Complex64::new(x, 0.0)).re)
 }
 
+/// Digamma ψ(z) for complex arguments (reflection, recurrence, asymptotic series).
+pub fn digamma_complex(z: Complex64) -> Complex64 {
+    if z.re < 0.5 {
+        // ψ(z) = ψ(1 − z) − π cot(πz)
+        let one = Complex64::new(1.0, 0.0);
+        return digamma_complex(one - z) - PI / (z * PI).tan();
+    }
+    let mut z = z;
+    let mut acc = Complex64::new(0.0, 0.0);
+    while z.re < 10.0 {
+        acc -= z.inv();
+        z += 1.0;
+    }
+    let inv = z.inv();
+    let inv2 = inv * inv;
+    let series = inv2
+        * (1.0 / 12.0
+            - inv2 * (1.0 / 120.0 - inv2 * (1.0 / 252.0 - inv2 * (1.0 / 240.0 - inv2 / 132.0))));
+    acc + z.ln() - inv * 0.5 - series
+}
+
+/// Digamma for real arguments; errors at the poles.
+pub fn digamma_f64(x: f64) -> MathResult<f64> {
+    if x <= 0.0 && x.fract() == 0.0 {
+        return Err(MathError::Domain {
+            function: "ψ".into(),
+            detail: "ψ has a pole at zero and the negative integers".into(),
+        });
+    }
+    if x < 0.5 {
+        return Ok(digamma_f64(1.0 - x)? - PI / (PI * x).tan());
+    }
+    Ok(digamma_complex(Complex64::new(x, 0.0)).re)
+}
+
 fn domain(f: Func, detail: &str) -> MathError {
     MathError::Domain {
         function: f.name().into(),
@@ -900,6 +941,7 @@ pub fn eval_func_f64(f: Func, args: &[f64]) -> MathResult<f64> {
         Func::Ceil => x.ceil(),
         Func::Factorial => gamma_f64(x + 1.0)?,
         Func::Gamma => gamma_f64(x)?,
+        Func::Digamma => digamma_f64(x)?,
         Func::Min => args.iter().copied().fold(f64::INFINITY, f64::min),
         Func::Max => args.iter().copied().fold(f64::NEG_INFINITY, f64::max),
         Func::Gcd | Func::Lcm => {
@@ -998,6 +1040,13 @@ pub fn eval_func_complex(f: Func, args: &[Complex64]) -> MathResult<Complex64> {
                 Complex64::new(gamma_f64(z.re)?, 0.0)
             } else {
                 gamma_complex(z)
+            }
+        }
+        Func::Digamma => {
+            if z.im == 0.0 {
+                Complex64::new(digamma_f64(z.re)?, 0.0)
+            } else {
+                digamma_complex(z)
             }
         }
         Func::Factorial => {
@@ -1164,6 +1213,12 @@ mod tests {
         assert!((gamma_f64(-0.5).unwrap() + 2.0 * PI.sqrt()).abs() < 1e-10);
         assert!(gamma_f64(-2.0).is_err());
         assert_eq!(gamma_f64(6.0).unwrap(), 120.0);
+        // ψ(1) = −γ and ψ(1/2) = −γ − 2 ln 2.
+        let euler_gamma = std::f64::consts::EULER_GAMMA;
+        assert!((digamma_f64(1.0).unwrap() + euler_gamma).abs() < 1e-12);
+        assert!((digamma_f64(0.5).unwrap() + euler_gamma + 2.0 * 2f64.ln()).abs() < 1e-12);
+        assert!((digamma_f64(-0.5).unwrap() - 0.036_489_973_978_576_52).abs() < 1e-10);
+        assert!(digamma_f64(0.0).is_err());
     }
 
     #[test]

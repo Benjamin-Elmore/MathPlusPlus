@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod calc;
 pub mod error;
 pub mod eval;
 pub mod expand;

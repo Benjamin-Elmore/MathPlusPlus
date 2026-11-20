@@ -29,6 +29,10 @@ pub enum MathError {
     NotANumber(String),
     /// The operation is valid maths that this version does not do yet.
     Unsupported(String),
+    /// A limit has no value (the sides differ, or the function oscillates).
+    LimitDoesNotExist(String),
+    /// An exact answer disagreed with its numeric check, so it was not trusted.
+    Inconclusive(String),
 }
 
 impl fmt::Display for MathError {
@@ -54,6 +58,10 @@ impl fmt::Display for MathError {
             MathError::TooLarge(what) => write!(f, "{what} is too large to compute"),
             MathError::NotANumber(what) => write!(f, "{what} is not a number"),
             MathError::Unsupported(what) => write!(f, "{what} is not supported yet"),
+            MathError::LimitDoesNotExist(why) => write!(f, "the limit does not exist: {why}"),
+            MathError::Inconclusive(what) => {
+                write!(f, "{what} could not be confirmed numerically")
+            }
         }
     }
 }
