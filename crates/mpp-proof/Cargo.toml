@@ -1,0 +1,12 @@
+[package]
+name = "mpp-proof"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Math++ proofs: the step checker, the Lean 4 bridge and the proof agent client"
+
+[dependencies]
+mpp-core = { path = "../mpp-core" }
+mpp-syntax = { path = "../mpp-syntax" }
+mpp-eval = { path = "../mpp-eval", default-features = false }
+num-complex = "0.4"

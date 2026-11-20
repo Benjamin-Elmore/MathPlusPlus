@@ -810,9 +810,9 @@ fn theorem(
 ) -> usize {
     let kind = head.kind;
     let body_start = start + head.prefix;
-    let title = head.title.map(|(a, b)| {
-        parse_inlines(ctx.src, Span::new(start + a, start + b), &mut ctx.diags)
-    });
+    let title = head
+        .title
+        .map(|(a, b)| parse_inlines(ctx.src, Span::new(start + a, start + b), &mut ctx.diags));
     // The first line without the `**Kind.**` prefix.
     let mut body: Vec<Line> = vec![Line {
         start: body_start.min(lines[i].end),

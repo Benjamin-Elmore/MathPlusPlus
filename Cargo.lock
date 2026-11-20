@@ -505,6 +505,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpp-proof"
+version = "0.1.0"
+dependencies = [
+ "mpp-core",
+ "mpp-eval",
+ "mpp-syntax",
+ "num-complex",
+]
+
+[[package]]
 name = "mpp-render"
 version = "0.1.0"
 dependencies = [

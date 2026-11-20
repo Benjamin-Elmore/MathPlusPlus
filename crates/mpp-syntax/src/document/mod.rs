@@ -351,9 +351,10 @@ fn is_references_heading(content: &[Inline]) -> bool {
 
 /// The entry in a reference-list item that starts with `[@key]`.
 fn list_item_reference(item: &ListItem) -> Option<Reference> {
-    let mut parts = item.content.iter().skip_while(
-        |i| matches!(&i.kind, InlineKind::Text(t) if t.trim().is_empty()),
-    );
+    let mut parts = item
+        .content
+        .iter()
+        .skip_while(|i| matches!(&i.kind, InlineKind::Text(t) if t.trim().is_empty()));
     let first = parts.next()?;
     let InlineKind::Cite(cites) = &first.kind else {
         return None;

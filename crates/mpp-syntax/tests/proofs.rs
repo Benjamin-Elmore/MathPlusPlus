@@ -82,7 +82,7 @@ fn steps_of_a_numbered_proof() {
                2. It is not verified — *(gap: the whole proof)*.\n\
                3. $a = b$ — by Theorem 1.\n∎\n\n## References\n- [@x] X.\n";
     let ts = theorems(src);
-    let s = proof_steps(&ts[1]);
+    let s = proof_steps(&ts[1], src);
     assert_eq!(s.steps.len(), 3);
     assert_eq!(s.steps[0].notes[0].kind, NoteKind::External);
     assert_eq!(s.steps[0].notes[0].keys, vec!["x".to_string()]);

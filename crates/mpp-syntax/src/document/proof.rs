@@ -132,14 +132,15 @@ impl NoteKind {
     }
 }
 
-/// Reads the steps of a proof block. A block that is not a `Proof` has no steps.
-pub fn proof_steps(proof: &Theorem) -> ProofSteps {
+/// Reads the steps of a proof block (`src` is the whole file, for the maths in reasons
+/// and notes). A block that is not a `Proof` has no steps.
+pub fn proof_steps(proof: &Theorem, src: &str) -> ProofSteps {
     let mut steps = Vec::new();
     let mut has_prose = false;
     for b in &proof.body {
         match &b.kind {
             BlockKind::List(list) if list.ordered && steps.is_empty() => {
-                steps = list.items.iter().map(read_item).collect();
+                steps = list.items.iter().map(|i| read_item(i, src)).collect();
             }
             BlockKind::Comment(_) | BlockKind::Directive(_) => {}
             BlockKind::Paragraph(p) if is_only_qed(p) => {}
@@ -158,17 +159,17 @@ fn is_only_qed(p: &[Inline]) -> bool {
     t.is_empty() || t == "∎" || t == "\\qed"
 }
 
-fn read_item(item: &ListItem) -> ProofStep {
+fn read_item(item: &ListItem, src: &str) -> ProofStep {
     let content = strip_qed(&item.content);
     let mut notes = Vec::new();
-    collect_notes(&content, &mut notes);
+    collect_notes(&content, src, &mut notes);
     let (claim, after) = split_at_dash(&content);
-    let reason = after.and_then(|rest| read_reason(rest));
+    let reason = after.and_then(|rest| read_reason(rest, src));
     let label = step_label(&claim);
     let substeps = item
         .children
         .iter()
-        .flat_map(|l| l.items.iter().map(read_item))
+        .flat_map(|l| l.items.iter().map(|i| read_item(i, src)))
         .collect();
     ProofStep {
         number: item.number,
@@ -184,8 +185,7 @@ fn read_item(item: &ListItem) -> ProofStep {
 /// The item's inlines without a closing `∎` / `\qed` (and the line break before it).
 fn strip_qed(content: &[Inline]) -> Vec<Inline> {
     let mut out: Vec<Inline> = content.to_vec();
-    loop {
-        let Some(last) = out.last_mut() else { break };
+    while let Some(last) = out.last_mut() {
         match &mut last.kind {
             InlineKind::SoftBreak => {
                 out.pop();
@@ -249,19 +249,19 @@ fn split_at_dash(content: &[Inline]) -> (Vec<Inline>, Option<Vec<Inline>>) {
 }
 
 /// Reads `by …` from the inlines after the dash; notes are skipped.
-fn read_reason(rest: Vec<Inline>) -> Option<Reason> {
+fn read_reason(rest: Vec<Inline>, src: &str) -> Option<Reason> {
     let mut text = String::new();
     let mut refs = Vec::new();
     let mut span: Option<Span> = None;
     for i in &rest {
-        if note_of(i).is_some() {
+        if note_of(i, src).is_some() {
             continue;
         }
         span = Some(span.map_or(i.span, |s| s.join(i.span)));
         if let InlineKind::EqRef { label, .. } = &i.kind {
             refs.push(StepRef::Equation(label.clone()));
         }
-        inline_plain_text(i, &mut text);
+        text_with_maths(i, src, &mut text);
     }
     let text = text.trim().trim_end_matches('.').trim();
     let body = text
@@ -292,8 +292,15 @@ fn reason_kind(body: &str, refs: &[StepRef]) -> ReasonKind {
         "cases" => return ReasonKind::Cases,
         _ => {}
     }
-    let starts_with_ref = ["step", "steps", "lemma", "theorem", "corollary", "proposition"]
-        .contains(&first)
+    let starts_with_ref = [
+        "step",
+        "steps",
+        "lemma",
+        "theorem",
+        "corollary",
+        "proposition",
+    ]
+    .contains(&first)
         || (body.starts_with('(') && !refs.is_empty());
     if starts_with_ref && !refs.is_empty() {
         ReasonKind::Reference
@@ -340,7 +347,10 @@ fn text_refs(body: &str) -> Vec<StepRef> {
             .find(|kind| kind.as_str().eq_ignore_ascii_case(w));
         if let (Some(kind), Some(next)) = (kind, words.get(k + 1)) {
             let number = next.trim_end_matches('.');
-            if !number.is_empty() && number.chars().all(|c| c.is_ascii_alphanumeric() || c == '.')
+            if !number.is_empty()
+                && number
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '.')
                 && number.chars().next().is_some_and(|c| c.is_ascii_digit())
             {
                 out.push(StepRef::Result {
@@ -390,7 +400,7 @@ fn step_label(claim: &[Inline]) -> Option<StepLabel> {
 }
 
 /// The note an inline is, if it is one: `*(gap: …)*` and friends.
-fn note_of(i: &Inline) -> Option<Note> {
+fn note_of(i: &Inline, src: &str) -> Option<Note> {
     let InlineKind::Emphasis(inner) = &i.kind else {
         return None;
     };
@@ -399,7 +409,7 @@ fn note_of(i: &Inline) -> Option<Note> {
     for x in inner {
         match &x.kind {
             InlineKind::Cite(cites) => keys.extend(cites.iter().map(|c| c.key.clone())),
-            _ => inline_plain_text(x, &mut text),
+            _ => text_with_maths(x, src, &mut text),
         }
     }
     let t = text.trim();
@@ -420,9 +430,26 @@ fn note_of(i: &Inline) -> Option<Note> {
     })
 }
 
-fn collect_notes(content: &[Inline], out: &mut Vec<Note>) {
+/// Plain text of an inline, with maths kept as its source between dollars.
+fn text_with_maths(i: &Inline, src: &str, out: &mut String) {
+    match &i.kind {
+        InlineKind::Math(m) => {
+            out.push('$');
+            out.push_str(src.get(m.raw.start..m.raw.end).unwrap_or("…").trim());
+            out.push('$');
+        }
+        InlineKind::Emphasis(inner) | InlineKind::Strong(inner) => {
+            for x in inner {
+                text_with_maths(x, src, out);
+            }
+        }
+        _ => inline_plain_text(i, out),
+    }
+}
+
+fn collect_notes(content: &[Inline], src: &str, out: &mut Vec<Note>) {
     for i in content {
-        if let Some(n) = note_of(i) {
+        if let Some(n) = note_of(i, src) {
             out.push(n);
         }
     }
@@ -439,7 +466,7 @@ mod tests {
         doc.walk(&mut |b| {
             if let BlockKind::Theorem(t) = &b.kind {
                 if t.kind == TheoremKind::Proof && found.is_none() {
-                    found = Some(proof_steps(t));
+                    found = Some(proof_steps(t, src));
                 }
             }
         });
