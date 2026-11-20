@@ -1,0 +1,9 @@
+# Launch geometry
+
+The launch angle and the range of a projectile on level ground.
+
+$$ \theta := \frac{\pi}{4} $$
+
+Range uses the launch speed and gravity of whoever imports it.
+
+$$ R(\theta) := \frac{v_0^2 \sin 2\theta}{g} $$

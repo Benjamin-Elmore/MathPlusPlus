@@ -1,0 +1,21 @@
+[package]
+name = "mpp-eval"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Math++ evaluator: runs a document top to bottom with scopes, definitions, queries and a dependency graph"
+
+[features]
+default = ["watch"]
+# FileWatcher: reload imported files when they change on disk.
+watch = ["dep:notify"]
+
+[dependencies]
+mpp-core = { path = "../mpp-core" }
+mpp-syntax = { path = "../mpp-syntax" }
+num-complex = "0.4"
+notify = { version = "8", optional = true }
+
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"

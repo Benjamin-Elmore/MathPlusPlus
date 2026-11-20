@@ -1,0 +1,54 @@
+//! Math++ evaluator: runs a `.mpp` document top to bottom, like reading a paper.
+//!
+//! [`Session::run_str`] parses a document, lowers each maths node into a core
+//! expression ([`lower`]), and runs the statements in order: `:=` variables and
+//! functions, `≡` constants, recurrences, `= ?` / `≈ ?` / `= ?!` queries and
+//! `\overset{?}{=}` checks. Every block gets a [`BlockResult`] with the names it
+//! defines and uses, a [`LineResult`] per statement line and its diagnostics.
+//! [`Session::update`] re-runs only the blocks an edit changed and those that read
+//! a changed definition, so the IDE can evaluate as you type on a background
+//! thread (`Session` is `Send`).
+//!
+//! Calculus notation becomes unevaluated holder nodes that the calculus phase
+//! evaluates by registering a [`HolderEval`] (see [`holders`]); imports go through
+//! the [`Importer`] hook (files on disk by default, with a cache, loop and clash checks).
+
+#![forbid(unsafe_code)]
+
+mod block;
+pub mod check;
+pub mod error;
+pub mod files;
+pub mod graph;
+pub mod holders;
+pub mod import;
+pub mod lower;
+pub mod names;
+pub mod numeric;
+pub mod resolve;
+pub mod result;
+mod session;
+pub mod value;
+#[cfg(feature = "watch")]
+pub mod watch;
+
+pub use check::Verdict;
+pub use error::{EvalError, Located};
+pub use files::{
+    EmbeddedSources, FileImporter, FsSource, LayeredSource, Location, SourceProvider, Stamp,
+};
+pub use graph::DepGraph;
+pub use holders::{evaluate_holder, Ctx, HolderEval, Holders};
+pub use import::{
+    Exports, FileDiagnostic, ImportContext, ImportError, ImportErrorKind, ImportRequest, Importer,
+    NoImports,
+};
+pub use mpp_syntax::math::QueryMode;
+pub use result::{
+    BlockResult, DefinitionKind, Evaluated, ImportInfo, LineIndex, LineKind, LineResult, RangeInfo,
+    RangeKind,
+};
+pub use session::Session;
+pub use value::{Binding, Env, Origin, Sequence, Value, VarKind};
+#[cfg(feature = "watch")]
+pub use watch::FileWatcher;
