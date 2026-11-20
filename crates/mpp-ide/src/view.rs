@@ -13,10 +13,11 @@ use egui::{
 };
 use mpp_render::Theme;
 use mpp_syntax::document::{Block, BlockKind, Document, Figure};
-use mpp_syntax::Severity;
 
 use crate::copy::{clipboard_text, CopyFormat};
 use crate::defs;
+use crate::diagnostics::fixes::{self, Applied};
+use crate::diagnostics::ui::{self as dui, DiagUi, FixMenu, MenuOutcome};
 use crate::doc::{Doc, PageCache};
 use crate::editor::symbols::{completions, live_replacement, word_at, Completion};
 use crate::figure::FigureDrawer;
@@ -40,6 +41,8 @@ pub enum ViewEvent {
     /// Go to the definition of the name at this source offset.
     GotoAt(usize),
     Save,
+    /// Open a file (a quick fix: "Open mechanics.mpp").
+    Open(std::path::PathBuf),
 }
 
 /// What the view needs from the app.
@@ -53,6 +56,8 @@ pub struct ViewCtx<'a> {
     pub copy_format: CopyFormat,
     /// The Insert menu and its settings.
     pub insert: &'a mut InsertUi,
+    /// The quick-fix menu and the problem card kept open by F8.
+    pub diag: &'a mut DiagUi,
 }
 
 fn find_block(doc: &Document, id: mpp_syntax::document::BlockId) -> Option<&Block> {
@@ -69,7 +74,7 @@ fn find_block(doc: &Document, id: mpp_syntax::document::BlockId) -> Option<&Bloc
 pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> {
     let mut events = vec![];
     let theme = cx.mode.theme();
-    egui::ScrollArea::vertical()
+    let out = egui::ScrollArea::vertical()
         .auto_shrink([false, false])
         .show(ui, |ui| {
             let avail_w = ui.available_width();
@@ -81,6 +86,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             );
             let col_left = ((avail_w - pc0.page.width) / 2.0).max(0.0);
             let origin = resp.rect.min + Vec2::new(col_left, 0.0);
+            cx.diag.origin = origin;
 
             if ui.memory(|m| m.focused().is_none()) {
                 ui.memory_mut(|m| m.request_focus(resp.id));
@@ -103,8 +109,27 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 });
             }
 
-            let mut moved = handle_pointer(ui, &resp, doc, &pc0, origin, &mut events);
-            if focused && !cx.insert.menu.open {
+            // A click on the bulb opens the quick fixes instead of moving the caret.
+            let bulb = bulb_target(doc, &pc0, origin);
+            let bulb_clicked = bulb.as_ref().is_some_and(|(r, _)| {
+                ui.input(|i| i.pointer.primary_pressed())
+                    && resp
+                        .interact_pointer_pos()
+                        .or_else(|| resp.hover_pos())
+                        .is_some_and(|p| r.contains(p))
+            });
+            let mut moved = false;
+            if bulb_clicked {
+                if let Some((r, span)) = bulb {
+                    open_fix_menu(doc, &pc0, cx, span, r.right_bottom());
+                }
+            } else {
+                moved = handle_pointer(ui, &resp, doc, &pc0, origin, &mut events);
+                if moved {
+                    cx.diag.peek = None;
+                }
+            }
+            if focused && !cx.insert.menu.open && !cx.diag.menu_open() {
                 moved |= handle_keys(ui, doc, &pc0, cx, &mut events);
             }
             if resp.dragged() || resp.clicked() {
@@ -140,16 +165,146 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             }
 
             if resp.hovered() {
-                ui.ctx().set_cursor_icon(CursorIcon::Text);
-                hover_card(ui, doc, &pc, origin, &theme, cx.size);
+                let over_bulb = bulb_target(doc, &pc, origin)
+                    .is_some_and(|(r, _)| resp.hover_pos().is_some_and(|p| r.contains(p)));
+                ui.ctx().set_cursor_icon(if over_bulb {
+                    CursorIcon::PointingHand
+                } else {
+                    CursorIcon::Text
+                });
+                if !cx.diag.menu_open() {
+                    hover_card(ui, doc, &pc, origin, &theme, cx);
+                }
             }
+            peek_card(ui, doc, &pc, origin, &theme, cx);
+            fix_menu(ui, doc, cx, &mut events, resp.id);
             completion_popup(ui, doc, &pc, origin, cx, &theme, caret_rect);
             if focused || cx.insert.menu.open {
                 template_toolbar(ui, doc, &pc, origin, cx, resp.id);
             }
             insert_menu(ui, doc, cx, caret_rect, resp.id);
+            (pc.page.height, pc.problems.clone())
         });
+    // Problem marks beside the scrollbar: where each problem is on the page.
+    let (page_h, problems) = out.inner;
+    let content_h = out.content_size.y.max(page_h);
+    if !problems.is_empty() {
+        let r = out.inner_rect;
+        let track = egui::Rect::from_min_max(
+            egui::pos2(r.right() - 5.0, r.top() + 2.0),
+            egui::pos2(r.right() - 1.0, r.bottom() - 2.0),
+        );
+        let painter = ui.painter_at(r);
+        dui::paint_scrollbar_marks(&painter, track, content_h, &problems, &theme);
+    }
     events
+}
+
+/// Where the 💡 is drawn (screen rectangle) and the problem it fixes: beside
+/// the caret's block, when the problem there has a quick fix.
+fn bulb_target(doc: &Doc, pc: &PageCache, origin: Pos2) -> Option<(Rect, mpp_syntax::Span)> {
+    let caret = doc.editor.caret();
+    let p = dui::problem_at(&pc.problems, &pc.page, caret)?;
+    let fixes = fixes::quick_fixes(p, doc.editor.text(), &pc.doc);
+    if fixes.is_empty() {
+        return None;
+    }
+    let c = dui::bulb_center(&pc.page, p)? + origin.to_vec2();
+    Some((
+        Rect::from_center_size(c, Vec2::splat(dui::BULB_RADIUS * 2.8)),
+        p.span,
+    ))
+}
+
+/// Opens the quick-fix menu for the problem at `span`.
+fn open_fix_menu(
+    doc: &Doc,
+    pc: &PageCache,
+    cx: &mut ViewCtx<'_>,
+    span: mpp_syntax::Span,
+    at: Pos2,
+) {
+    let Some(p) = pc.problems.iter().find(|p| p.span == span) else {
+        return;
+    };
+    let fixes = fixes::quick_fixes(p, doc.editor.text(), &pc.doc);
+    if fixes.is_empty() {
+        return;
+    }
+    cx.diag.menu = Some(FixMenu {
+        fixes,
+        selected: 0,
+        at,
+        problem: span,
+        fresh: true,
+    });
+    *cx.completion = None;
+}
+
+/// The quick-fix menu, when open: applies the chosen fix to the text.
+fn fix_menu(
+    ui: &Ui,
+    doc: &mut Doc,
+    cx: &mut ViewCtx<'_>,
+    events: &mut Vec<ViewEvent>,
+    page_id: egui::Id,
+) {
+    let Some(menu) = cx.diag.menu.as_mut() else {
+        return;
+    };
+    let theme = cx.mode.theme();
+    let size = (cx.size * 0.85).max(13.0);
+    match dui::show_menu(ui.ctx(), menu, &theme, cx.mode, size) {
+        MenuOutcome::Pick(i) => {
+            let fix = menu.fixes.get(i).cloned();
+            cx.diag.menu = None;
+            cx.diag.peek = None;
+            if let Some(f) = fix {
+                match fixes::apply(&mut doc.editor, &f) {
+                    Applied::Done => doc.touched(),
+                    Applied::Open(p) => events.push(ViewEvent::Open(p)),
+                }
+            }
+            ui.memory_mut(|m| m.request_focus(page_id));
+        }
+        MenuOutcome::Close => {
+            cx.diag.menu = None;
+            ui.memory_mut(|m| m.request_focus(page_id));
+        }
+        MenuOutcome::Nothing => {}
+    }
+}
+
+/// The card of the problem F8 moved to, under its typeset element.
+fn peek_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, cx: &ViewCtx<'_>) {
+    let Some(span) = cx.diag.peek else {
+        return;
+    };
+    if cx.diag.menu_open() {
+        return;
+    }
+    let Some(p) = pc.problems.iter().find(|p| p.span == span) else {
+        return;
+    };
+    let n = fixes::quick_fixes(p, doc.editor.text(), &pc.doc).len();
+    let r = p.rect.translate(origin.to_vec2());
+    dui::show_card(
+        ui.ctx(),
+        "mpp-peek-card",
+        p,
+        Pos2::new(r.left(), r.bottom() + 8.0),
+        &dui::CardStyle {
+            theme: *theme,
+            mode: cx.mode,
+            size: card_size(cx.size),
+        },
+        n,
+    );
+}
+
+/// The text size of problem cards and menus.
+fn card_size(page_size: f32) -> f32 {
+    (page_size * 0.85).max(14.0)
 }
 
 /// Right-click: puts the caret there and offers Insert.
@@ -319,13 +474,28 @@ fn paint_page(
         }
         paint_display_list(painter, &b.dl, at);
     }
-    // Problems: wavy underlines under the typeset element.
-    for p in &pc.problems {
-        let color = match p.severity {
-            Severity::Error => c32(theme.error),
-            Severity::Warning => c32(theme.warning),
-        };
-        crate::diagnostics::paint_squiggle(painter, p.rect.translate(off), color);
+    // Problems: underlines under the typeset element, a bar in the margin,
+    // the import summaries and the bulb of the caret's problem.
+    dui::paint_marks(painter, &pc.problems, off, theme);
+    dui::paint_margin(painter, page, &pc.problems, origin, theme);
+    dui::paint_import_notes(
+        painter,
+        &pc.problems,
+        off,
+        theme,
+        cx.size,
+        painter.clip_rect().right() - 8.0,
+    );
+    if focused {
+        if let Some((r, _)) = bulb_target(doc, pc, origin) {
+            dui::paint_bulb(
+                painter,
+                r.center(),
+                dui::BULB_RADIUS,
+                dui::bulb_color(cx.mode),
+                c32(theme.muted),
+            );
+        }
     }
     // Unfilled template boxes: a typeset hint beside the equation, no answer.
     for b in &page.blocks {
@@ -435,6 +605,7 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     }
     doc.touched();
     doc.want_x = None;
+    cx.diag.peek = None;
     update_completion(doc, in_math, cx);
 }
 
@@ -552,6 +723,16 @@ fn key_pressed(
     let shift = mods.shift;
     if mods.command {
         match key {
+            Key::Period => {
+                let target = dui::problem_at(&pc.problems, page, caret).map(|p| (p.span, p.rect));
+                if let Some((span, r)) = target {
+                    let at = egui::pos2(r.left(), r.bottom() + 6.0);
+                    cx.diag.peek = None;
+                    let origin = cx.diag.origin;
+                    open_fix_menu(doc, pc, cx, span, at + origin.to_vec2());
+                }
+                return false;
+            }
             Key::Space => {
                 cx.insert.menu.open_at(None);
                 *cx.completion = None;
@@ -599,6 +780,15 @@ fn key_pressed(
         }
     }
     match key {
+        Key::F8 => {
+            if let Some(p) = dui::next_problem(&pc.problems, caret, !shift) {
+                doc.editor.move_caret(dui::caret_target(page, p), false);
+                doc.scroll_to = Some(p.span);
+                cx.diag.peek = Some(p.span);
+                doc.want_x = None;
+            }
+            false
+        }
         Key::F12 => {
             events.push(ViewEvent::GotoAt(caret));
             false
@@ -724,7 +914,7 @@ fn card_frame(ui: &Ui) -> Frame {
     Frame::popup(ui.style()).inner_margin(egui::Margin::symmetric(10, 8))
 }
 
-fn hover_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, size: f32) {
+fn hover_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, cx: &ViewCtx<'_>) {
     let ctx = ui.ctx();
     let Some(pos) = ctx.pointer_hover_pos() else {
         return;
@@ -733,22 +923,43 @@ fn hover_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, s
         return;
     }
     let local = pos - origin.to_vec2();
+    // The most serious problem under the pointer (its underline or its element).
     let problem = pc
         .problems
         .iter()
-        .find(|p| p.rect.expand(3.0).contains(local));
-    let def = if problem.is_none() {
-        pc.page.hit_at(local).and_then(|(_, h)| {
-            let ev = doc.eval.as_ref()?;
-            defs::definition_at(ev, doc.editor.text(), h.span.start)
+        .filter(|p| {
+            p.rects
+                .iter()
+                .any(|r| r.expand2(Vec2::new(2.0, 4.0)).contains(local))
         })
-    } else {
-        None
-    };
-    if problem.is_none() && def.is_none() {
+        .min_by_key(|p| (p.level, p.span.len()));
+    if let Some(p) = problem {
+        if cx.diag.peek == Some(p.span) {
+            return;
+        }
+        let n = crate::diagnostics::fixes::quick_fixes(p, doc.editor.text(), &pc.doc).len();
+        dui::show_card(
+            ctx,
+            "mpp-hover-card",
+            p,
+            pos + Vec2::new(14.0, 18.0),
+            &dui::CardStyle {
+                theme: *theme,
+                mode: cx.mode,
+                size: card_size(cx.size),
+            },
+            n,
+        );
         return;
     }
-    let size = size * 0.9;
+    let def = pc.page.hit_at(local).and_then(|(_, h)| {
+        let ev = doc.eval.as_ref()?;
+        defs::definition_at(ev, doc.editor.text(), h.span.start)
+    });
+    let Some(d) = def else {
+        return;
+    };
+    let size = cx.size * 0.9;
     Area::new(egui::Id::unique("mpp-hover-card"))
         .order(Order::Tooltip)
         .fixed_pos(pos + Vec2::new(14.0, 18.0))
@@ -756,27 +967,17 @@ fn hover_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, s
         .show(ctx, |ui| {
             card_frame(ui).show(ui, |ui| {
                 ui.set_max_width(420.0);
-                if let Some(p) = problem {
-                    let color = if p.severity == Severity::Error {
-                        c32(theme.error)
-                    } else {
-                        c32(theme.warning)
-                    };
-                    ui.label(egui::RichText::new(&p.message).color(color).size(16.0));
+                typeset::show(ui, &d.definition, size, *theme);
+                if let Some(v) = &d.value {
+                    ui.add_space(4.0);
+                    typeset::show(ui, &format!("= {v}"), size, *theme);
                 }
-                if let Some(d) = &def {
-                    typeset::show(ui, &d.definition, size, *theme);
-                    if let Some(v) = &d.value {
-                        ui.add_space(4.0);
-                        typeset::show(ui, &format!("= {v}"), size, *theme);
-                    }
-                    if let Some(f) = &d.file {
-                        ui.add_space(2.0);
-                        ui.weak(format!(
-                            "from {}",
-                            crate::explorer::display_name(std::path::Path::new(f))
-                        ));
-                    }
+                if let Some(f) = &d.file {
+                    ui.add_space(2.0);
+                    ui.weak(format!(
+                        "from {}",
+                        crate::explorer::display_name(std::path::Path::new(f))
+                    ));
                 }
             });
         });

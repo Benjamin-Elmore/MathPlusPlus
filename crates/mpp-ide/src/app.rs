@@ -26,6 +26,9 @@ const ZOOM_OUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key
 /// Ctrl+K then Ctrl+T switches the theme.
 const CHORD_K: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
 const CHORD_T: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::T);
+/// Shows or hides the Problems panel.
+const PROBLEMS: KeyboardShortcut =
+    KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::M);
 /// How long the second key of a chord may take.
 const CHORD_SECONDS: f64 = 2.0;
 /// Size of the status bar text (Latin Modern Sans).
@@ -56,6 +59,10 @@ pub struct IdeApp {
     system_theme: Option<egui::Theme>,
     /// The Insert menu, its recently used items and its settings.
     pub insert: InsertUi,
+    /// The quick-fix menu and the problem card kept open by F8.
+    pub diag: crate::diagnostics::ui::DiagUi,
+    /// The Problems panel (Ctrl+Shift+M).
+    pub problems: crate::problems::ProblemsView,
 }
 
 impl Default for IdeApp {
@@ -86,6 +93,8 @@ impl IdeApp {
             chord_k: None,
             system_theme: None,
             insert: InsertUi::default(),
+            diag: Default::default(),
+            problems: Default::default(),
         }
     }
 
@@ -354,6 +363,9 @@ impl IdeApp {
                 i.time,
             )
         });
+        if ctx.input_mut(|i| i.consume_shortcut(&PROBLEMS)) {
+            self.problems.toggle();
+        }
         if chord_k {
             self.chord_k = Some(now);
         }
@@ -548,16 +560,26 @@ impl IdeApp {
                     ui.spinner();
                     ui.label(small("Working\u{2026}"));
                 } else if let Some(d) = self.doc() {
-                    let n = d.error_count();
-                    if n == 0 {
-                        ui.label(small("Ready"));
+                    let c = d.problem_counts();
+                    let color = match c.worst() {
+                        Some(crate::diagnostics::Level::Error) => theme::c32(theme.error),
+                        Some(crate::diagnostics::Level::Warning) => theme::c32(theme.warning),
+                        _ => ui.visuals().text_color(),
+                    };
+                    let text = if c.problems() == 0 {
+                        "Ready".to_string()
                     } else {
-                        let text = if n == 1 {
-                            "1 problem".to_string()
-                        } else {
-                            format!("{n} problems")
-                        };
-                        ui.label(small(&text).color(theme::c32(theme.error)));
+                        c.summary()
+                    };
+                    // Clicking the count opens the Problems panel, like Ctrl+Shift+M.
+                    if ui
+                        .add(
+                            egui::Label::new(small(&text).color(color)).sense(egui::Sense::click()),
+                        )
+                        .on_hover_text(small("Problems (Ctrl+Shift+M)"))
+                        .clicked()
+                    {
+                        self.problems.toggle();
                     }
                 }
                 if let Some(m) = &self.message {
@@ -579,6 +601,8 @@ impl IdeApp {
                 });
             });
         });
+
+        self.problems_panel(ui);
 
         egui::Panel::left("side")
             .default_size(SIDE_PANEL_WIDTH)
@@ -606,12 +630,18 @@ impl IdeApp {
                     clip: &mut self.clip,
                     copy_format,
                     insert: &mut self.insert,
+                    diag: &mut self.diag,
                 };
                 let events = view::show(ui, doc, &mut cx);
                 for e in events {
                     match e {
                         ViewEvent::GotoAt(o) => self.goto_at(o),
                         ViewEvent::Save => self.save(),
+                        ViewEvent::Open(p) => {
+                            if let Err(m) = self.open_path(&p) {
+                                self.message = Some(m);
+                            }
+                        }
                     }
                 }
             });
@@ -626,6 +656,66 @@ impl IdeApp {
         }
         if let Some(w) = wait {
             ctx.request_repaint_after(w);
+        }
+    }
+
+    /// Every problem of the open files and the files they import, grouped by
+    /// file (what the Problems panel lists).
+    pub fn project_problems(&mut self) -> Vec<crate::problems::FileProblems> {
+        crate::problems::gather(&mut self.docs)
+    }
+
+    /// The error, warning and note counts of a file (for tab and explorer badges).
+    pub fn problem_counts_for(&mut self, path: &Path) -> crate::diagnostics::Counts {
+        let list = self.project_problems();
+        crate::problems::counts_for(&list, path)
+    }
+
+    /// The number of errors in a file (0 when it is not open or imported).
+    pub fn error_count(&mut self, path: &Path) -> usize {
+        self.problem_counts_for(path).errors
+    }
+
+    /// Goes to a problem chosen in the Problems panel.
+    pub fn jump_to(&mut self, jump: &crate::problems::Jump) {
+        let (tab, span) = match jump {
+            crate::problems::Jump::Open { tab, span } => (Some(*tab), *span),
+            crate::problems::Jump::File { path, span } => match self.open_path(path) {
+                Ok(i) => (Some(i), *span),
+                Err(m) => {
+                    self.message = Some(m);
+                    (None, *span)
+                }
+            },
+        };
+        let Some(i) = tab.filter(|i| *i < self.docs.len()) else {
+            return;
+        };
+        self.active = i;
+        if let Some(doc) = self.docs.get_mut(i) {
+            doc.editor.move_caret(span.start, false);
+            doc.scroll_to = Some(span);
+        }
+        self.diag.peek = Some(span);
+    }
+
+    /// The Problems panel at the bottom of the window, when open.
+    fn problems_panel(&mut self, ui: &mut Ui) {
+        if !self.problems.open {
+            return;
+        }
+        let theme = self.mode.theme();
+        let list = self.project_problems();
+        let size = (self.size * 0.85).max(14.0);
+        let mut jump = None;
+        egui::Panel::bottom("problems")
+            .resizable(true)
+            .default_size(crate::problems::PANEL_HEIGHT)
+            .show(ui, |ui| {
+                jump = self.problems.ui(ui, &list, &theme, size);
+            });
+        if let Some(j) = jump {
+            self.jump_to(&j);
         }
     }
 

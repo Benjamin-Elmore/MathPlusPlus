@@ -61,6 +61,8 @@ pub struct Palette {
     pub scrollbar: Color,
     /// Soft shadow along page edges.
     pub edge: Color,
+    /// The quick-fix light bulb.
+    pub bulb: Color,
 }
 
 impl Palette {
@@ -77,6 +79,7 @@ impl Palette {
         highlight: Color::rgb(0xf6, 0xe6, 0xa8),
         scrollbar: Color::rgb(0x8c, 0x8c, 0x8c),
         edge: Color::rgb(0xe4, 0xe4, 0xe0),
+        bulb: Color::rgb(0xe8, 0xb0, 0x10),
     };
 
     pub const DARK: Palette = Palette {
@@ -92,6 +95,7 @@ impl Palette {
         highlight: Color::rgb(0x4e, 0x41, 0x1c),
         scrollbar: Color::rgb(0x88, 0x88, 0x8d),
         edge: Color::rgb(0x2a, 0x2b, 0x2e),
+        bulb: Color::rgb(0xf5, 0xc8, 0x3c),
     };
 
     /// Pairs of (name, foreground, background) that carry text and must reach

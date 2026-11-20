@@ -20,6 +20,7 @@ pub mod insert;
 pub mod layout;
 pub mod page;
 pub mod paint;
+pub mod problems;
 mod sample;
 pub mod tabs;
 pub mod theme;
