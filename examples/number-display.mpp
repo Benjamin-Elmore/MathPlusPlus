@@ -1,0 +1,46 @@
+# Showing numbers your way
+
+Results are worked out exactly. The `%` lines below only change how they are shown, never what they are.
+
+A fraction stays a fraction: $\frac{22}{7} + 0 = ?$
+
+The same answer as a decimal with four significant figures:
+
+%sf 4
+%decimal
+$$ \frac{22}{7} + 0 = ? $$
+
+$$ \sqrt{2} = ? $$
+
+Two decimal places for the next result only:
+
+%block dp 2
+$$ \pi \approx ? $$
+
+$$ \pi \approx ? $$
+
+Back to exact, with large numbers in scientific notation, and then engineering notation:
+
+%plain
+%exact
+%sci
+$$ 6.02 \times 10^{23} + 0 = ? $$
+
+%eng
+$$ 123456789 \cdot 1000 = ? $$
+
+Mixed fractions:
+
+%plain
+%mixed
+$$ \frac{7}{2} + 0 = ? $$
+
+Angles from inverse trigonometric functions, in degrees:
+
+%deg
+$$ \arcsin(1/2) = ? $$
+
+Complex numbers in polar form:
+
+%polar
+$$ (3 + 4i) + 0 = ? $$

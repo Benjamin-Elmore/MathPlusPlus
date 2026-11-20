@@ -38,6 +38,7 @@ pub struct Session {
     doc_name: Option<Arc<str>>,
     cache: HashMap<BlockId, Cached>,
     sequences: BTreeSet<String>,
+    number_format: mpp_core::display::NumberFormat,
     evaluated: Evaluated,
 }
 
@@ -69,6 +70,7 @@ impl Session {
             doc_name: None,
             cache: HashMap::new(),
             sequences: BTreeSet::new(),
+            number_format: mpp_core::display::NumberFormat::default(),
             evaluated: Evaluated::empty(),
         }
     }
@@ -124,6 +126,12 @@ impl Session {
     /// blocks that import it and the blocks that use what it defines.
     pub fn invalidate(&mut self, path: impl AsRef<Path>) {
         self.importer.invalidate(Some(path.as_ref()));
+    }
+
+    /// The display format a file starts with (the IDE's settings); `%` directives in
+    /// the file change it from their line on. Takes effect at the next run.
+    pub fn set_number_format(&mut self, format: mpp_core::display::NumberFormat) {
+        self.number_format = format;
     }
 
     /// The last result.
@@ -213,7 +221,7 @@ impl Session {
 
         let diagnostics = attach_parse_diagnostics(&doc, &mut blocks);
         let graph = DepGraph::build(&blocks);
-        self.evaluated = Evaluated {
+        let mut evaluated = Evaluated {
             document: doc,
             blocks,
             recomputed,
@@ -223,6 +231,8 @@ impl Session {
             source: src.to_string(),
             lines,
         };
+        crate::numfmt::apply(&mut evaluated, &self.number_format);
+        self.evaluated = evaluated;
         &self.evaluated
     }
 }

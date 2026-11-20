@@ -572,6 +572,13 @@ pub fn rational_to_sig_digits(q: &BigRational, sig: usize) -> String {
     if q.is_zero() {
         return "0".into();
     }
+    let (neg, digits, k) = rational_sig_parts(q, sig);
+    place_point(neg, &digits, k)
+}
+
+/// A nonzero rational as `(negative, digits, k)`: `digits` holds exactly `sig` significant
+/// digits (rounded half away from zero) and the value is `0.d1d2… × 10^(k+1)`.
+pub fn rational_sig_parts(q: &BigRational, sig: usize) -> (bool, String, i64) {
     let sig = sig.max(1);
     let neg = q.is_negative();
     let a = q.abs();
@@ -605,7 +612,7 @@ pub fn rational_to_sig_digits(q: &BigRational, sig: usize) -> String {
         rounded /= BigInt::from(10);
         k += 1;
     }
-    place_point(neg, &rounded.to_string(), k)
+    (neg, rounded.to_string(), k)
 }
 
 /// Exact rational to decimal text with exactly `places` digits after the point.
