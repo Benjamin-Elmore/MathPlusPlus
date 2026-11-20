@@ -493,6 +493,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mpp-plot"
+version = "0.1.0"
+dependencies = [
+ "insta",
+ "mpp-core",
+ "mpp-eval",
+ "mpp-syntax",
+ "proptest",
+ "resvg",
+]
+
+[[package]]
 name = "mpp-render"
 version = "0.1.0"
 dependencies = [

@@ -144,6 +144,10 @@ impl Engine<'_> {
             K::Binary { op, lhs, rhs } => {
                 let l = self.child(n, lhs, st, path);
                 let r = self.child(n, rhs, st, path);
+                if *op == BinOp::Mod {
+                    let m = Atom::new(Class::Bin, self.roman("mod", st));
+                    return self.group(vec![l, m, r], st);
+                }
                 match bin_symbol(*op) {
                     None => self.group(vec![l, r], st),
                     Some(ch) => {
@@ -270,6 +274,35 @@ impl Engine<'_> {
                 self.font = saved;
                 x
             }
+            K::Quantity { value, unit } => {
+                let v = self.child(n, value, st, path);
+                let thin = Atom::ord(LBox::kern(0.1667 * self.scale(st)));
+                let u = Atom::ord(self.unit_box(&unit.text, st));
+                self.group(vec![v, thin, u], st)
+            }
+            K::Convert { expr, unit } => {
+                let e = self.child(n, expr, st, path);
+                let gap = Atom::ord(LBox::kern(0.3 * self.scale(st)));
+                let word = Atom::ord(self.text("in", FontId::Text, st));
+                let gap2 = Atom::ord(LBox::kern(0.3 * self.scale(st)));
+                let u = Atom::ord(self.unit_box(&unit.text, st));
+                self.group(vec![e, gap, word, gap2, u], st)
+            }
+            K::SetBuilder {
+                var,
+                domain,
+                condition,
+            } => {
+                let mut atoms = vec![self.child(n, var, st, path)];
+                if let Some(d) = domain {
+                    atoms.push(self.rel(RelOp::In, st));
+                    atoms.push(self.child(n, d, st, path));
+                }
+                atoms.push(Atom::new(Class::Rel, self.sym(':', st)));
+                atoms.push(self.child(n, condition, st, path));
+                let inner = self.group(atoms, st);
+                self.fenced(Some('{'), inner, Some('}'), st)
+            }
             K::Relation { first, rest } => {
                 let mut atoms = vec![self.child(n, first, st, path)];
                 for (op, rhs) in rest {
@@ -279,6 +312,65 @@ impl Engine<'_> {
                 self.group(atoms, st)
             }
         }
+    }
+
+    /// An upright roman word (`mod`, units).
+    pub fn roman(&mut self, s: &str, st: Style) -> LBox {
+        let saved = self.font;
+        self.font = Some(Font::Roman);
+        let w = self.word(s, st);
+        self.font = saved;
+        w
+    }
+
+    /// A unit typeset upright: `m/s^2`, `\mathrm{km/h}`, `°C`, with exponents raised.
+    pub fn unit_box(&mut self, text: &str, st: Style) -> LBox {
+        let t = text.trim();
+        let t = t
+            .strip_prefix("\\mathrm{")
+            .and_then(|r| r.strip_suffix('}'))
+            .unwrap_or(t)
+            .replace("\\circ", "°")
+            .replace("\\cdot", "⋅")
+            .replace("\\Omega", "Ω")
+            .replace("\\mu", "μ");
+        let chars: Vec<char> = t.chars().filter(|c| !matches!(c, '{' | '}')).collect();
+        let mut parts: Vec<LBox> = vec![];
+        let mut i = 0;
+        let mut plain = String::new();
+        while i < chars.len() {
+            if chars[i] == '^' {
+                // The exponent attaches to the last character before it.
+                let last = plain.pop();
+                if !plain.is_empty() {
+                    parts.push(self.roman(&plain, st));
+                    plain.clear();
+                }
+                i += 1;
+                let mut exp = String::new();
+                if i < chars.len() && chars[i] == '-' {
+                    exp.push('−');
+                    i += 1;
+                }
+                while i < chars.len() && chars[i].is_ascii_digit() {
+                    exp.push(chars[i]);
+                    i += 1;
+                }
+                let sup = self.roman(&exp, st.sup());
+                let base = match last {
+                    Some(c) => self.roman(&c.to_string(), st),
+                    None => parts.pop().unwrap_or_else(LBox::empty),
+                };
+                parts.push(self.scripts(base, None, Some(sup), st, false));
+            } else {
+                plain.push(chars[i]);
+                i += 1;
+            }
+        }
+        if !plain.is_empty() {
+            parts.push(self.roman(&plain, st));
+        }
+        LBox::hlist(parts)
     }
 
     /// A relation symbol as an atom.
@@ -957,6 +1049,7 @@ fn bin_symbol(op: BinOp) -> Option<char> {
         BinOp::SetMinus => '∖',
         BinOp::And => '∧',
         BinOp::Or => '∨',
+        BinOp::Mod => return None,
     })
 }
 

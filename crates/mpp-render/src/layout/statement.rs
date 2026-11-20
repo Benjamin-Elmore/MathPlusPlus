@@ -48,7 +48,7 @@ pub fn line_roots(line: &Line) -> Vec<&Node> {
                 v.extend(r.names.iter());
                 v.push(&r.set);
             }
-            Clause::Condition(n) => v.push(n),
+            Clause::Condition(n) | Clause::Assumption(n) => v.push(n),
         }
     }
     v
@@ -251,8 +251,12 @@ fn layout_line(
         Statement::Empty => {}
     }
     for c in &line.clauses {
-        atoms.push(Atom::new(Class::Punct, e.sym(',', st)));
-        atoms.push(Atom::ord(LBox::kern(e.scale(st))));
+        if matches!(c, Clause::Assumption(_)) {
+            atoms.push(Atom::ord(LBox::kern(1.5 * e.scale(st))));
+        } else {
+            atoms.push(Atom::new(Class::Punct, e.sym(',', st)));
+            atoms.push(Atom::ord(LBox::kern(e.scale(st))));
+        }
         match c {
             Clause::Where { name, value, .. } => {
                 atoms.push(e.atom(name, st, &sl.next(), None));
@@ -270,6 +274,10 @@ fn layout_line(
                 atoms.push(e.atom(&r.set, st, &sl.next(), None));
             }
             Clause::Condition(n) => atoms.push(e.atom(n, st, &sl.next(), None)),
+            Clause::Assumption(n) => {
+                let inner = e.atom(n, st, &sl.next(), None);
+                atoms.push(e.fenced(Some('('), inner, Some(')'), st));
+            }
         }
     }
     let (b, _, _, offsets) = e.hlist_offsets(atoms, st);

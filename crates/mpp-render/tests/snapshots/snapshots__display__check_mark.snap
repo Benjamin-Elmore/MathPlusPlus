@@ -1,0 +1,7 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\checkmark"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16" height="14.4" viewBox="0 0 16 14.4" overflow="visible">
+<path d="M1.28 8.35L5.76 14.4L15.04 0.58" fill="none" stroke="#111111" stroke-width="1.5"/>
+</svg>

@@ -133,6 +133,17 @@ impl<'a> Engine<'a> {
                 .unwrap_or(0.25);
             return LBox::kern(w * size);
         }
+        if ch == '✓' || ch == '✗' {
+            // No font here has these two; they are drawn as strokes.
+            return LBox {
+                width: 0.8 * size,
+                height: 0.72 * size,
+                depth: 0.0,
+                italic: 0.0,
+                content: Content::Mark(ch == '✗', self.color),
+                hit: None,
+            };
+        }
         let (font, glyph) = match self.fonts.glyph(font, ch) {
             Some(g) => (font, g),
             None => {

@@ -96,4 +96,13 @@ pub const CASES: &[(&str, &str)] = &[
         "tall_matrix",
         r"\begin{pmatrix} 1 \\ 2 \\ 3 \\ 4 \\ 5 \\ 6 \\ 7 \\ 8 \end{pmatrix}",
     ),
+    ("quantity", r"g = 9.81\,\mathrm{m/s^2}"),
+    ("quantity_plain", r"v = 100 km/h"),
+    ("convert", r"v \operatorname{in} \mathrm{km/h}"),
+    ("set_builder", r"\{x \in \mathbb{R} : x^2 < 4\}"),
+    ("set_builder_bar", r"\{x \mid x > 0\}"),
+    ("modulo", r"a \bmod n"),
+    ("assumption_clause", r"\sqrt{x^2} = ? (x > 0)"),
+    ("check_mark", r"\checkmark"),
+    ("cross_mark", r"1 + \xmark"),
 ];

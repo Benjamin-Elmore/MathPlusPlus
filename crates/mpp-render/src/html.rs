@@ -5,8 +5,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::fmt::Write;
 
 use mpp_syntax::document::{
-    Align, Block, BlockKind, DisplayMath, Document, Figure, FigureItemKind, HelperName, HelperVerb,
-    Inline, InlineKind, List, Table, TheoremKind,
+    Align, Block, BlockKind, DataImport, DisplayMath, Document, Figure, FigureItemKind, HelperName,
+    HelperVerb, Inline, InlineKind, List, Table, TheoremKind,
 };
 use mpp_syntax::math::{Clause, Line, MathAst, Node, NodeKind, RelOp, Statement};
 use mpp_syntax::Span;
@@ -14,7 +14,7 @@ use mpp_syntax::Span;
 use crate::display::{Color, DisplayList};
 use crate::font::{FontId, FONT_LICENCE};
 use crate::layout::{
-    layout_math, layout_node, IntegralLimits, LayoutOptions, LineResult, MathStyle,
+    layout_latex, layout_math, layout_node, IntegralLimits, LayoutOptions, LineResult, MathStyle,
 };
 use crate::svg::{glyph_defs, num, svg_body};
 use crate::theme::Theme;
@@ -31,6 +31,25 @@ pub trait ResultProvider {
     fn figure_svg(&self, _block: &Block, _figure: &Figure) -> Option<String> {
         None
     }
+
+    /// The columns and rows of a `Data:` block's file, once it has been read.
+    fn data_table(&self, _block: &Block, _data: &DataImport) -> Option<DataRows> {
+        None
+    }
+
+    /// The text of a `References from [[file]]` file, so its entries can be listed.
+    fn references_source(&self, _path: &str) -> Option<String> {
+        None
+    }
+}
+
+/// A table read for a `Data:` block, ready to typeset.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct DataRows {
+    /// Each column's variable as maths source (`v_0`) and its unit (`m/s`).
+    pub columns: Vec<(String, Option<String>)>,
+    /// The cells as text, row by row.
+    pub rows: Vec<Vec<String>>,
 }
 
 /// A provider with no results and no figures.
@@ -263,6 +282,18 @@ impl Renderer<'_> {
                 self.footnote_number(name);
             }
             BlockKind::Directive(_) => {}
+            BlockKind::Assume(a) => {
+                let mut s = String::from("Assume ");
+                let n = a.conditions.len();
+                for (i, c) in a.conditions.iter().enumerate() {
+                    if i > 0 {
+                        s.push_str(if i + 1 == n { " and " } else { ", " });
+                    }
+                    s.push_str(&self.inline_node(c));
+                }
+                let _ = writeln!(out, "<p class=\"assume\">{s}.</p>");
+            }
+            BlockKind::Data(d) => self.data_block(b, d, out),
             BlockKind::Theorem(t) => {
                 let proof = t.kind == TheoremKind::Proof;
                 let head = if proof || t.kind == TheoremKind::Remark {
@@ -306,6 +337,38 @@ impl Renderer<'_> {
                 out.push_str("</div>\n");
             }
         }
+    }
+
+    fn data_block(&mut self, b: &Block, d: &DataImport, out: &mut String) {
+        let name = self.inline_node(&d.name);
+        let file = file_link(&d.path, None);
+        let Some(t) = self.results.data_table(b, d) else {
+            let _ = writeln!(out, "<p class=\"data\">Data {name} from {file}.</p>");
+            return;
+        };
+        let _ = writeln!(out, "<figure class=\"data\">\n<table class=\"data\">");
+        out.push_str("<thead><tr>");
+        for (var, unit) in &t.columns {
+            let dl = layout_latex(var, &self.math_opts(MathStyle::Text));
+            let mut cell = self.svg(&dl, "m");
+            if let Some(u) = unit {
+                let _ = write!(cell, " <span class=\"unit\">({})</span>", esc(u));
+            }
+            let _ = write!(out, "<th>{cell}</th>");
+        }
+        out.push_str("</tr></thead>\n<tbody>\n");
+        for row in &t.rows {
+            out.push_str("<tr>");
+            for cell in row {
+                let _ = write!(out, "<td>{}</td>", esc(cell));
+            }
+            out.push_str("</tr>\n");
+        }
+        out.push_str("</tbody>\n</table>\n");
+        let _ = writeln!(
+            out,
+            "<figcaption>{name} from {file}</figcaption>\n</figure>"
+        );
     }
 
     fn display(&mut self, b: &Block, m: &DisplayMath, out: &mut String) {
@@ -399,6 +462,7 @@ impl Renderer<'_> {
                 self.inline_math(&ast)
             }
             Clause::Condition(n) => self.inline_node(n),
+            Clause::Assumption(n) => format!("({})", self.inline_node(n)),
         }
     }
 
@@ -725,7 +789,9 @@ svg.m {{ display: inline; }}
 .thm-head {{ font-weight: bold; margin-right: 0.4em; }}
 .proof .thm-head {{ font-weight: normal; font-style: italic; }}
 .qed {{ float: right; }}
-.import, .helper {{ color: var(--mpp-muted); }}
+.import, .helper, .assume {{ color: var(--mpp-muted); }}
+.assume {{ font-style: italic; }}
+.unit {{ font-size: 0.85em; color: var(--mpp-muted); }}
 blockquote {{ margin: 1em 2em; color: var(--mpp-muted); }}
 table {{ border-collapse: collapse; margin: 1em auto; }}
 th, td {{ padding: 0.2em 0.8em; }}

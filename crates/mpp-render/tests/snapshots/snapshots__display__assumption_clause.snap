@@ -1,0 +1,17 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\sqrt{x^2} = ? (x > 0)"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="166.97" height="25.07" viewBox="0 0 166.97 25.07" overflow="visible">
+<text x="0" y="1.6" font-family="Latin Modern Math" font-size="20" fill="#111111">√</text>
+<rect x="16.66" y="0.8" width="20.53" height="0.8" fill="#111111"/>
+<text x="16.66" y="20.11" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="28.1" y="14.33" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<text x="42.74" y="20.11" font-family="Latin Modern Math" font-size="20" fill="#111111">=</text>
+<text x="63.86" y="20.11" font-family="Latin Modern Math" font-size="20" fill="#111111">?</text>
+<text x="103.3" y="20.11" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="111.08" y="20.11" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="128.07" y="20.11" font-family="Latin Modern Math" font-size="20" fill="#111111">&gt;</text>
+<text x="149.19" y="20.11" font-family="Latin Modern Math" font-size="20" fill="#111111">0</text>
+<text x="159.19" y="20.11" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+</svg>

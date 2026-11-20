@@ -100,3 +100,42 @@ fn fonts_can_be_left_out() {
     assert!(!html.contains("@font-face"));
     assert!(html.len() < 100_000);
 }
+
+struct Table;
+
+impl ResultProvider for Table {
+    fn data_table(
+        &self,
+        _block: &Block,
+        _data: &mpp_syntax::document::DataImport,
+    ) -> Option<mpp_render::DataRows> {
+        Some(mpp_render::DataRows {
+            columns: vec![
+                ("t".into(), Some("s".into())),
+                ("x".into(), Some("m".into())),
+            ],
+            rows: vec![
+                vec!["0".into(), "1.5".into()],
+                vec!["1".into(), "2.5".into()],
+            ],
+        })
+    }
+}
+
+#[test]
+fn assume_and_data_blocks_render() {
+    let doc = parse_document(
+        "Assume $x > 0$ and $n = 2$.
+
+Data: $T$ from [[m.csv]].
+",
+    );
+    let plain = render_html(&doc, &NoResults);
+    assert!(plain.contains("<p class=\"assume\">Assume "), "{plain}");
+    assert!(plain.contains(" and "));
+    assert!(plain.contains("<p class=\"data\">Data "));
+    let tab = render_html(&doc, &Table);
+    assert!(tab.contains("<table class=\"data\">"));
+    assert!(tab.contains("<td>2.5</td>"));
+    assert!(tab.contains("(s)"));
+}

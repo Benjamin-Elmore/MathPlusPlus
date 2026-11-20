@@ -4,7 +4,7 @@
 
 use mpp_syntax::Span;
 
-use crate::display::{Color, DisplayList, HitBox, HitKind, NodePath, Primitive, Rect};
+use crate::display::{Color, DisplayList, HitBox, HitKind, NodePath, PathCmd, Primitive, Rect};
 use crate::font::FontId;
 
 /// A glyph inside a box.
@@ -35,6 +35,8 @@ pub(crate) enum Content {
     Glyph(GlyphBox),
     /// Fills the whole box.
     Rule(Color),
+    /// A drawn ✓ (false) or ✗ (true) filling the box; no font has them.
+    Mark(bool, Color),
     /// A dotted outline around the whole box.
     Slot(Color),
     /// Children at offsets from this box's origin.
@@ -241,6 +243,30 @@ impl LBox {
                 },
                 color: *color,
             }),
+            Content::Mark(cross, color) => {
+                let (w, h) = (self.width * px, self.height * px);
+                let (l, t) = (x * px, (y - self.height) * px);
+                let b = y * px;
+                let cmds = if *cross {
+                    vec![
+                        PathCmd::MoveTo(l + 0.1 * w, t + 0.1 * h),
+                        PathCmd::LineTo(l + 0.9 * w, b),
+                        PathCmd::MoveTo(l + 0.9 * w, t + 0.1 * h),
+                        PathCmd::LineTo(l + 0.1 * w, b),
+                    ]
+                } else {
+                    vec![
+                        PathCmd::MoveTo(l + 0.08 * w, t + 0.58 * h),
+                        PathCmd::LineTo(l + 0.36 * w, b),
+                        PathCmd::LineTo(l + 0.94 * w, t + 0.04 * h),
+                    ]
+                };
+                out.items.push(Primitive::Path {
+                    cmds,
+                    color: *color,
+                    stroke: Some(0.075 * px),
+                });
+            }
             Content::Slot(color) => out.items.push(Primitive::Outline {
                 rect: Rect {
                     x: x * px,

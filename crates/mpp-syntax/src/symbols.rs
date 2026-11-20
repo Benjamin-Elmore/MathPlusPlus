@@ -228,6 +228,8 @@ pub static SYMBOLS: &[Symbol] = &[
     entry("triangle", "△", "\\triangle", Misc),
     entry("degree", "°", "\\degree", Misc),
     entry("qed", "∎", "\\qedsymbol", Misc),
+    entry("checkmark", "✓", "\\checkmark", Misc),
+    entry("xmark", "✗", "\\xmark", Misc),
     entry("square", "□", "\\square", Misc),
     entry("sin", "sin", "\\sin", Function),
     entry("cos", "cos", "\\cos", Function),
