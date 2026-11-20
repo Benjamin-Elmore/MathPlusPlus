@@ -1,0 +1,79 @@
+# Topology and geometry
+
+Convex and differential geometry, point-set and algebraic topology, and category theory. Most of these are theorems, written as stated results with their conditions; where a number can be computed it is checked. Areas and volumes of the standard shapes are in [[std/geometry.mpp]]. Import with `![[std/topology-geometry.mpp]]`.
+
+Name clashes: $h$ here is the support function (not the class number or a hook length), $\chi$ the Euler characteristic (not a character), and $F$ a functor.
+
+## Convex geometry
+
+The support function of a nonempty compact convex set $K$ is $h_K(u) = \sup_{x \in K} u \cdot x$. For the ball of radius $r$ centred at 0 it is $r\|u\|_2$, reached at $x = r u/\|u\|$.
+
+$$ h_{\text{ball}}(r, u_1, u_2) := r \sqrt{u_1^2 + u_2^2} $$
+
+$$ h_{\text{ball}}(2, 3, 4) \overset{?}{=} 10 $$
+
+$$ u_1 \frac{r u_1}{\sqrt{u_1^2 + u_2^2}} + u_2 \frac{r u_2}{\sqrt{u_1^2 + u_2^2}} \overset{?}{=} h_{\text{ball}}(r, u_1, u_2) $$
+
+The area of a circle, the area of a sphere and the volume of a ball (see [[std/geometry.mpp]]):
+
+$$ \int_0^{2\pi} \int_0^{r} \rho \, d\rho \, d\theta \overset{?}{=} \pi r^2 $$
+
+## Differential geometry
+
+A metric measures speed by $\|\gamma'(t)\|_g$ and length by $\int \|\gamma'(t)\|_g\,dt$. The circle of radius 3 has length $6\pi$.
+
+$$ \ell_{\text{circle}}(r) := \int_0^{2\pi} \sqrt{(r \sin t)^2 + (r \cos t)^2} \, dt $$
+
+$$ \ell_{\text{circle}}(3) \overset{?}{=} 6\pi $$
+
+The Gaussian curvature of a round sphere of radius $r$ is $1/r^2$.
+
+$$ K_{\text{sphere}}(r) := \frac{1}{r^2} $$
+
+$$ K_{\text{sphere}}(2) \overset{?}{=} \frac{1}{4} $$
+
+Gauss–Bonnet on the sphere: curvature $1/r^2$ times area $4\pi r^2$ is $2\pi \chi(S^2) = 4\pi$.
+
+$$ K_{\text{sphere}}(r) \cdot 4 \pi r^2 \overset{?}{=} 2 \pi \cdot 2 $$
+
+**Theorem.** (Gauss–Bonnet) On a closed oriented Riemannian surface $M$ with Gaussian curvature $K$, $\int_M K\,dA = 2\pi \chi(M)$.
+
+## Point-set topology
+
+The interior $\operatorname{int}(A)$ is the largest open subset of $A$, the closure $\operatorname{cl}(A)$ the smallest closed superset, and the boundary $\partial A = \operatorname{cl}(A) \setminus \operatorname{int}(A)$. For $A = [0, 1)$ in $\mathbb{R}$: closure $[0, 1]$, interior $(0, 1)$, boundary the two points $\{0, 1\}$.
+
+$$ \operatorname{card}(\operatorname{setminus}([0, 1], (0, 1))) \overset{?}{=} 2 $$
+
+**Theorem.** (Interior, closure, boundary) For a subset $A$ of a topological space, $\operatorname{int}(A)$ is the union of all open sets inside $A$, $\operatorname{cl}(A)$ is the intersection of all closed sets containing $A$, and the boundary is $\partial A = \operatorname{cl}(A) \setminus \operatorname{int}(A)$.
+
+## Algebraic topology
+
+The winding number labels loops in the punctured plane up to based homotopy: going twice round the origin gives 2.
+
+$$ n_{\text{wind}}(k) := \frac{1}{2\pi i} \int_0^{2\pi} \frac{k i e^{k i t}}{e^{k i t}} \, dt $$
+
+$$ n_{\text{wind}}(2) \overset{?}{=} 2 $$
+
+$$ n_{\text{wind}}(-1) \overset{?}{=} -1 $$
+
+**Theorem.** (Fundamental group of the circle) $\pi_1(S^1) \cong \mathbb{Z}$, the isomorphism sending a loop to its winding number.
+
+The Euler characteristic of a finite cell complex is $\chi = \sum_k (-1)^k b_k$ over its Betti numbers: $\chi(S^2) = 2$, $\chi(\text{torus}) = 0$.
+
+$$ \chi_{\text{Betti}}(b_0, b_1, b_2) := b_0 - b_1 + b_2 $$
+
+$$ \chi_{\text{Betti}}(1, 0, 1) \overset{?}{=} 2 $$
+
+$$ \chi_{\text{Betti}}(1, 2, 1) \overset{?}{=} 0 $$
+
+Counting cells gives the same number: a cube has 8 vertices, 12 edges and 6 faces.
+
+$$ 8 - 12 + 6 \overset{?}{=} \chi_{\text{Betti}}(1, 0, 1) $$
+
+**Theorem.** (Euler characteristic) For a finite cell complex with $c_k$ cells of dimension $k$ and Betti numbers $b_k$, $\chi = \sum_k (-1)^k c_k = \sum_k (-1)^k b_k$.
+
+## Category theory
+
+**Theorem.** (Adjunction) Functors $F: \mathcal{C} \to \mathcal{D}$ and $G: \mathcal{D} \to \mathcal{C}$ are adjoint, with $F$ left adjoint to $G$, when there are bijections $\operatorname{Hom}(FX, Y) \cong \operatorname{Hom}(X, GY)$ natural in $X$ and $Y$.
+
+**Theorem.** (Covariant Yoneda lemma) For a locally small category, an object $A$ and a functor $F$ to sets, $\operatorname{Nat}(h_A, F) \cong F(A)$, naturally in $A$ and $F$, where $h_A$ is the functor $X \mapsto \operatorname{Hom}(A, X)$.
