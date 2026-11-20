@@ -494,6 +494,12 @@ impl<'s> Ctx<'s> {
         Steps::record(&mut self.log, rule, &b, &a, note);
     }
 
+    /// Records that the limit of `before` is the plain value `value`.
+    fn record_value(&mut self, rule: &str, before: &Expr, value: &Expr) {
+        let b = self.holder(before);
+        Steps::record(&mut self.log, rule, &b, value, None);
+    }
+
     fn run(mut self, e: &Expr) -> MathResult<Expr> {
         let result = match self.lim(e)? {
             Lv::Fin(v) => simplify(&v),
@@ -727,7 +733,7 @@ impl<'s> Ctx<'s> {
                     });
                     return self.infinite(s);
                 }
-                self.indeterminate(n, d)
+                self.indeterminate(n, d, "0/0")
             }
             (Lv::Fin(_) | Lv::Bounded, _) if inf(&ld) => Ok(Lv::Fin(Expr::zero())),
             (_, Lv::Fin(b)) if inf(&ln) => {
@@ -745,7 +751,7 @@ impl<'s> Ctx<'s> {
                 });
                 self.infinite(s)
             }
-            _ if inf(&ln) && inf(&ld) => self.indeterminate(n, d),
+            _ if inf(&ln) && inf(&ld) => self.indeterminate(n, d, "∞/∞"),
             (Lv::Bounded, Lv::Fin(b)) if !is_zero_value(b) => Ok(Lv::Bounded),
             (Lv::Bounded, Lv::Fin(_)) => {
                 Err(not_exist("the function oscillates with growing size"))
@@ -755,7 +761,7 @@ impl<'s> Ctx<'s> {
     }
 
     /// 0/0 or ∞/∞.
-    fn indeterminate(&mut self, n: &Expr, d: &Expr) -> MathResult<Lv> {
+    fn indeterminate(&mut self, n: &Expr, d: &Expr, form: &str) -> MathResult<Lv> {
         let var = self.var.clone();
         let quotient = mul(vec![n.clone(), pow(d.clone(), Expr::int(-1))]);
         if matches!(self.point, Point::Finite(..)) {
@@ -817,7 +823,7 @@ impl<'s> Ctx<'s> {
         }
         let entry = self.lhopital;
         let mark = self.log.as_ref().map(|l| l.len());
-        let result = self.lhopital_step(n, d, &quotient);
+        let result = self.lhopital_step(n, d, &quotient, form);
         match result {
             // L'Hôpital's rule cycled or blew up: drop its steps and read the answer off
             // the series instead.
@@ -907,7 +913,7 @@ impl<'s> Ctx<'s> {
         Some(lv)
     }
 
-    fn lhopital_step(&mut self, n: &Expr, d: &Expr, quotient: &Expr) -> MathResult<Lv> {
+    fn lhopital_step(&mut self, n: &Expr, d: &Expr, quotient: &Expr, form: &str) -> MathResult<Lv> {
         let var = self.var.clone();
         if self.lhopital >= MAX_LHOPITAL {
             return Err(MathError::Unsupported(
@@ -925,13 +931,33 @@ impl<'s> Ctx<'s> {
                 "this limit (the derivatives in L'Hôpital's rule grow too large)".into(),
             ));
         }
-        let shown = Expr::new(ExprNode::Mul(vec![
-            dn.clone(),
-            Expr::new(ExprNode::Pow(dd.clone(), Expr::int(-1))),
-        ]));
-        self.record("L'Hôpital's rule", quotient, &shown, None);
+        let shown = if dd.is_one() {
+            dn.clone()
+        } else {
+            Expr::new(ExprNode::Mul(vec![
+                dn.clone(),
+                Expr::new(ExprNode::Pow(dd.clone(), Expr::int(-1))),
+            ]))
+        };
+        let note = format!(
+            "the limit has the form {form}, so differentiate the top and bottom: d/d{var}({n}) = {dn}, d/d{var}({d}) = {dd}"
+        );
+        self.record("L'Hôpital's rule", quotient, &shown, Some(note));
         let next = mul(vec![dn, pow(dd, Expr::int(-1))]);
-        self.lim(&next)
+        let value = self.lim(&next)?;
+        if let Lv::Fin(v) = &value {
+            let v = simplify(v);
+            let shown_v = self.holder(&v);
+            let last = self
+                .log
+                .as_ref()
+                .and_then(|l| l.0.last())
+                .map(|s| s.after.clone());
+            if last.is_some_and(|a| a != v && a != shown_v) {
+                self.record_value("evaluate the new limit", &next, &v);
+            }
+        }
+        Ok(value)
     }
 
     fn lim_pow(&mut self, b: &Expr, x: &Expr) -> MathResult<Lv> {
@@ -1063,7 +1089,9 @@ impl<'s> Ctx<'s> {
                 }
             }
             Lv::Bounded => match f {
-                Func::Sin | Func::Cos | Func::Atan | Func::Tanh => Ok(Lv::Bounded),
+                Func::Sin | Func::Cos | Func::Atan | Func::Tanh | Func::Si | Func::Erf => {
+                    Ok(Lv::Bounded)
+                }
                 _ => Err(unsupported()),
             },
             lv => at_infinity(f, matches!(lv, Lv::PosInf)),
@@ -1095,7 +1123,9 @@ fn at_infinity(f: Func, positive: bool) -> MathResult<Lv> {
         Func::Tan | Func::Sec | Func::Csc | Func::Cot => {
             Err(not_exist("the function keeps repeating its poles"))
         }
-        Func::Atan => Ok(Lv::Fin(half_pi)),
+        Func::Atan | Func::Si => Ok(Lv::Fin(half_pi)),
+        Func::Erf => Ok(Lv::Fin(Expr::int(if positive { 1 } else { -1 }))),
+        Func::Ci if positive => Ok(Lv::Fin(Expr::zero())),
         Func::Tanh => Ok(Lv::Fin(Expr::int(if positive { 1 } else { -1 }))),
         Func::Sign => Ok(Lv::Fin(Expr::int(if positive { 1 } else { -1 }))),
         Func::Sinh | Func::Asinh | Func::Floor | Func::Ceil => Ok(signed(positive)),

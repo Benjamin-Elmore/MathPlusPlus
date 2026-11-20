@@ -6,7 +6,7 @@
 //! and never given a value.
 
 mod antidiff;
-mod convergence;
+pub(crate) mod convergence;
 mod infinite;
 mod numeric;
 mod product;

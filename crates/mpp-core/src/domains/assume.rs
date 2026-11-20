@@ -784,11 +784,32 @@ fn unsupported(e: &Expr) -> MathError {
 /// `e` simplified with what `a` knows. Rewrites that need a fact keep the safe form
 /// without it, and the step log says why.
 pub fn simplify_with(e: &Expr, a: &Assumptions, mut steps: Option<&mut Steps>) -> Expr {
-    let out = rewrite(&e.simplify(), a, &mut steps).simplify();
-    if out != e.simplify() {
+    let simplified = e.simplify();
+    let mut local = Steps::new();
+    let out = {
+        let mut log = steps.as_ref().map(|_| &mut local);
+        rewrite(&simplified, a, &mut log).simplify()
+    };
+    if let Some(log) = steps.as_deref_mut() {
+        // A safe form the input already had (ln|x − 1| from an integral) needs no
+        // explanation; only one the simplifier introduced (√(x²) → |x|) does.
+        let already = |s: &crate::Step| {
+            s.rule == "keep the safe form"
+                && s.before == s.after
+                && matches!(s.before.node(), ExprNode::Func(Func::Abs, _))
+                && contains_subexpr(e, &s.before)
+        };
+        log.0.extend(local.0.into_iter().filter(|s| !already(s)));
+    }
+    if out != simplified {
         Steps::record(&mut steps, "simplify with the assumptions", e, &out, None);
     }
     out
+}
+
+/// True when `part` occurs in `e` (structurally).
+fn contains_subexpr(e: &Expr, part: &Expr) -> bool {
+    e == part || e.children().into_iter().any(|c| contains_subexpr(c, part))
 }
 
 fn rewrite(e: &Expr, a: &Assumptions, steps: &mut Option<&mut Steps>) -> Expr {

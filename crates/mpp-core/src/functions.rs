@@ -14,6 +14,8 @@ use crate::expr::{Constant, Expr, ExprNode};
 use crate::number::{self, Number};
 use crate::simplify::{pow, split_coeff};
 
+mod special;
+
 /// Built-in functions. `exp`, `sqrt` and roots are powers, so they have no variant.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Func {
@@ -52,6 +54,12 @@ pub enum Func {
     Lcm,
     /// `binomial(n, k)`.
     Binomial,
+    /// The error function `erf x = (2/√π) ∫₀ˣ e^(−t²) dt`.
+    Erf,
+    /// The sine integral `Si x = ∫₀ˣ sin t / t dt`.
+    Si,
+    /// The cosine integral `Ci x = γ + ln x + ∫₀ˣ (cos t − 1)/t dt` (real for `x > 0`).
+    Ci,
 }
 
 /// How many arguments a function takes.
@@ -63,7 +71,7 @@ pub enum Arity {
 
 impl Func {
     /// Every function, for tables and tests.
-    pub const ALL: [Func; 30] = [
+    pub const ALL: [Func; 33] = [
         Func::Sin,
         Func::Cos,
         Func::Tan,
@@ -94,6 +102,9 @@ impl Func {
         Func::Gcd,
         Func::Lcm,
         Func::Binomial,
+        Func::Erf,
+        Func::Si,
+        Func::Ci,
     ];
 
     /// The plain name used when printing.
@@ -129,6 +140,9 @@ impl Func {
             Func::Gcd => "gcd",
             Func::Lcm => "lcm",
             Func::Binomial => "binomial",
+            Func::Erf => "erf",
+            Func::Si => "Si",
+            Func::Ci => "Ci",
         }
     }
 
@@ -165,6 +179,9 @@ impl Func {
             "gcd" => Func::Gcd,
             "lcm" => Func::Lcm,
             "binomial" | "binom" | "choose" => Func::Binomial,
+            "erf" => Func::Erf,
+            "Si" => Func::Si,
+            "Ci" => Func::Ci,
             _ => return None,
         })
     }
@@ -285,6 +302,7 @@ pub fn func(f: Func, args: Vec<Expr>) -> Expr {
         Func::Min | Func::Max => return min_max(f, args),
         Func::Gcd | Func::Lcm => gcd_lcm(f, &args),
         Func::Binomial => binomial(&args[0], &args[1]),
+        Func::Erf | Func::Si | Func::Ci => special_integral(f, &args[0]),
     };
     or_raw(f, args, value)
 }
@@ -305,6 +323,38 @@ fn approx_value(f: Func, args: &[Expr]) -> Option<Expr> {
     eval_func_complex(f, &vals)
         .ok()
         .map(|z| Expr::num(Number::complex_float(z.re, z.im)))
+}
+
+/// Exact values of `erf`, `Si` and `Ci`: at zero, at ±∞, and odd symmetry.
+fn special_integral(f: Func, u: &Expr) -> Option<Expr> {
+    if u.is_zero() {
+        return Some(match f {
+            Func::Ci => Expr::neg_infinity(),
+            _ => Expr::zero(),
+        });
+    }
+    if u.is_infinite() {
+        let positive = matches!(u.node(), ExprNode::Const(Constant::Infinity));
+        let sign = Expr::int(if positive { 1 } else { -1 });
+        return match f {
+            Func::Erf => Some(sign),
+            Func::Si => Some(crate::simplify::mul(vec![
+                sign,
+                Expr::rational(1, 2),
+                Expr::pi(),
+            ])),
+            Func::Ci if positive => Some(Expr::zero()),
+            _ => None,
+        };
+    }
+    if f != Func::Ci && has_negative_sign(u) {
+        let minus_u = crate::simplify::mul(vec![Expr::int(-1), u.clone()]);
+        return Some(crate::simplify::mul(vec![
+            Expr::int(-1),
+            func(f, vec![minus_u]),
+        ]));
+    }
+    None
 }
 
 /// `Some(c)` when `e = c·π` with `c` an exact rational.
@@ -960,6 +1010,17 @@ pub fn eval_func_f64(f: Func, args: &[f64]) -> MathResult<f64> {
             }
             acc
         }
+        Func::Erf => special::erf(x),
+        Func::Si => special::si(x),
+        Func::Ci => {
+            if x < 0.0 {
+                return Err(domain(f, "Ci is real only for positive arguments"));
+            }
+            if x == 0.0 {
+                return Ok(f64::NEG_INFINITY);
+            }
+            special::ci(x)
+        }
         Func::Binomial => {
             let k = args[1];
             if k.fract() != 0.0 {
@@ -1063,7 +1124,10 @@ pub fn eval_func_complex(f: Func, args: &[Complex64]) -> MathResult<Complex64> {
         | Func::Max
         | Func::Gcd
         | Func::Lcm
-        | Func::Binomial => real_only(f)?,
+        | Func::Binomial
+        | Func::Erf
+        | Func::Si
+        | Func::Ci => real_only(f)?,
     })
 }
 

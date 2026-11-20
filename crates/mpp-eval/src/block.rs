@@ -1,7 +1,9 @@
 //! Running one block: its statements, in order, against the environment.
 
 mod assume;
+mod auto;
 mod data;
+mod ode;
 mod sentences;
 mod units;
 
@@ -44,6 +46,10 @@ pub(crate) struct Inputs<'a> {
     pub chain: &'a [PathBuf],
     pub doc_name: Option<&'a str>,
     pub lines: &'a LineIndex,
+    /// The session's "Show steps" option: record the working of every `= ?` query.
+    pub show_steps: bool,
+    /// Auto-evaluation settings and cache.
+    pub auto: &'a crate::auto::AutoEval,
 }
 
 /// Bindings a block observed before it ran, by name.
@@ -77,6 +83,8 @@ pub(crate) fn run_block(block: &Block, env: &mut Env, inputs: &Inputs<'_>) -> Ou
         positional: false,
         volatile: false,
         local_assumptions: Vec::new(),
+        unknown_fns: Vec::new(),
+        auto_deadline: None,
     };
     run.block(block);
     run.finish()
@@ -102,6 +110,10 @@ struct Run<'a, 'e> {
     volatile: bool,
     /// Conditions in brackets after a query in the display block being run.
     local_assumptions: Vec<Expr>,
+    /// Unknown functions of the differential equation on the line being run.
+    unknown_fns: Vec<String>,
+    /// When this block's auto results stop waiting (set by the first one).
+    auto_deadline: Option<std::time::Instant>,
 }
 
 /// A read-only view of the environment that records what it is asked.
@@ -249,12 +261,28 @@ impl Run<'_, '_> {
         }
     }
 
+    /// Keeps the denominators a function was written with (hidden, under
+    /// [`crate::helpers::denominators_key`]), so the helpers see where the function as
+    /// written is undefined even when its body simplified them away. Written for every
+    /// function definition, so a redefinition replaces them.
+    fn remember_denominators(&mut self, function: &str, denominators: Vec<Expr>, span: Span) {
+        let key = crate::helpers::denominators_key(function);
+        let b = Arc::new(Binding::Variable {
+            kind: VarKind::Variable,
+            value: Expr::new(ExprNode::Tuple(denominators)),
+            origin: self.origin(span),
+        });
+        self.env.insert(key.clone(), b.clone());
+        self.effects.push((key, b));
+    }
+
     // ---- lowering and resolving --------------------------------------------
 
     fn lower(&self, node: &Node, locals: &[String]) -> Result<Expr, Located> {
         let view = self.view();
         Lowerer::new(&view)
             .with_locals(locals.iter().cloned())
+            .with_unknown_functions(self.unknown_fns.iter().cloned())
             .lower(node)
     }
 
@@ -265,11 +293,33 @@ impl Run<'_, '_> {
         params: &[String],
         locals: &[String],
     ) -> Result<Expr, Located> {
+        self.lower_function_body(node, name, params, locals)
+            .map(|(e, _)| e)
+    }
+
+    /// Lowers a function body, with the denominators it was written with.
+    fn lower_function_body(
+        &self,
+        node: &Node,
+        name: &str,
+        params: &[String],
+        locals: &[String],
+    ) -> Result<(Expr, Vec<Expr>), Located> {
         let view = self.view();
-        Lowerer::new(&view)
+        let mut lowerer = Lowerer::new(&view)
             .with_locals(locals.iter().cloned())
             .defining(name, params)
-            .lower(node)
+            .with_unknown_functions(self.unknown_fns.iter().cloned());
+        let e = lowerer.lower(node)?;
+        Ok((e, lowerer.take_denominators()))
+    }
+
+    /// Lowers the function a helper analyses (see [`Lowerer::lower_helper_target`]).
+    fn lower_helper_target(&self, node: &Node) -> Result<Expr, Located> {
+        let view = self.view();
+        Lowerer::new(&view)
+            .with_unknown_functions(self.unknown_fns.iter().cloned())
+            .lower_helper_target(node)
     }
 
     fn resolve_full(
@@ -355,15 +405,15 @@ impl Run<'_, '_> {
                 names: None,
             }),
             BlockKind::Using(u) => self.using(u),
-            BlockKind::Helper(h) => {
-                let mut nodes = vec![&h.target];
-                nodes.extend(h.interval.as_ref());
-                self.helper(&nodes);
-            }
+            BlockKind::Helper(h) => self.helper_sentence(
+                crate::helpers::sentence_op(h.helper),
+                &h.target,
+                h.interval.as_ref(),
+                h.at.as_ref(),
+                block.span,
+            ),
             BlockKind::Analyse(a) => {
-                let mut nodes = vec![&a.target];
-                nodes.extend(a.interval.as_ref());
-                self.helper(&nodes);
+                self.helper_sentence("analyse", &a.target, a.interval.as_ref(), None, block.span)
             }
             BlockKind::Solve(s) => self.solve_sentence(s),
             BlockKind::Assume(a) => self.assume_sentence(a),
@@ -395,14 +445,59 @@ impl Run<'_, '_> {
         }
     }
 
-    fn helper(&mut self, nodes: &[&Node]) {
-        for node in nodes {
-            if let Ok(input) = self.lower(node, &[]) {
-                let mut line = LineResult::new(node.span, LineKind::Helper);
-                line.input = Some(input);
-                self.push(line);
+    /// "Find the critical points of $f$ on $[0, 4]$." and "Analyse $f$.": the same
+    /// holder as the operator form, answered on the sentence's line.
+    fn helper_sentence(
+        &mut self,
+        op: &str,
+        target: &Node,
+        interval: Option<&Node>,
+        at: Option<&Clause>,
+        span: Span,
+    ) {
+        let mut lr = LineResult::new(span, LineKind::Helper);
+        let lowered = (|| -> Result<Expr, Located> {
+            let t = self.lower_helper_target(target)?;
+            let i = interval.map(|n| self.lower(n, &[])).transpose()?;
+            let a = match at {
+                Some(Clause::Where { name, value, .. }) => Some(Expr::equation(
+                    self.lower(name, &[])?,
+                    self.lower(value, &[])?,
+                )),
+                Some(Clause::Condition(n)) => Some(self.lower(n, &[])?),
+                _ => None,
+            };
+            Ok(crate::helpers::sentence_holder(op, t, i, a))
+        })();
+        let input = match lowered {
+            Ok(e) => e,
+            Err(l) => {
+                self.located(l);
+                return self.push(lr);
             }
+        };
+        lr.input = Some(input.clone());
+        let resolved =
+            self.resolve_full(&input, &Locals::new(), &[], self.inputs.show_steps, false);
+        for note in &resolved.notes {
+            self.warn(span, note.clone());
         }
+        match resolved.value {
+            Ok(v) => {
+                let shown = crate::domains_wire::present_set(&v);
+                lr.set_value(Value::from_expr(v));
+                if let Some((text, latex)) = shown {
+                    lr.text = Some(text);
+                    lr.latex = Some(latex);
+                }
+            }
+            Err(err) => self.error(target.span, err),
+        }
+        if let Some(log) = resolved.steps.filter(|l| !l.is_empty()) {
+            lr.steps = Some(log.clone());
+            self.result.steps.push((self.result.values.len(), log));
+        }
+        self.push(lr);
     }
 
     // ---- statement lines ---------------------------------------------------
@@ -414,6 +509,12 @@ impl Run<'_, '_> {
     }
 
     fn line(&mut self, line: &Line, place: Place) {
+        self.unknown_fns = self.unknown_functions_of(line);
+        self.statement_line(line, place);
+        self.unknown_fns.clear();
+    }
+
+    fn statement_line(&mut self, line: &Line, place: Place) {
         let mut where_names: Vec<String> = Vec::new();
         let mut locals = Locals::new();
         let mut conditions: Vec<&Node> = Vec::new();
@@ -655,7 +756,7 @@ impl Run<'_, '_> {
         };
         let mut locals: Vec<String> = s.names.to_vec();
         locals.extend(names.iter().cloned());
-        let lowered = match self.lower_in_function(body, &key, &names, &locals) {
+        let (lowered, denominators) = match self.lower_function_body(body, &key, &names, &locals) {
             Ok(e) => e,
             Err(l) => return self.located(l),
         };
@@ -706,6 +807,7 @@ impl Run<'_, '_> {
                 origin: self.origin(line.span),
             },
         );
+        self.remember_denominators(&key, denominators, line.span);
         let mut lr = LineResult::new(
             line.span,
             LineKind::Definition {
@@ -866,13 +968,20 @@ impl Run<'_, '_> {
         let input = match self.lower(expr, s.names) {
             Ok(e) => e,
             Err(l) => {
+                if matches!(l.error, EvalError::EmptyBox(_)) {
+                    lr.hint = Some(l.error.to_string());
+                }
                 self.located(l);
                 return self.push(lr);
             }
         };
         lr.input = Some(input.clone());
+        // `y'' + y = 0 = ?`: a differential equation goes to the solver with the
+        // line's conditions.
+        let input = self.ode_input(&input, s).unwrap_or(input);
         let numeric = mode == QueryMode::Approx;
-        let mut resolved = self.resolve_full(&input, s.locals, &[], steps, numeric);
+        let logging = steps || self.inputs.show_steps;
+        let mut resolved = self.resolve_full(&input, s.locals, &[], logging, numeric);
         for note in &resolved.notes {
             self.warn(expr.span, note.clone());
         }
@@ -998,15 +1107,49 @@ impl Run<'_, '_> {
         let (l_in, r_in) = match sides {
             Ok(v) => v,
             Err(l) => {
+                if matches!(l.error, EvalError::EmptyBox(_)) {
+                    lr.hint = Some(l.error.to_string());
+                }
                 self.located(l);
                 return self.push(lr);
             }
         };
         lr.input = Some(Expr::equation(l_in.clone(), r_in.clone()));
-        let l = self.resolve_full(&l_in, s.locals, &[], false, false).value;
-        let r = self.resolve_full(&r_in, s.locals, &[], false, false).value;
+        let side = |run: &Self, e: &Expr| {
+            run.resolve_full(e, s.locals, &[], false, false)
+                .value
+                .and_then(|v| run.finish_logged(v, None))
+        };
+        let l = side(self, &l_in);
+        let r = side(self, &r_in);
         match (l, r) {
-            (Ok(l), Ok(r)) => lr.verdict = Some(check(&l, &r)),
+            (Ok(l), Ok(r)) => {
+                let mut verdict = check(&l, &r);
+                // `\int f \, dx \overset{?}{=} F`: antiderivatives agree up to a constant.
+                if verdict.passed() != Some(true) {
+                    let mut vars = crate::check::indefinite_variables(&l_in);
+                    vars.extend(crate::check::indefinite_variables(&r_in));
+                    let written: BTreeSet<String> = l_in
+                        .free_symbols()
+                        .union(&r_in.free_symbols())
+                        .map(|n| n.to_string())
+                        .collect();
+                    let constants: Vec<String> = l
+                        .free_symbols()
+                        .union(&r.free_symbols())
+                        .map(|n| n.to_string())
+                        .filter(|n| !written.contains(n) && n.starts_with('C'))
+                        .collect();
+                    if let Some(v) = crate::check::check_up_to_constant(&l, &r, &vars, &constants) {
+                        self.warn(
+                            line.span,
+                            "the two sides agree up to a constant of integration",
+                        );
+                        verdict = v;
+                    }
+                }
+                lr.verdict = Some(verdict);
+            }
             (Err(err), _) => self.error(lhs.span, err),
             (_, Err(err)) => self.error(rhs.span, err),
         }
@@ -1017,8 +1160,16 @@ impl Run<'_, '_> {
         let mut lr = LineResult::new(line.span, LineKind::Relation);
         lr.noeval = noeval;
         lr.auto_eval = display && !noeval;
+        let mut lowered = None;
         match self.lower(node, s.names) {
-            Ok(e) => lr.input = Some(with_locals(e, s.locals, &[])),
+            Ok(e) => {
+                lr.input = Some(with_locals(e.clone(), s.locals, &[]));
+                lowered = Some(e);
+            }
+            // An empty template box: no answer yet, and a hint instead of an error.
+            Err(l) if matches!(l.error, EvalError::EmptyBox(_)) => {
+                lr.hint = Some(l.error.to_string());
+            }
             // Prose maths is only recorded; only display maths reports problems.
             Err(l) if display => self.located(l),
             Err(_) => {}
@@ -1027,6 +1178,9 @@ impl Run<'_, '_> {
             if let Ok(e) = self.lower(c, s.names) {
                 lr.conditions.push(e);
             }
+        }
+        if let (Some(e), true) = (lowered, lr.auto_eval) {
+            self.auto_evaluate(&mut lr, node, &e, s);
         }
         self.push(lr);
     }

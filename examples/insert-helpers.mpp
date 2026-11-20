@@ -1,0 +1,88 @@
+# The helpers of the Insert menu
+
+Every helper in the Insert menu writes its operator with a box for each argument. These are
+the templates as the editor writes them, with the boxes filled in.
+
+$$ f(x) := x^3 - 3x^2 + 1 $$
+
+$$ \operatorname{domain} {\frac{1}{x - 2}} = ? $$
+
+$$ \operatorname{range} {x^2 + 1} = ? $$
+
+$$ \operatorname{intercepts} {x^2 - 4} = ? $$
+
+$$ \operatorname{crit}_{[-1, 3]} {f} = ? $$
+
+$$ \operatorname{extrema}_{[-1, 3]} {f} = ? $$
+
+$$ \operatorname{increasing} {f} = ? $$
+
+$$ \operatorname{concavity} {f} = ? $$
+
+$$ \operatorname{inflection} {f} = ? $$
+
+$$ \operatorname{asymptotes} {\frac{x^2 + 1}{x - 1}} = ? $$
+
+$$ \operatorname{tangent}_{{1}} {x^2} = ? $$
+
+$$ \operatorname{normal}_{{1}} {x^2} = ? $$
+
+$$ \operatorname{linearise}_{{4}} {\sqrt{x}} = ? $$
+
+$$ \operatorname{mvt}_{{[0, 2]}} {x^3 - x} = ? $$
+
+$$ \operatorname{ivt}_{{[0, 1]}} {x^3 + x - 1} = ? $$
+
+$$ \operatorname{analyse} {x e^{-x}} = ? $$
+
+$$ \operatorname{area}_{{0}}^{{1}} \left( {x}, {x^2} \right) = ? $$
+
+$$ \operatorname{volume}_{{0}}^{{1}} \left( {x}, {y = 0}, {\text{auto}} \right) = ? $$
+
+$$ \operatorname{arclength}_{{0}}^{{1}} {x^{3/2}} = ? $$
+
+$$ \operatorname{surfacearea}_{{0}}^{{1}} \left( {x}, {y = 0} \right) = ? $$
+
+$$ \operatorname{average}_{{0}}^{{\pi}} {\sin x} = ? $$
+
+$$ \operatorname{work}_{{0}}^{{2}} {3x^2} = ? $$
+
+$$ \operatorname{centroid}_{{0}}^{{1}} {x} = ? $$
+
+$$ \operatorname{accumulate}_{{0}} {t^2} = ? $$
+
+$$ \operatorname{riemann}_{{0}}^{{1}} \left( {x^2}, {4}, {\text{mid}} \right) = ? $$
+
+$$ \operatorname{newton} \left( {x^2 - 2}, {1}, {5} \right) = ? $$
+
+$$ \operatorname{euler} \left( {y' = x + y}, {y(0) = 1}, {0.1}, {10} \right) = ? $$
+
+$$ \operatorname{rk4} \left( {y' = x + y}, {y(0) = 1}, {0.1}, {10} \right) = ? $$
+
+$$ \operatorname{taylorbound} \left( {e^x}, {0}, {3}, {1} \right) = ? $$
+
+$$ \operatorname{converges} {\frac{1}{n^2}} = ? $$
+
+$$ \operatorname{radius} {\frac{x^n}{n}} = ? $$
+
+$$ \operatorname{directional} \left( {x^2 y}, {(1, 2)}, {(3, 4)} \right) = ? $$
+
+$$ \operatorname{tangentplane}_{{(1, 2)}} {x^2 + y^2} = ? $$
+
+$$ \operatorname{linearapprox}_{{(1, 2)}} {x^2 y} = ? $$
+
+$$ \operatorname{classify} {x^3 - 3x + y^2} = ? $$
+
+$$ \operatorname{changevars} \left( {x + y}, {(x, y) = (u + v, u - v)}, u \in [0, 1], v \in [0, 1] \right) = ? $$
+
+$$ \operatorname{green} \left( {(-y, x)}, {(x, y) = (r \cos\theta, r \sin\theta)}, r \in [0, 1], \theta \in [0, 2\pi] \right) = ? $$
+
+$$ \operatorname{stokes} \left( {(-y, x, 0)}, {(u, v, 0)}, u \in [0, 1], v \in [0, 1] \right) = ? $$
+
+$$ \operatorname{gauss} \left( {(x, y, z)}, x \in [0, 1], y \in [0, 1], z \in [0, 1] \right) = ? $$
+
+$$ \operatorname{implicit}_{x} {x^2 + y^2 = 25} = ? $$
+
+$$ \operatorname{relatedrates}_{t} {x^2 + y^2 = 25} = ? $$
+
+$$ \operatorname{lagrange}\left( {x y}, {x^2 + y^2 = 1} \right) = ? $$

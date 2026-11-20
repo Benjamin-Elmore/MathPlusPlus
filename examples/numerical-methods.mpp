@@ -1,0 +1,59 @@
+# Numerical methods
+
+Each method shows its answer with an error estimate; `= ?!` shows every step.
+
+## Riemann sums, trapezoid and Simpson
+
+$$ \operatorname{riemann}_{left}(x^2, [0, 1], 4) = ? $$
+
+$$ \operatorname{riemann}_{right}(x^2, [0, 1], 4) = ? $$
+
+$$ \operatorname{midpoint}(x^2, [0, 1], 4) = ? $$
+
+$$ \operatorname{trapezoid}(\sin x, [0, \pi], 10) = ? $$
+
+$$ \operatorname{simpson}(e^{-x^2}, [0, 1], 10) = ? $$
+
+$$ \operatorname{simpson}(x^3, [0, 2], 2) = ? $$
+
+## Newton's method
+
+$$ \operatorname{newton}(x^2 - 2, 1) = ?! $$
+
+$$ \operatorname{newton}(\cos x - x, 1) = ? $$
+
+## Euler's method and RK4
+
+For $y' = y$ with $y(0) = 1$, step $h = 0.1$ and ten steps, the exact value is $y(1) = e$.
+
+$$ \operatorname{euler}(y, 0, 1, 0.1, 10) = ? $$
+
+$$ \operatorname{rk4}(y, 0, 1, 0.1, 10) = ? $$
+
+$$ \operatorname{rk4}(x + y, 0, 1, 0.1, 10) = ? $$
+
+## Taylor error bounds
+
+The Lagrange bound for the cubic Taylor polynomial of $e^x$ about $0$ at $x = 1$, and the degree needed for $\sin x$ at $x = 0.5$ to be within $10^{-6}$.
+
+$$ \operatorname{taylorbound}(e^x, 0, 3, 1) = ? $$
+
+$$ \operatorname{termsneeded}(\sin x, 0, 0.5, 0.000001) = ? $$
+
+## Convergence tests
+
+Every test is reported by name.
+
+$$ \operatorname{tests}(\frac{1}{k^2}) = ? $$
+
+$$ \operatorname{tests}(\frac{(-1)^k}{k}) = ? $$
+
+$$ \operatorname{tests}(\frac{2^k}{k!}) = ? $$
+
+## Radius and interval of convergence
+
+$$ \operatorname{ioc}(\frac{(x-2)^k}{k 3^k}) = ? $$
+
+$$ \operatorname{ioc}(\frac{x^k}{k^2}) = ? $$
+
+$$ \operatorname{radius}(\frac{x^k}{k!}) = ? $$

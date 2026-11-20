@@ -83,7 +83,7 @@ pub fn bound_names(name: &str, args: &[Expr]) -> Vec<Name> {
             ExprNode::Relation(RelOp::Eq, var, _) => syms(var),
             _ => Vec::new(),
         },
-        _ => Vec::new(),
+        _ => crate::helpers::bound_names(name, args),
     }
 }
 

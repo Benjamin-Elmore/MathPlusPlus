@@ -250,7 +250,7 @@ fn numeric_queries_and_numerical_fallbacks() {
 
 $$ \sum_{n=1}^{\infty} \frac{1}{n^3} \approx ? $$
 
-$$ \int_0^1 e^{-x^2} \, dx = ? $$
+$$ \int_0^1 e^{-x^3} \, dx = ? $$
 
 $$ ∫_0^1 sin(x^2) dx ≈ ? $$
 ");
@@ -259,7 +259,10 @@ $$ ∫_0^1 sin(x^2) dx ≈ ? $$
     assert!((number(a[0]) - 1.0 / 3.0).abs() < 1e-9);
     assert!((number(a[1]) - 1.202_056_903_159_594).abs() < 1e-8);
     // No closed form: the exact query falls back to the number, shown with ≈.
-    assert!((number(a[2]) - 0.746_824_132_812_427).abs() < 1e-9);
+    let x = Expr::sym("x");
+    let cubic = Expr::e().pow(-x.pow(3));
+    let (check, _) = numeric_integrate(&cubic, "x", 0.0, 1.0, 1e-12).expect("quadrature");
+    assert!((number(a[2]) - check).abs() < 1e-9);
     assert!(a[2].answer().is_some_and(|t| t.starts_with('≈')));
     assert!((number(a[3]) - 0.310_268_301_723_381).abs() < 1e-9);
     let w = warnings(&ev);
@@ -348,7 +351,7 @@ fn divergence_and_missing_limits_are_explained() {
     assert!(m.contains("diverges") && m.contains("x = 0"), "{m}");
     let m = failure(r"$$ \lim_{x \to 0} \frac{1}{x} = ? $$");
     assert!(m.contains("limit does not exist"), "{m}");
-    let m = failure(r"$$ \int e^{-x^2} \, dx = ? $$");
+    let m = failure(r"$$ \int e^{x^3} \, dx = ? $$");
     assert!(m.contains("no closed form"), "{m}");
     let m = failure(r"$$ \oint_C F \cdot dr = ? $$");
     assert!(m.contains("not supported yet"), "{m}");

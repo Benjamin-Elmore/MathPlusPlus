@@ -16,14 +16,19 @@
 #![forbid(unsafe_code)]
 
 pub mod assume;
+mod auto;
 mod block;
+pub mod calc;
 pub mod calculus;
 pub mod check;
 pub mod data;
+pub mod dispatch;
 pub mod domains_wire;
 pub mod error;
 pub mod files;
 pub mod graph;
+pub mod helpers;
+pub mod helpers_b;
 pub mod holders;
 pub mod import;
 pub mod lower;
@@ -38,6 +43,7 @@ pub mod value;
 #[cfg(feature = "watch")]
 pub mod watch;
 
+pub use calc::{calc_line, CalcError};
 pub use check::Verdict;
 pub use error::{EvalError, Located};
 pub use files::{

@@ -89,7 +89,7 @@ pub(crate) fn eventual_sign(t: &Expr, k: &str) -> Option<Ordering> {
 }
 
 /// True when `|t|` decreases along the samples (and at neighbouring integers).
-fn eventually_decreasing(t: &Expr, k: &str) -> bool {
+pub(crate) fn eventually_decreasing(t: &Expr, k: &str) -> bool {
     let mut prev = f64::INFINITY;
     let mut checked = 0;
     for x in SAMPLES {
@@ -322,7 +322,7 @@ pub fn convergence(term: &Expr, index: &str, _from: &Expr) -> ConvergenceReport 
     report(None, "none", "no test could decide".into())
 }
 
-fn divergence_test(mag: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn divergence_test(mag: &Expr, k: &str) -> Option<ConvergenceReport> {
     let l = lim_inf(mag, k).ok()?;
     if l.is_infinite() || (!is_zero_value(&l) && numeric(&l).is_some()) {
         return Some(report(
@@ -334,7 +334,7 @@ fn divergence_test(mag: &Expr, k: &str) -> Option<ConvergenceReport> {
     None
 }
 
-fn p_series(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn p_series(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     let p = p_series_exponent(pos, k)?;
     let v = numeric(&p)?;
     Some(if v > 1.0 {
@@ -345,7 +345,7 @@ fn p_series(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
 }
 
 /// A rational term `p(k)/q(k)` behaves like `c/k^d` with `d = deg q − deg p`.
-fn rational_comparison(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn rational_comparison(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     let r = as_ratfun(pos, k)?;
     let d = r.den.degree()? as i64 - r.num.degree()? as i64;
     let converges = d >= 2;
@@ -360,7 +360,7 @@ fn rational_comparison(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
 }
 
 /// `aₖ = u(k) − u(k + m)` with `u` tending to a finite limit.
-fn telescoping(t: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn telescoping(t: &Expr, k: &str) -> Option<ConvergenceReport> {
     let (u, m) = telescoping_parts(t, k)?;
     let l = lim_inf(&u, k).ok()?;
     if l.is_infinite() || numeric(&l).is_none() {
@@ -374,14 +374,14 @@ fn telescoping(t: &Expr, k: &str) -> Option<ConvergenceReport> {
 }
 
 /// True when a power has the index in both its base and its exponent, like `(k/(2k+1))^k`.
-fn has_power_tower(e: &Expr, k: &str) -> bool {
+pub(crate) fn has_power_tower(e: &Expr, k: &str) -> bool {
     match e.node() {
         ExprNode::Pow(b, x) if b.contains_sym(k) && x.contains_sym(k) => true,
         _ => e.children().iter().any(|c| has_power_tower(c, k)),
     }
 }
 
-fn ratio_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn ratio_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     let r = term_ratio(pos, k);
     if !r.contains_sym(k) && numeric(&r).is_none() {
         return None;
@@ -401,7 +401,7 @@ fn ratio_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     }
 }
 
-fn root_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn root_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     if !mentions_index_in_exponent(pos, k) {
         return None;
     }
@@ -423,7 +423,7 @@ fn root_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
 
 /// Compares `pos` with `1/k^p` for a `p` read off numerically and then confirmed by an
 /// exact limit.
-fn limit_comparison(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn limit_comparison(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     let (n1, n2) = (1e4, 1e5);
     let v1 = pos.eval_f64(&[(k, n1)]).ok()?;
     let v2 = pos.eval_f64(&[(k, n2)]).ok()?;
@@ -488,7 +488,7 @@ fn limit_comparison(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
 
 /// Drops factors bounded by a constant (`|sin|, |cos| ≤ 1`, `|atan| < π/2`, `|tanh| < 1`)
 /// and compares with what is left.
-fn bounded_comparison(t: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn bounded_comparison(t: &Expr, k: &str) -> Option<ConvergenceReport> {
     let factors = match t.node() {
         ExprNode::Mul(fs) => fs.clone(),
         _ => vec![t.clone()],
@@ -528,7 +528,7 @@ fn bounded_comparison(t: &Expr, k: &str) -> Option<ConvergenceReport> {
 
 /// The integral test from an exact antiderivative `F`: the series converges exactly when
 /// `F` has a finite limit at `∞` (the term is positive and decreasing).
-fn integral_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
+pub(crate) fn integral_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     if !eventually_decreasing(pos, k) {
         return None;
     }

@@ -199,6 +199,7 @@ impl Printer {
             K::Text(t) => format!("(text {t:?})"),
             K::Continuation => "(cont)".to_string(),
             K::Error => "(error)".to_string(),
+            K::Placeholder { label } => format!("(slot {label:?})"),
             K::Call {
                 callee,
                 args,

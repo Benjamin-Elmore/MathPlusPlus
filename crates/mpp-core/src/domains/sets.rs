@@ -2,7 +2,7 @@
 //! them on the real line, with union, intersection, difference, complement, membership
 //! and subset tests.
 //!
-//! A union of disjoint pieces is written `union(I₁, I₂, …)` until the printer learns `∪`.
+//! A union of disjoint pieces is the node `union(I₁, I₂, …)`, printed `I₁ ∪ I₂ ∪ …`.
 
 use std::cmp::Ordering;
 

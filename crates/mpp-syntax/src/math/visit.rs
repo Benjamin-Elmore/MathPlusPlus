@@ -12,7 +12,8 @@ pub fn children<'n>(node: &'n Node, f: &mut dyn FnMut(&'n Node)) {
         | K::Dots(_)
         | K::Text(_)
         | K::Continuation
-        | K::Error => {}
+        | K::Error
+        | K::Placeholder { .. } => {}
         K::Name(n) => {
             if let Some(sub) = &n.sub {
                 f(sub);
@@ -151,7 +152,8 @@ pub fn children_mut(node: &mut Node, f: &mut dyn FnMut(&mut Node)) {
         | K::Dots(_)
         | K::Text(_)
         | K::Continuation
-        | K::Error => {}
+        | K::Error
+        | K::Placeholder { .. } => {}
         K::Name(n) => {
             if let Some(sub) = &mut n.sub {
                 f(sub);

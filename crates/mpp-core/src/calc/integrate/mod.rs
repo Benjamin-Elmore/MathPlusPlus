@@ -15,9 +15,10 @@ mod definite;
 mod engine;
 mod multiple;
 mod numeric;
+mod oscillatory;
 mod parts;
 mod radical;
-mod rational;
+pub(crate) mod rational;
 mod subst;
 mod table;
 mod trig;
@@ -120,6 +121,16 @@ pub fn integrate(expr: &Expr, var: &str, steps: Option<&mut Steps>) -> MathResul
     let found = simplify(&found);
     verify::check_antiderivative(&e, &found, var)?;
     if let Some(log) = steps {
+        // Show a cancellation or tidy-up the techniques started from, such as
+        // (x + 1)/(x² + 3x + 2) = 1/(x + 2).
+        if e.to_string() != expr.to_string() {
+            log.push(
+                "simplify the integrand",
+                holder(expr, var),
+                holder(&e, var),
+                None,
+            );
+        }
         log.0.extend(local.0);
     }
     Ok(found)

@@ -15,14 +15,16 @@ use std::sync::Arc;
 use mpp_core::{BigOpKind, Expr, ExprNode, Func, LimitDir, LogicOp, MathError, Number, RelOp};
 use mpp_syntax::math::{
     Accent, BigOp, BigOpKind as SynBigOp, BinOp, CaseCondition, CaseRow, Constant, DerivNotation,
-    Derivative, Fence, FuncApp, IntKind, Integral, Limit, MatrixEnv, NablaOp, Name, NamedOp, Node,
-    NodeKind, RelOp as SynRel, Side, UnaryOp, UnitText,
+    Derivative, Fence, FuncApp, IntKind, Integral, Limit, MatrixEnv, MulStyle, NablaOp, Name,
+    NamedOp, Node, NodeKind, RelOp as SynRel, Side, UnaryOp, UnitText,
 };
 use mpp_syntax::Span;
 
 use crate::error::{EvalError, Located};
 use crate::names::{base_key, name_key, node_key};
 use crate::value::Binding;
+
+mod region;
 
 /// What lowering needs to know about the names in scope.
 pub trait LowerScope {
@@ -41,6 +43,26 @@ const EXTRA_BUILTINS: &[&str] = &[
     "sech", "csch", "coth",
 ];
 
+/// The words of a "fill in: …" hint for a template box's label (`upper` → "upper bound").
+pub fn long_label(label: &str) -> String {
+    match label.trim() {
+        "lower" => "lower bound".into(),
+        "upper" => "upper bound".into(),
+        "" => "the empty box".into(),
+        other => other.into(),
+    }
+}
+
+/// Functions written as calls of a free name: the Heaviside step `H(t − a)` and the
+/// Dirac delta `δ(t − a)`, kept as the calls the Laplace tables read.
+fn special_function(name: &str) -> Option<&'static str> {
+    match name {
+        "H" | "Heaviside" | "heaviside" => Some("H"),
+        "δ" | "delta" | "Dirac" | "dirac" => Some("delta"),
+        _ => None,
+    }
+}
+
 /// True when `name` is a function the core knows.
 pub fn is_builtin(name: &str) -> bool {
     Func::from_name(name).is_some() || EXTRA_BUILTINS.contains(&name)
@@ -53,6 +75,12 @@ pub struct Lowerer<'a> {
     locals: Vec<String>,
     /// The function being defined, so its body can call itself.
     defining: Option<(String, Vec<String>)>,
+    /// Unknown functions of a differential equation on this line (`y` in `y'' + y = 0,
+    /// y(0) = 1`): `y(0)` is the value of `y` at 0, not `y·0`.
+    unknown_fns: Vec<String>,
+    /// Non-constant denominators met while lowering, so a helper can keep the points
+    /// where the function as written is undefined (simplification may cancel them).
+    denominators: Vec<Expr>,
 }
 
 fn fail(span: Span, error: EvalError) -> Located {
@@ -70,6 +98,8 @@ impl<'a> Lowerer<'a> {
             scope,
             locals: Vec::new(),
             defining: None,
+            unknown_fns: Vec::new(),
+            denominators: Vec::new(),
         }
     }
 
@@ -77,6 +107,75 @@ impl<'a> Lowerer<'a> {
     pub fn with_locals(mut self, names: impl IntoIterator<Item = String>) -> Self {
         self.locals.extend(names);
         self
+    }
+
+    /// Treats `names` as the unknown functions of a differential equation: `y(0)` and
+    /// `y'(0)` are values at a point, `y(x)` is `y` itself.
+    pub fn with_unknown_functions(mut self, names: impl IntoIterator<Item = String>) -> Self {
+        self.unknown_fns.extend(names);
+        self
+    }
+
+    /// Lowers the function a helper analyses: `where defined(f, d₁, d₂, …)` when `f` was
+    /// written with denominators, which simplification may have cancelled
+    /// (`x²/x` lowers to `x`, but is undefined at 0).
+    pub fn lower_helper_target(&mut self, node: &Node) -> LowerResult {
+        let saved = std::mem::take(&mut self.denominators);
+        let lowered = self.lower(node);
+        let found = std::mem::replace(&mut self.denominators, saved);
+        Ok(crate::helpers::where_defined(lowered?, found))
+    }
+
+    /// The denominators the user function `key` was written with, for its arguments.
+    fn function_denominators(&mut self, key: &str, params: &[String], args: &[Expr]) {
+        let Some(b) = self.scope.binding(&crate::helpers::denominators_key(key)) else {
+            return;
+        };
+        let Binding::Variable { value, .. } = &*b else {
+            return;
+        };
+        let ExprNode::Tuple(ds) = value.node() else {
+            return;
+        };
+        for d in ds {
+            let mut d = d.clone();
+            for (p, a) in params.iter().zip(args) {
+                d = d.subs(p, a);
+            }
+            if !d.is_constant() && !self.denominators.contains(&d) {
+                self.denominators.push(d);
+            }
+        }
+    }
+
+    /// The denominators met so far (for a function definition to remember).
+    pub fn take_denominators(&mut self) -> Vec<Expr> {
+        std::mem::take(&mut self.denominators)
+    }
+
+    fn is_unknown_fn(&self, name: &str) -> bool {
+        self.unknown_fns.iter().any(|n| n == name) && !self.is_local(name)
+    }
+
+    /// `y(a)`, `y'(a)` for an unknown function `y`: the call `y(a)` / `y′(a)` that the
+    /// ODE solver reads as a condition, or `y` / `dy/dx` itself when `a` is the variable.
+    fn unknown_fn_call(&mut self, key: &str, primes: u8, arg: &Node) -> LowerResult {
+        let a = self.lower(arg)?;
+        if let Some(v) = a.as_sym() {
+            if !self.scope.binding(v).is_some_and(|b| b.params().is_none()) {
+                let y = Expr::sym(key);
+                return Ok(if primes == 0 {
+                    y
+                } else {
+                    Expr::new(ExprNode::Derivative {
+                        expr: y,
+                        vars: vec![(v.into(), u32::from(primes))],
+                    })
+                });
+            }
+        }
+        let name = format!("{key}{}", "′".repeat(usize::from(primes)));
+        Ok(Expr::apply(&name, vec![a]))
     }
 
     /// Lets the body of the function `name` call itself.
@@ -169,6 +268,7 @@ impl<'a> Lowerer<'a> {
                 EvalError::Unsupported("a line that continues the one before".into()),
             )),
             K::Error => Err(fail(span, EvalError::Silent)),
+            K::Placeholder { label } => Err(fail(span, EvalError::EmptyBox(long_label(label)))),
             K::Call { callee, args, .. } => self.call(callee, args, span),
             K::FuncApp(app) => self.func_app(app, span),
             K::Unary { op, operand } => {
@@ -182,6 +282,9 @@ impl<'a> Lowerer<'a> {
                 })
             }
             K::Binary { op, lhs, rhs } => {
+                if let Some(df) = self.total_differential(*op, lhs, rhs) {
+                    return Ok(df);
+                }
                 let a = self.lower(lhs)?;
                 let b = self.lower(rhs)?;
                 if let Some(m) = matrix_op(*op)
@@ -194,6 +297,9 @@ impl<'a> Lowerer<'a> {
             K::Frac { num, den, .. } => {
                 let n = self.lower(num)?;
                 let d = self.lower(den)?;
+                if !d.is_constant() && !self.denominators.contains(&d) {
+                    self.denominators.push(d.clone());
+                }
                 Ok(n / d)
             }
             K::Pow { base, exp } => self.power(base, exp),
@@ -366,7 +472,8 @@ impl<'a> Lowerer<'a> {
             )
         })?;
         if let Some(params) = self.function_params(&key) {
-            let args = params.iter().map(|p| Expr::sym(p)).collect();
+            let args: Vec<Expr> = params.iter().map(|p| Expr::sym(p)).collect();
+            self.function_denominators(&key, &params, &args);
             return Ok(Expr::apply(&key, args));
         }
         Ok(Expr::sym(&key))
@@ -448,9 +555,23 @@ impl<'a> Lowerer<'a> {
                 if let Some(params) = self.function_params(&key) {
                     return self.prime_call(&key, &params, *count, args, span);
                 }
+                if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
+                    return self.unknown_fn_call(&key, *count, arg);
+                }
             }
         }
         if let Some(key) = node_key(inner) {
+            if self.function_params(&key).is_none() {
+                if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
+                    return self.unknown_fn_call(&key, 0, arg);
+                }
+                // The Heaviside step and the Dirac delta, when the names are free.
+                if let ([arg], Some(special)) = (args, special_function(&key)) {
+                    if !self.is_bound_letter(&key) {
+                        return Ok(Expr::apply(special, vec![self.lower(arg)?]));
+                    }
+                }
+            }
             if let Some(params) = self.function_params(&key) {
                 if params.len() != args.len() {
                     return Err(fail(
@@ -462,7 +583,9 @@ impl<'a> Lowerer<'a> {
                         },
                     ));
                 }
-                return Ok(Expr::apply(&key, self.lower_all(args)?));
+                let lowered = self.lower_all(args)?;
+                self.function_denominators(&key, &params, &lowered);
+                return Ok(Expr::apply(&key, lowered));
             }
             if self.is_sequence(&key) && args.len() == 1 {
                 return Ok(Expr::apply(&key, self.lower_all(args)?));
@@ -543,9 +666,11 @@ impl<'a> Lowerer<'a> {
             }
         }
         let body = self.lower(base)?;
+        // `x' = y, y' = -x`: when `x` is itself an unknown function, primes mean d/dt.
+        let var = if self.is_unknown_fn("x") { "t" } else { "x" };
         Ok(Expr::new(ExprNode::Derivative {
             expr: body,
-            vars: vec![("x".into(), u32::from(count))],
+            vars: vec![(var.into(), u32::from(count))],
         }))
     }
 
@@ -627,6 +752,20 @@ impl<'a> Lowerer<'a> {
     }
 
     fn cases(&mut self, rows: &[CaseRow]) -> LowerResult {
+        // A brace of equations with no conditions is a system: `\begin{cases} x' = y \\
+        // y' = -x \end{cases}` is the tuple of its equations.
+        let is_system = !rows.is_empty()
+            && rows.iter().all(|r| {
+                matches!(r.condition, CaseCondition::Missing)
+                    && matches!(r.value.ungrouped().kind, NodeKind::Relation { .. })
+            });
+        if is_system {
+            let eqs = rows
+                .iter()
+                .map(|r| self.lower(&r.value))
+                .collect::<Result<Vec<_>, _>>()?;
+            return Ok(Expr::new(ExprNode::Tuple(eqs)));
+        }
         let mut cases = Vec::new();
         let mut otherwise = None;
         for row in rows {
@@ -693,6 +832,11 @@ impl<'a> Lowerer<'a> {
     }
 
     fn integral(&mut self, i: &Integral, span: Span) -> LowerResult {
+        if let (Some(region), None) = (&i.lower, &i.upper) {
+            if let Some(e) = self.region_integral(i, region)? {
+                return Ok(e);
+            }
+        }
         if matches!(i.kind, IntKind::Contour | IntKind::Surface) {
             let what = if i.kind == IntKind::Contour {
                 "∮ around a named curve"
@@ -771,7 +915,79 @@ impl<'a> Lowerer<'a> {
         }))
     }
 
+    /// `df` for a user function `f(x, y)`: the total differential `f_x dx + f_y dy`, with
+    /// `dx`, `dy` as names. `None` unless `d` is free and `f` is a user function.
+    fn total_differential(&mut self, op: BinOp, lhs: &Node, rhs: &Node) -> Option<Expr> {
+        if !matches!(op, BinOp::Mul(MulStyle::Implicit)) {
+            return None;
+        }
+        if node_key(lhs).as_deref() != Some("d") || self.is_bound_letter("d") {
+            return None;
+        }
+        let f = node_key(rhs)?;
+        let params = self.function_params(&f)?;
+        let call = Expr::apply(&f, params.iter().map(|p| Expr::sym(p)).collect());
+        let terms = params
+            .iter()
+            .map(|p| {
+                Expr::new(ExprNode::Derivative {
+                    expr: call.clone(),
+                    vars: vec![(p.as_str().into(), 1)],
+                }) * Expr::sym(&format!("d{p}"))
+            })
+            .collect();
+        Some(mpp_core::add(terms))
+    }
+
+    /// `\frac{\partial(u, v)}{\partial(x, y)}`: the Jacobian determinant `det(∂uᵢ/∂xⱼ)`.
+    fn jacobian(&mut self, d: &Derivative) -> Result<Option<Expr>, Located> {
+        let tuple = |n: &Node| match &n.ungrouped().kind {
+            NodeKind::Tuple { elems, .. } => Some(elems.clone()),
+            NodeKind::Fenced { inner, .. } => match &inner.ungrouped().kind {
+                NodeKind::Tuple { elems, .. } => Some(elems.clone()),
+                _ => None,
+            },
+            _ => None,
+        };
+        let (Some(of), [var]) = (&d.of, d.vars.as_slice()) else {
+            return Ok(None);
+        };
+        let (Some(outputs), Some(inputs)) = (tuple(of), tuple(&var.var)) else {
+            return Ok(None);
+        };
+        let names: Vec<String> = inputs.iter().filter_map(node_key).collect();
+        if names.len() != inputs.len() || outputs.len() != names.len() {
+            return Err(fail(
+                var.var.span,
+                EvalError::Invalid(
+                    "a Jacobian ∂(u, v)/∂(x, y) needs as many functions as variables".into(),
+                ),
+            ));
+        }
+        let mut rows = Vec::with_capacity(outputs.len());
+        for out in &outputs {
+            let f = self.bound(&names, |s| s.lower(out))?;
+            rows.push(
+                names
+                    .iter()
+                    .map(|v| {
+                        Expr::new(ExprNode::Derivative {
+                            expr: f.clone(),
+                            vars: vec![(v.as_str().into(), 1)],
+                        })
+                    })
+                    .collect(),
+            );
+        }
+        Ok(Expr::matrix(rows).map(|m| Expr::apply("det", vec![m])))
+    }
+
     fn derivative(&mut self, d: &Derivative, span: Span) -> LowerResult {
+        if d.partial {
+            if let Some(j) = self.jacobian(d)? {
+                return Ok(j);
+            }
+        }
         if matches!(d.notation, DerivNotation::Bare) {
             return Err(fail(
                 span,
@@ -825,19 +1041,43 @@ impl<'a> Lowerer<'a> {
         }))
     }
 
+    /// An operator's argument or script: a one-word `\text{…}` (`\text{shell}`,
+    /// `\text{mid}`) is a method word, read as a name; anything else lowers as usual.
+    fn op_argument(&mut self, node: &Node) -> LowerResult {
+        if let NodeKind::Text(t) = &node.ungrouped().kind {
+            let word = t.trim();
+            if !word.is_empty() && word.chars().all(char::is_alphabetic) {
+                return Ok(Expr::sym(word));
+            }
+        }
+        self.lower(node)
+    }
+
     fn named_op(&mut self, op: &NamedOp) -> LowerResult {
-        let mut args = self.lower_all(&op.args)?;
+        let analysed = crate::helpers::is_helper(&op.name);
+        let mut args = op
+            .args
+            .iter()
+            .enumerate()
+            .map(|(i, a)| {
+                if analysed && i == 0 {
+                    self.lower_helper_target(a)
+                } else {
+                    self.op_argument(a)
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()?;
         crate::domains_wire::protect_ode_args(&op.name, &mut args);
         if op.sub.is_none() && op.sup.is_none() {
             return Ok(Expr::apply(&op.name, args));
         }
         let empty = || Expr::new(ExprNode::Tuple(Vec::new()));
         let sub = match &op.sub {
-            Some(s) => self.lower(s)?,
+            Some(s) => self.op_argument(s)?,
             None => empty(),
         };
         let sup = match &op.sup {
-            Some(s) => self.lower(s)?,
+            Some(s) => self.op_argument(s)?,
             None => empty(),
         };
         Ok(Expr::apply(
@@ -1019,6 +1259,16 @@ mod tests {
         let (node, diags) = parse_expr(src, 0);
         assert!(diags.is_empty(), "{diags:?}");
         Lowerer::new(scope).lower(&node)
+    }
+
+    #[test]
+    fn empty_template_boxes_ask_to_be_filled_in() {
+        let none = Scope::default();
+        let boxed = Node::placeholder("upper", Span::new(0, 1));
+        let err = Lowerer::new(&none).lower(&boxed).unwrap_err();
+        assert_eq!(err.error, EvalError::EmptyBox("upper bound".into()));
+        assert_eq!(err.error.to_string(), "fill in: upper bound");
+        assert!(err.diagnostic().is_none());
     }
 
     #[test]

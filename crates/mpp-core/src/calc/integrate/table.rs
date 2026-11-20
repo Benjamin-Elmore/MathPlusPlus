@@ -48,7 +48,9 @@ pub(crate) fn lookup(e: &Expr, var: &str) -> Option<Hit> {
     match e.node() {
         ExprNode::Pow(base, exp) => power(base, exp, var),
         ExprNode::Func(f, args) if args.len() == 1 => function(*f, &args[0], var),
-        ExprNode::Mul(fs) if fs.len() == 2 => product(&fs[0], &fs[1], var),
+        ExprNode::Mul(fs) if fs.len() == 2 => {
+            product(&fs[0], &fs[1], var).or_else(|| over_x(&fs[0], &fs[1], var))
+        }
         _ => None,
     }
 }
@@ -104,6 +106,9 @@ fn power(base: &Expr, exp: &Expr, var: &str) -> Option<Hit> {
             return Some(scaled(r, &a, u, var, rule));
         }
         return None;
+    }
+    if let Some(hit) = gaussian(base, exp, var) {
+        return Some(hit);
     }
     // c^(a x + b)
     if !base.contains_sym(var) {
@@ -171,4 +176,90 @@ fn product(p: &Expr, q: &Expr, var: &str) -> Option<Hit> {
         _ => return None,
     };
     Some(scaled(r, &a, u, var, rule))
+}
+
+/// `sin(a x)/x → Si(a x)` and `cos(a x)/x → Ci(|a| x)` (the sine and cosine integrals).
+fn over_x(p: &Expr, q: &Expr, var: &str) -> Option<Hit> {
+    let is_recip_x = |e: &Expr| match e.node() {
+        ExprNode::Pow(b, x) => b.is_sym(var) && x.as_number().is_some_and(|n| n.is_minus_one()),
+        _ => false,
+    };
+    let other = if is_recip_x(p) {
+        q
+    } else if is_recip_x(q) {
+        p
+    } else {
+        return None;
+    };
+    let ExprNode::Func(f @ (Func::Sin | Func::Cos), args) = other.node() else {
+        return None;
+    };
+    let u = args.first()?;
+    let (a, b) = linear_coeffs(u, var)?;
+    if !b.is_zero() {
+        return None;
+    }
+    match f {
+        Func::Sin => Some((
+            f1(Func::Si, u),
+            "sine integral",
+            Some("Si(u) = ∫₀ᵘ sin t / t dt, so d/dx Si(a x) = sin(a x)/x".into()),
+        )),
+        _ => {
+            // cos is even, so use a positive slope; Ci is real for positive arguments.
+            let slope = a.as_number().filter(|n| n.is_real())?;
+            let u = if slope.is_negative() {
+                mul(vec![Expr::int(-1), u.clone()])
+            } else {
+                u.clone()
+            };
+            Some((
+                f1(Func::Ci, &u),
+                "cosine integral",
+                Some(
+                    "Ci(u) = γ + ln u + ∫₀ᵘ (cos t − 1)/t dt, so d/dx Ci(a x) = cos(a x)/x (x > 0)"
+                        .into(),
+                ),
+            ))
+        }
+    }
+}
+
+/// `e^(p x² + q x + r)` with `p < 0`: completing the square gives the error function,
+/// `√π/(2√(−p)) · e^(r − q²/(4p)) · erf(√(−p) (x + q/(2p)))`.
+fn gaussian(base: &Expr, exp: &Expr, var: &str) -> Option<Hit> {
+    if !matches!(base.node(), ExprNode::Const(Constant::E)) {
+        return None;
+    }
+    let c = crate::poly::as_poly(exp, var)?;
+    if c.len() != 3 {
+        return None;
+    }
+    let (r, q, p) = (c[0].clone(), c[1].clone(), c[2].clone());
+    let pv = p.as_number().filter(|n| n.is_real())?;
+    if !pv.is_negative() {
+        return None;
+    }
+    let minus_p = mul(vec![Expr::int(-1), p.clone()]);
+    let root = pow(minus_p.clone(), Expr::rational(1, 2));
+    let shift = div(q.clone(), mul(vec![Expr::int(2), p.clone()]));
+    let inner = mul(vec![root.clone(), add(vec![Expr::sym(var), shift])]);
+    let constant = add(vec![
+        r,
+        neg(div(pow(q, Expr::int(2)), mul(vec![Expr::int(4), p]))),
+    ]);
+    let result = mul(vec![
+        Expr::rational(1, 2),
+        pow(Expr::pi(), Expr::rational(1, 2)),
+        pow(root, Expr::int(-1)),
+        pow(Expr::e(), constant),
+        f1(Func::Erf, &inner),
+    ]);
+    Some((
+        result,
+        "Gaussian integral",
+        Some(format!(
+            "complete the square and use erf(u) = (2/√π) ∫₀ᵘ e^(−t²) dt with u = {inner}"
+        )),
+    ))
 }

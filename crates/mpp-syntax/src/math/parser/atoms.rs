@@ -51,6 +51,11 @@ impl Parser<'_> {
                 self.word_atom(word, span)
             }
             Tok::Styled { font, text } => {
+                if font == Font::Calligraphic && matches!(text.as_str(), "L" | "F") {
+                    if let Some(node) = self.transform(&text, span) {
+                        return node;
+                    }
+                }
                 self.bump();
                 let name = Name {
                     font: Some(font),
@@ -108,6 +113,110 @@ impl Parser<'_> {
                 node
             }
         }
+    }
+
+    /// `\mathcal{L}\{f\}`, `\mathcal{L}^{-1}\{F\}`, `\mathcal{L}_{t \to s}\left\{ f \right\}` and
+    /// the same with `\mathcal{F}`: the Laplace and Fourier transforms, as the operators
+    /// `laplace`, `invlaplace`, `fourier` and `invfourier` (the subscript names the
+    /// variables). `None`, with nothing consumed, when no `\{` follows: then the letter is
+    /// an ordinary name.
+    fn transform(&mut self, letter: &str, start: Span) -> Option<Node> {
+        // Look ahead without consuming: scripts are `_` or `^` and one group or token.
+        let mut k = 1;
+        let mut scripts = 0;
+        while scripts < 2 && matches!(self.peek_n(k), Some(Tok::Underscore | Tok::Caret)) {
+            k += 1;
+            match self.peek_n(k) {
+                Some(Tok::LBrace) => {
+                    let mut depth = 0usize;
+                    loop {
+                        match self.peek_n(k) {
+                            Some(Tok::LBrace) => depth += 1,
+                            Some(Tok::RBrace) => {
+                                depth = depth.saturating_sub(1);
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            None => return None,
+                            _ => {}
+                        }
+                        k += 1;
+                    }
+                    k += 1;
+                }
+                Some(_) => k += 1,
+                None => return None,
+            }
+            scripts += 1;
+        }
+        if !matches!(
+            self.peek_n(k),
+            Some(Tok::Open {
+                delim: Delim::Brace,
+                ..
+            })
+        ) {
+            return None;
+        }
+        self.bump();
+        let mut sub = None;
+        let mut inverse = false;
+        loop {
+            match self.peek() {
+                Some(Tok::Underscore) => {
+                    self.bump();
+                    sub = Some(self.tex_arg("the variables of the transform"));
+                }
+                Some(Tok::Caret) => {
+                    self.bump();
+                    let sup = self.tex_arg("`-1` for the inverse transform");
+                    let text: String = self
+                        .text(sup.span)
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect();
+                    if matches!(text.as_str(), "-1" | "{-1}") {
+                        inverse = true;
+                    } else {
+                        self.error(
+                            sup.span,
+                            "a transform's superscript can only be `-1` (the inverse)",
+                            &["`-1`"],
+                        );
+                    }
+                }
+                _ => break,
+            }
+        }
+        let open = self.cur_span();
+        let (delim, sized) = match self.peek() {
+            Some(Tok::Open { delim, sized }) => (*delim, *sized),
+            _ => return None,
+        };
+        self.bump();
+        let inner = self.bracketed(delim, sized, open);
+        let arg = match inner.kind {
+            NodeKind::Set { mut elems, .. } if elems.len() == 1 => elems.remove(0),
+            _ => inner,
+        };
+        let name = match (letter, inverse) {
+            ("L", false) => "laplace",
+            ("L", true) => "invlaplace",
+            (_, false) => "fourier",
+            (_, true) => "invfourier",
+        };
+        let span = start.join(self.prev_span());
+        Some(Node::new(
+            NodeKind::NamedOp(Box::new(NamedOp {
+                name: name.to_string(),
+                sub,
+                sup: None,
+                args: vec![arg],
+                bracketed: true,
+            })),
+            span,
+        ))
     }
 
     fn symbol_atom(&mut self, sym: &'static Symbol, span: Span) -> Node {

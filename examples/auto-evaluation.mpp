@@ -1,0 +1,122 @@
+# Auto-evaluation
+
+Type the maths and the answer appears after it in grey, without `= ?`. The answers are only
+shown: the file keeps what you typed. `Ctrl+Enter` on a line writes its answer into the file.
+
+## Integrals
+
+$$ \int x^2 \, dx $$
+
+$$ \int_0^1 x^2 \, dx $$
+
+$$ \int_0^1 \int_0^2 x y \, dy \, dx $$
+
+$$ \iint_{[0, 1] \times [0, 2]} x y \, dA $$
+
+$$ \iiint_{[0, 1] \times [0, 1] \times [0, 1]} x y z \, dV $$
+
+A region written as a condition switches coordinates on its own: polar for a disc,
+spherical for a ball.
+
+$$ \iint_{x^2 + y^2 \le 4} (x^2 + y^2) \, dA $$
+
+$$ \iiint_{x^2 + y^2 + z^2 \le 1} 1 \, dV $$
+
+Line and surface integrals around a circle or over a sphere:
+
+$$ \oint_{x^2 + y^2 = 1} (-y, x) \cdot d\mathbf{r} $$
+
+$$ \oiint_{x^2 + y^2 + z^2 = 1} (x, y, z) \cdot d\mathbf{S} $$
+
+## Derivatives
+
+$$ f(x) := x^3 \sin x $$
+
+$$ \frac{d}{dx} x^3 $$
+
+$$ f'(x) $$
+
+$$ f''(0) $$
+
+$$ \partial_x (x^2 y) $$
+
+$$ D_x \ln x $$
+
+$$ \frac{\partial^2}{\partial x \partial y} x^2 y^3 $$
+
+$$ \nabla (x^2 y) $$
+
+$$ \nabla \cdot (x^2, y^2, z^2) $$
+
+$$ \nabla \times (-y, x, 0) $$
+
+$$ \nabla^2 (x^2 + y^2 + z^2) $$
+
+$$ \frac{\partial(u + v, u - v)}{\partial(u, v)} $$
+
+$$ g(x, y) := x^2 y $$
+
+$$ dg $$
+
+## Limits, sums, products and series
+
+$$ \lim_{x \to 0} \frac{\sin x}{x} $$
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n^2} $$
+
+$$ \prod_{k=1}^{5} k $$
+
+$$ \operatorname{series}_{x=0}^{4} e^x $$
+
+## Transforms
+
+$$ \mathcal{L}\{t^2 e^{-t}\} $$
+
+$$ \mathcal{L}_{t \to s}\left\{ \sin 2t \right\} $$
+
+$$ \mathcal{L}^{-1}\left\{ \frac{1}{s^2 + 4} \right\} $$
+
+$$ \mathcal{F}\{e^{-x^2}\} $$
+
+$$ \mathcal{F}^{-1}\left\{ \frac{2}{1 + \omega^2} \right\} $$
+
+## Equations
+
+An equation with an unknown is solved; a system can continue after a comma.
+
+$$ x^2 - 5x + 6 = 0 $$
+
+$$ x^2 - 4 < 0 $$
+
+$$ x + y = 3, \quad x - y = 1 $$
+
+$$ \nabla (x y) = \lambda \nabla (x^2 + y^2 - 1), \quad x^2 + y^2 = 1 $$
+
+A differential equation shows its solution:
+
+$$ y'' + y = 0, \quad y(0) = 1, y'(0) = 0 $$
+
+$$ \frac{dy}{dx} = x y $$
+
+## Matrices
+
+$$ \det \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} $$
+
+$$ \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}^{-1} $$
+
+$$ \operatorname{eig} \begin{pmatrix} 2 & 1 \\ 1 & 2 \end{pmatrix} $$
+
+## No answer shown
+
+Definitions, checks, expressions with nothing to work out, and blocks marked `%noeval`:
+
+$$ a := 3 $$
+
+$$ \sin^2 x + \cos^2 x \overset{?}{=} 1 $$
+
+$$ x^2 + 1 $$
+
+$$ y = x^2 + 1 $$
+
+%noeval
+$$ \int_0^1 x \, dx $$

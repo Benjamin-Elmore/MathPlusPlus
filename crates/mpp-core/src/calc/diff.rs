@@ -278,6 +278,13 @@ fn outer_derivative(f: Func, u: &Expr) -> Option<Expr> {
         Func::Ln => pow(u.clone(), Expr::int(-1)),
         Func::Abs => one(Func::Sign),
         Func::Sign | Func::Floor | Func::Ceil => Expr::zero(),
+        Func::Erf => mul(vec![
+            Expr::int(2),
+            pow(Expr::pi(), Expr::rational(-1, 2)),
+            pow(Expr::e(), neg(u2())),
+        ]),
+        Func::Si => mul(vec![one(Func::Sin), pow(u.clone(), Expr::int(-1))]),
+        Func::Ci => mul(vec![one(Func::Cos), pow(u.clone(), Expr::int(-1))]),
         Func::Gamma => mul(vec![one(Func::Gamma), one(Func::Digamma)]),
         Func::Factorial => {
             let up = add(vec![u.clone(), Expr::one()]);
