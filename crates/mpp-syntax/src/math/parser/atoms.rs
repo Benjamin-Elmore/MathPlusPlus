@@ -6,8 +6,8 @@ use super::{closes, is_close, is_terminator, Ctx, Parser};
 use crate::lexer::{Delim, Op, Tok};
 use crate::math::ast::{
     Accent, BinOp, Bracket, CallStyle, CaseCondition, CaseRow, Constant, Dots, Fence, FenceStyle,
-    FracStyle, FuncApp, MatrixEnv, MulStyle, Name, NamedOp, Node, NodeKind, SetStyle, SqrtStyle,
-    UnaryOp,
+    FracStyle, FuncApp, MatrixEnv, MulStyle, Name, NamedOp, Node, NodeKind, RelOp, SetStyle,
+    SqrtStyle, UnaryOp,
 };
 use crate::span::Span;
 use crate::symbols::{lookup_name, Font, Symbol, SymbolKind};
@@ -629,6 +629,11 @@ impl Parser<'_> {
             _ => Bracket::Paren,
         };
         if open == Delim::Brace {
+            if let [only] = elems.as_slice() {
+                if let Some(builder) = set_builder(only, span) {
+                    return builder;
+                }
+            }
             return Node::new(
                 NodeKind::Set {
                     elems,
@@ -1041,6 +1046,48 @@ impl Parser<'_> {
 }
 
 /// A single letter: `e` and `i` are the constants, anything else a name.
+/// `x \in S : cond` or `x : cond` (also with `\mid`) inside `\{ \}`: the relation chain
+/// is split at the colon into the variable, its domain and the condition.
+fn set_builder(node: &Node, span: Span) -> Option<Node> {
+    let NodeKind::Relation { first, rest } = &node.kind else {
+        return None;
+    };
+    let colon = rest
+        .iter()
+        .position(|(op, _)| matches!(op, RelOp::Other(":" | "∣")))?;
+    let (var, domain) = match colon {
+        0 => ((**first).clone(), None),
+        1 if rest[0].0 == RelOp::In => ((**first).clone(), Some(Box::new(rest[0].1.clone()))),
+        _ => return None,
+    };
+    if !var.is_name() {
+        return None;
+    }
+    let cond_first = rest[colon].1.clone();
+    let cond_rest: Vec<(RelOp, Node)> = rest[colon + 1..].to_vec();
+    let condition = if cond_rest.is_empty() {
+        cond_first
+    } else {
+        let end = cond_rest.last().map_or(cond_first.span, |(_, n)| n.span);
+        let cspan = cond_first.span.join(end);
+        Node::new(
+            NodeKind::Relation {
+                first: Box::new(cond_first),
+                rest: cond_rest,
+            },
+            cspan,
+        )
+    };
+    Some(Node::new(
+        NodeKind::SetBuilder {
+            var: Box::new(var),
+            domain,
+            condition: Box::new(condition),
+        },
+        span,
+    ))
+}
+
 fn letter_node(c: char, span: Span) -> Node {
     let kind = match c {
         'e' => NodeKind::Constant(Constant::E),

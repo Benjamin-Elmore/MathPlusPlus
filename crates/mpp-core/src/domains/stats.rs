@@ -126,10 +126,11 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
         }
         "var" | "pvar" | "std" | "pstd" => {
             let sample = matches!(op, "var" | "std");
-            ctx.note(if sample {
-                "sample (divides by n − 1)"
-            } else {
-                "population (divides by n)"
+            ctx.note(match op {
+                "var" => "sample variance (divides by n − 1)",
+                "std" => "sample standard deviation (divides by n − 1)",
+                "pvar" => "population variance (divides by n)",
+                _ => "population standard deviation (divides by n)",
             });
             let v = variance(&data(op, args)?, sample)?;
             Ok(if op.ends_with("std") { v.sqrt() } else { v })

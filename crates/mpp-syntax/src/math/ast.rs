@@ -117,6 +117,9 @@ pub enum Clause {
     Range(Range),
     /// Any other relation chain, e.g. `x > 0`.
     Condition(Node),
+    /// A condition in brackets after a query or check, `(x > 0)`: an assumption that
+    /// holds for the whole display block.
+    Assumption(Node),
 }
 
 impl Clause {
@@ -125,7 +128,7 @@ impl Clause {
         match self {
             Clause::Where { span, .. } => *span,
             Clause::Range(r) => r.span,
-            Clause::Condition(n) => n.span,
+            Clause::Condition(n) | Clause::Assumption(n) => n.span,
         }
     }
 }
@@ -314,6 +317,32 @@ pub enum NodeKind {
         first: Box<Node>,
         rest: Vec<(RelOp, Node)>,
     },
+    /// A number with a unit: `9.81\,\mathrm{m/s^2}`, `100 km/h`, `30^\circ`.
+    Quantity {
+        value: Box<Node>,
+        unit: UnitText,
+    },
+    /// A conversion: `v \operatorname{in} \mathrm{km/h}`, `T in {}^\circ\mathrm{F}`.
+    Convert {
+        expr: Box<Node>,
+        unit: UnitText,
+    },
+    /// Set-builder notation: `\{x \in \mathbb{R} : x^2 < 4\}`, `\{x \mid x > 0\}`.
+    SetBuilder {
+        var: Box<Node>,
+        domain: Option<Box<Node>>,
+        condition: Box<Node>,
+    },
+}
+
+/// A unit as written after a number or after `in`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitText {
+    /// The unit for the core to read (`m/s^2`, `\mathrm{km/h}`, `°C`).
+    pub text: String,
+    /// Written in plain letters (`m/s`) rather than `\mathrm{}` or a degree sign.
+    pub plain: bool,
+    pub span: Span,
 }
 
 /// A name: a letter, a Greek letter, or a longer upright name, with decorations.
@@ -422,6 +451,8 @@ pub enum BinOp {
     Union,
     Intersect,
     SetMinus,
+    /// `a \bmod n`: the remainder of `a` on division by `n`.
+    Mod,
     And,
     Or,
 }

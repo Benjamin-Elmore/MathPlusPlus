@@ -7,10 +7,15 @@
 //! relations already live in the expression tree, so a domain result can flow straight
 //! back into the evaluator, the printer and other domains.
 
+pub mod assume;
 pub mod calculus;
+pub mod distributions;
+pub mod intervals;
 pub mod linalg;
 pub mod number_theory;
 pub mod ode;
+pub mod piecewise;
+pub mod regression;
 pub mod sets;
 pub mod solve;
 pub mod stats;
@@ -20,10 +25,13 @@ use crate::error::{MathError, MathResult};
 use crate::expr::Expr;
 use crate::steps::Steps;
 
-pub use calculus::{BasicCalculus, Calculus};
+pub use assume::Assumptions;
+pub use calculus::{BasicCalculus, Calculus, FullCalculus};
+pub use distributions::Distributions;
 pub use linalg::{LinearAlgebra, Matrix};
 pub use number_theory::NumberTheory;
 pub use ode::Odes;
+pub use regression::{Fit, FitKind, Regression};
 pub use sets::{RealSet, Sets};
 pub use solve::{Solutions, Solving};
 pub use stats::Statistics;
@@ -132,6 +140,8 @@ impl Registry {
         r.register(Box::new(Sets));
         r.register(Box::new(NumberTheory));
         r.register(Box::new(Statistics));
+        r.register(Box::new(Distributions));
+        r.register(Box::new(Regression));
         r
     }
 

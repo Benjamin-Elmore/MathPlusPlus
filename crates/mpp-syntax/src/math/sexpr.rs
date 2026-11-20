@@ -164,6 +164,7 @@ impl Printer {
             }
             Clause::Range(r) => self.range(r),
             Clause::Condition(n) => format!("(if {})", self.node(n)),
+            Clause::Assumption(n) => format!("(assume {})", self.node(n)),
         }
     }
 
@@ -253,6 +254,21 @@ impl Printer {
             K::Accented { accent, inner } => self.prefixed(accent.name(), inner),
             K::Styled { font, inner } => self.prefixed(font_name(*font), inner),
             K::Relation { first, rest } => self.relation(first, rest),
+            K::Quantity { value, unit } => self.prefixed(&format!("quantity {}", unit.text), value),
+            K::Convert { expr, unit } => self.prefixed(&format!("in {}", unit.text), expr),
+            K::SetBuilder {
+                var,
+                domain,
+                condition,
+            } => match domain {
+                Some(d) => format!(
+                    "(setof {} {} {})",
+                    self.node(var),
+                    self.node(d),
+                    self.node(condition)
+                ),
+                None => self.pair("setof", var, condition),
+            },
         }
     }
 
@@ -357,6 +373,7 @@ impl Printer {
             BinOp::Union => "∪",
             BinOp::Intersect => "∩",
             BinOp::SetMinus => "∖",
+            BinOp::Mod => "mod",
             BinOp::And => "and",
             BinOp::Or => "or",
         };

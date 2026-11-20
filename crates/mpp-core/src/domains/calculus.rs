@@ -20,6 +20,22 @@ pub trait Calculus: Send + Sync {
     fn integrate(&self, e: &Expr, var: &str) -> MathResult<Expr>;
 }
 
+/// The full calculus engine ([`crate::calc::diff`] and [`crate::calc::integrate`]):
+/// what the evaluator passes with [`crate::domains::Ctx::with_calculus`], so the ODE
+/// solver finds every antiderivative the integrator can.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FullCalculus;
+
+impl Calculus for FullCalculus {
+    fn diff(&self, e: &Expr, var: &str) -> MathResult<Expr> {
+        crate::calc::diff(e, var, 1, None)
+    }
+
+    fn integrate(&self, e: &Expr, var: &str) -> MathResult<Expr> {
+        crate::calc::integrate(e, var, None)
+    }
+}
+
 /// The built-in fallback calculus.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct BasicCalculus;

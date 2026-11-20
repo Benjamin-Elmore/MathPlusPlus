@@ -504,6 +504,10 @@ fn close_over(
 }
 
 impl Importer for FileImporter {
+    fn read_data(&self, base: Option<&Path>, path: &str) -> Result<(PathBuf, String), String> {
+        crate::import::read_data_with(&*self.inner.source, base, path)
+    }
+
     fn import(&self, base: Option<&Path>, request: &ImportRequest) -> Result<Exports, String> {
         let holders = Arc::new(Holders::new());
         let ctx = ImportContext {

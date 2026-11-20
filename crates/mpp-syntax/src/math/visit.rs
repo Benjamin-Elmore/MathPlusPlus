@@ -50,6 +50,19 @@ pub fn children<'n>(node: &'n Node, f: &mut dyn FnMut(&'n Node)) {
         | K::Group { inner, .. }
         | K::Accented { inner, .. }
         | K::Styled { inner, .. } => f(inner),
+        K::Quantity { value, .. } => f(value),
+        K::Convert { expr, .. } => f(expr),
+        K::SetBuilder {
+            var,
+            domain,
+            condition,
+        } => {
+            f(var);
+            if let Some(d) = domain {
+                f(d);
+            }
+            f(condition);
+        }
         K::Sqrt {
             index, radicand, ..
         } => {
@@ -176,6 +189,19 @@ pub fn children_mut(node: &mut Node, f: &mut dyn FnMut(&mut Node)) {
         | K::Group { inner, .. }
         | K::Accented { inner, .. }
         | K::Styled { inner, .. } => f(inner),
+        K::Quantity { value, .. } => f(value),
+        K::Convert { expr, .. } => f(expr),
+        K::SetBuilder {
+            var,
+            domain,
+            condition,
+        } => {
+            f(var);
+            if let Some(d) = domain {
+                f(d);
+            }
+            f(condition);
+        }
         K::Sqrt {
             index, radicand, ..
         } => {

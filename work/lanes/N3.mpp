@@ -1,0 +1,28 @@
+# N3 piecewise functions, intervals and sets: notes for the integrator
+
+Lane `domains` (branch `wip/domains`). The example is `examples/piecewise-sets.mpp` with `examples/piecewise-sets.expected.txt` (checked by `crates/mpp-eval/tests/examples.rs`); document tests are in `crates/mpp-eval/tests/piecewise_sets.rs`.
+
+## What was built
+
+- **Sets from conditions** (`crates/mpp-core/src/domains/intervals.rs`): `natural_domain(f, var) -> RealSet` (denominators non-zero, even roots and real powers of non-negative bases, logarithms of positive arguments, `asin`/`acos` in [−1, 1] …), `solve_inequality(cond, var) -> RealSet` (relations, chains `0 < x \le 1`, and/or/not, `x ∈ S`), `range_of(f, var, on) -> RealSet` (for functions differentiable inside each piece of the domain: least and greatest of the critical values, closed-end values and the limits at open ends), `real_zeros`, and `set_condition(var, set)` to write a set back as a condition. Inequalities are solved exactly: every point where the sides can change sign is found (the real zeros, from the numerator's polynomial roots or the exact solver, and the ends of the domain) and one point between each pair is tested; when the zeros can't all be found (a periodic equation over the whole line, a non-polynomial equation only solvable numerically, a parameter) the answer is an error, not a guess.
+- **For C2 (function analysis helpers):** use `mpp_core::domains::intervals::{natural_domain, range_of}` for "the domain" and "the range"; both return `RealSet` (`to_expr()` gives an interval, a finite set or `union(…)`), and `range_of` takes an optional interval for "on [a, b]".
+- **Piecewise functions** (`crates/mpp-core/src/domains/piecewise.rs`): `parts` (each case's set, earlier cases first), `joins` with continuity and differentiability at each join (`Join::describe` gives the sentence shown to the reader), `derivative` (piece by piece, leaving out joins where it is not differentiable), `integrate_definite` (over the pieces' parts of the range; a gap in the domain is an error) and `antiderivative` (continuous: each piece's constant chosen to meet the one before).
+- `solve` answers inequalities with intervals (`\operatorname{solve}_x (x^2 - 4 < 0)` → `(-2, 2)`), and `Solve $x^2 - 4 < 0$ for $x$.` reads `x ∈ (-2, 2)`.
+- `util::is_zero` no longer calls `±∞` zero (it compared `inf ≤ inf`), which made `equal(−∞, 1)` true.
+- **Evaluator** (`domains_wire.rs`): set operators accept `(a, b)` as an open interval and `\mathbb{R}` as the whole line; `A^c` is the complement; a union of intervals is shown with `∪` (the core still stores `union(…)`); set-builder notation `\{x \in D : cond\}` (also `\mid`, and `D` an interval, `\mathbb{R}`, or `\mathbb{Z}`/`\mathbb{N}` with the members listed); derivatives and integrals of piecewise functions go piece by piece, with each join reported as a remark ("at x = 0 it is continuous but not differentiable (the slope is −1 on the left and 1 on the right)", "at x = 2 it jumps from 1 to 3 …").
+- **Parser:** set-builder notation was read as a set of one relation chain (`{in(x, ℝ) ∧ :(ℝ, x^2) ∧ …}`); it is now `NodeKind::SetBuilder { var, domain, condition }`. Crates that match `NodeKind` exhaustively need the arm.
+- **Graphs (M13):** open and closed dots at jumps can come from `piecewise::joins` (the `value` against the one-sided limits `left`/`right`).
+
+## Grammar addendum (applied to `docs/grammar.mpp` §2.2)
+
+`set_builder = "\{" name [ "\in" set ] ( ":" | "\mid" ) relation_chain "\}" ;`
+
+## Guide section (for `docs/guide.mpp`)
+
+> ## Piecewise functions, intervals and sets
+>
+> Define a piecewise function with `cases`: `$$ f(x) := \begin{cases} x^2 & x < 1 \\ 2x - 1 & x \ge 1 \end{cases} $$`, or one line per piece with its condition after a comma. It works like any function: `$f(3) = ?$`, `$\frac{d}{dx} f(x) = ?$`, `$\int_0^2 f(x)\,dx = ?$`. Calculus goes piece by piece, and Math++ tells you what happens where the pieces meet: continuous, a corner (not differentiable), or a jump. An antiderivative is chosen to be continuous.
+>
+> Intervals and sets are values: `$[0, 1) \cup (2, 3] = ?$`, `$[0, 3] \cap (1, 5) = ?$`, `$\mathbb{R} \setminus [0, 1] = ?$`, `$[0, 1]^c = ?$`, `$2 \in [0, 3] = ?$`. Set-builder notation describes a set by a condition: `$\{x \in \mathbb{R} : x^2 < 4\} = ?$` gives `(-2, 2)`, and over `\mathbb{Z}` the members are listed.
+>
+> Inequalities solve to intervals: `Solve $x^2 - 4 < 0$ for $x$.` gives `x ∈ (-2, 2)`, and `Solve $\frac{x-1}{x+2} \le 0$ for $x$.` gives `x ∈ (-2, 1]`. See [[../examples/piecewise-sets.mpp]].

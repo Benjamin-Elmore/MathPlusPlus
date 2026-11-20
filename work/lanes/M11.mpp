@@ -34,3 +34,21 @@ A union of disjoint intervals is returned as `union(I₁, I₂, …)` (an `Apply
 ## Grammar or guide changes
 
 None for M11 (the operators are reached through the evaluator's function-call path once the evaluator dispatches unknown names to the registry).
+
+## Wiring into documents (domains lane, after N1)
+
+- `crates/mpp-eval/src/domains_wire.rs`: a holder evaluator registered in `Holders::default()` (one line). An `Apply` naming a registry operator is answered by the registry with the full calculus (`domains::FullCalculus`, so `dsolve` integrates with `calc::integrate`) and the statement's step log; the registry's notes become remarks on the line. `\operatorname{solve}_x (…)` takes the unknowns from the subscript. `\operatorname{factor}(360)` shows `2^3 · 3^2 · 5`; `x \in S`, `\notin`, `\subset` are answered when the element is known.
+- Matrices keep their order: lowering (`lower.rs`, two small hooks) turns a product, sum or power whose side is a matrix literal or a name defined as one into an ordered matrix operation (`A B`, `A \cdot B`, `u \times w`, `A^{-1}`, `A^T`, `A^\top`, `A^3`). Whatever matrix arithmetic is left in the core's commutative form after resolution (a sum of matrices, a scalar times one matrix, a power of one matrix) is finished on the result; a product of several matrices whose order was lost is an error, never a guess.
+- The resolver masks the unknowns of `solve`/`nsolve`/`roots` and the function and variable of `dsolve`, and `y'` / `dy/dx` inside `dsolve(…)` are kept for the solver instead of being differentiated as constants.
+- `Solve $…$ [for $…$].` answers like a query: one equation, a comma list of equations (a system), or a `cases` block of equations. One unknown reads `x = 2 or x = 3`.
+- Parser: `\bmod` and `\mod` are a binary operator (`BinOp::Mod`, `Op::Mod`), `\top` / `\intercal` lex as the letter `⊤`. Other crates that match `BinOp` exhaustively need the new arm.
+
+## Guide section (for `docs/guide.mpp`)
+
+> ## Matrices, equations and the other fields
+>
+> Write a matrix with `\begin{pmatrix} … \end{pmatrix}` and work with it as you would on paper: `$A B = ?$`, `$A^{-1} = ?$`, `$A^T = ?$`, `$\det A = ?$` (or a `vmatrix`), `$\operatorname{rank} A = ?$`, `$\operatorname{eigen}(A) = ?$`. Products keep the order you write; `\cdot` between two vectors is the dot product and `\times` the cross product.
+>
+> Solve with a sentence, `Solve $x^2 - 5x + 6 = 0$ for $x$.`, or in maths with `$\operatorname{solve}_x (x^2 = 4) = ?$`. A system is a comma list or a `cases` block: `Solve $x + y = 3, x - y = 1$ for $x, y$.`
+>
+> Number theory: `$17 \bmod 5 = ?$`, `$\gcd(12, 18) = ?$`, `$\operatorname{lcm}(4, 6) = ?$`, `$\operatorname{isprime}(97) = ?$`, `$\operatorname{factor}(360) = ?$`. Statistics: `\operatorname{mean}`, `median`, `mode`, `var` and `std` (sample), `pvar` and `pstd` (population). Differential equations: `$\operatorname{dsolve}(y' = x y, y, x) = ?$`, with an initial condition as a fourth argument `(0, 1)`.

@@ -15,9 +15,12 @@
 
 #![forbid(unsafe_code)]
 
+pub mod assume;
 mod block;
 pub mod calculus;
 pub mod check;
+pub mod data;
+pub mod domains_wire;
 pub mod error;
 pub mod files;
 pub mod graph;
@@ -31,6 +34,7 @@ pub mod numeric;
 pub mod resolve;
 pub mod result;
 mod session;
+pub mod units_wire;
 pub mod value;
 #[cfg(feature = "watch")]
 pub mod watch;

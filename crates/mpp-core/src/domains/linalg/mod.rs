@@ -29,6 +29,7 @@ const OPS: &[&str] = &[
     "matmul",
     "matadd",
     "matsub",
+    "matpow",
     "scale",
     "identity",
     "charpoly",
@@ -117,6 +118,12 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
             let (a, b) = binary(op, args)?;
             Ok(a.sub(&b)?.to_expr())
         }
+        "matpow" => {
+            expect_args(op, args, 2)?;
+            let m = matrix_arg(op, &args[0])?;
+            let k = int_arg(op, &args[1])?;
+            Ok(matrix_power(&m, &k)?.to_expr())
+        }
         "scale" => {
             expect_args(op, args, 2)?;
             Ok(matrix_arg(op, &args[1])?.scale(&args[0]).to_expr())
@@ -172,6 +179,46 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
         }
         _ => Err(MathError::UnknownFunction(op.into())),
     }
+}
+
+/// Most bits in an exponent of [`matrix_power`] (beyond that the entries are too large).
+const MAX_POWER_BITS: u64 = 16;
+
+/// `Mⁿ` for a square matrix and any integer `n` (a negative power inverts first).
+pub fn matrix_power(m: &Matrix, n: &num_bigint::BigInt) -> MathResult<Matrix> {
+    use num_traits::{Signed, Zero};
+    if !m.is_square() {
+        return Err(MathError::Domain {
+            function: "a matrix power".into(),
+            detail: format!(
+                "only a square matrix has powers, and this one is {}×{}",
+                m.rows(),
+                m.cols()
+            ),
+        });
+    }
+    if n.bits() > MAX_POWER_BITS {
+        return Err(MathError::TooLarge(format!("the matrix power {n}")));
+    }
+    let base = if n.is_negative() {
+        m.inverse()?
+    } else {
+        m.clone()
+    };
+    let mut k = n.abs();
+    let mut result = Matrix::identity(m.rows())?;
+    let mut square = base;
+    let two = num_bigint::BigInt::from(2);
+    while !k.is_zero() {
+        if (&k % &two).is_zero() {
+            square = square.mul(&square)?;
+            k /= &two;
+        } else {
+            result = result.mul(&square)?;
+            k -= 1;
+        }
+    }
+    Ok(result)
 }
 
 /// Solves `A x = b`: the unique solution as a vector; a family `x₀ + t₁ v₁ + …` with
@@ -256,5 +303,19 @@ mod tests {
             Expr::int(2),
         ]));
         assert_eq!(run("norm", &[v], &mut ctx), Ok(Expr::int(3)));
+        let m = mat(&[&[1, 1], &[0, 1]]);
+        assert_eq!(
+            run("matpow", &[m.clone(), Expr::int(5)], &mut ctx),
+            Ok(mat(&[&[1, 5], &[0, 1]]))
+        );
+        assert_eq!(
+            run("matpow", &[m.clone(), Expr::int(-2)], &mut ctx),
+            Ok(mat(&[&[1, -2], &[0, 1]]))
+        );
+        assert_eq!(
+            run("matpow", &[m, Expr::int(0)], &mut ctx),
+            Ok(mat(&[&[1, 0], &[0, 1]]))
+        );
+        assert!(run("matpow", &[mat(&[&[1, 2]]), Expr::int(2)], &mut ctx).is_err());
     }
 }
