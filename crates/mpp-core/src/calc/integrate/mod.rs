@@ -17,7 +17,7 @@ mod multiple;
 mod numeric;
 mod parts;
 mod radical;
-mod rational;
+pub(crate) mod rational;
 mod subst;
 mod table;
 mod trig;

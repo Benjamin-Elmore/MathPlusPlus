@@ -63,3 +63,8 @@ fn steps_example() {
 fn curve_sketching_example() {
     check("curve-sketching");
 }
+
+#[test]
+fn vector_calculus_example() {
+    check("vector-calculus");
+}

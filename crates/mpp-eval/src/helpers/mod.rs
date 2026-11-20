@@ -1,6 +1,7 @@
 //! The maths helpers as holders: function analysis (`\operatorname{crit} f = ?`,
 //! "Find the critical points of $f$ on $[0, 4]$.") answered by
-//! [`mpp_core::tools::analysis`].
+//! [`mpp_core::tools::analysis`], and the multivariable and vector calculus helpers
+//! (see [`multivar`]) answered by [`mpp_core::tools::multivar`].
 //!
 //! Both forms meet here as `Apply` holders: `crit(f)` (or `crit(f, [0, 4])`) for an
 //! operator without scripts, and `operatorname(crit, sub, sup, (f, …))` with them. The
@@ -13,6 +14,8 @@ use mpp_core::{Expr, ExprNode, MathError, MathResult, Name, RelOp};
 use mpp_syntax::document::HelperName;
 
 use crate::holders::Ctx;
+
+mod multivar;
 
 /// What a helper computes.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,6 +120,10 @@ pub fn sentence_holder(op: &str, target: Expr, interval: Option<Expr>, at: Optio
 /// Names a helper binds: the variable of `f(x)` and of a point `x = a`, which must stay
 /// symbolic while the arguments are resolved.
 pub fn bound_names(name: &str, args: &[Expr]) -> Vec<Name> {
+    let several = multivar::bound_names(name, args);
+    if !several.is_empty() {
+        return several;
+    }
     let (sub, items): (Option<&Expr>, &[Expr]) = match (name, args) {
         ("operatorname", [which, sub, _, body]) if which.as_sym().is_some_and(is_helper) => {
             match body.node() {
@@ -147,6 +154,9 @@ pub fn bound_names(name: &str, args: &[Expr]) -> Vec<Name> {
 
 /// Evaluates a helper holder; `None` for other nodes.
 pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    if let Some(r) = multivar::evaluate(e, ctx) {
+        return Some(r);
+    }
     let ExprNode::Apply(name, args) = e.node() else {
         return None;
     };

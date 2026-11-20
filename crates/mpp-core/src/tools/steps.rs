@@ -105,7 +105,10 @@ impl StepTree {
         let mut tree = StepTree::from_steps(steps);
         let done = tree.roots.last().is_some_and(|last| {
             let r = last.result();
-            same(r, answer) || ends_in(r, answer) || same(r, &without_order_term(answer))
+            same(r, answer)
+                || ends_in(r, answer)
+                || ends_in(answer, r)
+                || same(r, &without_order_term(answer))
         });
         if !done && !same(question, answer) {
             let step = Step {
@@ -377,6 +380,27 @@ pub fn sentence(rule: &str, before: &Expr, note: Option<&str>) -> String {
             Some("Combine the known series term by term and keep the terms up to the order asked for.")
         }
         ("simplify", _) => Some("Simplify."),
+        ("differentiate", _) => Some("Differentiate."),
+        ("differentiate again", _) => Some("Differentiate again for the second derivative."),
+        ("find the domain", _) => {
+            Some("Find where the function is defined: exclude zeros of denominators, logarithms of non-positive numbers and even roots of negative numbers.")
+        }
+        ("find the range", _) => Some(
+            "On each interval of the domain the values run between the least and greatest values and limits.",
+        ),
+        ("solve f′(x) = 0 and find where f′ is undefined", _) => Some(
+            "Find the critical points: solve f′(x) = 0 and find where f′ is undefined, then use the first-derivative test.",
+        ),
+        ("closed interval method", _) => Some(
+            "Compare f at the critical points and at the endpoints: the largest is the absolute maximum and the smallest the absolute minimum.",
+        ),
+        ("tangent line", _) => Some("Use the point–slope form y = f(a) + f′(a)(x − a)."),
+        ("laplace transform of the equation", _) => Some(
+            "Take the Laplace transform of both sides, putting in the initial conditions, and solve for Y(s).",
+        ),
+        ("inverse transform by partial fractions", _) => Some(
+            "Split Y(s) into partial fractions and invert each term with the table of transforms.",
+        ),
         ("combine the results and simplify", _) => {
             Some("Put the pieces together and simplify.")
         }
@@ -411,10 +435,15 @@ pub fn sentence(rule: &str, before: &Expr, note: Option<&str>) -> String {
             None => format!("Apply the {lower}."),
         };
     }
+    let named = [
+        "rule", "formula", "identity", "theorem", "method", "symmetry",
+    ];
+    if named.iter().any(|w| lower.contains(w)) {
+        return format!("Use the {rule}{what}.");
+    }
     let mut chars = rule.chars();
     match chars.next() {
-        Some(c) => format!("Apply {}{}{what}.", c.to_lowercase(), chars.as_str())
-            .replace("Apply apply", "Apply"),
+        Some(c) => format!("{}{}.", c.to_uppercase(), chars.as_str()),
         None => "Simplify.".into(),
     }
 }
@@ -518,7 +547,14 @@ mod tests {
             sentence("derivative of sin", &x(), None),
             "Use the derivative of sin."
         );
-        assert_eq!(sentence("odd symmetry", &x(), None), "Apply odd symmetry.");
+        assert_eq!(
+            sentence("odd symmetry", &x(), None),
+            "Use the odd symmetry."
+        );
+        assert_eq!(
+            sentence("iterated integral", &x(), None),
+            "Iterated integral."
+        );
         let empty = StepTree::for_answer(&Steps::new(), &x(), &x());
         assert!(empty.is_empty());
         let simplified = StepTree::for_answer(
