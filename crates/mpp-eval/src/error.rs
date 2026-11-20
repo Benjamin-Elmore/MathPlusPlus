@@ -39,6 +39,9 @@ pub enum EvalError {
     Invalid(String),
     /// The parser already reported the problem at this spot.
     Silent,
+    /// An empty template box (C9) that must be filled in first; no answer is given and
+    /// the line shows the hint "fill in: …" instead of an error.
+    EmptyBox(String),
 }
 
 impl fmt::Display for EvalError {
@@ -94,6 +97,7 @@ impl fmt::Display for EvalError {
             EvalError::Unsupported(what) => write!(f, "{what} is not supported yet"),
             EvalError::Invalid(what) => write!(f, "{what}"),
             EvalError::Silent => write!(f, "this could not be read"),
+            EvalError::EmptyBox(label) => write!(f, "fill in: {label}"),
         }
     }
 }
@@ -122,7 +126,7 @@ impl Located {
     /// The diagnostic, or `None` when the parser already reported it.
     pub fn diagnostic(&self) -> Option<Diagnostic> {
         match self.error {
-            EvalError::Silent => None,
+            EvalError::Silent | EvalError::EmptyBox(_) => None,
             _ => Some(Diagnostic::error(self.span, self.error.to_string())),
         }
     }

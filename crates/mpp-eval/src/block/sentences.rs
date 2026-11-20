@@ -133,7 +133,7 @@ fn equations_of(node: &Node) -> Vec<&Node> {
 
 /// `x = 2 or x = 3` for one unknown with finitely many solutions, `no solution` for
 /// none; other answers keep the solver's own form.
-fn solution_text(unknowns: &[String], v: &Expr) -> Option<(String, String)> {
+pub(super) fn solution_text(unknowns: &[String], v: &Expr) -> Option<(String, String)> {
     let [x] = unknowns else {
         return None;
     };

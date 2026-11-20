@@ -8,6 +8,7 @@ use mpp_syntax::document::{block_at, parse_document, Block, BlockId, BlockKind, 
 use mpp_syntax::math::{DefHead, MathAst, Statement};
 use mpp_syntax::Diagnostic;
 
+use crate::auto::AutoEval;
 use crate::block::{run_block, Inputs, Outcome};
 use crate::files::{canonical, FileImporter};
 use crate::graph::DepGraph;
@@ -41,6 +42,8 @@ pub struct Session {
     evaluated: Evaluated,
     /// "Show steps": every `= ?` query records its working, as if written `= ?!`.
     show_steps: bool,
+    /// Auto-evaluation (C8): the toggle, the time budget and the answer cache.
+    auto: AutoEval,
 }
 
 impl std::fmt::Debug for Session {
@@ -73,6 +76,7 @@ impl Session {
             sequences: BTreeSet::new(),
             evaluated: Evaluated::empty(),
             show_steps: false,
+            auto: AutoEval::default(),
         }
     }
 
@@ -90,10 +94,65 @@ impl Session {
         self.show_steps
     }
 
+    /// Turns auto-evaluation (the grey `= …` results of display maths) on or off for
+    /// the whole document; `%noeval` still switches it off for one block. The next run
+    /// or update applies it.
+    pub fn set_auto_eval(&mut self, on: bool) {
+        if self.auto.enabled != on {
+            self.auto.enabled = on;
+            self.cache.clear();
+        }
+    }
+
+    /// True when auto-evaluation is on (the default).
+    pub fn auto_eval(&self) -> bool {
+        self.auto.enabled
+    }
+
+    /// How long each block may spend on its auto results before they are left
+    /// `pending` and finished on a worker thread. `None` (the default) works everything
+    /// out in place; the IDE sets a budget so a slow integral never holds up typing.
+    pub fn set_auto_budget(&mut self, budget: Option<std::time::Duration>) {
+        self.auto.budget = budget;
+    }
+
+    /// The time budget per block for auto results.
+    pub fn auto_budget(&self) -> Option<std::time::Duration> {
+        self.auto.budget
+    }
+
+    /// True while some auto result is still being worked out.
+    pub fn has_pending(&self) -> bool {
+        self.evaluated
+            .blocks
+            .iter()
+            .any(|b| b.values.iter().any(|l| l.pending))
+    }
+
+    /// Waits until every running auto result is done, or `timeout` passes; true when
+    /// none is running any more. Call [`Session::refresh`] afterwards to show them.
+    pub fn wait_pending(&self, timeout: std::time::Duration) -> bool {
+        self.auto.cache.wait(timeout)
+    }
+
+    /// True when a pending auto result has finished since the last run, so
+    /// [`Session::refresh`] would show something new.
+    pub fn pending_ready(&self) -> bool {
+        self.has_pending() && !self.auto.cache.has_running()
+    }
+
+    /// Runs the current text again, putting in the auto results that finished since
+    /// the last run (only the blocks that were waiting run again).
+    pub fn refresh(&mut self) -> &Evaluated {
+        let src = self.evaluated.source.clone();
+        self.update(&src)
+    }
+
     /// Replaces the holder registry (and forgets cached results).
     pub fn with_holders(mut self, holders: Holders) -> Self {
         self.holders = Arc::new(holders);
         self.cache.clear();
+        self.auto.cache.clear();
         self.importer.invalidate(None);
         self
     }
@@ -101,6 +160,7 @@ impl Session {
     /// The holder registry, to register more evaluators (forgets cached results).
     pub fn holders_mut(&mut self) -> &mut Holders {
         self.cache.clear();
+        self.auto.cache.clear();
         self.importer.invalidate(None);
         Arc::make_mut(&mut self.holders)
     }
@@ -178,6 +238,8 @@ impl Session {
         session.root_dir = root_dir;
         session.chain = chain;
         session.doc_name = Some(doc_name);
+        // An imported file's blocks are not shown, so nothing is auto-evaluated there.
+        session.auto.enabled = false;
         session
     }
 
@@ -214,6 +276,7 @@ impl Session {
             doc_name: self.doc_name.as_deref(),
             lines: &lines,
             show_steps: self.show_steps,
+            auto: &self.auto,
         };
 
         let pass = if own_stack {
@@ -230,6 +293,7 @@ impl Session {
         self.cache = cache;
 
         let diagnostics = attach_parse_diagnostics(&doc, &mut blocks);
+        fill_in_hints(&mut blocks);
         let graph = DepGraph::build(&blocks);
         self.evaluated = Evaluated {
             document: doc,
@@ -354,6 +418,44 @@ fn attach_parse_diagnostics(doc: &Document, blocks: &mut [BlockResult]) -> Vec<D
         b.diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
     }
     loose
+}
+
+/// "fill in: upper bound" for a display line that could not be read because a part is
+/// missing (an empty template box written `{}`, or `\int_0^{} …`): the parser's
+/// "expected the upper bound after `^`" names the part.
+fn fill_in_hints(blocks: &mut [BlockResult]) {
+    for b in blocks.iter_mut() {
+        let diagnostics = &b.diagnostics;
+        for line in b.values.iter_mut() {
+            if !line.auto_eval || line.input.is_some() || line.hint.is_some() {
+                continue;
+            }
+            let missing = diagnostics
+                .iter()
+                .filter(|d| line.span.start <= d.span.start && d.span.end <= line.span.end)
+                .find_map(|d| missing_part(&d.message));
+            if let Some(part) = missing {
+                line.hint = Some(format!("fill in: {part}"));
+            }
+        }
+    }
+}
+
+/// The part a parser message says is missing: "expected the upper bound after `^`" →
+/// "upper bound", "expected an expression inside `{}` …" → "the empty box".
+fn missing_part(message: &str) -> Option<String> {
+    let rest = message.strip_prefix("expected ")?;
+    if rest.starts_with("an expression inside `{}`") || rest.starts_with("an expression") {
+        return Some(crate::lower::long_label(""));
+    }
+    let what = rest.strip_prefix("the ")?;
+    let end = [" after ", " to ", " before "]
+        .iter()
+        .filter_map(|w| what.find(w))
+        .min()
+        .unwrap_or(what.len());
+    let part = what[..end].trim();
+    (!part.is_empty() && !part.contains('`')).then(|| part.to_string())
 }
 
 /// Every name with a recurrence `a_{n+1} := …` anywhere in the document.

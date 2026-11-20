@@ -110,6 +110,9 @@ const ALIASES: &[(&str, &str)] = &[
     ("divergencetheorem", "divthm"),
     ("relatedrates", "rates"),
     ("inflections", "inflection"),
+    ("eig", "eigenvals"),
+    ("eigenvalues", "eigenvals"),
+    ("eigenvectors", "eigenvects"),
 ];
 
 /// Helpers whose Insert-menu template has a "from" box below the name and a "to" box
@@ -137,6 +140,8 @@ fn routed(name: &str) -> bool {
             | "rk4table"
             | "laplace"
             | "invlaplace"
+            | "fourier"
+            | "invfourier"
             | "euler"
             | "tangentplane"
             | "solve"
@@ -196,27 +201,104 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
                 Route::OdeToolkit
             }
         }
-        "euler" | "laplace" | "invlaplace" => Route::OdeToolkit,
+        "euler" => Route::OdeToolkit,
+        "laplace" | "invlaplace" | "fourier" | "invfourier" => {
+            return Some(transform(&call, e, ctx));
+        }
         _ => return None,
     };
     let expr = adapt_initial_condition(&call).to_expr();
     match route {
         Route::Registry => crate::domains_wire::evaluate(&expr, ctx),
-        Route::OdeToolkit => {
-            let first = crate::helpers_b::evaluate(&expr, ctx);
-            match (&first, call.name.as_str()) {
-                // The multivariable helpers have their own transform table; it answers
-                // when the toolkit's has no entry.
-                (
-                    Some(Err(MathError::Unsupported(_) | MathError::NoClosedForm(_))),
-                    "laplace" | "invlaplace",
-                ) => match crate::helpers::evaluate(&expr, ctx) {
-                    Some(Ok(v)) => Some(Ok(v)),
-                    _ => first,
-                },
-                _ => first,
+        Route::OdeToolkit => crate::helpers_b::evaluate(&expr, ctx),
+    }
+}
+
+/// The variables of a transform: the subscript `t \to s` when written, otherwise `t → s`
+/// for Laplace and `x → ω` for Fourier (the inverse swaps them). A function of one other
+/// variable than the default keeps its own (`\mathcal L\{e^{-2u}\}` is in `u`).
+fn transform_vars(call: &Call) -> (String, String) {
+    if let ExprNode::Apply(name, ab) = call.sub.node() {
+        if let ([a, b], "to") = (ab.as_slice(), &**name) {
+            if let (Some(a), Some(b)) = (a.as_sym(), b.as_sym()) {
+                return (a.to_string(), b.to_string());
             }
         }
+    }
+    let (from, to) = match call.name.as_str() {
+        "laplace" => ("t", "s"),
+        "invlaplace" => ("s", "t"),
+        "fourier" => ("x", "ω"),
+        _ => ("ω", "x"),
+    };
+    let free: Vec<String> = call
+        .args
+        .first()
+        .map(|f| f.free_symbols().iter().map(|s| s.to_string()).collect())
+        .unwrap_or_default();
+    let from = match free.as_slice() {
+        [only] if only != to && !free.iter().any(|v| v == from) => only.clone(),
+        _ => from.to_string(),
+    };
+    (from, to.to_string())
+}
+
+/// `\mathcal L\{f\}`, `\mathcal L^{-1}\{F\}`, `\mathcal F\{f\}`, `\mathcal F^{-1}\{F\}` and the
+/// operator forms `laplace`, `invlaplace`, `fourier`, `invfourier`.
+fn transform(call: &Call, e: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
+    use mpp_core::tools_b::fourier;
+    use mpp_core::tools_b::ode::laplace as lt;
+    let [f] = call.args.as_slice() else {
+        return Err(MathError::WrongArity {
+            function: call.name.clone(),
+            expected: "1".into(),
+            got: call.args.len(),
+        });
+    };
+    let (from, to) = transform_vars(call);
+    let result = match call.name.as_str() {
+        "laplace" => lt::transform(f, &from, &to),
+        "invlaplace" => lt::inverse(f, &from, &to),
+        "fourier" => fourier::transform(f, &from, &to),
+        _ => fourier::inverse(f, &from, &to),
+    };
+    let (rule, note) = match call.name.as_str() {
+        "laplace" | "invlaplace" => (
+            "Laplace transform",
+            format!("L{{f}}({to}) = ∫₀^∞ f({from}) e^(−{to}{from}) d{from}"),
+        ),
+        _ => (
+            "Fourier transform",
+            format!("F{{f}}(ω) = ∫ f(x) e^(−iωx) dx over ℝ, and F⁻¹{{F}}(x) = (1/2π) ∫ F(ω) e^(iωx) dω (with {from} → {to})"),
+        ),
+    };
+    match result {
+        Ok(v) => {
+            if call.name.contains("fourier") {
+                ctx.note(note.clone());
+            }
+            ctx.log(rule, f, &v, Some(note));
+            Ok(v)
+        }
+        // The multivariable helpers have their own Laplace table; it answers when this
+        // one has no entry.
+        Err(err @ (MathError::Unsupported(_) | MathError::NoClosedForm(_)))
+            if call.name.contains("laplace") && from.as_str() == default_from(&call.name) =>
+        {
+            match crate::helpers::evaluate(e, ctx) {
+                Some(Ok(v)) => Ok(v),
+                _ => Err(err),
+            }
+        }
+        Err(err) => Err(err),
+    }
+}
+
+fn default_from(name: &str) -> &'static str {
+    if name == "laplace" {
+        "t"
+    } else {
+        "s"
     }
 }
 
@@ -405,6 +487,14 @@ pub fn bound_names(name: &str, args: &[Expr]) -> Vec<Name> {
     else {
         return Vec::new();
     };
+    if matches!(
+        call.name.as_str(),
+        "laplace" | "invlaplace" | "fourier" | "invfourier"
+    ) {
+        // The transform's own variable stays symbolic (a document may define `t`).
+        let (from, _) = transform_vars(&call);
+        return vec![Name::from(from.as_str())];
+    }
     match ALIASES.iter().find(|(a, _)| *a == call.name) {
         Some((_, to)) => {
             let adapted = adapt_alias(&call.renamed(to)).to_expr();

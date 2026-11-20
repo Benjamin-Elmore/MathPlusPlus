@@ -1,6 +1,7 @@
 //! Running one block: its statements, in order, against the environment.
 
 mod assume;
+mod auto;
 mod data;
 mod ode;
 mod sentences;
@@ -47,6 +48,8 @@ pub(crate) struct Inputs<'a> {
     pub lines: &'a LineIndex,
     /// The session's "Show steps" option: record the working of every `= ?` query.
     pub show_steps: bool,
+    /// Auto-evaluation settings and cache.
+    pub auto: &'a crate::auto::AutoEval,
 }
 
 /// Bindings a block observed before it ran, by name.
@@ -81,6 +84,7 @@ pub(crate) fn run_block(block: &Block, env: &mut Env, inputs: &Inputs<'_>) -> Ou
         volatile: false,
         local_assumptions: Vec::new(),
         unknown_fns: Vec::new(),
+        auto_deadline: None,
     };
     run.block(block);
     run.finish()
@@ -108,6 +112,8 @@ struct Run<'a, 'e> {
     local_assumptions: Vec<Expr>,
     /// Unknown functions of the differential equation on the line being run.
     unknown_fns: Vec<String>,
+    /// When this block's auto results stop waiting (set by the first one).
+    auto_deadline: Option<std::time::Instant>,
 }
 
 /// A read-only view of the environment that records what it is asked.
@@ -962,6 +968,9 @@ impl Run<'_, '_> {
         let input = match self.lower(expr, s.names) {
             Ok(e) => e,
             Err(l) => {
+                if matches!(l.error, EvalError::EmptyBox(_)) {
+                    lr.hint = Some(l.error.to_string());
+                }
                 self.located(l);
                 return self.push(lr);
             }
@@ -1117,8 +1126,16 @@ impl Run<'_, '_> {
         let mut lr = LineResult::new(line.span, LineKind::Relation);
         lr.noeval = noeval;
         lr.auto_eval = display && !noeval;
+        let mut lowered = None;
         match self.lower(node, s.names) {
-            Ok(e) => lr.input = Some(with_locals(e, s.locals, &[])),
+            Ok(e) => {
+                lr.input = Some(with_locals(e.clone(), s.locals, &[]));
+                lowered = Some(e);
+            }
+            // An empty template box: no answer yet, and a hint instead of an error.
+            Err(l) if matches!(l.error, EvalError::EmptyBox(_)) => {
+                lr.hint = Some(l.error.to_string());
+            }
             // Prose maths is only recorded; only display maths reports problems.
             Err(l) if display => self.located(l),
             Err(_) => {}
@@ -1127,6 +1144,9 @@ impl Run<'_, '_> {
             if let Ok(e) = self.lower(c, s.names) {
                 lr.conditions.push(e);
             }
+        }
+        if let (Some(e), true) = (lowered, lr.auto_eval) {
+            self.auto_evaluate(&mut lr, node, &e, s);
         }
         self.push(lr);
     }

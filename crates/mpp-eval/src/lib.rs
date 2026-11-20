@@ -16,6 +16,7 @@
 #![forbid(unsafe_code)]
 
 pub mod assume;
+mod auto;
 mod block;
 pub mod calculus;
 pub mod check;
