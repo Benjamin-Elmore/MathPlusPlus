@@ -30,6 +30,11 @@ pub trait ResultProvider {
         vec![]
     }
 
+    /// Results to fill into inline maths (`$\int_0^1 x^2 dx = ?$`), by statement line.
+    fn inline_results(&self, _ast: &MathAst) -> Vec<LineResult> {
+        vec![]
+    }
+
     /// An SVG drawing for a `Figure:` block.
     fn figure_svg(&self, _block: &Block, _figure: &Figure) -> Option<String> {
         None
@@ -200,7 +205,11 @@ impl Renderer<'_> {
     }
 
     fn inline_math(&mut self, ast: &MathAst) -> String {
-        let dl = layout_math(ast, &self.math_opts(MathStyle::Text));
+        let mut opts = self.math_opts(MathStyle::Text);
+        if !self.in_comment {
+            opts.results = self.results.inline_results(ast);
+        }
+        let dl = layout_math(ast, &opts);
         self.svg(&dl, "m")
     }
 
