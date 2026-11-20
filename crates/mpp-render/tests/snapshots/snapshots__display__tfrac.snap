@@ -1,0 +1,12 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\tfrac12 m v^2"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="52.67" height="24.08" viewBox="0 0 52.67 24.08" overflow="visible">
+<text x="2.4" y="9.3" font-family="Latin Modern Math" font-size="14" fill="#111111">1</text>
+<text x="2.4" y="24.08" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<rect x="0" y="11.78" width="12.77" height="0.8" fill="#111111"/>
+<text x="16.1" y="17.18" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑚</text>
+<text x="33.66" y="17.18" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑣</text>
+<text x="43.58" y="9.92" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+</svg>

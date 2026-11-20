@@ -1,0 +1,9 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: x_n^2
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="22.44" height="21.64" viewBox="0 0 22.44 21.64" overflow="visible">
+<text x="0" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="11.44" y="9.3" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<text x="11.44" y="21.5" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑛</text>
+</svg>

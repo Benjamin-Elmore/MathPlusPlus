@@ -1,0 +1,16 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\lim_{x \\to 0^+} \\ln x"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="74.39" height="31.38" viewBox="0 0 74.39 31.38" overflow="visible">
+<text x="0" y="29.1" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑥</text>
+<text x="9.07" y="29.1" font-family="Latin Modern Math" font-size="14" fill="#111111">→</text>
+<text x="23.07" y="29.1" font-family="Latin Modern Math" font-size="14" fill="#111111">0</text>
+<text x="31.04" y="25.05" font-family="Latin Modern Math" font-size="10" fill="#111111">+</text>
+<text x="5.99" y="15.88" font-family="Latin Modern Math" font-size="20" fill="#111111">l</text>
+<text x="11.55" y="15.88" font-family="Latin Modern Math" font-size="20" fill="#111111">i</text>
+<text x="17.11" y="15.88" font-family="Latin Modern Math" font-size="20" fill="#111111">m</text>
+<text x="42.94" y="15.88" font-family="Latin Modern Math" font-size="20" fill="#111111">l</text>
+<text x="48.5" y="15.88" font-family="Latin Modern Math" font-size="20" fill="#111111">n</text>
+<text x="62.95" y="15.88" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+</svg>

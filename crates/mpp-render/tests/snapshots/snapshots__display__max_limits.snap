@@ -1,0 +1,16 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\max_{x \\in S} f(x)"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="77.35" height="30.96" viewBox="0 0 77.35 30.96" overflow="visible">
+<text x="4.33" y="28.36" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑥</text>
+<text x="13.4" y="28.36" font-family="Latin Modern Math" font-size="14" fill="#111111">∈</text>
+<text x="22.74" y="28.36" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑆</text>
+<text x="0" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">m</text>
+<text x="16.66" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">a</text>
+<text x="26.66" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">x</text>
+<text x="40.55" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑓</text>
+<text x="50.35" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="58.13" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="69.57" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+</svg>
