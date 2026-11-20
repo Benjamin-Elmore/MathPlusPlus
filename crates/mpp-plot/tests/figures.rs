@@ -35,6 +35,8 @@ fn kinds(f: &Figure) -> Vec<&'static str> {
             Geometry::Surface { .. } => "surface",
             Geometry::ParamSurface { .. } => "param-surface",
             Geometry::Curve3 { .. } => "curve3",
+            Geometry::BoxPlot(_) => "box-plot",
+            _ => "helper",
         })
         .collect()
 }

@@ -3,11 +3,13 @@
 use crate::camera::{Camera, Projected};
 use crate::color::Color;
 use crate::figure::{Figure, LayerData, Mesh};
-use crate::scene::{Anchor, Dash, Item, Label, PlotScene, Polyline, Pt, Triangle};
+use crate::scene::{
+    Anchor, Dash, Item, Label, Marker, MarkerKind, PlotScene, Polyline, Pt, Triangle,
+};
 use crate::spec::Geometry;
 use crate::theme::PlotTheme;
 use crate::ticks::{format_tick, ticks};
-use crate::view2d::name_latex;
+use crate::view2d::{draw_readouts, math_italic, name_latex};
 
 /// Height of the box relative to its width and depth.
 const BOX_Z: f64 = 0.8;
@@ -98,6 +100,8 @@ impl Figure {
 
         // Surfaces, sorted far to near.
         let mut tris: Vec<(f64, Triangle)> = Vec::new();
+        // A plane laid on a surface is drawn over it, so it shows even where it dips below.
+        let mut overlay: Vec<(f64, Triangle)> = Vec::new();
         for (i, d) in self.data.iter().enumerate() {
             if let LayerData::Surface(mesh) = d {
                 self.mesh_triangles(
@@ -110,10 +114,59 @@ impl Figure {
                     &mut tris,
                 );
             }
+            if let LayerData::Solid(solid) = d {
+                for part in &solid.parts {
+                    let base = match (part.highlight, solid.in_box) {
+                        (true, true) => theme.series(i + 1),
+                        (true, false) => theme.series(i).with_alpha(170),
+                        (false, _) => theme.series(i).lerp(theme.background, 0.18),
+                    };
+                    let target = if solid.in_box {
+                        &mut tris
+                    } else {
+                        &mut overlay
+                    };
+                    self.flat_triangles(&part.mesh, cam, &proj, theme, (base, part.edged), target);
+                }
+            }
         }
         tris.sort_by(|a, b| b.0.total_cmp(&a.0));
-        for (_, t) in tris {
+        overlay.sort_by(|a, b| b.0.total_cmp(&a.0));
+        for (_, t) in tris.into_iter().chain(overlay) {
             scene.push(Item::Triangle(t));
+        }
+
+        // Solid outlines and marked points.
+        for (i, d) in self.data.iter().enumerate() {
+            if let LayerData::Solid(solid) = d {
+                for run in &solid.lines {
+                    let points: Vec<Pt> = run
+                        .iter()
+                        .filter(|p| p.iter().all(|v| v.is_finite()))
+                        .map(|p| {
+                            let q = proj(self.normalize(*p));
+                            [q.x, q.y]
+                        })
+                        .collect();
+                    scene.push(Item::Polyline(Polyline {
+                        points,
+                        color: theme.axes,
+                        width: 1.6,
+                        dash: Dash::Dashed(6.0, 4.0),
+                    }));
+                }
+                for p in &solid.dots {
+                    let q = proj(self.normalize(*p));
+                    scene.push(Item::Marker(Marker {
+                        pos: [q.x, q.y],
+                        kind: MarkerKind::Circle,
+                        color: theme.series(i),
+                        size: 9.0,
+                        filled: true,
+                        hollow_fill: theme.background,
+                    }));
+                }
+            }
         }
 
         // Curves.
@@ -139,6 +192,7 @@ impl Figure {
         if opts.axes {
             self.draw_ticks(&mut scene, &proj, theme);
         }
+        draw_readouts(&mut scene, theme, self.readouts(), 8.0, 8.0);
         scene
     }
 
@@ -198,6 +252,51 @@ impl Figure {
                         Triangle {
                             points: [[a.0.x, a.0.y], [b.0.x, b.0.y], [c.0.x, c.0.y]],
                             colors,
+                            edge,
+                        },
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Triangles of a mesh in one colour, shaded by the angle to the light.
+    fn flat_triangles(
+        &self,
+        mesh: &Mesh,
+        cam: &Camera,
+        proj: &dyn Fn([f64; 3]) -> Projected,
+        theme: &PlotTheme,
+        paint: (Color, bool),
+        out: &mut Vec<(f64, Triangle)>,
+    ) {
+        let (base, edged) = paint;
+        let verts: Vec<Option<(Projected, [f64; 3])>> = mesh
+            .points
+            .iter()
+            .map(|p| {
+                p.iter().all(|v| v.is_finite()).then(|| {
+                    let n = self.normalize(*p);
+                    (proj(n), n)
+                })
+            })
+            .collect();
+        let at = |u: usize, v: usize| verts.get(v * mesh.nu + u).copied().flatten();
+        let edge = edged.then_some((theme.axes.with_alpha(110), 0.6));
+        for v in 0..mesh.nv.saturating_sub(1) {
+            for u in 0..mesh.nu.saturating_sub(1) {
+                let quad = [at(u, v), at(u + 1, v), at(u + 1, v + 1), at(u, v + 1)];
+                for tri in [[0usize, 1, 2], [0, 2, 3]] {
+                    let (Some(a), Some(b), Some(c)) = (quad[tri[0]], quad[tri[1]], quad[tri[2]])
+                    else {
+                        continue;
+                    };
+                    let colour = base.scaled(lambert(cam, a.1, b.1, c.1));
+                    out.push((
+                        (a.0.depth + b.0.depth + c.0.depth) / 3.0,
+                        Triangle {
+                            points: [[a.0.x, a.0.y], [b.0.x, b.0.y], [c.0.x, c.0.y]],
+                            colors: [colour; 3],
                             edge,
                         },
                     ));
@@ -364,10 +463,10 @@ impl Figure {
             let q = proj(mid);
             let pos = [q.x + d[0] * 34.0, q.y + d[1] * 34.0 + 5.0];
             scene.text(Label {
-                italic: true,
+                italic: false,
                 ..label(
                     pos,
-                    axis_name,
+                    &math_italic(axis_name),
                     Anchor::Middle,
                     Some(name_latex(axis_name)),
                     14.0,
@@ -399,10 +498,10 @@ impl Figure {
         }
         let top = proj([cx, cy, h[2]]);
         scene.text(Label {
-            italic: true,
+            italic: false,
             ..label(
                 [top.x - 10.0, top.y - 12.0],
-                &names[2],
+                &math_italic(&names[2]),
                 Anchor::End,
                 Some(name_latex(&names[2])),
                 14.0,

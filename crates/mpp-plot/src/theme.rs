@@ -1,6 +1,8 @@
 //! Plot themes. Every colour a plot uses comes from here; nothing else in the crate
 //! names a colour.
 
+use mpp_render::Theme as RenderTheme;
+
 use crate::color::Color;
 
 /// Colours and fonts for a figure.
@@ -35,53 +37,41 @@ pub struct PlotTheme {
 }
 
 impl PlotTheme {
-    /// Dark text on white.
+    /// Dark text on the light page.
     pub fn light() -> PlotTheme {
-        PlotTheme {
-            name: "light".into(),
-            background: Color::hex("#ffffff"),
-            grid: Color::hex("#e4e7eb"),
-            axes: Color::hex("#2b3036"),
-            text: Color::hex("#1f2328"),
-            legend_background: Color::hex("#ffffff").with_alpha(230),
-            legend_border: Color::hex("#b8bec6"),
-            palette: [
-                "#1f5fbf", "#d9480f", "#2b8a3e", "#862e9c", "#c2255c", "#0b7285", "#a16207",
-                "#495057",
-            ]
-            .map(Color::hex)
-            .to_vec(),
-            surface_colormap: ["#440154", "#3b528b", "#21918c", "#5ec962", "#e8d82a"]
-                .map(Color::hex)
-                .to_vec(),
-            wireframe: Color::hex("#1f2328").with_alpha(110),
-            region_alpha: 70,
-            font: FONT.into(),
-            math_font: MATH_FONT.into(),
-        }
+        PlotTheme::from_render(&RenderTheme::LIGHT)
     }
 
     /// Light text on a dark background, with brighter curve colours.
     pub fn dark() -> PlotTheme {
+        PlotTheme::from_render(&RenderTheme::DARK)
+    }
+
+    /// The plot theme that goes with a document theme: background, ink, grid, axes and
+    /// the eight curve colours all come from the shared theme, so a figure always matches
+    /// the page around it. Only the colours no document element uses (the height colour
+    /// map, the wireframe, how opaque shaded regions are) are chosen here.
+    pub fn from_render(t: &RenderTheme) -> PlotTheme {
+        let c = |c: mpp_render::Color| Color::rgb(c.r, c.g, c.b);
+        let (background, text, axes, grid) = (c(t.background), c(t.text), c(t.axis), c(t.grid));
+        let dark = background.luminance() < 0.2;
+        let stops: [&str; 5] = if dark {
+            ["#6c5ce7", "#3f8fd2", "#22b8a8", "#8fd66a", "#f5e663"]
+        } else {
+            ["#440154", "#3b528b", "#21918c", "#5ec962", "#e8d82a"]
+        };
         PlotTheme {
-            name: "dark".into(),
-            background: Color::hex("#16181d"),
-            grid: Color::hex("#2b2f37"),
-            axes: Color::hex("#c9ced6"),
-            text: Color::hex("#e6e9ee"),
-            legend_background: Color::hex("#16181d").with_alpha(230),
-            legend_border: Color::hex("#4a505b"),
-            palette: [
-                "#6ea8fe", "#ff922b", "#69db7c", "#da77f2", "#ff6b9d", "#3bc9db", "#ffd43b",
-                "#ced4da",
-            ]
-            .map(Color::hex)
-            .to_vec(),
-            surface_colormap: ["#6c5ce7", "#3f8fd2", "#22b8a8", "#8fd66a", "#f5e663"]
-                .map(Color::hex)
-                .to_vec(),
-            wireframe: Color::hex("#e6e9ee").with_alpha(100),
-            region_alpha: 80,
+            name: if dark { "dark" } else { "light" }.into(),
+            background,
+            grid,
+            axes,
+            text,
+            legend_background: background.with_alpha(230),
+            legend_border: axes.lerp(background, 0.55),
+            palette: t.series.iter().map(|s| c(*s)).collect(),
+            surface_colormap: stops.map(Color::hex).to_vec(),
+            wireframe: text.with_alpha(if dark { 100 } else { 110 }),
+            region_alpha: if dark { 80 } else { 70 },
             font: FONT.into(),
             math_font: MATH_FONT.into(),
         }
@@ -155,6 +145,24 @@ mod tests {
         check(&PlotTheme::dark());
     }
 
+    #[test]
+    fn colours_come_from_the_shared_theme() {
+        for (plot, render) in [
+            (PlotTheme::light(), &RenderTheme::LIGHT),
+            (PlotTheme::dark(), &RenderTheme::DARK),
+        ] {
+            assert_eq!(plot.background.to_hex(), render.background.hex());
+            assert_eq!(plot.text.to_hex(), render.text.hex());
+            assert_eq!(plot.axes.to_hex(), render.axis.hex());
+            assert_eq!(plot.grid.to_hex(), render.grid.hex());
+            let series: Vec<String> = render.series.iter().map(|c| c.hex()).collect();
+            let palette: Vec<String> = plot.palette.iter().map(|c| c.to_hex()).collect();
+            assert_eq!(series, palette);
+            assert_eq!(PlotTheme::from_render(render), plot);
+        }
+        assert_eq!(PlotTheme::light().name, "light");
+        assert_eq!(PlotTheme::dark().name, "dark");
+    }
     #[test]
     fn colormap_endpoints() {
         let t = PlotTheme::light();

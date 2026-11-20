@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 pub mod build;
+pub mod calculus;
 pub mod camera;
 pub mod color;
 pub mod compile;
@@ -18,6 +19,8 @@ pub mod data;
 pub mod error;
 pub mod export;
 pub mod figure;
+pub mod helpers;
+mod keywords;
 pub mod sample;
 pub mod scene;
 pub mod spec;

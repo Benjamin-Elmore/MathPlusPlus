@@ -1778,6 +1778,7 @@ dependencies = [
  "insta",
  "mpp-core",
  "mpp-eval",
+ "mpp-render",
  "mpp-syntax",
  "proptest",
  "resvg",

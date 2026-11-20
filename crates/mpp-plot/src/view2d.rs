@@ -24,12 +24,24 @@ pub struct Layout2d {
 impl Layout2d {
     /// The plot area for a viewport, showing `window` (grown to equal scales if asked).
     pub fn new(width: f32, height: f32, window: Bounds, equal_aspect: bool) -> Layout2d {
+        Layout2d::with_footer(width, height, window, equal_aspect, 0.0)
+    }
+
+    /// Like [`Layout2d::new`], leaving `footer` pixels free under the axes for read-outs.
+    pub fn with_footer(
+        width: f32,
+        height: f32,
+        window: Bounds,
+        equal_aspect: bool,
+        footer: f32,
+    ) -> Layout2d {
         let small = width < 260.0 || height < 200.0;
         let (l, r, t, b) = if small {
             (30.0, 8.0, 8.0, 22.0)
         } else {
             (46.0, 20.0, 18.0, 36.0)
         };
+        let b = b + footer;
         let rect = Rect::new(l, t, (width - l - r).max(10.0), (height - t - b).max(10.0));
         let mut w = window;
         if equal_aspect && w.is_valid() {
@@ -200,7 +212,9 @@ fn pt(p: [f64; 2]) -> Pt {
 impl Figure {
     /// The 2D layout this figure uses in a viewport.
     pub fn layout_2d(&self, width: f32, height: f32) -> Layout2d {
-        Layout2d::new(width, height, self.window, self.equal_aspect)
+        let rows = self.readouts().len() as f32;
+        let footer = if rows > 0.0 { rows * 17.0 + 4.0 } else { 0.0 };
+        Layout2d::with_footer(width, height, self.window, self.equal_aspect, footer)
     }
 
     /// Draws a 2D figure into a pixel-space display list.
@@ -230,6 +244,9 @@ impl Figure {
             })
             .collect();
         region_rects(&mut scene, &lay, &regions, theme.background);
+        for (i, d) in self.data.iter().enumerate() {
+            self.underlay_2d(&mut scene, &lay, d, theme.series(i));
+        }
 
         // Axes and grid.
         let axis_y = if win.y0 <= 0.0 && win.y1 >= 0.0 {
@@ -258,6 +275,8 @@ impl Figure {
             Some(m) => m,
             None => xt.iter().map(|&v| (v, format_tick(v, xstep))).collect(),
         };
+        let categorical = self.data.iter().any(|d| matches!(d, LayerData::BoxPlot(_)));
+        let x_marks = if categorical { Vec::new() } else { x_marks };
         let both_at_zero = axis_x == 0.0 && axis_y == 0.0;
 
         for (v, _) in &x_marks {
@@ -272,99 +291,8 @@ impl Figure {
         // Curves and data.
         let mut markers: Vec<Marker> = Vec::new();
         for (i, d) in self.data.iter().enumerate() {
-            let color = theme.series(i);
-            match d {
-                LayerData::Curve(s) => {
-                    for seg in &s.segments {
-                        let px: Vec<[f64; 2]> = seg.iter().map(|p| lay.to_px(*p)).collect();
-                        for piece in clip_polyline(&px, rect) {
-                            scene.push(Item::Polyline(Polyline {
-                                points: piece,
-                                color,
-                                width: 2.2,
-                                dash: Dash::Solid,
-                            }));
-                        }
-                    }
-                    for j in &s.jumps {
-                        let mut dot = |y: f64, filled: bool| {
-                            let p = pt(lay.to_px([j.x, y]));
-                            if rect.contains(p) {
-                                markers.push(Marker {
-                                    pos: p,
-                                    kind: MarkerKind::Circle,
-                                    color,
-                                    size: 8.0,
-                                    filled,
-                                    hollow_fill: theme.background,
-                                });
-                            }
-                        };
-                        dot(j.left, j.left_closed);
-                        dot(j.right, j.right_closed);
-                        if let Some(v) = j.isolated {
-                            dot(v, true);
-                        }
-                    }
-                }
-                LayerData::Lines(lines) => {
-                    draw_lines(&mut scene, &lay, lines, color, 2.2, Dash::Solid);
-                }
-                LayerData::Contours(levels) => {
-                    let n = levels.len().max(2) - 1;
-                    for (k, (_, lines)) in levels.iter().enumerate() {
-                        let c = theme.colormap(k as f64 / n as f64);
-                        draw_lines(&mut scene, &lay, lines, c, 1.6, Dash::Solid);
-                    }
-                }
-                LayerData::Region { edges, .. } => {
-                    for (lines, strict) in edges {
-                        let dash = if *strict {
-                            Dash::Dashed(6.0, 4.0)
-                        } else {
-                            Dash::Solid
-                        };
-                        draw_lines(&mut scene, &lay, lines, color, 2.0, dash);
-                    }
-                }
-                LayerData::Points(ps) => {
-                    for p in ps {
-                        let q = pt(lay.to_px(*p));
-                        if rect.contains(q) {
-                            markers.push(Marker {
-                                pos: q,
-                                kind: MarkerKind::Circle,
-                                color,
-                                size: 8.0,
-                                filled: true,
-                                hollow_fill: theme.background,
-                            });
-                        }
-                    }
-                }
-                LayerData::Histogram { edges, counts } => {
-                    let fill = color.with_alpha(150).over(theme.background);
-                    for (k, h) in counts.iter().enumerate() {
-                        let (Some(&a), Some(&b)) = (edges.get(k), edges.get(k + 1)) else {
-                            continue;
-                        };
-                        let (p0, p1) = (lay.to_px([a, 0.0]), lay.to_px([b, *h]));
-                        scene.push(Item::Polygon(Polygon {
-                            points: vec![
-                                pt([p0[0], p0[1]]),
-                                pt([p1[0], p0[1]]),
-                                pt([p1[0], p1[1]]),
-                                pt([p0[0], p1[1]]),
-                            ],
-                            fill: Some(fill),
-                            stroke: Some((color, 1.2)),
-                        }));
-                    }
-                }
-                _ => {}
-            }
+            self.draw_layer_2d(&mut scene, &lay, theme, d, theme.series(i), &mut markers);
         }
-
         // Axis lines, ticks and labels sit above the curves' fill but below markers.
         let (lx, rx, ty, by) = (rect.x, rect.right(), rect.y, rect.bottom());
         let axis_w = 1.4;
@@ -443,11 +371,377 @@ impl Figure {
             scene.push(Item::Marker(m));
         }
         self.legend_2d(&mut scene, rect, theme);
+        let n = self.readouts().len();
+        for (k, line) in self.readouts().iter().enumerate() {
+            scene.text(Label {
+                pos: [rect.x + 4.0, height - 8.0 - 17.0 * (n - 1 - k) as f32],
+                text: line.clone(),
+                latex: None,
+                anchor: Anchor::Start,
+                size: 13.0,
+                color: theme.text,
+                rotation: 0.0,
+                italic: false,
+            });
+        }
         scene
+    }
+
+    /// Draws one layer of a 2D figure.
+    fn draw_layer_2d(
+        &self,
+        scene: &mut PlotScene,
+        lay: &Layout2d,
+        theme: &PlotTheme,
+        d: &LayerData,
+        color: Color,
+        markers: &mut Vec<Marker>,
+    ) {
+        let rect = lay.rect;
+        match d {
+            LayerData::Curve(s) => {
+                for seg in &s.segments {
+                    let px: Vec<[f64; 2]> = seg.iter().map(|p| lay.to_px(*p)).collect();
+                    for piece in clip_polyline(&px, rect) {
+                        scene.push(Item::Polyline(Polyline {
+                            points: piece,
+                            color,
+                            width: 2.2,
+                            dash: Dash::Solid,
+                        }));
+                    }
+                }
+                for j in &s.jumps {
+                    let mut dot = |y: f64, filled: bool| {
+                        let p = pt(lay.to_px([j.x, y]));
+                        if rect.contains(p) {
+                            markers.push(Marker {
+                                pos: p,
+                                kind: MarkerKind::Circle,
+                                color,
+                                size: 8.0,
+                                filled,
+                                hollow_fill: theme.background,
+                            });
+                        }
+                    };
+                    dot(j.left, j.left_closed);
+                    dot(j.right, j.right_closed);
+                    if let Some(v) = j.isolated {
+                        dot(v, true);
+                    }
+                }
+            }
+            LayerData::Lines(lines) => {
+                draw_lines(scene, lay, lines, color, 2.2, Dash::Solid);
+            }
+            LayerData::Contours(levels) => {
+                let n = levels.len().max(2) - 1;
+                for (k, (_, lines)) in levels.iter().enumerate() {
+                    let c = theme.colormap(k as f64 / n as f64);
+                    draw_lines(scene, lay, lines, c, 1.6, Dash::Solid);
+                }
+            }
+            LayerData::Region { edges, .. } => {
+                for (lines, strict) in edges {
+                    let dash = if *strict {
+                        Dash::Dashed(6.0, 4.0)
+                    } else {
+                        Dash::Solid
+                    };
+                    draw_lines(scene, lay, lines, color, 2.0, dash);
+                }
+            }
+            LayerData::Points(ps) => {
+                for p in ps {
+                    let q = pt(lay.to_px(*p));
+                    if rect.contains(q) {
+                        markers.push(Marker {
+                            pos: q,
+                            kind: MarkerKind::Circle,
+                            color,
+                            size: 8.0,
+                            filled: true,
+                            hollow_fill: theme.background,
+                        });
+                    }
+                }
+            }
+            LayerData::Histogram { edges, counts } => {
+                let fill = color.with_alpha(150).over(theme.background);
+                for (k, h) in counts.iter().enumerate() {
+                    let (Some(&a), Some(&b)) = (edges.get(k), edges.get(k + 1)) else {
+                        continue;
+                    };
+                    let (p0, p1) = (lay.to_px([a, 0.0]), lay.to_px([b, *h]));
+                    scene.push(Item::Polygon(Polygon {
+                        points: vec![
+                            pt([p0[0], p0[1]]),
+                            pt([p1[0], p0[1]]),
+                            pt([p1[0], p1[1]]),
+                            pt([p0[0], p1[1]]),
+                        ],
+                        fill: Some(fill),
+                        stroke: Some((color, 1.2)),
+                    }));
+                }
+            }
+            LayerData::Tangent { point, slope } => {
+                let w = &lay.window;
+                let y_at = |x: f64| point[1] + slope * (x - point[0]);
+                let px = [lay.to_px([w.x0, y_at(w.x0)]), lay.to_px([w.x1, y_at(w.x1)])];
+                for piece in clip_polyline(&px, rect) {
+                    scene.push(Item::Polyline(Polyline {
+                        points: piece,
+                        color,
+                        width: 2.0,
+                        dash: Dash::Solid,
+                    }));
+                }
+            }
+            LayerData::DashedLines(lines) => {
+                draw_lines(scene, lay, lines, color, 1.5, Dash::Dashed(5.0, 4.0));
+            }
+            LayerData::Field {
+                items,
+                cell,
+                kind,
+                curves,
+                directed,
+            } => self.draw_field(
+                scene, lay, theme, items, *cell, *kind, curves, *directed, color,
+            ),
+            LayerData::Labels(labels) => {
+                let mut last = f32::NEG_INFINITY;
+                for (p, latex, plain) in labels {
+                    let q = lay.to_px(*p);
+                    let q = [q[0] as f32, q[1] as f32 + 36.0];
+                    if q[0] >= rect.x
+                        && q[0] <= rect.right()
+                        && q[1] <= rect.bottom() + 30.0
+                        && (q[0] - last).abs() > 26.0
+                    {
+                        last = q[0];
+                        scene.text(Label {
+                            pos: q,
+                            text: plain.clone(),
+                            latex: Some(latex.clone()),
+                            anchor: Anchor::Middle,
+                            size: 13.0,
+                            color: theme.text,
+                            rotation: 0.0,
+                            italic: false,
+                        });
+                    }
+                }
+            }
+            LayerData::BoxPlot(stats) => {
+                self.draw_boxes(scene, lay, theme, stats, markers);
+            }
+            LayerData::Composite(parts) => {
+                for p in parts {
+                    self.draw_layer_2d(scene, lay, theme, p, color, markers);
+                }
+            }
+            LayerData::Bars(_)
+            | LayerData::Shaded(_)
+            | LayerData::Solid(_)
+            | LayerData::Empty
+            | LayerData::Surface(_)
+            | LayerData::Curve3(_) => {}
+        }
+    }
+
+    /// Fills drawn under the grid: Riemann strips and the area between curves.
+    fn underlay_2d(&self, scene: &mut PlotScene, lay: &Layout2d, d: &LayerData, color: Color) {
+        match d {
+            LayerData::Bars(bars) => {
+                for b in bars {
+                    let pts = [[b.x0, 0.0], [b.x1, 0.0], [b.x1, b.y1], [b.x0, b.y0]]
+                        .map(|p| pt(lay.to_px(p)));
+                    scene.push(Item::Polygon(Polygon {
+                        points: pts.to_vec(),
+                        fill: Some(color.with_alpha(90)),
+                        stroke: Some((color, 1.2)),
+                    }));
+                }
+            }
+            LayerData::Shaded(polys) => {
+                for poly in polys {
+                    scene.push(Item::Polygon(Polygon {
+                        points: poly.iter().map(|p| pt(lay.to_px(*p))).collect(),
+                        fill: Some(color.with_alpha(95)),
+                        stroke: None,
+                    }));
+                }
+            }
+            LayerData::Composite(parts) => {
+                for p in parts {
+                    self.underlay_2d(scene, lay, p, color);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Slope strokes, arrows and the solution curves of a field.
+    #[allow(clippy::too_many_arguments)]
+    fn draw_field(
+        &self,
+        scene: &mut PlotScene,
+        lay: &Layout2d,
+        theme: &PlotTheme,
+        items: &[crate::helpers::FieldItem],
+        cell: [f64; 2],
+        kind: crate::helpers::FieldKind,
+        curves: &[Vec<[f64; 2]>],
+        directed: bool,
+        color: Color,
+    ) {
+        use crate::helpers::FieldKind;
+        let (sx, sy) = (
+            f64::from(lay.rect.w) / lay.window.width(),
+            f64::from(lay.rect.h) / lay.window.height(),
+        );
+        let reach = (cell[0] * sx).min(cell[1] * sy) * 0.82;
+        let vmax = items
+            .iter()
+            .map(|it| it.dir[0].hypot(it.dir[1]))
+            .fold(0.0, f64::max);
+        let stroke = theme.axes.with_alpha(150);
+        for it in items {
+            let (dx, dy) = (it.dir[0] * sx, -it.dir[1] * sy);
+            let n = dx.hypot(dy);
+            if !(n.is_finite() && n > 1e-12) {
+                continue;
+            }
+            let (ux, uy) = (dx / n, dy / n);
+            let c = lay.to_px(it.pos);
+            match kind {
+                FieldKind::Slope => {
+                    let h = reach / 2.0;
+                    scene.push(Item::Polyline(Polyline {
+                        points: vec![
+                            pt([c[0] - ux * h, c[1] - uy * h]),
+                            pt([c[0] + ux * h, c[1] + uy * h]),
+                        ],
+                        color: stroke,
+                        width: 1.4,
+                        dash: Dash::Solid,
+                    }));
+                }
+                FieldKind::Arrow => {
+                    let mag = if vmax > 0.0 {
+                        it.dir[0].hypot(it.dir[1]) / vmax
+                    } else {
+                        0.0
+                    };
+                    let len = reach * 1.1 * mag.clamp(0.2, 1.0);
+                    let h = len / 2.0;
+                    let (tail, tip) = (
+                        [c[0] - ux * h, c[1] - uy * h],
+                        [c[0] + ux * h, c[1] + uy * h],
+                    );
+                    let col = if directed { stroke } else { color };
+                    scene.push(Item::Polyline(Polyline {
+                        points: vec![pt(tail), pt(tip)],
+                        color: col,
+                        width: 1.5,
+                        dash: Dash::Solid,
+                    }));
+                    arrow_head(scene, pt(tip), [ux as f32, uy as f32], col);
+                }
+            }
+        }
+        draw_lines(scene, lay, curves, color, 2.2, Dash::Solid);
+        if directed {
+            for c in curves {
+                let k = c.len() * 55 / 100;
+                if let (Some(a), Some(b)) = (c.get(k), c.get(k + 1)) {
+                    let (pa, pb) = (lay.to_px(*a), lay.to_px(*b));
+                    let (dx, dy) = (pb[0] - pa[0], pb[1] - pa[1]);
+                    let n = dx.hypot(dy);
+                    if n > 1e-9 && lay.rect.contains(pt(pb)) {
+                        arrow_head(scene, pt(pb), [(dx / n) as f32, (dy / n) as f32], color);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Box plots: boxes, medians, whiskers, outliers and the names of the data below.
+    fn draw_boxes(
+        &self,
+        scene: &mut PlotScene,
+        lay: &Layout2d,
+        theme: &PlotTheme,
+        stats: &[crate::spec::BoxStats],
+        markers: &mut Vec<Marker>,
+    ) {
+        for (k, s) in stats.iter().enumerate() {
+            let c = (k + 1) as f64;
+            let hw = 0.28;
+            let at = |x: f64, y: f64| pt(lay.to_px([x, y]));
+            let col = theme.series(k);
+            scene.push(Item::Polygon(Polygon {
+                points: vec![
+                    at(c - hw, s.q1),
+                    at(c + hw, s.q1),
+                    at(c + hw, s.q3),
+                    at(c - hw, s.q3),
+                ],
+                fill: Some(col.with_alpha(90)),
+                stroke: Some((col, 1.6)),
+            }));
+            scene.push(Item::Polyline(Polyline {
+                points: vec![at(c - hw, s.median), at(c + hw, s.median)],
+                color: col,
+                width: 3.0,
+                dash: Dash::Solid,
+            }));
+            for (from, to) in [(s.q1, s.low), (s.q3, s.high)] {
+                scene.push(Item::Polyline(Polyline {
+                    points: vec![at(c, from), at(c, to)],
+                    color: col,
+                    width: 1.6,
+                    dash: Dash::Solid,
+                }));
+                scene.push(Item::Polyline(Polyline {
+                    points: vec![at(c - hw / 2.0, to), at(c + hw / 2.0, to)],
+                    color: col,
+                    width: 1.6,
+                    dash: Dash::Solid,
+                }));
+            }
+            for o in &s.outliers {
+                markers.push(Marker {
+                    pos: at(c, *o),
+                    kind: MarkerKind::Circle,
+                    color: col,
+                    size: 7.0,
+                    filled: false,
+                    hollow_fill: theme.background,
+                });
+            }
+            let q = lay.to_px([c, lay.window.y0]);
+            scene.text(Label {
+                pos: [q[0] as f32, lay.rect.bottom() + 17.0],
+                text: math_italic(&s.label),
+                latex: Some(name_latex(&s.label)),
+                anchor: Anchor::Middle,
+                size: NAME_FONT,
+                color: theme.text,
+                rotation: 0.0,
+                italic: false,
+            });
+        }
     }
 
     /// Names of the horizontal and vertical axes.
     pub fn axis_names(&self) -> (String, String) {
+        if let Some((x, y)) = &self.spec.axis_names {
+            return (x.clone(), y.clone());
+        }
         use crate::spec::Geometry::*;
         for l in &self.spec.layers {
             match &l.geometry {
@@ -507,6 +801,52 @@ impl Figure {
     }
 }
 
+/// The name in the mathematical italic letters of Unicode (`x` as `𝑥`), so an axis letter
+/// is slanted whatever font the reader has, even one with no italic of its own.
+pub fn math_italic(name: &str) -> String {
+    name.chars()
+        .map(|c| {
+            let base = match c {
+                'h' => return '\u{210E}',
+                'A'..='Z' => 0x1D434 + (c as u32 - 'A' as u32),
+                'a'..='z' => 0x1D44E + (c as u32 - 'a' as u32),
+                // Greek small letters alpha to omega.
+                '\u{3b1}'..='\u{3c9}' => 0x1D6FC + (c as u32 - 0x3B1),
+                _ => return c,
+            };
+            char::from_u32(base).unwrap_or(c)
+        })
+        .collect()
+}
+
+/// Draws short read-outs in a box in the top left corner of the plot.
+pub fn draw_readouts(scene: &mut PlotScene, theme: &PlotTheme, lines: &[String], x: f32, y: f32) {
+    if lines.is_empty() {
+        return;
+    }
+    let size = 12.5f32;
+    let row = 17.0f32;
+    let chars = lines.iter().map(|l| l.chars().count()).max().unwrap_or(0) as f32;
+    let (w, h) = (chars * size * 0.5 + 18.0, row * lines.len() as f32 + 8.0);
+    scene.push(Item::Polygon(Polygon {
+        points: vec![[x, y], [x + w, y], [x + w, y + h], [x, y + h]],
+        fill: Some(theme.legend_background),
+        stroke: Some((theme.legend_border, 1.0)),
+    }));
+    for (k, line) in lines.iter().enumerate() {
+        scene.text(Label {
+            pos: [x + 9.0, y + 4.0 + row * (k as f32 + 0.5) + size * 0.33],
+            text: line.clone(),
+            latex: None,
+            anchor: Anchor::Start,
+            size,
+            color: theme.text,
+            rotation: 0.0,
+            italic: false,
+        });
+    }
+}
+
 fn tick_label(pos: Pt, text: &str, anchor: Anchor, theme: &PlotTheme) -> Label {
     Label {
         pos,
@@ -523,13 +863,17 @@ fn tick_label(pos: Pt, text: &str, anchor: Anchor, theme: &PlotTheme) -> Label {
 fn axis_name(pos: Pt, name: &str, anchor: Anchor, theme: &PlotTheme) -> Label {
     Label {
         pos,
-        text: name.to_string(),
+        text: if name.chars().count() == 1 {
+            math_italic(name)
+        } else {
+            name.to_string()
+        },
         latex: Some(name_latex(name)),
         anchor,
         size: NAME_FONT,
         color: theme.text,
         rotation: 0.0,
-        italic: true,
+        italic: false,
     }
 }
 

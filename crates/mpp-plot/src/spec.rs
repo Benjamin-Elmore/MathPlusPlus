@@ -31,6 +31,49 @@ impl Label {
     }
 }
 
+/// The rule a Riemann sum uses to pick the height of each strip.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RiemannRule {
+    Left,
+    Right,
+    Mid,
+    /// Trapezoids: the average of the left and right heights, drawn as slanted tops.
+    Trapezoid,
+}
+
+impl RiemannRule {
+    /// The word used in the figure keyword and in read-outs.
+    pub fn name(self) -> &'static str {
+        match self {
+            RiemannRule::Left => "left",
+            RiemannRule::Right => "right",
+            RiemannRule::Mid => "midpoint",
+            RiemannRule::Trapezoid => "trapezoid",
+        }
+    }
+}
+
+/// The line a region is turned about.
+#[derive(Clone, Debug, PartialEq)]
+pub enum AxisLine {
+    /// `y = c`: strips along the axis make disks or washers.
+    Horizontal(Expr),
+    /// `x = c`: strips across the axis make cylindrical shells.
+    Vertical(Expr),
+}
+
+/// The five-number summary of one box in a box plot.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BoxStats {
+    pub label: String,
+    pub low: f64,
+    pub q1: f64,
+    pub median: f64,
+    pub q3: f64,
+    pub high: f64,
+    pub outliers: Vec<f64>,
+}
+
 /// One thing to draw. Expressions here already have user definitions inlined (see
 /// [`crate::compile::Defs`]); free symbols are plot variables or slider names.
 #[derive(Clone, Debug, PartialEq)]
@@ -80,6 +123,75 @@ pub enum Geometry {
         z: Expr,
         var: String,
     },
+    /// The tangent line to `y = f(var)` at `var = at`.
+    Tangent { f: Expr, var: String, at: Expr },
+    /// Riemann strips under `y = f(var)`; `n` is the number of strips.
+    Riemann {
+        f: Expr,
+        var: String,
+        rule: RiemannRule,
+        n: Expr,
+        bounds: Option<(Expr, Expr)>,
+    },
+    /// The region between `f` and `g` (the axis when `g` is `None`), split where the
+    /// curves cross. Without bounds it is the region the curves enclose.
+    AreaBetween {
+        f: Expr,
+        g: Option<Expr>,
+        var: String,
+        bounds: Option<(Expr, Expr)>,
+    },
+    /// The solid made by turning the region between `f` and `g` about a line.
+    Revolve {
+        f: Expr,
+        g: Option<Expr>,
+        var: String,
+        bounds: Option<(Expr, Expr)>,
+        axis: AxisLine,
+    },
+    /// Direction field of `y' = dydx(x, y)` with solution curves through `starts`.
+    SlopeField {
+        dydx: Expr,
+        vars: [String; 2],
+        starts: Vec<(Expr, Expr)>,
+    },
+    /// Phase portrait of `x' = dx, y' = dy`, with trajectories through `starts`.
+    PhasePortrait {
+        dx: Expr,
+        dy: Expr,
+        vars: [String; 2],
+        starts: Vec<(Expr, Expr)>,
+    },
+    /// Arrows of the vector field `(fx, fy)`.
+    VectorField {
+        fx: Expr,
+        fy: Expr,
+        vars: [String; 2],
+    },
+    /// Arrows of the gradient of `f`.
+    GradientField { f: Expr, vars: [String; 2] },
+    /// The plane touching `z = f(x, y)` at `at`.
+    TangentPlane {
+        z: Expr,
+        vars: [String; 2],
+        at: (Expr, Expr),
+    },
+    /// The Taylor polynomial of `f` of the given degree about `center`.
+    Taylor {
+        f: Expr,
+        var: String,
+        center: Expr,
+        degree: Expr,
+    },
+    /// Newton's method on `f` from `x0`, drawn for `steps` iterations.
+    Newton {
+        f: Expr,
+        var: String,
+        x0: Expr,
+        steps: Expr,
+    },
+    /// Box plots, already summarised.
+    BoxPlot(Vec<BoxStats>),
 }
 
 impl Geometry {
@@ -87,7 +199,29 @@ impl Geometry {
     pub fn is_3d(&self) -> bool {
         matches!(
             self,
-            Geometry::Surface { .. } | Geometry::ParamSurface { .. } | Geometry::Curve3 { .. }
+            Geometry::Surface { .. }
+                | Geometry::ParamSurface { .. }
+                | Geometry::Curve3 { .. }
+                | Geometry::Revolve { .. }
+                | Geometry::TangentPlane { .. }
+        )
+    }
+
+    /// True for the visual calculus helpers, which draw over another layer.
+    pub fn is_helper(&self) -> bool {
+        matches!(
+            self,
+            Geometry::Tangent { .. }
+                | Geometry::Riemann { .. }
+                | Geometry::AreaBetween { .. }
+                | Geometry::Revolve { .. }
+                | Geometry::SlopeField { .. }
+                | Geometry::PhasePortrait { .. }
+                | Geometry::VectorField { .. }
+                | Geometry::GradientField { .. }
+                | Geometry::TangentPlane { .. }
+                | Geometry::Taylor { .. }
+                | Geometry::Newton { .. }
         )
     }
 
@@ -101,7 +235,45 @@ impl Geometry {
             Geometry::Implicit { f, .. } | Geometry::Contour { f, .. } => vec![f],
             Geometry::Region { cond, .. } => vec![cond],
             Geometry::Points(pts) => pts.iter().flat_map(|(a, b)| [a, b]).collect(),
-            Geometry::Scatter(_) | Geometry::Histogram { .. } => Vec::new(),
+            Geometry::Scatter(_) | Geometry::Histogram { .. } | Geometry::BoxPlot(_) => Vec::new(),
+            Geometry::Tangent { f, at, .. } => vec![f, at],
+            Geometry::Riemann { f, n, bounds, .. } => {
+                let mut v = vec![f, n];
+                if let Some((a, b)) = bounds {
+                    v.extend([a, b]);
+                }
+                v
+            }
+            Geometry::AreaBetween { f, g, bounds, .. } | Geometry::Revolve { f, g, bounds, .. } => {
+                let mut v = vec![f];
+                v.extend(g.iter());
+                if let Some((a, b)) = bounds {
+                    v.extend([a, b]);
+                }
+                if let Geometry::Revolve { axis, .. } = self {
+                    match axis {
+                        AxisLine::Horizontal(c) | AxisLine::Vertical(c) => v.push(c),
+                    }
+                }
+                v
+            }
+            Geometry::SlopeField { dydx, starts, .. } => {
+                let mut v = vec![dydx];
+                v.extend(starts.iter().flat_map(|(a, b)| [a, b]));
+                v
+            }
+            Geometry::PhasePortrait { dx, dy, starts, .. } => {
+                let mut v = vec![dx, dy];
+                v.extend(starts.iter().flat_map(|(a, b)| [a, b]));
+                v
+            }
+            Geometry::VectorField { fx, fy, .. } => vec![fx, fy],
+            Geometry::GradientField { f, .. } => vec![f],
+            Geometry::TangentPlane { z, at, .. } => vec![z, &at.0, &at.1],
+            Geometry::Taylor {
+                f, center, degree, ..
+            } => vec![f, center, degree],
+            Geometry::Newton { f, x0, steps, .. } => vec![f, x0, steps],
             Geometry::Surface { z, .. } => vec![z],
             Geometry::ParamSurface { x, y, z, .. } | Geometry::Curve3 { x, y, z, .. } => {
                 vec![x, y, z]
@@ -140,11 +312,16 @@ pub struct Slider {
     pub min: f64,
     pub max: f64,
     pub value: f64,
+    /// Only whole numbers make sense (a number of strips, a degree).
+    pub integer: bool,
 }
 
 impl Slider {
-    /// A sensible drag step: a hundredth of the range, on a 1-2-5 grid.
+    /// A sensible drag step: a hundredth of the range, on a 1-2-5 grid; 1 for a count.
     pub fn step(&self) -> f64 {
+        if self.integer {
+            return 1.0;
+        }
         crate::ticks::nice_step(self.max - self.min, 100)
     }
 }
@@ -160,6 +337,8 @@ pub struct FigureSpec {
     pub caption: Option<String>,
     /// Things the figure could not draw, for the author.
     pub warnings: Vec<String>,
+    /// Names of the horizontal and vertical axes when the data gives them (`t`, `x`).
+    pub axis_names: Option<(String, String)>,
 }
 
 impl FigureSpec {

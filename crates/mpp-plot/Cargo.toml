@@ -9,6 +9,7 @@ description = "Math++ graphs: 2D and 3D figures as a backend-neutral display lis
 mpp-core = { path = "../mpp-core" }
 mpp-syntax = { path = "../mpp-syntax" }
 mpp-eval = { path = "../mpp-eval" }
+mpp-render = { path = "../mpp-render" }
 resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts"] }
 
 [dev-dependencies]
