@@ -1,0 +1,85 @@
+# Visual calculus
+
+Each figure below adds a calculus picture to a `Figure:` line. Numbers you can move (the
+point of tangency, the number of strips, the degree) become sliders next to the graph.
+
+## Tangent lines
+
+Figure: $x^3 - 2x$, tangent at $x = 1$, $x \in [-2, 2]$. The tangent to a cubic at $x = 1$; drag the point.
+
+## Riemann sums
+
+Figure: $x^2$, riemann left $n = 8$, $x \in [0, 2]$. A left sum with eight strips; it falls short of the curve.
+
+Figure: $x^2$, riemann right $n = 8$, $x \in [0, 2]$. A right sum overshoots a rising curve.
+
+Figure: $x^2$, riemann mid $n = 8$, $x \in [0, 2]$. The midpoint rule is far closer.
+
+Figure: $x^2$, riemann trapezoid $n = 8$, $x \in [0, 2]$. Trapezoids have slanted tops.
+
+## Area between curves
+
+The curves cross at $0$ and $1$, so the region they enclose is found for you.
+
+Figure: $x$, $x^2$, area between. The area enclosed by a line and a parabola.
+
+Figure: $\sin x$, $\cos x$, area between, $x \in [0, 2\pi]$. Where the curves cross, the shading changes sides.
+
+## Solids of revolution
+
+Drag to turn a solid; the cut shows the disk, washer or shell used.
+
+Figure: $\sqrt{x}$, revolve about $y = 0$, $x \in [0, 4]$. Disks: turning a square-root curve about the $x$-axis.
+
+Figure: $x$, $x^2$, revolve about $y = 0$, $x \in [0, 1]$. Washers: the region between a line and a parabola.
+
+Figure: $x^2$, revolve about $x = 0$, $x \in [0, 2]$. Shells: turning a parabola about the $y$-axis.
+
+## Slope fields and phase portraits
+
+Figure: slope field $y' = x - y$, $x \in [-3, 3]$, $y \in [-3, 3]$. Solution curves follow the slopes.
+
+Figure: slope field $y' = y (1 - y), (0, 0.2), (0, 1.5)$, $x \in [-3, 3]$, $y \in [-1, 2]$. Logistic growth from two starting values.
+
+Figure: slope field $x' = y, y' = -x$, $x \in [-3, 3]$, $y \in [-3, 3]$. A centre: trajectories circle the origin.
+
+## Gradient, vector fields and contours
+
+Figure: gradient field $x^2 + y^2$, $x, y \in [-2, 2]$. The gradient points straight out, across the level circles.
+
+Figure: vector field $(-y, x)$, $x, y \in [-2, 2]$. A rotation field.
+
+Figure: $x^2 - y^2$, contour, $x, y \in [-2, 2]$. Level curves of a saddle.
+
+## Tangent planes
+
+Figure: $z = x^2 + y^2$, tangent plane at $(1, 1)$, $x, y \in [-2, 2]$. The plane touching a paraboloid.
+
+## Taylor polynomials
+
+Figure: $\sin x$, taylor $n = 5$, $x \in [-7, 7]$. Raise the degree and the polynomial hugs the sine further out.
+
+## Newton's method
+
+Figure: $x^2 - 2$, newton from $x_0 = 3$, $x in [0, 3.5]$. Each tangent meets the axis closer to $sqrt 2$.
+
+## Data
+
+A cart rolls down a ramp; its position is measured once a second.
+
+| $t$ (s) | $x$ (m) |
+|---|---|
+| 0 | 0.1 |
+| 1 | 1.2 |
+| 2 | 3.8 |
+| 3 | 9.3 |
+| 4 | 15.7 |
+| 5 | 25.2 |
+
+$$ p(u) := \operatorname{polyreg}(t, x, 2) $$
+
+Figure: scatter $t, x$, $p(t)$. Measurements with the best parabola through them.
+
+Figure: histogram $x$. How the positions are spread.
+
+Figure: box plot $x$. Median, quartiles and range.

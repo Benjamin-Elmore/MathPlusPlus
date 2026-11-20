@@ -21,6 +21,7 @@ mod table;
 use std::collections::HashMap;
 
 pub use ast::*;
+pub use figure::split_keyword_list;
 
 use crate::span::{Diagnostic, Span};
 use block::{parse_blocks, split_lines, Ctx};

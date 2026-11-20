@@ -1,13 +1,17 @@
 //! A figure: its specification plus the sampled data for the current slider values.
 
 use std::collections::BTreeMap;
+
+use mpp_core::Expr;
 use std::f64::consts::TAU;
 
+use crate::calculus::{data_x_range, Notes};
 use crate::compile::{eval1, eval2, eval_const, eval_real, eval_truth, Frame};
 use crate::contour::{contour_lines, Bounds, Grid, RegionGrid};
 use crate::error::PlotError;
+use crate::helpers::{Bar, FieldItem, FieldKind, Solid};
 use crate::sample::{robust_range, sample_curve, SampleOpts, Sampled, P};
-use crate::spec::{FigureSpec, Geometry, Label, Slider};
+use crate::spec::{BoxStats, FigureSpec, Geometry, Label, Slider};
 
 /// A grid of 3D points, `points[v * nu + u]`. Undefined points are NaN.
 #[derive(Clone, Debug, PartialEq)]
@@ -47,6 +51,31 @@ pub enum LayerData {
     Surface(Mesh),
     /// 3D curves in runs.
     Curve3(Vec<Vec<[f64; 3]>>),
+    /// The tangent line through `point` with this slope, drawn across the window.
+    Tangent { point: P, slope: f64 },
+    /// Riemann strips.
+    Bars(Vec<Bar>),
+    /// Closed shaded outlines (the area between curves).
+    Shaded(Vec<Vec<P>>),
+    /// Dashed polylines (guide lines).
+    DashedLines(Vec<Vec<P>>),
+    /// A direction or vector field with solution curves. `cell` is the data spacing of
+    /// the grid; `directed` curves get arrow heads.
+    Field {
+        items: Vec<FieldItem>,
+        cell: P,
+        kind: FieldKind,
+        curves: Vec<Vec<P>>,
+        directed: bool,
+    },
+    /// Text at points: position, LaTeX and plain text.
+    Labels(Vec<(P, String, String)>),
+    /// Box plots.
+    BoxPlot(Vec<BoxStats>),
+    /// Several pieces drawn in the layer's colour.
+    Composite(Vec<LayerData>),
+    /// A solid of revolution, or a plane on a surface.
+    Solid(Solid),
 }
 
 /// How finely things are sampled.
@@ -85,8 +114,11 @@ pub struct Figure {
     pub(crate) equal_aspect: bool,
     pub(crate) box3: [(f64, f64); 3],
     view: Option<Bounds>,
-    quality: Quality,
+    pub(crate) quality: Quality,
     messages: Vec<String>,
+    readouts: Vec<String>,
+    /// Derivative chains of helper layers (`f`, `f'`, `f''` …), kept between slider moves.
+    pub(crate) derivs: BTreeMap<usize, Vec<Expr>>,
 }
 
 const DEFAULT_RANGE: (f64, f64) = (-10.0, 10.0);
@@ -138,6 +170,8 @@ impl Figure {
             view: None,
             quality: Quality::default(),
             messages: Vec::new(),
+            readouts: Vec::new(),
+            derivs: BTreeMap::new(),
         };
         fig.build();
         Ok(fig)
@@ -165,7 +199,9 @@ impl Figure {
     pub fn rebuild(&mut self, values: &BTreeMap<String, f64>) {
         for s in &self.spec.sliders {
             if let Some(v) = values.get(&s.name).filter(|v| v.is_finite()) {
-                self.values.insert(s.name.clone(), *v);
+                let v = if s.integer { v.round() } else { *v };
+                self.values
+                    .insert(s.name.clone(), v.clamp(s.min.min(s.max), s.max.max(s.min)));
             }
         }
         self.build();
@@ -217,6 +253,12 @@ impl Figure {
         &self.data
     }
 
+    /// Short facts the figure computed for its helpers (a Riemann sum, an area, a volume,
+    /// the tangent line), for a note under the graph. The 2D and 3D scenes draw them too.
+    pub fn readouts(&self) -> &[String] {
+        &self.readouts
+    }
+
     /// Legend entries: label and the layer index that gives the colour.
     pub fn legend(&self) -> Vec<(&Label, usize)> {
         self.spec
@@ -232,7 +274,7 @@ impl Figure {
         &self.values
     }
 
-    fn range(&self, name: &str) -> Option<(f64, f64)> {
+    pub(crate) fn range(&self, name: &str) -> Option<(f64, f64)> {
         let (a, b) = self.spec.ranges.get(name)?;
         let lo = eval_const(a, &self.values).ok()?;
         let hi = eval_const(b, &self.values).ok()?;
@@ -244,6 +286,7 @@ impl Figure {
 
     fn build(&mut self) {
         self.messages.clear();
+        self.readouts.clear();
         if self.is_3d() {
             self.build_3d();
         } else {
@@ -275,7 +318,11 @@ impl Figure {
                 Geometry::ExplicitX { .. } => has_explicit = true,
                 Geometry::Implicit { vars, .. }
                 | Geometry::Region { vars, .. }
-                | Geometry::Contour { vars, .. } => {
+                | Geometry::Contour { vars, .. }
+                | Geometry::SlopeField { vars, .. }
+                | Geometry::PhasePortrait { vars, .. }
+                | Geometry::VectorField { vars, .. }
+                | Geometry::GradientField { vars, .. } => {
                     x_given = x_given.or_else(|| self.range(&vars[0]));
                     y_given = y_given.or_else(|| self.range(&vars[1]));
                 }
@@ -285,6 +332,13 @@ impl Figure {
         x_given = x_given.or_else(|| self.range("x"));
         y_given = y_given.or_else(|| self.range("y"));
         let author_gave_range = x_given.is_some() || y_given.is_some();
+        if x_given.is_none() && self.view.is_none() {
+            // Nothing says where to look: a helper (a tangent, an area, …) or the data
+            // itself does.
+            x_given = self
+                .window_hint(&spec, &fixed)
+                .or_else(|| data_x_range(&spec));
+        }
         if let Some(v) = self.view {
             x_given = Some((v.x0, v.x1));
             y_given = Some((v.y0, v.y1));
@@ -341,6 +395,25 @@ impl Figure {
                 Geometry::Scatter(ps) => {
                     grow(extent(ps.iter()), &mut free);
                     data[i] = LayerData::Points(ps.clone());
+                }
+                Geometry::BoxPlot(stats) => {
+                    let lo = stats
+                        .iter()
+                        .flat_map(|s| s.outliers.iter().copied().chain([s.low]))
+                        .fold(f64::INFINITY, f64::min);
+                    let hi = stats
+                        .iter()
+                        .flat_map(|s| s.outliers.iter().copied().chain([s.high]))
+                        .fold(f64::NEG_INFINITY, f64::max);
+                    if lo.is_finite() && hi.is_finite() {
+                        let k = stats.len() as f64;
+                        let half = (k / 2.0 + 0.5).max(1.5);
+                        grow(
+                            Some(((k + 1.0) / 2.0 - half, (k + 1.0) / 2.0 + half, lo, hi)),
+                            &mut free,
+                        );
+                    }
+                    data[i] = LayerData::BoxPlot(stats.clone());
                 }
                 Geometry::Histogram { edges, counts } => {
                     if let (Some(&lo), Some(&hi)) = (edges.first(), edges.last()) {
@@ -486,6 +559,15 @@ impl Figure {
             }
         }
 
+        // The visual calculus helpers draw over the window the curves chose.
+        let mut notes = Notes::default();
+        for (i, layer) in spec.layers.iter().enumerate() {
+            if let Some(d) = self.helper_2d(i, &layer.geometry, &fixed, window, &mut notes) {
+                data[i] = d;
+            }
+        }
+        messages.append(&mut notes.messages);
+
         for (i, d) in data.iter().enumerate() {
             let empty = match d {
                 LayerData::Curve(s) => s.segments.is_empty(),
@@ -493,15 +575,23 @@ impl Figure {
                 LayerData::Empty => true,
                 _ => false,
             };
-            if empty {
+            if empty && !spec.layers[i].geometry.is_helper() {
                 if let Some(l) = &spec.layers[i].label {
                     messages.push(format!("nothing to draw for {} in this window", l.plain));
                 }
             }
         }
-        self.equal_aspect = !has_explicit && !author_gave_range && self.view.is_none();
+        let plain_axes = spec.layers.iter().any(|l| {
+            matches!(
+                l.geometry,
+                Geometry::Scatter(_) | Geometry::Histogram { .. } | Geometry::BoxPlot(_)
+            )
+        });
+        self.equal_aspect =
+            !has_explicit && !author_gave_range && !plain_axes && self.view.is_none();
         self.window = window;
         self.data = data;
+        self.readouts = notes.readouts;
         self.messages = messages;
     }
 
@@ -513,6 +603,7 @@ impl Figure {
         let q = self.quality;
         let mut data = vec![LayerData::Empty; spec.layers.len()];
         let mut messages = Vec::new();
+        let mut notes = Notes::default();
         for (i, layer) in spec.layers.iter().enumerate() {
             match &layer.geometry {
                 Geometry::Surface { z, vars } => {
@@ -596,6 +687,13 @@ impl Figure {
                     }
                     data[i] = LayerData::Curve3(runs);
                 }
+                Geometry::Revolve { .. } => {
+                    if let Some(d) = self.revolve_3d(&layer.geometry, &fixed, &mut notes) {
+                        data[i] = d;
+                    }
+                }
+                // Planes wait until the box around the surface is known.
+                Geometry::TangentPlane { .. } => {}
                 _ => messages.push("a 2D item was left out of the 3D figure".to_string()),
             }
         }
@@ -614,6 +712,13 @@ impl Figure {
             match d {
                 LayerData::Surface(m) => m.points.iter().for_each(&mut take),
                 LayerData::Curve3(runs) => runs.iter().flatten().for_each(&mut take),
+                LayerData::Solid(s) if s.in_box => {
+                    s.parts
+                        .iter()
+                        .flat_map(|p| p.mesh.points.iter())
+                        .for_each(&mut take);
+                    s.lines.iter().flatten().for_each(&mut take);
+                }
                 _ => {}
             }
         }
@@ -624,6 +729,15 @@ impl Figure {
             }
         }
         self.box3 = box3;
+        for (i, layer) in spec.layers.iter().enumerate() {
+            if let Geometry::TangentPlane { .. } = &layer.geometry {
+                if let Some(d) = self.plane_3d(&layer.geometry, &fixed, box3[2], &mut notes) {
+                    data[i] = d;
+                }
+            }
+        }
+        messages.append(&mut notes.messages);
+        self.readouts = notes.readouts;
         self.data = data;
         self.messages = messages;
     }

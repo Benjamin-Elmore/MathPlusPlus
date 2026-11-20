@@ -64,6 +64,7 @@ pub fn spec_for_block(ev: &Evaluated, block: &Block) -> Result<FigureSpec, PlotE
         defs: &defs,
         spec: FigureSpec::default(),
         slider_names,
+        auto_sliders: Vec::new(),
         keep: BTreeSet::new(),
         flags: Flags::default(),
     };
@@ -71,6 +72,7 @@ pub fn spec_for_block(ev: &Evaluated, block: &Block) -> Result<FigureSpec, PlotE
 
     // Pass 1: ranges and keywords decide how the expressions are read.
     let mut points_args: Vec<Span> = Vec::new();
+    let mut pending: Vec<(FigureKeyword, Span)> = Vec::new();
     for item in &fig.items {
         match &item.kind {
             FigureItemKind::Range(r) => {
@@ -96,7 +98,14 @@ pub fn spec_for_block(ev: &Evaluated, block: &Block) -> Result<FigureSpec, PlotE
                         points_args.push(item.span);
                     }
                 }
-                other => b.warn(&format!("`{}` is not drawn yet", other.as_str())),
+                FigureKeyword::SlopeField
+                | FigureKeyword::VectorField
+                | FigureKeyword::GradientField
+                    if arg.is_none() =>
+                {
+                    b.flags.field = Some(*keyword);
+                }
+                other => pending.push((*other, item.span)),
             },
             FigureItemKind::Expr(_) => {}
         }
@@ -139,6 +148,12 @@ pub fn spec_for_block(ev: &Evaluated, block: &Block) -> Result<FigureSpec, PlotE
         }
     }
 
+    for (kw, span) in pending {
+        let nodes = keyword_nodes(ev.source(), span);
+        b.apply_keyword(kw, &nodes);
+    }
+
+    let auto_sliders = std::mem::take(&mut b.auto_sliders);
     let mut spec = b.spec;
     // Only the sliders this figure uses.
     let mut used: BTreeSet<String> = BTreeSet::new();
@@ -155,6 +170,7 @@ pub fn spec_for_block(ev: &Evaluated, block: &Block) -> Result<FigureSpec, PlotE
         .into_iter()
         .filter(|s| used.contains(&s.name))
         .collect();
+    spec.sliders.extend(auto_sliders);
     if spec.layers.is_empty() {
         return Err(PlotError::Item(
             spec.warnings
@@ -195,6 +211,7 @@ pub fn document_sliders(ev: &Evaluated, defs: &Defs) -> Vec<Slider> {
                     min,
                     max,
                     value,
+                    integer: false,
                 });
             }
         }
@@ -233,7 +250,7 @@ fn inline_text(ev: &Evaluated, inlines: &[Inline]) -> String {
 }
 
 /// Scope for lowering: the session's final bindings.
-struct BindingScope<'a>(&'a BTreeMap<String, Arc<Binding>>);
+pub(crate) struct BindingScope<'a>(&'a BTreeMap<String, Arc<Binding>>);
 
 impl LowerScope for BindingScope<'_> {
     fn binding(&self, name: &str) -> Option<Arc<Binding>> {
@@ -246,25 +263,30 @@ impl LowerScope for BindingScope<'_> {
 }
 
 #[derive(Default)]
-struct Flags {
+pub(crate) struct Flags {
     polar: bool,
     parametric: bool,
     implicit: bool,
     contour: bool,
+    /// `slope field`, `vector field` or `gradient field` without an argument: the
+    /// expressions of the figure are the field.
+    field: Option<FigureKeyword>,
 }
 
-struct Builder<'a> {
-    scope: &'a BindingScope<'a>,
+pub(crate) struct Builder<'a> {
+    pub(crate) scope: &'a BindingScope<'a>,
     defs: &'a Defs,
-    spec: FigureSpec,
-    slider_names: BTreeSet<String>,
+    pub(crate) spec: FigureSpec,
+    pub(crate) slider_names: BTreeSet<String>,
+    /// Sliders the helper keywords make (the tangent point, the number of strips).
+    pub(crate) auto_sliders: Vec<Slider>,
     /// Names that stay symbols when inlining: plot variables and sliders.
-    keep: BTreeSet<String>,
+    pub(crate) keep: BTreeSet<String>,
     flags: Flags,
 }
 
 /// Axis and parameter names that are plot variables unless the document makes them constants.
-const STANDARD_NAMES: [&str; 9] = ["x", "y", "z", "t", "u", "v", "θ", "φ", "theta"];
+pub(crate) const STANDARD_NAMES: [&str; 9] = ["x", "y", "z", "t", "u", "v", "θ", "φ", "theta"];
 
 /// Order in which names are assigned to axes.
 const PREFERRED: [&str; 12] = [
@@ -282,11 +304,11 @@ fn order_vars(mut v: Vec<String>) -> Vec<String> {
 }
 
 impl Builder<'_> {
-    fn warn(&mut self, msg: &str) {
+    pub(crate) fn warn(&mut self, msg: &str) {
         self.spec.warnings.push(msg.to_string());
     }
 
-    fn lower(&mut self, node: &Node) -> Option<Expr> {
+    pub(crate) fn lower(&mut self, node: &Node) -> Option<Expr> {
         let locals: Vec<String> = self
             .keep
             .iter()
@@ -320,12 +342,17 @@ impl Builder<'_> {
         self.keep.extend(self.slider_names.iter().cloned());
     }
 
-    fn inline(&self, e: &Expr) -> Expr {
+    /// Orders plot variable names the way axes are assigned.
+    pub(crate) fn order(&self, v: Vec<String>) -> Vec<String> {
+        order_vars(v)
+    }
+
+    pub(crate) fn inline(&self, e: &Expr) -> Expr {
         self.defs.inline(e, &self.keep)
     }
 
     /// Free plot variables of an inlined expression (sliders excluded).
-    fn free(&self, e: &Expr) -> Vec<String> {
+    pub(crate) fn free(&self, e: &Expr) -> Vec<String> {
         order_vars(
             e.free_symbols()
                 .iter()
@@ -335,11 +362,16 @@ impl Builder<'_> {
         )
     }
 
-    fn push(&mut self, geometry: Geometry, label: Option<Label>) {
+    pub(crate) fn push(&mut self, geometry: Geometry, label: Option<Label>) {
         self.spec.layers.push(Layer { geometry, label });
     }
 
     fn add_expr(&mut self, lowered: Expr) {
+        if let Some(kw) = self.flags.field {
+            let what = kw.as_str();
+            self.add_field_exprs(kw, vec![self.inline(&lowered)], Vec::new(), what);
+            return;
+        }
         let label = Label::of(&lowered);
         let call_name = match lowered.node() {
             ExprNode::Apply(n, _) => Some(n.to_string()),
@@ -649,4 +681,40 @@ fn collect_boundaries(e: &Expr, out: &mut Vec<(Expr, bool)>) {
 /// A figure's label for an axis name, as LaTeX.
 pub fn axis_latex(name: &str) -> String {
     name_latex(name)
+}
+
+/// The `$…$` argument of a keyword item as a list of nodes (empty without one). The list
+/// is split at the commas outside brackets; `n = 8` comes back as a relation node.
+fn keyword_nodes(source: &str, span: Span) -> Vec<Node> {
+    use mpp_syntax::math::{parse_clause, Clause, NodeKind, RelOp};
+    let Some(text) = source.get(span.start..span.end) else {
+        return Vec::new();
+    };
+    let (Some(open), Some(close)) = (text.find('$'), text.rfind('$')) else {
+        return Vec::new();
+    };
+    if close <= open {
+        return Vec::new();
+    }
+    let base = span.start + open + 1;
+    let inner = &text[open + 1..close];
+    let pieces = mpp_syntax::document::split_keyword_list(inner);
+    let mut out = Vec::new();
+    for (off, piece) in pieces {
+        if piece.trim().is_empty() {
+            continue;
+        }
+        match parse_clause(piece, base + off).0 {
+            Clause::Where { name, value, span } => out.push(Node::new(
+                NodeKind::Relation {
+                    first: Box::new(name),
+                    rest: vec![(RelOp::Eq, value)],
+                },
+                span,
+            )),
+            Clause::Condition(n) | Clause::Assumption(n) => out.push(n),
+            Clause::Range(_) => {}
+        }
+    }
+    out
 }
