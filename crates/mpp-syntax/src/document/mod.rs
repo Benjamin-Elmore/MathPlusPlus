@@ -15,12 +15,14 @@ pub mod dump;
 mod figure;
 mod inline;
 mod list;
+mod refs;
 mod sentence;
 mod table;
 
 use std::collections::HashMap;
 
 pub use ast::*;
+pub use refs::{cite_name, parse_reference_entries};
 
 use crate::span::{Diagnostic, Span};
 use block::{parse_blocks, split_lines, Ctx};
@@ -38,11 +40,18 @@ pub fn parse_document(src: &str) -> Document {
         resolve_block(b, &labels, &mut diagnostics);
     }
     assign_ids(&mut blocks, src);
-    diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
-    Document {
+    let mut doc = Document {
         blocks,
-        diagnostics,
+        diagnostics: Vec::new(),
+    };
+    // A `References from [[file]]` list is only known once the file is read, so the
+    // keys are checked by [`citation_diagnostics`] then.
+    if !doc.has_references_file() {
+        diagnostics.extend(citation_diagnostics(&doc, &[]));
     }
+    diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
+    doc.diagnostics = diagnostics;
+    doc
 }
 
 /// The innermost block that contains the byte `offset`. An offset just past
@@ -195,4 +204,133 @@ fn resolve(inlines: &mut [Inline], labels: &HashMap<String, u32>, diags: &mut Ve
             _ => {}
         }
     }
+}
+
+// ---- citations -------------------------------------------------------------
+
+fn visit_block_inlines<'a>(b: &'a Block, f: &mut impl FnMut(&'a Inline)) {
+    fn each<'a>(items: &'a [Inline], f: &mut impl FnMut(&'a Inline)) {
+        for i in items {
+            f(i);
+            match &i.kind {
+                InlineKind::Emphasis(inner) | InlineKind::Strong(inner) => each(inner, f),
+                InlineKind::Link { text, .. } => each(text, f),
+                _ => {}
+            }
+        }
+    }
+    fn list<'a>(l: &'a List, f: &mut impl FnMut(&'a Inline)) {
+        for item in &l.items {
+            each(&item.content, f);
+            for child in &item.children {
+                list(child, f);
+            }
+        }
+    }
+    match &b.kind {
+        BlockKind::Heading { content, .. }
+        | BlockKind::Paragraph(content)
+        | BlockKind::FootnoteDef { content, .. } => each(content, f),
+        BlockKind::Title(t) => each(&t.content, f),
+        BlockKind::Let(l) => each(&l.content, f),
+        BlockKind::Quote(ps) => {
+            for p in ps {
+                each(p, f);
+            }
+        }
+        BlockKind::List(l) => list(l, f),
+        BlockKind::Table(t) => {
+            for cell in t.header.iter().chain(t.rows.iter().flatten()) {
+                each(cell, f);
+            }
+        }
+        BlockKind::Figure(fig) => each(&fig.caption, f),
+        BlockKind::Theorem(t) => {
+            for inner in &t.body {
+                visit_block_inlines(inner, f);
+            }
+        }
+        _ => {}
+    }
+}
+
+impl Document {
+    /// Visits every inline of the document, nested blocks included, in order.
+    /// Comments are skipped: nothing in them counts.
+    pub fn walk_inlines<'a>(&'a self, f: &mut impl FnMut(&'a Inline)) {
+        for b in &self.blocks {
+            visit_block_inlines(b, f);
+        }
+    }
+
+    /// The entries of every `References` block written in this file, in order.
+    pub fn reference_entries(&self) -> Vec<&Reference> {
+        let mut out = Vec::new();
+        self.walk(&mut |b| {
+            if let BlockKind::References(r) = &b.kind {
+                out.extend(r.entries.iter());
+            }
+        });
+        out
+    }
+
+    /// True when a `References from [[file]]` block names a file whose entries
+    /// have to be read before the citations can be checked.
+    pub fn has_references_file(&self) -> bool {
+        let mut found = false;
+        self.walk(&mut |b| {
+            if matches!(&b.kind, BlockKind::References(r) if r.from.is_some()) {
+                found = true;
+            }
+        });
+        found
+    }
+
+    /// The `%cite` style in force (the first such directive), numbered by default.
+    pub fn cite_style(&self) -> CiteStyle {
+        self.blocks
+            .iter()
+            .find_map(|b| match &b.kind {
+                BlockKind::Directive(Directive {
+                    kind: DirectiveKind::Cite(s),
+                    ..
+                }) => Some(*s),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+}
+
+/// Checks every `[@key]` against the entries written in the file plus `extra`
+/// (the entries read from a `References from [[file]]` file): an unknown key is an
+/// error, and so is a key defined twice.
+pub fn citation_diagnostics(doc: &Document, extra: &[Reference]) -> Vec<Diagnostic> {
+    let mut known: HashMap<&str, ()> = HashMap::new();
+    let mut diags = Vec::new();
+    for r in doc.reference_entries().into_iter().chain(extra.iter()) {
+        if known.insert(r.key.as_str(), ()).is_some() {
+            diags.push(Diagnostic::error(
+                r.span,
+                format!("the reference key `{}` is defined twice", r.key),
+            ));
+        }
+    }
+    let mut names: Vec<&str> = known.keys().copied().collect();
+    names.sort_unstable();
+    doc.walk_inlines(&mut |i| {
+        if let InlineKind::Cite(cites) = &i.kind {
+            for c in cites {
+                if !known.contains_key(c.key.as_str()) {
+                    let d =
+                        Diagnostic::error(c.span, format!("no reference has the key `{}`", c.key));
+                    diags.push(if names.is_empty() {
+                        d.expecting(["an entry in a `References` block"])
+                    } else {
+                        d.expecting(names.iter().map(|n| format!("`@{n}`")))
+                    });
+                }
+            }
+        }
+    });
+    diags
 }

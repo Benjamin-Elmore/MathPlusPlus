@@ -1,0 +1,38 @@
+---
+source: crates/mpp-render/tests/paper.rs
+expression: "skeleton(&render_html_with(&doc, &NoResults, &with_comments()))"
+---
+ class="paper">
+<svg/>
+<h1>Comments in a worksheet</h1>
+<aside class="note"><span class="note-mark" aria-hidden="true">✎</span><div class="note-body">
+<p>A one-line comment is a note for the reader. It supports <em>emphasis</em>, <strong>bold</strong> and maths such as <svg/>, which is typeset but never evaluated.</p>
+</div></aside>
+<p>A car covers <svg/> in <svg/>, so its speed is</p>
+<div class="eq"><svg/></div>
+<div class="eq"><svg/></div>
+<aside class="note"><span class="note-mark" aria-hidden="true">✎</span><div class="note-body">
+<p>The answer is in km/h if <svg/> is in km and <svg/> in hours: a note can sit right after a maths line.</p>
+</div></aside>
+<aside class="note"><span class="note-mark" aria-hidden="true">✎</span><div class="note-body">
+<p>A longer note can run over several lines and hold a list:</p>
+<ul>
+<li>check the units first</li>
+<li>then compare with <svg/></li>
+</ul>
+<p>Nothing inside, such as <svg/> or the equation below, ever takes effect.</p>
+<div class="eq"><svg/></div>
+</div></aside>
+<p>Doubling the time halves the speed:</p>
+<aside class="note off"><span class="note-mark" aria-hidden="true">✎</span><div class="note-body">
+<div class="eq"><svg/></div>
+<div class="eq"><svg/></div>
+</div></aside>
+<div class="eq"><svg/></div>
+<aside class="note"><span class="note-mark" aria-hidden="true">✎</span><div class="note-body">
+<p>Several comment lines in a row
+  are one note.</p>
+</div></aside>
+</main>
+</body>
+</html>

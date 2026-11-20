@@ -28,6 +28,10 @@ pub struct Theme {
     pub muted: Color,
     pub error: Color,
     pub warning: Color,
+    /// Formatted comments: the tinted box behind a note.
+    pub note_background: Color,
+    /// Formatted comments: the ✎ marker and the bar down the box's edge.
+    pub note_accent: Color,
 }
 
 impl Theme {
@@ -45,6 +49,8 @@ impl Theme {
         muted: Color::rgb(0x44, 0x44, 0x44),
         error: Color::rgb(0xc0, 0x1c, 0x28),
         warning: Color::rgb(0xb5, 0x83, 0x0a),
+        note_background: Color::rgb(0xf6, 0xf1, 0xdc),
+        note_accent: Color::rgb(0xa8, 0x82, 0x1c),
     };
 
     /// Light ink on a dark grey page.
@@ -61,10 +67,12 @@ impl Theme {
         muted: Color::rgb(0xb0, 0xb0, 0xb0),
         error: Color::rgb(0xff, 0x6b, 0x6b),
         warning: Color::rgb(0xf0, 0xc0, 0x50),
+        note_background: Color::rgb(0x2c, 0x2a, 0x20),
+        note_accent: Color::rgb(0xd9, 0xb8, 0x4a),
     };
 
     /// Each colour with its CSS custom property name (`--mpp-text` …).
-    pub fn css_vars(&self) -> [(&'static str, Color); 12] {
+    pub fn css_vars(&self) -> [(&'static str, Color); 14] {
         [
             ("--mpp-text", self.text),
             ("--mpp-result", self.result),
@@ -78,6 +86,8 @@ impl Theme {
             ("--mpp-muted", self.muted),
             ("--mpp-error", self.error),
             ("--mpp-warning", self.warning),
+            ("--mpp-note-background", self.note_background),
+            ("--mpp-note-accent", self.note_accent),
         ]
     }
 
