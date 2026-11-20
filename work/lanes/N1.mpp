@@ -1,0 +1,64 @@
+# N1 units: notes for the integrator
+
+Lane `domains` (branch `wip/domains`). The units live in `crates/mpp-core/src/units/`. The example is `examples/units.mpp` with `examples/units.expected.txt`; a core test (`units::tests::example_file_matches`) recomputes every expected line through the API, so the file can't drift.
+
+## Edits outside the lane's folders
+
+- `crates/mpp-core/src/lib.rs`: `pub mod units;` and `pub use units::{Dimension, Quantity, Unit};`.
+- `crates/mpp-core/src/error.rs`: one new variant, `MathError::Dimension(String)`, printed as the message itself ("can't add m and s"). Unit mismatches and unit parse errors use it. Nothing in `mpp-eval` matches `MathError` exhaustively, so nothing else needed changing.
+- No new dependencies.
+
+## API for the evaluator and the calculus
+
+- `units::parse_unit(text) -> MathResult<Unit>` reads `m/s^2`, `km/h`, `kg m/s²`, `N·m`, `J/(kg·K)`, `\mathrm{kg\,m/s^2}`, `{}^\circ\mathrm{C}`, `\mu m`, `k\Omega`. `units::is_unit(name)` says whether a name is a unit symbol (with or without a prefix).
+- `Quantity { value: Expr, unit: Unit }`: `add`, `sub` (in the left unit; mismatches give "can't add m and s"), `mul`, `div`, `pow` (simplified results: `kg·m/s²` → `N`, `J/s` → `W`, `km·m` → `1000 m²`, `m/km` → `1/1000`; hand-written units such as `km/h` are kept), `neg`, `compare` ("can't compare m and kg"), `convert_to(&Unit)` (the `in` operator; °C and °F offsets applied, "can't convert m to s"), `to_si`, `simplified`, `require_dimensionless(what)` ("sin needs a dimensionless argument, but got m"; degrees come back in radians), `apply_function(name)` (`sqrt` and `cbrt` keep units, `abs`/`floor`/`ceil` keep the unit, everything else needs a dimensionless argument), `latex()` (value, thin space, upright unit).
+- `units::calculus::{derivative, integral, derivative_unit, integral_unit, bound_value}`: the calculus computes on plain values and calls these to attach units (`d/dt` of m → m/s, `∫ v dt` → m) and to check and convert the bounds of a definite integral ("the integral runs over s, but this bound is in m").
+- Offset rule: an affine unit (°C, °F) is absolute only when it stands alone with exponent 1; inside a product (J/(kg·°C)) or on the right of `+`/`−` it is a temperature difference (20 °C + 5 K = 25 °C).
+- Simplification rule (scoring): a result made only of coherent SI units is rewritten as the candidate with the fewest unit symbols, then the smallest total of exponent sizes, among the base form and one named derived unit (N, J, W, Pa, C, V, Ω, T, F, Wb, H, S) to the power ±1 times base units. Hz is never picked automatically (1/s stays 1/s). Ties keep what was written.
+
+## Grammar addendum (for `docs/grammar.mpp`, new section 2.x "Units")
+
+Proposed text:
+
+> ### Units
+>
+> A quantity is a number followed by a unit: `9.81\,\mathrm{m/s^2}`, `9.81 m/s^2`, `100\,\mathrm{km/h}`, `25\,{}^\circ\mathrm{C}`, `30^\circ`.
+>
+> ```
+> quantity      = number [ space ] unit_text ;
+> unit_atom     = "\mathrm{" unit_text "}" | unit_name ;     (* also allowed alone, e.g. v in \mathrm{m/s} *)
+> unit_text     = unit_product { "/" unit_product } ;        (* a / b c means a / (b·c) *)
+> unit_product  = unit_factor { [ "·" | "\cdot" | "*" | "\," | " " ] unit_factor } ;
+> unit_factor   = ( "(" unit_text ")" | unit_name | "1" ) [ unit_power ] ;
+> unit_power    = "^" ( [ "-" ] integer | "{" [ "-" ] integer [ "/" integer ] "}" | "(" … ")" ) | superscripts ;
+> unit_name     = [ si_prefix ] symbol ;                     (* km, µs, kΩ; symbols from the unit table *)
+> conversion    = expr ( "\operatorname{in}" | "in" ) unit_atom ;   (* lowest precedence, below relations' operands *)
+> ```
+>
+> - **No clashes:** a letter is read as a unit only (1) straight after a number, (2) inside `\mathrm{}` / `\text{}`, or (3) when it was inserted from the Units picker (the picker writes `\mathrm{…}`). Anywhere else `m` is the variable `m`. So `m \equiv 70\,\mathrm{kg}` and `W := m g` work as expected.
+> - `30^\circ` is 30 degrees; `{}^\circ\mathrm{C}` and `\mathrm{^\circ C}` are degrees Celsius.
+> - `x \operatorname{in} \mathrm{km/h}` (or the prose form "$v$ in km/h") converts; it binds more loosely than `+` and `·`, so `v t \operatorname{in} \mathrm{m}` converts the product.
+
+## Parser change (for `mpp-syntax`, made by the integrator)
+
+1. Lexer: after a number token, if the next characters (optionally after one space, `\,` or `\;`) start a unit (`\mathrm{`, `^\circ`, or a run of letters for which `mpp_core::units::is_unit` is true, followed by `/`, `^`, `·`, superscripts, space or the end), read the longest run that `mpp_core::units::parse_unit` accepts and emit `NodeKind::Quantity { value, unit_text }`. A run that is not a unit (`2x`) stays an implicit product, so `2x` and `3 m` both behave. `mpp-syntax` doesn't depend on `mpp-core`, so either pass a `fn(&str) -> bool` unit test into the parser, or copy the symbol list (`mpp_core::units::table::symbols()` plus the SI prefixes) into the symbol table.
+2. `\mathrm{…}` (and `\text{…}`) whose content parses as a unit becomes `NodeKind::Unit(unit_text)`; a `\mathrm{}` that is not a unit stays an upright name as now.
+3. `\operatorname{in}` (and a bare `in` between an expression and a unit) becomes a binary `Convert(expr, unit)` with the lowest precedence above relations.
+4. Lowering (`mpp-eval`): `Quantity` → `Quantity::parse(value, unit_text)`; arithmetic on values that carry units goes through `Quantity`; `Convert` → `convert_to`; built-in calls on quantities → `apply_function`; derivatives and integrals → `units::calculus`.
+5. Diagnostics: the `MathError::Dimension` message is shown in place at the offending term (N9).
+
+## Guide section (for `docs/guide.mpp`)
+
+Proposed text:
+
+> ## Units
+>
+> Write a unit straight after a number, with or without a thin space: `$g \equiv 9.81\,\mathrm{m/s^2}$` or `$9.81 m/s^2$`. Prefixes work on SI units (`km`, `ms`, `µm`, `kΩ`, `MPa`), and the common non-SI units are there too: min, h, day, km/h, mph, rad, ° (as `30^\circ`), L, g, t, atm, bar, psi, ft, in, yd, mi, lb, lbf, eV, cal, Wh, and the temperatures °C and °F.
+>
+> Math++ keeps track of dimensions. `$70\,\mathrm{kg} \cdot 9.81\,\mathrm{m/s^2} \approx ?$` gives `686.7 N`: the result is written in the named unit when that is simpler. Adding or comparing things of different kinds is an error that names both units, such as "can't add m and s", and `sin`, `cos`, `exp` and `ln` need a plain number (angles in rad or ° are fine).
+>
+> Convert with `in`: `$100\,\mathrm{km/h} \operatorname{in} \mathrm{m/s} = ?$` gives `250/9 m/s`, and `$25\,{}^\circ\mathrm{C} \operatorname{in} {}^\circ\mathrm{F} = ?$` gives `77 °F`. A temperature on its own is a point on the scale; inside a product such as `J/(kg·°C)`, or added to another temperature, it is a difference.
+>
+> Units follow calculus: the derivative of a length with respect to a time is a speed, and the integral of a speed over a time is a length; the bounds of a definite integral must have the variable's units.
+>
+> A letter only counts as a unit straight after a number or inside `\mathrm{}`, so you can still use `m` for mass and `s` for distance. See [[../examples/units.mpp]].

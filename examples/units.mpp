@@ -1,0 +1,29 @@
+# Units in a worksheet
+
+A climber of mass $m \equiv 70\,\mathrm{kg}$ stands on Earth, where $g \equiv 9.81\,\mathrm{m/s^2}$.
+
+Her weight is
+
+$$ W := m g $$
+
+$$ W = ? $$
+
+A car drives at $v := 100\,\mathrm{km/h}$ for $t := 12\,\mathrm{s}$.
+
+$$ v \operatorname{in} \mathrm{m/s} = ? $$
+
+$$ v t \operatorname{in} \mathrm{m} = ? $$
+
+The room is at $T := 25\,{}^\circ\mathrm{C}$; in Fahrenheit that is $T \operatorname{in} {}^\circ\mathrm{F} = ?$.
+
+Angles in degrees are fine inside trigonometric functions: $\sin(30^\circ) = ?$.
+
+A $2\,\mathrm{kW}$ heater left on for $3\,\mathrm{h}$ uses $2\,\mathrm{kW} \cdot 3\,\mathrm{h} \operatorname{in} \mathrm{kWh} = ?$.
+
+## Mistakes the checker catches
+
+Adding a length to a time: $3\,\mathrm{m} + t = ?$
+
+An exponential of a length: $\exp(2\,\mathrm{m}) = ?$
+
+A letter is a unit only straight after a number or inside `\mathrm{}`, so $m$ above is still the climber's mass.

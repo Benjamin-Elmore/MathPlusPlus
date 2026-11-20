@@ -29,6 +29,8 @@ pub enum MathError {
     NotANumber(String),
     /// The operation is valid maths that this version does not do yet.
     Unsupported(String),
+    /// Units that don't fit together; the message names both ("can't add m and s").
+    Dimension(String),
 }
 
 impl fmt::Display for MathError {
@@ -54,6 +56,7 @@ impl fmt::Display for MathError {
             MathError::TooLarge(what) => write!(f, "{what} is too large to compute"),
             MathError::NotANumber(what) => write!(f, "{what} is not a number"),
             MathError::Unsupported(what) => write!(f, "{what} is not supported yet"),
+            MathError::Dimension(message) => write!(f, "{message}"),
         }
     }
 }

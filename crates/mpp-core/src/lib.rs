@@ -16,6 +16,7 @@ pub mod printer;
 pub mod simplify;
 pub mod steps;
 pub mod subs;
+pub mod units;
 
 pub use domains::{Ctx, Domain, Registry};
 pub use error::{MathError, MathResult};
@@ -28,3 +29,4 @@ pub use number::Number;
 pub use poly::{as_poly, is_polynomial_in, poly_div, poly_gcd, Poly};
 pub use simplify::{add, mul, pow, simplify};
 pub use steps::{Step, Steps};
+pub use units::{Dimension, Quantity, Unit};
