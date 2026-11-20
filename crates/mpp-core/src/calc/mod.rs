@@ -1,9 +1,14 @@
-//! Calculus: derivatives, partial derivatives and their arrays, and limits.
+//! Calculus: derivatives, partial derivatives and their arrays, limits and integrals.
 
 pub mod diff;
+pub mod integrate;
 pub mod limit;
 
 pub use diff::{derivative_holder, diff};
+pub use integrate::{
+    integrate, integrate_definite, integrate_multiple, integrate_with_constant, line_integral,
+    line_integral_scalar, numeric_integrate, IntegralResult,
+};
 pub use limit::limit;
 
 use crate::error::{MathError, MathResult};

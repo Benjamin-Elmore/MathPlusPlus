@@ -33,6 +33,10 @@ pub enum MathError {
     LimitDoesNotExist(String),
     /// An exact answer disagreed with its numeric check, so it was not trusted.
     Inconclusive(String),
+    /// No closed form was found (the integral may still have a numeric value).
+    NoClosedForm(String),
+    /// An improper integral (or other limit process) has no finite value.
+    Divergent(String),
 }
 
 impl fmt::Display for MathError {
@@ -62,6 +66,8 @@ impl fmt::Display for MathError {
             MathError::Inconclusive(what) => {
                 write!(f, "{what} could not be confirmed numerically")
             }
+            MathError::NoClosedForm(what) => write!(f, "no closed form was found for {what}"),
+            MathError::Divergent(what) => write!(f, "{what} diverges"),
         }
     }
 }
