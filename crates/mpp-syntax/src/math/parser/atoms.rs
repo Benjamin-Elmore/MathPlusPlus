@@ -299,6 +299,13 @@ impl Parser<'_> {
             let arg = self.func_arg();
             let end = arg.span;
             (vec![arg], false, end)
+        } else if sub.is_none() && power.is_none() && !inverse && self.at_name_end() {
+            // `$\sin$` on its own (prose about the function): the function's name.
+            let name = Name {
+                font: Some(Font::Roman),
+                ..Name::simple(sym.name)
+            };
+            return Node::new(NodeKind::Name(name), start);
         } else {
             let what = format!("the argument of `{}`", self.text(start));
             let missing = self.missing(&what, &["an expression", "`(`"]);
@@ -317,6 +324,12 @@ impl Parser<'_> {
             })),
             span,
         )
+    }
+
+    /// True at the end of the line or before a `,`: nothing an argument could start with.
+    fn at_name_end(&self) -> bool {
+        self.peek()
+            .is_none_or(|t| matches!(t, Tok::NewLine | Tok::Comma))
     }
 
     /// A bracket-less function argument: the product to the right, up to the next

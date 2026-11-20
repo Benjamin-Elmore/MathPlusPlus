@@ -51,7 +51,8 @@ fn error_messages() {
         r"\lim x",
         r"x \to",
         r"\sum",
-        r"\sin",
+        // `\sin` alone names the function (prose about it); with a power it needs an argument.
+        r"\sin^2",
         r"x :=",
         r"f(1) := 2",
         r"x^2 + 1 := 3",

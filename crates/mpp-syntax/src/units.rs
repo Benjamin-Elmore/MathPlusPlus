@@ -116,6 +116,15 @@ fn skip_separators(text: &str) -> usize {
 pub fn after_number(text: &str) -> Option<Found> {
     let lead = skip_separators(text);
     let rest = &text[lead..];
+    // `5\%`: percent.
+    if let Some(r) = rest.strip_prefix(r"\%") {
+        return Some(Found {
+            len: lead + (rest.len() - r.len()),
+            lead,
+            text: "%".into(),
+            plain: false,
+        });
+    }
     if let Some((len, unit)) = degrees(rest) {
         return Some(Found {
             len: lead + len,

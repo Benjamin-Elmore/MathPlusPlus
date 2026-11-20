@@ -237,17 +237,19 @@ pub fn call_real(name: &str, args: &[f64]) -> Option<MathResult<f64>> {
         }),
         "ellipk" => one(elliptic::ellip_k),
         "ellipe" => one(elliptic::ellip_e),
-        // H(0) = 1/2 (the half-maximum convention).
-        "heaviside" => one(|x| {
-            Ok(if x > 0.0 {
-                1.0
+        // At the jump the conventions differ (0, 1/2 or 1), so H(0) has no value here.
+        "heaviside" | "H" => one(|x| {
+            if x > 0.0 {
+                Ok(1.0)
             } else if x < 0.0 {
-                0.0
+                Ok(0.0)
             } else {
-                0.5
-            })
+                Err(MathError::Undefined(
+                    "H(0): the value at the jump depends on the convention".into(),
+                ))
+            }
         }),
-        "dirac" => match args {
+        "dirac" | "delta" => match args {
             [x] | [x, _] if *x != 0.0 => Ok(0.0),
             _ => Err(MathError::Undefined(
                 "δ at 0 (it is a distribution, not a function)".into(),
@@ -331,13 +333,13 @@ pub fn partial(name: &str, args: &[Expr], index: usize) -> Option<Expr> {
             app("beta", vec![a.clone(), b.clone()])
                 * (func(Func::Digamma, vec![this]) - func(Func::Digamma, vec![&a + &b]))
         }
-        ("heaviside", 0) => app("dirac", vec![u]),
-        ("dirac", 0) => {
+        ("heaviside" | "H", 0) => app("delta", vec![u]),
+        ("dirac" | "delta", 0) => {
             let j = match args.get(1) {
                 Some(j) => j + &one,
                 None => one,
             };
-            app("dirac", vec![u, j.simplify()])
+            app("delta", vec![u, j.simplify()])
         }
         _ => return None,
     };
@@ -459,11 +461,15 @@ mod tests {
         }
         assert_eq!(
             partial("heaviside", std::slice::from_ref(&x), 0),
-            Some(Expr::apply("dirac", vec![x.clone()]))
+            Some(Expr::apply("delta", vec![x.clone()]))
+        );
+        assert_eq!(
+            partial("H", std::slice::from_ref(&x), 0),
+            Some(Expr::apply("delta", vec![x.clone()]))
         );
         assert_eq!(
             partial("dirac", std::slice::from_ref(&x), 0),
-            Some(Expr::apply("dirac", vec![x, Expr::one()]))
+            Some(Expr::apply("delta", vec![x, Expr::one()]))
         );
     }
 }

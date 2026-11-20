@@ -1,0 +1,69 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{The standard library}
+\date{}
+\begin{document}
+\maketitle
+The library is a set of formula sheets written in Math++ itself and built into the program. Bring in a whole sheet with \texttt{![[$\ldots$]]}, or just the names you need with a \texttt{Using} sentence.
+
+\section*{Constants}
+
+Using $\varphi, \gamma$ from [[std/constants.mpp]].
+
+The golden ratio is exact, and Euler's constant is stored to 60 digits: $\varphi = \frac{\sqrt{5} + 1}{2}$, $\gamma \approx 0.5772156649$.
+
+\begin{equation*}
+  \varphi^2 \overset{\checkmark }{=} \varphi + 1
+\end{equation*}
+\section*{Physics with units}
+
+Using $c, g_0, G$ from [[std/physics.mpp]].
+
+$c = 299792458\,\mathrm{m/s}$, and the weight of a 70 kg person is $70\,\mathrm{kg} \cdot g_0 \approx 686.4655 N$.
+
+\section*{Geometry and trigonometry}
+
+\textit{Imports everything from std/geometry.mpp.}
+
+$A_{\text{circle}}(2) = 4 \pi$, $V_{\text{ball}}(3) = 36 \pi$, $V_{\text{cone}}(3, 4) = 12 \pi$.
+
+\textit{Imports everything from std/trig.mpp.}
+
+A triangle with sides 13, 14, 15 has area $A_{\text{Heron}}(13, 14, 15) = 84$, and the third side of a triangle with sides 3 and 4 at a right angle is $c_{\text{cos}}(3, 4, \tfrac{\pi}{2}) = 5$.
+
+\begin{equation*}
+  \sin^2 x + \cos^2 x \overset{\checkmark }{=} 1
+\end{equation*}
+\section*{Finance}
+
+Using $A_{\text{compound}}, M_{\text{loan}}$ from [[std/finance.mpp]].
+
+?1000 at 5\% for two years: $A_{\text{compound}}(1000, 0.05, 1, 2) = \frac{2205}{2}$. The yearly payment on a 1000 loan over one year at 10\%: $M_{\text{loan}}(1000, \tfrac{1}{10}, 1) = 1100$.
+
+\section*{Functions across the fields}
+
+Textbook names work as soon as they are applied, with no import: $\tau(360) = 24$, $\sigma(28) = 56$, $\mu(30) = -1$, $\varphi(36) = 12$, $\zeta(2) = \frac{\pi^{2}}{6}$, $J_0(1) \approx 0.7651976866$, $B(\tfrac{1}{2}, \tfrac{1}{2}) = \pi$.
+
+\section*{Reproducible randomness}
+
+With a seed, random samples come out the same every time: $\operatorname{runif}(2) \approx (0.3829641469, 0.1473047457)$.
+
+\end{document}

@@ -249,18 +249,12 @@ impl Parser<'_> {
                 Tok::Open {
                     delim: Delim::Paren,
                     ..
-                } if callable(&node) => {
-                    let (args, sized, end) = self.call_args();
-                    let span = node.span.join(end);
-                    Node::new(
-                        NodeKind::Call {
-                            callee: Box::new(node),
-                            args,
-                            sized,
-                        },
-                        span,
-                    )
-                }
+                } if callable(&node) => self.call_node(node),
+                // `\mathbf 1[x^2 + y^2 \le 1]`: the indicator of a condition.
+                Tok::Open {
+                    delim: Delim::Square,
+                    ..
+                } if is_indicator(&node) => self.call_node(node),
                 _ => break,
             };
         }
@@ -269,6 +263,20 @@ impl Parser<'_> {
             node = self.with_unit(node);
         }
         node
+    }
+
+    /// `name(args…)`: the call whose arguments start at the bracket ahead.
+    fn call_node(&mut self, callee: Node) -> Node {
+        let (args, sized, end) = self.call_args();
+        let span = callee.span.join(end);
+        Node::new(
+            NodeKind::Call {
+                callee: Box::new(callee),
+                args,
+                sized,
+            },
+            span,
+        )
     }
 
     /// A number followed by a unit becomes a quantity (`9.81 m/s^2`, `30^\circ`).
@@ -642,6 +650,13 @@ fn is_power_of_ten(node: &Node) -> bool {
 }
 
 /// Names (and primed names) can be called: `f(x)`, `f'(x)`, `v_0(t)`.
+/// The bold one `\mathbf 1` (`𝟏`), which before `[…]` is the indicator function.
+pub(super) fn is_indicator(node: &Node) -> bool {
+    matches!(&node.kind, NodeKind::Name(n)
+        if n.sub.is_none() && n.accent.is_none()
+            && (n.base == "𝟏" || (n.base == "1" && n.font == Some(crate::symbols::Font::Bold))))
+}
+
 fn callable(node: &Node) -> bool {
     match &node.kind {
         NodeKind::Name(_) => true,

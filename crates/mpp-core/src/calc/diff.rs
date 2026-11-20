@@ -109,6 +109,7 @@ fn d(e: &Expr, var: &str, log: Log<'_, '_>) -> MathResult<Expr> {
                 otherwise,
             }))
         }
+        ExprNode::Apply(name, args) => d_apply(e, name, args, var, log),
         // User functions, nested derivatives, integrals, sums, limits: unevaluated.
         _ => Ok(h()),
     }
@@ -292,6 +293,42 @@ fn outer_derivative(f: Func, u: &Expr) -> Option<Expr> {
         }
         _ => return None,
     })
+}
+
+/// A named special function (`lambertw`, `besselj`, `ellipk`, `H`, `delta`, …): the
+/// chain rule over every argument that holds `var`, with the outer derivatives from
+/// [`crate::domains::special::partial`]. A function without a registered rule (a
+/// user function) stays as an unevaluated derivative.
+fn d_apply(e: &Expr, name: &str, args: &[Expr], var: &str, log: Log<'_, '_>) -> MathResult<Expr> {
+    let h = derivative_holder(e, var);
+    let mut outers = Vec::new();
+    for (i, a) in args.iter().enumerate() {
+        if !a.contains_sym(var) {
+            continue;
+        }
+        match crate::domains::special::partial(name, args, i) {
+            Some(p) => outers.push((p, a)),
+            None => return Ok(h),
+        }
+    }
+    let shown = raw_add(
+        outers
+            .iter()
+            .map(|(p, a)| raw_mul(vec![p.clone(), derivative_holder(a, var)]))
+            .collect(),
+    );
+    let rule = if outers.len() == 1 && outers[0].1.is_sym(var) {
+        format!("derivative of {name}")
+    } else {
+        "chain rule".to_string()
+    };
+    step(log, &rule, h, shown, None);
+    let mut terms = Vec::with_capacity(outers.len());
+    for (p, a) in outers {
+        let da = d(a, var, log)?;
+        terms.push(mul(vec![p, da]));
+    }
+    Ok(add(terms))
 }
 
 fn d_func(e: &Expr, f: Func, args: &[Expr], var: &str, log: Log<'_, '_>) -> MathResult<Expr> {

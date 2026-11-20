@@ -107,16 +107,30 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
             ..
         }
     );
-    let shown = if approx_query {
+    // An exact query with no closed form falls back to a number, shown with `≈`: when
+    // there is no exact text, or the exact text only repeats what was asked
+    // (`erf(1/2) = erf(1/2)`).
+    let unchanged = match (&line.text, &line.input) {
+        (Some(t), Some(input)) => *t == input.to_string(),
+        _ => false,
+    };
+    let numeric_fallback =
+        !approx_query && line.approx.is_some() && (line.text.is_none() || unchanged);
+    let shown = if approx_query || numeric_fallback {
         line.approx.clone().or_else(|| line.text.clone())
     } else {
         line.text.clone()
     };
     // Everything before the `?` is the question; the answer takes the `?`'s place.
-    let asked = match src.rfind('?') {
+    let mut asked = match src.rfind('?') {
         Some(q) => to_unicode(&src[..q]),
         None => to_unicode(src),
     };
+    if numeric_fallback {
+        if let Some(eq) = asked.trim_end().strip_suffix('=') {
+            asked = format!("{} ≈", eq.trim_end());
+        }
+    }
     RunLine {
         line: n,
         asked,

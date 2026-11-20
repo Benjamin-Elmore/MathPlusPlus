@@ -18,6 +18,7 @@ use mpp_syntax::math::{
     Derivative, Fence, FuncApp, IntKind, Integral, Limit, MatrixEnv, MulStyle, NablaOp, Name,
     NamedOp, Node, NodeKind, RelOp as SynRel, Side, UnaryOp, UnitText,
 };
+use mpp_syntax::symbols::Font;
 use mpp_syntax::Span;
 
 use crate::error::{EvalError, Located};
@@ -433,6 +434,10 @@ impl<'a> Lowerer<'a> {
     /// an index or a defined variable) is that name instead: `3 t` with `f(t) := 3 t`.
     fn quantity(&mut self, value: &Node, unit: &UnitText) -> LowerResult {
         let v = self.lower(value)?;
+        // `5\%` is the number 5/100: a percent is not a unit to carry along.
+        if unit.text == "%" {
+            return Ok(v / Expr::int(100));
+        }
         if unit.plain && !unit.text.contains(['/', '·']) {
             let letters: Vec<String> = unit
                 .text
@@ -549,6 +554,17 @@ impl<'a> Lowerer<'a> {
     }
 
     fn call(&mut self, callee: &Node, args: &[Node], span: Span) -> LowerResult {
+        // `\mathbf 1[A]`: the indicator, 1 where the condition holds and 0 elsewhere.
+        if let (NodeKind::Name(n), [cond]) = (&callee.ungrouped().kind, args) {
+            let bold_one = n.base == "𝟏" || (n.base == "1" && n.font == Some(Font::Bold));
+            if bold_one && n.sub.is_none() && n.accent.is_none() {
+                let cond = self.lower(cond)?;
+                return Ok(Expr::new(ExprNode::Piecewise {
+                    cases: vec![(Expr::one(), cond)],
+                    otherwise: Some(Expr::zero()),
+                }));
+            }
+        }
         if let Some(t) = crate::fields_wire::textbook(self.scope, &self.locals, callee, args.len())
         {
             return Ok(t.apply(self.lower_all(args)?));
