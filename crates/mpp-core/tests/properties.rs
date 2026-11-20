@@ -64,6 +64,10 @@ proptest! {
     fn simplify_keeps_the_value(e in raw_expr(), x in -2.0f64..2.0, y in -2.0f64..2.0) {
         let raw = value(&e, x, y);
         prop_assume!(raw.is_some());
+        // Skip points where the value is ill-conditioned (such as sin(e^{27})), where a
+        // nudge in the last digits of x and y already changes it.
+        let nudged = value(&e, x * (1.0 + 1e-12), y * (1.0 + 1e-12));
+        prop_assume!(nudged.is_some_and(|n| close(n, raw.unwrap_or_default())));
         let s = e.simplify();
         let simplified = value(&s, x, y);
         prop_assume!(simplified.is_some());

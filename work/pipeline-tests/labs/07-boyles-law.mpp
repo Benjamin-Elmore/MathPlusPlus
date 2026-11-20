@@ -1,0 +1,29 @@
+Title: Lab 7: Boyle's law from measured data
+Author: Math++ pipeline test (chemistry)
+
+%{
+**Pipeline expectations.** The expected product is $nRT \approx 99.15\ \mathrm J$. The linear fit of $P$ against $1/V$ gives a slope $\approx 99.2\ \mathrm J$ (tolerance $0.5$), an intercept near $0$, and $R^2 > 0.999$. The amount of gas is recovered as $n \approx 0.0400\ \mathrm{mol}$. Units: $\mathrm{kPa} \cdot \mathrm L = \mathrm J$ must simplify.
+%}
+
+## Setup
+Let $R \equiv 8.314\,\mathrm{J/(mol\,K)}$, $T := 298.15\,\mathrm K$ and $n := 0.0400\,\mathrm{mol}$.
+
+$$ nRT \approx ? $$
+
+## Measured data
+| $V$ ($\mathrm L$) | $P$ ($\mathrm{kPa}$) |
+|---|---|
+| 1.0 | 99.3 |
+| 1.5 | 66.0 |
+| 2.0 | 49.7 |
+| 2.5 | 39.6 |
+| 3.0 | 33.1 |
+
+Fit $P = a \cdot \dfrac{1}{V} + b$ to the table:
+$$ a \approx ? \qquad b \approx ? \qquad R^2 \approx ? $$
+
+Recovered amount of gas:
+$$ n_{\text{fit}} := \frac{a}{RT} \approx ? $$
+
+Figure: $P$ against $V$ (data and the fitted curve).
+Figure: $P$ against $1/V$ (a straight line).

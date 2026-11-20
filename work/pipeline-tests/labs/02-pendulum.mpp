@@ -1,0 +1,26 @@
+Title: Lab 2: The simple pendulum beyond small angles
+Author: Math++ pipeline test (physics)
+
+%{
+**Pipeline expectations.** Small-angle period $T_0 \approx 2.006\ \mathrm s$. The nonlinear ODE is solved numerically (RK45), and the measured period at $\theta_0 = 30°$ is $\approx 2.041\ \mathrm s$ (tolerance $0.001\ \mathrm s$). The exact form with the complete elliptic integral $K$ also gives $2.041\ \mathrm s$. The series estimate matches to within $10^{-4}\ \mathrm s$.
+%}
+
+## Setup
+Let $g \equiv 9.81\,\mathrm{m/s^2}$, $L := 1\,\mathrm m$ and $\theta_0 := 30°$, $\; \theta_0 \in [1°, 170°]$.
+
+## Small-angle model
+$$ T_0 := 2\pi \sqrt{\frac{L}{g}} \approx ? $$
+
+## Full model
+$$ \ddot\theta + \frac{g}{L} \sin\theta = 0, \quad \theta(0) = \theta_0, \ \dot\theta(0) = 0 $$
+
+The period is the time between successive maxima of $\theta(t)$:
+$$ T \approx ? $$
+
+Exact period, using the complete elliptic integral of the first kind:
+$$ T_{\text{exact}} := 4 \sqrt{\frac{L}{g}}\, K\!\Big(\sin\frac{\theta_0}{2}\Big) \approx ? $$
+
+Series estimate:
+$$ T_{\text{series}} := T_0 \Big(1 + \frac{\theta_0^2}{16} + \frac{11\,\theta_0^4}{3072}\Big) \approx ? $$
+
+Figure: $\theta(t)$ and the small-angle solution $\theta_0 \cos(2\pi t / T_0)$, $t \in [0, 10\,\mathrm s]$. The two drift apart over time.

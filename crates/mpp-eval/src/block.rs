@@ -17,7 +17,7 @@ use mpp_syntax::{Diagnostic, Severity, Span};
 
 use crate::check::check;
 use crate::error::{EvalError, Located};
-use crate::holders::{contains_holder, Ctx, Holders};
+use crate::holders::{contains_holder, Collected, Ctx, Holders, Shown};
 use crate::import::{Exports, ImportContext, ImportErrorKind, ImportRequest, Importer};
 use crate::lower::{LowerScope, Lowerer};
 use crate::names::{node_key, subscripted};
@@ -143,6 +143,10 @@ impl Lookup for View<'_> {
 struct Resolved {
     value: Result<Expr, EvalError>,
     steps: Option<Steps>,
+    /// Remarks from the evaluators, such as a numerical fallback.
+    notes: Vec<String>,
+    /// Preferred presentations of values.
+    shown: Vec<Shown>,
     touched: BTreeSet<String>,
 }
 
@@ -279,11 +283,27 @@ impl Run<'_, '_> {
             let value = r.run(e);
             (value, r.touched().clone())
         };
+        let Collected {
+            steps,
+            notes,
+            shown,
+        } = ctx.finish();
         Resolved {
             value,
-            steps: ctx.into_steps(),
+            steps,
+            notes,
+            shown,
             touched,
         }
+    }
+
+    /// `e` with the known values put in but no holder evaluated (for the steps).
+    fn substituted(&self, e: &Expr, locals: &Locals) -> Option<Expr> {
+        let view = self.view();
+        let none = Holders::empty();
+        let ctx = Ctx::new(&none);
+        let mut r = Resolver::new(&view, &ctx, locals.clone());
+        r.run(e).ok()
     }
 
     fn resolve(&self, e: &Expr, locals: &Locals, span: Span) -> Result<Expr, Located> {
@@ -831,6 +851,9 @@ impl Run<'_, '_> {
         lr.input = Some(input.clone());
         let numeric = mode == QueryMode::Approx;
         let resolved = self.resolve_full(&input, s.locals, &[], steps, numeric);
+        for note in &resolved.notes {
+            self.warn(expr.span, note.clone());
+        }
         let value = match resolved.value {
             Ok(v) => v,
             Err(err) => {
@@ -839,17 +862,28 @@ impl Run<'_, '_> {
             }
         };
         if let Some(mut log) = resolved.steps {
-            if value != input {
+            // The first step puts in the known values; the evaluators' own working
+            // (derivative rules, integration techniques …) follows.
+            let first = if log.is_empty() {
+                Some(("substitute the known values and simplify", value.clone()))
+            } else if resolved.touched.is_empty() {
+                None
+            } else {
+                self.substituted(&input, s.locals)
+                    .map(|e| ("substitute the known values", e))
+            };
+            if let Some((rule, after)) = first.filter(|(_, after)| *after != input) {
                 log.0.insert(
                     0,
                     Step {
-                        rule: "substitute the known values and simplify".into(),
+                        rule: rule.into(),
                         before: input.clone(),
-                        after: value.clone(),
+                        after,
                         note: None,
                     },
                 );
             }
+            lr.steps = Some(log.clone());
             self.result.steps.push((self.result.values.len(), log));
         }
         match mode {
@@ -870,7 +904,20 @@ impl Run<'_, '_> {
                 Err(err) => self.error(expr.span, err),
             },
         }
+        let approximate_only = value.as_number().is_some_and(|n| !n.is_exact());
+        if approximate_only && lr.approx.is_none() {
+            lr.approx = approximate(&value).ok();
+        }
+        let shown = resolved.shown.iter().find(|s| s.value == value).cloned();
         lr.set_value(Value::from_expr(value));
+        if approximate_only && lr.approx.is_some() {
+            // A numerical fallback (no closed form) is shown with ≈ only.
+            lr.text = None;
+        }
+        if let Some(s) = shown {
+            lr.text = Some(s.text);
+            lr.latex = Some(s.latex);
+        }
         self.push(lr);
     }
 

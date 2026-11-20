@@ -4,7 +4,6 @@ use mpp_core::Expr;
 use mpp_eval::{
     BlockResult, DefinitionKind, Evaluated, LineKind, LineResult, NoImports, Session, Value,
 };
-use mpp_syntax::Severity;
 use std::sync::Arc;
 
 fn run(src: &str) -> Evaluated {
@@ -434,18 +433,19 @@ fn constant_error_moves_with_the_text() {
 }
 
 #[test]
-fn calculus_queries_return_holders_for_now() {
-    let ev = run("$$ \\lim_{x\\to 0} \\frac{\\sin x}{x} = ? $$\n\n$$ \\sum_{n=1}^{\\infty} \\frac{1}{n^2} = ? $$\n\n$$ \\int_0^1 x^2 \\, dx \\approx ? $$\n");
+fn calculus_queries_are_answered() {
+    let ev = run(r"$$ \lim_{x\to 0} \frac{\sin x}{x} = ? $$
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n^2} = ? $$
+
+$$ \int_0^1 x^2 \, dx \approx ? $$
+");
     no_errors(&ev);
     let a = answers(&ev);
-    assert!(exact(a[0]).contains("lim"), "{}", exact(a[0]));
-    assert!(a[1].value.is_some());
-    let warnings: Vec<_> = ev
-        .all_diagnostics()
-        .into_iter()
-        .filter(|d| d.severity == Severity::Warning)
-        .collect();
-    assert_eq!(warnings.len(), 1);
+    assert_eq!(exact(a[0]), "1");
+    assert_eq!(exact(a[1]), "π^2/6");
+    assert_eq!(approx(a[2]), "0.3333333333");
+    assert!(ev.all_diagnostics().is_empty());
 }
 
 #[test]

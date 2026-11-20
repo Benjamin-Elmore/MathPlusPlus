@@ -7,8 +7,8 @@
 //! [`evaluate_holder`], which asks each registered [`HolderEval`] in turn. The first
 //! one that recognises the node answers; when none does, the node stays as written.
 //!
-//! The calculus phase extends this by registering its own evaluators with
-//! [`Holders::register`] (later registrations are asked first).
+//! The calculus evaluator ([`crate::calculus`]) is registered by default; more can be
+//! added with [`Holders::register`] (later registrations are asked first).
 //!
 //! Conventions for `Apply` holders made by lowering:
 //! - `grad(f)`, `div(F)`, `curl(F)`, `laplacian(f)` for the ∇ forms;
@@ -35,6 +35,28 @@ pub struct Ctx<'a> {
     /// True when the statement asks for a number (`≈ ?`).
     pub numeric: bool,
     steps: Option<RefCell<Steps>>,
+    notes: RefCell<Vec<String>>,
+    shown: RefCell<Vec<Shown>>,
+}
+
+/// How to show a value whose canonical form reads badly (a Taylor series about
+/// `x = 1` is clearer as powers of `x − 1` than expanded).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Shown {
+    pub value: Expr,
+    pub text: String,
+    pub latex: String,
+}
+
+/// What a context collected while a statement was evaluated.
+#[derive(Debug, Clone, Default)]
+pub struct Collected {
+    /// The working, if logging was on.
+    pub steps: Option<Steps>,
+    /// Remarks for the reader.
+    pub notes: Vec<String>,
+    /// Preferred ways to show values.
+    pub shown: Vec<Shown>,
 }
 
 impl<'a> Ctx<'a> {
@@ -44,6 +66,8 @@ impl<'a> Ctx<'a> {
             holders,
             numeric: false,
             steps: None,
+            notes: RefCell::new(Vec::new()),
+            shown: RefCell::new(Vec::new()),
         }
     }
 
@@ -73,9 +97,49 @@ impl<'a> Ctx<'a> {
         }
     }
 
+    /// Appends steps recorded elsewhere (by the core) when the log is on.
+    pub fn append(&self, more: Steps) {
+        if let Some(steps) = &self.steps {
+            steps.borrow_mut().0.extend(more.0);
+        }
+    }
+
+    /// Leaves a remark for the reader, such as "no closed form was found, so this is
+    /// the numerical value". Repeated remarks are kept once.
+    pub fn note(&self, message: impl Into<String>) {
+        let message = message.into();
+        let mut notes = self.notes.borrow_mut();
+        if !notes.contains(&message) {
+            notes.push(message);
+        }
+    }
+
+    /// The remarks left so far.
+    pub fn notes(&self) -> Vec<String> {
+        self.notes.borrow().clone()
+    }
+
     /// The recorded steps, if logging was on.
     pub fn into_steps(self) -> Option<Steps> {
         self.steps.map(RefCell::into_inner)
+    }
+
+    /// Asks for `value` to be shown as `text` / `latex` when it is the answer.
+    pub fn show_as(&self, value: &Expr, text: String, latex: String) {
+        self.shown.borrow_mut().push(Shown {
+            value: value.clone(),
+            text,
+            latex,
+        });
+    }
+
+    /// Everything collected: steps, remarks and preferred presentations.
+    pub fn finish(self) -> Collected {
+        Collected {
+            steps: self.steps.map(RefCell::into_inner),
+            notes: self.notes.into_inner(),
+            shown: self.shown.into_inner(),
+        }
     }
 }
 
@@ -112,13 +176,14 @@ impl Default for Holders {
         h.register(subs_holder);
         h.register(finite_big_op);
         h.register(named_ops);
+        h.register(crate::calculus::evaluate);
         h
     }
 }
 
 impl Holders {
     /// A registry with the built-in evaluators (`expand`, `factor`, `simplify`,
-    /// finite sums and products, `subs`).
+    /// finite sums and products, `subs`) and calculus.
     pub fn new() -> Self {
         Holders::default()
     }

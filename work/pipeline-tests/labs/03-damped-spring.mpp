@@ -1,0 +1,21 @@
+Title: Lab 3: A damped mass on a spring
+Author: Math++ pipeline test (physics)
+
+%{
+**Pipeline expectations.** $\omega_0 \approx 6.325\ \mathrm{rad/s}$, $\zeta \approx 0.0632$ (underdamped), $\omega_d \approx 6.312\ \mathrm{rad/s}$, $T_d \approx 0.9954\ \mathrm s$, and log decrement $\approx 0.398$. C7 solves the ODE exactly (constant coefficients, complex roots) and names the method in the steps. The energy $E(t)$ is checked to be non-increasing. The phase portrait spirals in.
+%}
+
+## Setup
+Let $m := 0.5\,\mathrm{kg}$, $k := 20\,\mathrm{N/m}$, $c := 0.4\,\mathrm{N\,s/m}$ and $x_0 := 0.1\,\mathrm m$.
+
+$$ m\ddot x + c\dot x + kx = 0, \quad x(0) = x_0, \ \dot x(0) = 0 $$
+
+## Results
+$$ \omega_0 := \sqrt{\frac{k}{m}} \approx ? \qquad \zeta := \frac{c}{2\sqrt{km}} \approx ? \qquad \omega_d := \omega_0\sqrt{1 - \zeta^2} \approx ? $$
+$$ T_d := \frac{2\pi}{\omega_d} \approx ? \qquad \delta := \frac{2\pi\zeta}{\sqrt{1 - \zeta^2}} \approx ? $$
+
+$$ E(t) := \tfrac12 m \dot x^2 + \tfrac12 k x^2 $$
+$$ \frac{dE}{dt} \le 0 \ \text{ for all } t \ge 0 \overset{?}{=} \text{true} $$
+
+Figure: $x(t)$ and the envelope $\pm x_0 e^{-\zeta\omega_0 t}$, $t \in [0, 10\,\mathrm s]$.
+Figure: $(x, \dot x)$ phase portrait, $t \in [0, 10\,\mathrm s]$.

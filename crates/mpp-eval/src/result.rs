@@ -78,6 +78,8 @@ pub struct LineResult {
     pub auto_eval: bool,
     /// Marked `%noeval`.
     pub noeval: bool,
+    /// The working of a `= ?!` query, step by step.
+    pub steps: Option<Steps>,
 }
 
 impl LineResult {
@@ -95,6 +97,7 @@ impl LineResult {
             conditions: Vec::new(),
             auto_eval: false,
             noeval: false,
+            steps: None,
         }
     }
 

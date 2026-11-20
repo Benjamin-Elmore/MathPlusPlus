@@ -1,0 +1,26 @@
+Title: Euler's formula and Euler's identity
+Author: L. Euler, *Introductio in analysin infinitorum* (1748); written out for the Math++ pipeline tests
+Abstract: Splitting the exponential series into even and odd terms. Tests complex numbers, series manipulation, and a cited theorem about rearranging series.
+
+%{
+**Pipeline expectations.** Status: **proved, using 1 cited result** (rearranging absolutely convergent series). Step 2 is checked symbolically ($i^{2k} = (-1)^k$, $i^{2k+1} = i(-1)^k$), and step 3 by matching the series of $\cos$ and $\sin$. The corollary auto-evaluates $e^{i\pi} = -1$.
+%}
+
+**Theorem 1** (Euler). For every real $\theta$, $\ e^{i\theta} = \cos\theta + i \sin\theta$.
+
+**Proof.**
+1. $e^{i\theta} = \sum_{n=0}^{\infty} \frac{(i\theta)^n}{n!}$, and the series converges absolutely — by the series of $\exp$.
+2. Split it into even $n = 2k$ and odd $n = 2k + 1$ terms; $i^{2k} = (-1)^k$ and $i^{2k+1} = i (-1)^k$ — *(cited: an absolutely convergent series can be rearranged freely [@rudin])*.
+3. So $e^{i\theta} = \sum_{k \ge 0} \frac{(-1)^k \theta^{2k}}{(2k)!} + i \sum_{k \ge 0} \frac{(-1)^k \theta^{2k+1}}{(2k+1)!} = \cos\theta + i\sin\theta$ — by the series of $\cos$ and $\sin$.
+∎
+
+**Corollary 2** (Euler's identity). $e^{i\pi} + 1 = 0$.
+
+**Proof.**
+1. Put $\theta = \pi$ in Theorem 1: $e^{i\pi} = \cos\pi + i \sin\pi = -1$ — by Theorem 1.
+∎
+
+$$ e^{i\pi} $$
+
+## References
+- [@rudin] W. Rudin, *Principles of Mathematical Analysis*, 3rd ed., Theorem 3.55.

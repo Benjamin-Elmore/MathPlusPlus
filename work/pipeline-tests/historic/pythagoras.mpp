@@ -1,0 +1,21 @@
+Title: The Pythagorean theorem
+Author: Rearrangement proof from the *Zhoubi Suanjing* (China, c. 100 BC) and Bhāskara II (India, 12th century); written out for the Math++ pipeline tests
+Abstract: Four copies of a right triangle inside a square of side $a+b$. Tests a geometric proof whose algebra is checked symbolically and whose one geometric fact is cited.
+
+%{
+**Pipeline expectations.** Status: **proved, using 1 cited result** (Elements I.32). Step 4 is checked symbolically: $(a+b)^2 - 4 \cdot \tfrac12 ab = a^2 + b^2$. The figure renders as a diagram (C5/M13).
+%}
+
+**Theorem 1** (Pythagoras). In a right triangle with legs $a, b$ and hypotenuse $c$, $\ a^2 + b^2 = c^2$.
+
+**Proof.**
+1. Place four copies of the triangle inside a square of side $a + b$, one in each corner, each with its legs along the sides — by construction.
+2. The four hypotenuses bound a quadrilateral with every side equal to $c$ — by construction.
+3. Each of its angles is $180° - 90° = 90°$, because the two acute angles of a right triangle add to $90°$; so it is a square of side $c$ — *(cited: the angles of a triangle add to $180°$, Elements I.32 [@euclid])*.
+4. Counting area two ways: $(a + b)^2 = c^2 + 4 \cdot \tfrac12 a b$, so $a^2 + b^2 = c^2$ — by algebra.
+∎
+
+Figure: the square of side $a + b$ with the four triangles and the inner square of side $c$.
+
+## References
+- [@euclid] Euclid, *Elements*, Book I Prop. 32 (and Prop. 47, Euclid's own proof).

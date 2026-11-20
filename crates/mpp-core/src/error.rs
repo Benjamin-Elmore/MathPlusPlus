@@ -29,6 +29,14 @@ pub enum MathError {
     NotANumber(String),
     /// The operation is valid maths that this version does not do yet.
     Unsupported(String),
+    /// A limit has no value (the sides differ, or the function oscillates).
+    LimitDoesNotExist(String),
+    /// An exact answer disagreed with its numeric check, so it was not trusted.
+    Inconclusive(String),
+    /// No closed form was found (the integral may still have a numeric value).
+    NoClosedForm(String),
+    /// An improper integral (or other limit process) has no finite value.
+    Divergent(String),
 }
 
 impl fmt::Display for MathError {
@@ -54,6 +62,12 @@ impl fmt::Display for MathError {
             MathError::TooLarge(what) => write!(f, "{what} is too large to compute"),
             MathError::NotANumber(what) => write!(f, "{what} is not a number"),
             MathError::Unsupported(what) => write!(f, "{what} is not supported yet"),
+            MathError::LimitDoesNotExist(why) => write!(f, "the limit does not exist: {why}"),
+            MathError::Inconclusive(what) => {
+                write!(f, "{what} could not be confirmed numerically")
+            }
+            MathError::NoClosedForm(what) => write!(f, "no closed form was found for {what}"),
+            MathError::Divergent(what) => write!(f, "{what} diverges"),
         }
     }
 }
