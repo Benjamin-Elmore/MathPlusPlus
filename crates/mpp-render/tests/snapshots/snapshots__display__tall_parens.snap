@@ -1,0 +1,16 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\left( \\sum_{k=1}^{n} a_k \\right)^2"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="96.5" height="64.1" viewBox="0 0 96.5 64.1" overflow="visible">
+<text x="0" y="39.2" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="27" y="16.06" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑛</text>
+<text x="18.26" y="61.25" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑘</text>
+<text x="26.76" y="61.25" font-family="Latin Modern Math" font-size="14" fill="#111111">=</text>
+<text x="37.65" y="61.25" font-family="Latin Modern Math" font-size="14" fill="#111111">1</text>
+<text x="17.5" y="39.2" font-family="Latin Modern Math" font-size="20" fill="#111111">∑</text>
+<text x="49.71" y="39.2" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑎</text>
+<text x="60.29" y="44.14" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑘</text>
+<text x="69.91" y="39.2" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="87.41" y="9.3" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+</svg>

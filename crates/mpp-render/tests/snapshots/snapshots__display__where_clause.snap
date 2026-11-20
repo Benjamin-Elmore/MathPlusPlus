@@ -1,0 +1,15 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "A = \\pi r^2, \\quad r = 3"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="146.02" height="20.42" viewBox="0 0 146.02 20.42" overflow="visible">
+<text x="0" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">𝐴</text>
+<text x="20.56" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">=</text>
+<text x="41.67" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">𝜋</text>
+<text x="53.07" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑟</text>
+<text x="62.35" y="9.3" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<text x="71.44" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">,</text>
+<text x="100.33" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑟</text>
+<text x="114.91" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">=</text>
+<text x="136.02" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">3</text>
+</svg>

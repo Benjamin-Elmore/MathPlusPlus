@@ -1,0 +1,15 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\sum_{n=1}^{\\infty} \\frac{1}{n^2}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="76.59" height="26.32" viewBox="0 0 76.59 26.32" overflow="visible">
+<text x="0" y="17.18" font-family="Latin Modern Math" font-size="20" fill="#111111">∑</text>
+<text x="21.12" y="7.18" font-family="Latin Modern Math" font-size="14" fill="#111111">∞</text>
+<text x="21.12" y="26.18" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑛</text>
+<text x="31" y="26.18" font-family="Latin Modern Math" font-size="14" fill="#111111">=</text>
+<text x="41.9" y="26.18" font-family="Latin Modern Math" font-size="14" fill="#111111">1</text>
+<text x="61.47" y="9.3" font-family="Latin Modern Math" font-size="14" fill="#111111">1</text>
+<text x="56.72" y="24.08" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑛</text>
+<text x="66.6" y="20.04" font-family="Latin Modern Math" font-size="10" fill="#111111">2</text>
+<rect x="54.32" y="11.78" width="22.28" height="0.8" fill="#111111"/>
+</svg>

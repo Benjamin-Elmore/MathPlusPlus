@@ -1,0 +1,18 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\lim_{x \\to 0} \\frac{\\sin x}{x}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="78.5" height="41.6" viewBox="0 0 78.5 41.6" overflow="visible">
+<text x="0" y="39.32" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑥</text>
+<text x="9.07" y="39.32" font-family="Latin Modern Math" font-size="14" fill="#111111">→</text>
+<text x="23.07" y="39.32" font-family="Latin Modern Math" font-size="14" fill="#111111">0</text>
+<text x="1.71" y="26.68" font-family="Latin Modern Math" font-size="20" fill="#111111">l</text>
+<text x="7.27" y="26.68" font-family="Latin Modern Math" font-size="20" fill="#111111">i</text>
+<text x="12.83" y="26.68" font-family="Latin Modern Math" font-size="20" fill="#111111">m</text>
+<text x="36.77" y="13.14" font-family="Latin Modern Math" font-size="20" fill="#111111">s</text>
+<text x="44.65" y="13.14" font-family="Latin Modern Math" font-size="20" fill="#111111">i</text>
+<text x="50.21" y="13.14" font-family="Latin Modern Math" font-size="20" fill="#111111">n</text>
+<text x="64.66" y="13.14" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="50.72" y="40.4" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<rect x="34.37" y="21.28" width="44.13" height="0.8" fill="#111111"/>
+</svg>
