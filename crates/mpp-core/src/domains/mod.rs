@@ -8,11 +8,13 @@
 //! back into the evaluator, the printer and other domains.
 
 pub mod calculus;
+pub mod fieldkit;
 pub mod linalg;
 pub mod number_theory;
 pub mod ode;
 pub mod sets;
 pub mod solve;
+pub mod special;
 pub mod stats;
 pub mod util;
 
@@ -26,6 +28,7 @@ pub use number_theory::NumberTheory;
 pub use ode::Odes;
 pub use sets::{RealSet, Sets};
 pub use solve::{Solutions, Solving};
+pub use special::SpecialFunctions;
 pub use stats::Statistics;
 
 /// What a domain operator returns. Matrices, sets, tuples and relations are all
@@ -132,6 +135,7 @@ impl Registry {
         r.register(Box::new(Sets));
         r.register(Box::new(NumberTheory));
         r.register(Box::new(Statistics));
+        r.register(Box::new(SpecialFunctions));
         r
     }
 
