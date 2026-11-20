@@ -1,0 +1,16 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\iint_D f(x, y) \\, dA"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="115.94" height="61.34" viewBox="0 0 115.94 61.34" overflow="visible">
+<text x="1.74" y="59.34" font-family="Latin Modern Math" font-size="14" fill="#111111">𝐷</text>
+<text x="0" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">∬</text>
+<text x="31.71" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑓</text>
+<text x="41.51" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="49.29" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="60.73" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">,</text>
+<text x="69.63" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑦</text>
+<text x="79.43" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="90.54" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="100.94" y="29.22" font-family="Latin Modern Math" font-size="20" fill="#111111">𝐴</text>
+</svg>

@@ -1,0 +1,69 @@
+# Graphs in two dimensions
+
+A `Figure:` line draws a graph. List what to draw, separated by commas, and give a range for
+the variable with `x \in [a, b]`. Text after the first `. ` is the caption.
+
+## Curves
+
+Figure: $\sin x$, $\cos x$, $x \in [-2\pi, 2\pi]$. Sine and cosine on two full turns, with a legend.
+
+Your own functions and constants are used as they are defined above the figure.
+
+$$ g \equiv 9.81 $$
+
+$$ h(t) := 20 t - \frac{g}{2} t^2 $$
+
+Figure: $h(t)$, $t \in [0, 4]$. Height of a ball thrown up at $20$ m/s.
+
+## Sliders
+
+A variable declared with a range gets a slider, and the figure redraws as you drag it.
+
+$$ a := 1, \; a \in [0, 3] $$
+
+$$ b := 0, \; b \in [-2, 2] $$
+
+Figure: $a \sin(x) + b$, $x \in [-2\pi, 2\pi]$. Amplitude $a$ and shift $b$.
+
+## Asymptotes and jumps
+
+The curve is broken at an asymptote instead of joined by a vertical line.
+
+Figure: $\tan x$, $x \in [-2\pi, 2\pi]$. Tangent.
+
+Figure: $\frac{1}{x}$, $\frac{1}{x^2}$, $x \in [-4, 4]$. Two reciprocals.
+
+At a jump, an open dot marks the end that is not included and a closed dot the end that is.
+
+Figure: $\begin{cases} x & x < 1 \\ x + 2 & x \ge 1 \end{cases}$, $x \in [-3, 4]$. A step.
+
+## Equations
+
+Figure: $x^2 + y^2 = 4$. A circle (equal scales are used when you give no range).
+
+Figure: $\frac{x^2}{9} + \frac{y^2}{4} = 1$, $x^2 - y^2 = 1$, $x, y \in [-4, 4]$. An ellipse and a hyperbola.
+
+Figure: $x = y^2$, $y \in [-2, 2]$. A parabola opening sideways.
+
+## Parametric and polar
+
+Figure: $(\sin 3 t, \sin 2 t)$, $t \in [0, 2\pi]$. A Lissajous curve.
+
+Figure: $1 + \cos \theta$, polar. A cardioid.
+
+Figure: $r = 2 \sin 3 \theta$. A three-petal rose.
+
+## Inequalities
+
+An inequality shades the region where it holds. A dashed edge means the edge itself is not included.
+Where regions overlap, the colours blend.
+
+Figure: $y > x^2 - 1$, $y < 3 - x$, $x, y \in [-4, 4]$. Two inequalities.
+
+Figure: $1 < x^2 + y^2 \le 4$, $x, y \in [-3, 3]$. A ring.
+
+## Points and level curves
+
+Figure: $x^2$, points $(1, 1)$, points $(2, 4)$, $x \in [0, 3]$. Two marked points on a parabola.
+
+Figure: $x^2 + \frac{y^2}{2}$, contour, $x, y \in [-3, 3]$. Level curves.

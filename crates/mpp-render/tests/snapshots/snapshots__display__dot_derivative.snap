@@ -1,0 +1,11 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\dot x + \\ddot y"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="45.69" height="17.64" viewBox="0 0 45.69 17.64" overflow="visible">
+<text x="0" y="13.54" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="11.88" y="13.54" font-family="Latin Modern Math" font-size="20" fill="#111111">̇</text>
+<text x="15.88" y="13.54" font-family="Latin Modern Math" font-size="20" fill="#111111">+</text>
+<text x="35.89" y="13.54" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑦</text>
+<text x="47.19" y="13.54" font-family="Latin Modern Math" font-size="20" fill="#111111">̈</text>
+</svg>

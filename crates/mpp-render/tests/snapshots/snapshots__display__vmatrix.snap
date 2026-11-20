@@ -1,0 +1,12 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\begin{vmatrix} a & b \\\\ c & d \\end{vmatrix}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="60.1" height="50.04" viewBox="0 0 60.1 50.04" overflow="visible">
+<text x="0" y="30.02" font-family="Latin Modern Math" font-size="20" fill="#111111">|</text>
+<text x="9.56" y="17.82" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑎</text>
+<text x="41.05" y="17.82" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑏</text>
+<text x="10.52" y="41.82" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑐</text>
+<text x="40.14" y="41.82" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="54.54" y="30.02" font-family="Latin Modern Math" font-size="20" fill="#111111">|</text>
+</svg>

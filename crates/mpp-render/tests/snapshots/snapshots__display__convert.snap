@@ -1,0 +1,13 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "v \\operatorname{in} \\mathrm{km/h}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="86.72" height="20" viewBox="0 0 86.72 20" overflow="visible">
+<text x="0" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑣</text>
+<text x="15.7" y="15" font-family="Latin Modern Roman" font-size="20" fill="#111111">i</text>
+<text x="21.26" y="15" font-family="Latin Modern Roman" font-size="20" fill="#111111">n</text>
+<text x="38.38" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">k</text>
+<text x="48.94" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">m</text>
+<text x="65.6" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">/</text>
+<text x="75.6" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">h</text>
+</svg>

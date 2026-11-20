@@ -1,0 +1,11 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "a \\bmod n"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="69.25" height="14.1" viewBox="0 0 69.25 14.1" overflow="visible">
+<text x="0" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑎</text>
+<text x="15.02" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">m</text>
+<text x="31.68" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">o</text>
+<text x="41.68" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">d</text>
+<text x="57.25" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑛</text>
+</svg>

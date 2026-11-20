@@ -1,0 +1,11 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\frac{dy}{dx}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="26.64" height="41.36" viewBox="0 0 26.64 41.36" overflow="visible">
+<text x="3.22" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="13.62" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑦</text>
+<text x="2.4" y="41.14" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="12.8" y="41.14" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<rect x="0" y="22.02" width="26.64" height="0.8" fill="#111111"/>
+</svg>
