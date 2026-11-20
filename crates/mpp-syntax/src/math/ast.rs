@@ -178,6 +178,21 @@ impl Node {
     pub fn is_error(&self) -> bool {
         matches!(self.kind, NodeKind::Error)
     }
+
+    /// An empty template box with a label (`lower`, `upper`, `variable` …).
+    pub fn placeholder(label: impl Into<String>, span: Span) -> Self {
+        Node::new(
+            NodeKind::Placeholder {
+                label: label.into(),
+            },
+            span,
+        )
+    }
+
+    /// True for an empty slot: an error placeholder or a template box.
+    pub fn is_slot(&self) -> bool {
+        matches!(self.kind, NodeKind::Error | NodeKind::Placeholder { .. })
+    }
 }
 
 /// Every kind of expression.
@@ -197,6 +212,11 @@ pub enum NodeKind {
     Continuation,
     /// Placeholder where parsing failed; a diagnostic points here.
     Error,
+    /// An empty template box the editor inserted (C9), shown as a dotted box
+    /// with a grey label such as `lower` or `upper`. The parser never makes one.
+    Placeholder {
+        label: String,
+    },
     /// `f(x, y)`: a call when `f` is a function, otherwise a product.
     Call {
         callee: Box<Node>,

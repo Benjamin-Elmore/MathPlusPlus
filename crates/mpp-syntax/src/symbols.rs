@@ -264,6 +264,10 @@ pub static SYMBOLS: &[Symbol] = &[
     entry("deg", "deg", "\\deg", Function),
     entry("arg", "arg", "\\arg", Function),
     entry("sgn", "sgn", "\\operatorname{sgn}", Function),
+    // Special functions of the calculus toolkits (erf x, the sine and cosine integrals).
+    entry("erf", "erf", "\\operatorname{erf}", Function),
+    entry("Si", "Si", "\\operatorname{Si}", Function),
+    entry("Ci", "Ci", "\\operatorname{Ci}", Function),
 ];
 
 pub fn lookup_name(name: &str) -> Option<&'static Symbol> {

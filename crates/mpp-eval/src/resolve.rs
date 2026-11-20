@@ -260,6 +260,7 @@ impl<'a> Resolver<'a> {
     fn apply(&mut self, name: &Name, args: &[Expr]) -> Result<Expr> {
         let mut bound = calculus::bound_names(name, args);
         bound.extend(crate::domains_wire::bound_names(name, args));
+        bound.extend(crate::dispatch::bound_names(name, args));
         let args = self.with_mask(&bound, |r| {
             args.iter()
                 .map(|a| r.resolve(a))

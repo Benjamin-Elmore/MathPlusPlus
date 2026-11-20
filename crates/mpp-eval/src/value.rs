@@ -230,11 +230,17 @@ pub enum Value {
     Tuple(Expr),
     /// An equation or inequality.
     Relation(Expr),
+    /// A labelled table (`table((label, value), …)`), such as a curve-sketch summary;
+    /// [`mpp_core::tools::table::rows`] reads its rows.
+    Table(Expr),
 }
 
 impl Value {
     /// Classifies an expression.
     pub fn from_expr(e: Expr) -> Value {
+        if mpp_core::tools::table::rows(&e).is_some() {
+            return Value::Table(e);
+        }
         match e.node() {
             ExprNode::Matrix { .. } => Value::Matrix(e),
             ExprNode::Bool(b) => Value::Bool(*b),
@@ -252,7 +258,8 @@ impl Value {
             | Value::Matrix(e)
             | Value::Set(e)
             | Value::Tuple(e)
-            | Value::Relation(e) => e.clone(),
+            | Value::Relation(e)
+            | Value::Table(e) => e.clone(),
             Value::Function { body, .. } => body.clone(),
             Value::Bool(b) => Expr::new(ExprNode::Bool(*b)),
         }

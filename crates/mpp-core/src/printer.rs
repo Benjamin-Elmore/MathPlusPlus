@@ -94,6 +94,15 @@ fn factor_order(a: &Expr, b: &Expr) -> Ordering {
         .then_with(|| a.cmp(b))
 }
 
+/// `union(I₁, I₂, …)` of intervals and finite sets, printed `I₁ ∪ I₂ ∪ …`.
+fn is_set_union(name: &str, args: &[Expr]) -> bool {
+    name == "union"
+        && args.len() >= 2
+        && args
+            .iter()
+            .all(|a| matches!(a.node(), ExprNode::Interval { .. } | ExprNode::Set(_)))
+}
+
 fn is_negative_term(t: &Expr) -> bool {
     split_coeff(t).0.is_negative()
 }
@@ -269,6 +278,13 @@ fn plain(e: &Expr) -> (String, Prec) {
             (format!("{base}^{exp}"), Prec::Pow)
         }
         ExprNode::Func(f, args) => plain_func(*f, args),
+        ExprNode::Apply(name, args) if is_set_union(name, args) => (
+            args.iter()
+                .map(|a| plain(a).0)
+                .collect::<Vec<_>>()
+                .join(" ∪ "),
+            Prec::Add,
+        ),
         ExprNode::Apply(name, args) => (format!("{name}({})", plain_list(args)), Prec::Atom),
         ExprNode::Relation(op, a, b) => {
             let (sa, pa) = plain(a);
@@ -468,9 +484,12 @@ fn plain_product(e: &Expr) -> (String, Prec) {
     if let Some(q) = &p.den_coeff {
         den.push(q.to_string());
     }
+    // A lone denominator that is itself a product (in a tree built for the steps)
+    // needs brackets: `a/(2*x)`, not `a/2*x`.
+    let lone = p.den.len() == 1 && p.den_coeff.is_none();
     for f in &p.den {
         let (s, pr) = plain(f);
-        den.push(paren(s, pr, Prec::Mul));
+        den.push(paren(s, pr, if lone { Prec::Pow } else { Prec::Mul }));
     }
     let mut out = String::new();
     if p.negative {
@@ -765,6 +784,13 @@ fn latex(e: &Expr) -> (String, Prec) {
             (format!("{base}^{{{}}}", latex(x).0), Prec::Pow)
         }
         ExprNode::Func(f, args) => latex_func(*f, args),
+        ExprNode::Apply(name, args) if is_set_union(name, args) => (
+            args.iter()
+                .map(|a| latex(a).0)
+                .collect::<Vec<_>>()
+                .join(" \\cup "),
+            Prec::Add,
+        ),
         ExprNode::Apply(name, args) => (
             format!("{}\\left({}\\right)", latex_name(name), latex_list(args)),
             Prec::Atom,
@@ -983,6 +1009,9 @@ fn latex_func_name(f: Func) -> Option<&'static str> {
         Func::Acosh => "\\operatorname{arcosh}",
         Func::Atanh => "\\operatorname{artanh}",
         Func::Sign => "\\operatorname{sgn}",
+        Func::Erf => "\\operatorname{erf}",
+        Func::Si => "\\operatorname{Si}",
+        Func::Ci => "\\operatorname{Ci}",
         Func::Lcm => "\\operatorname{lcm}",
         _ => return None,
     })

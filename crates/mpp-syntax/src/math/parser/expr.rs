@@ -281,6 +281,10 @@ impl Parser<'_> {
         let Some(found) = crate::units::after_number(text) else {
             return value;
         };
+        // In an integrand, `1 \, dA` ends with the differential, not deci-amperes.
+        if self.ctx.in_integral && found.plain && found.text.starts_with('d') {
+            return value;
+        }
         let end = start + found.len;
         if !self.consume_to(end) {
             return value;

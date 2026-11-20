@@ -594,7 +594,7 @@ mod tests {
         );
         assert_eq!(
             s(rel(RelOp::Ge, x().pow(2), Expr::int(4))),
-            "union((-∞, -2], [2, ∞))"
+            "(-∞, -2] ∪ [2, ∞)"
         );
         assert_eq!(
             s(rel(RelOp::Gt, x().pow(2) + Expr::one(), Expr::zero())),
@@ -614,10 +614,7 @@ mod tests {
         assert_eq!(s(rel(RelOp::Gt, ln, Expr::zero())), "(1, ∞)");
         // A double root doesn't change the sign: (x − 1)² > 0 everywhere but 1.
         let sq = (x() - Expr::one()).pow(2);
-        assert_eq!(
-            s(rel(RelOp::Gt, sq, Expr::zero())),
-            "union((-∞, 1), (1, ∞))"
-        );
+        assert_eq!(s(rel(RelOp::Gt, sq, Expr::zero())), "(-∞, 1) ∪ (1, ∞)");
         assert!(solve_inequality(
             &rel(
                 RelOp::Gt,
@@ -632,7 +629,7 @@ mod tests {
     #[test]
     fn natural_domains() {
         let d = |e: Expr| show(&natural_domain(&e, "x").unwrap());
-        assert_eq!(d(x().recip()), "union((-∞, 0), (0, ∞))");
+        assert_eq!(d(x().recip()), "(-∞, 0) ∪ (0, ∞)");
         assert_eq!(d((Expr::int(4) - x().pow(2)).sqrt()), "[-2, 2]");
         assert_eq!(
             d(Expr::func(Func::Ln, vec![x() - Expr::int(3)]).unwrap()),
@@ -648,7 +645,7 @@ mod tests {
         assert_eq!(r(x().pow(2)), "[0, ∞)");
         assert_eq!(r(x().pow(2) - Expr::int(2) * x() + Expr::int(3)), "[2, ∞)");
         assert_eq!(r((Expr::int(4) - x().pow(2)).sqrt()), "[0, 2]");
-        assert_eq!(r(x().recip()), "union((-∞, 0), (0, ∞))");
+        assert_eq!(r(x().recip()), "(-∞, 0) ∪ (0, ∞)");
         assert_eq!(r(Expr::func(Func::Atan, vec![x()]).unwrap()), "(-π/2, π/2)");
         let on = RealSet::from_expr(&Expr::new(ExprNode::Interval {
             lo: Expr::zero(),

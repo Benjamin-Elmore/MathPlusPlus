@@ -89,14 +89,22 @@ impl Series {
     fn join(&self, show: &dyn Fn(&Expr) -> String, remainder: String) -> String {
         let mut out = String::new();
         for (neg, t) in self.signed_terms() {
-            if out.is_empty() {
+            let first = out.is_empty();
+            if first {
                 if neg {
                     out.push('-');
                 }
             } else {
                 out.push_str(if neg { " - " } else { " + " });
             }
-            out.push_str(&show(&t));
+            // A first-power term in `x − a` is a sum: `1 − (x − 1)`, not `1 − x − 1`.
+            if (neg || !first) && matches!(t.node(), ExprNode::Add(_)) {
+                out.push('(');
+                out.push_str(&show(&t));
+                out.push(')');
+            } else {
+                out.push_str(&show(&t));
+            }
         }
         if out.is_empty() {
             remainder
@@ -169,13 +177,22 @@ pub fn series(
                 l.0.extend(b.steps.0);
             }
             let out = finish(&s, var, &at, want);
-            Steps::record(
-                &mut log,
-                "combine the series",
-                &e,
-                &out.terms,
-                Some(format!("{out}")),
-            );
+            let note = if out.valuation >= 0 && !is_infinity(&at) {
+                let listed: Vec<String> = out
+                    .coeffs
+                    .iter()
+                    .enumerate()
+                    .map(|(i, c)| format!("c_{} = {c}", out.valuation + i as i64))
+                    .collect();
+                format!(
+                    "{out}; the coefficient of {} is c_k = f⁽ᵏ⁾({at})/k!: {}",
+                    pow(out.base(), Expr::sym("k")),
+                    listed.join(", ")
+                )
+            } else {
+                format!("{out}")
+            };
+            Steps::record(&mut log, "combine the series", &e, &out.terms, Some(note));
             return Ok(out);
         }
         working += want - s.prec + 2;

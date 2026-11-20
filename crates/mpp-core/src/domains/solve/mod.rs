@@ -651,6 +651,49 @@ fn list(e: &Expr) -> Vec<Expr> {
     }
 }
 
+/// `(a, b) = λ (c, d)` is the two equations `a = λ c` and `b = λ d` (∇f = λ∇g in
+/// Lagrange problems); any other equation is itself.
+fn vector_components(eq: &Expr) -> Vec<Expr> {
+    fn parts(e: &Expr) -> Option<Vec<Expr>> {
+        match e.node() {
+            ExprNode::Tuple(items) => Some(items.clone()),
+            ExprNode::Mul(fs) => {
+                let mut vector = None;
+                let mut scalar = Vec::new();
+                for f in fs {
+                    match (f.node(), &vector) {
+                        (ExprNode::Tuple(items), None) => vector = Some(items.clone()),
+                        (ExprNode::Tuple(_), Some(_)) => return None,
+                        _ => scalar.push(f.clone()),
+                    }
+                }
+                let s = crate::simplify::mul(scalar);
+                vector.map(|v| v.into_iter().map(|c| (s.clone() * c).simplify()).collect())
+            }
+            _ => None,
+        }
+    }
+    let ExprNode::Relation(crate::expr::RelOp::Eq, l, r) = eq.node() else {
+        return vec![eq.clone()];
+    };
+    match (parts(l), parts(r)) {
+        (Some(a), Some(b)) if a.len() == b.len() => a
+            .into_iter()
+            .zip(b)
+            .map(|(x, y)| Expr::equation(x, y))
+            .collect(),
+        (Some(a), None) if r.is_zero() => a
+            .into_iter()
+            .map(|x| Expr::equation(x, Expr::zero()))
+            .collect(),
+        (None, Some(b)) if l.is_zero() => b
+            .into_iter()
+            .map(|y| Expr::equation(Expr::zero(), y))
+            .collect(),
+        _ => vec![eq.clone()],
+    }
+}
+
 /// The single unknown of an equation when it has one free symbol.
 fn guess_var(eq: &Expr) -> MathResult<String> {
     let syms = eq.free_symbols();
@@ -687,7 +730,7 @@ fn solve_op(args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
         );
         return Ok(set.to_expr());
     }
-    let eqs = list(&args[0]);
+    let eqs: Vec<Expr> = list(&args[0]).iter().flat_map(vector_components).collect();
     if eqs.len() > 1 {
         let vars: Vec<String> = match args.get(1) {
             Some(v) => list(v)

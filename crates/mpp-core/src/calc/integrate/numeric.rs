@@ -122,8 +122,8 @@ pub(crate) fn adaptive(
         bad.push((l, r));
     }
     if let Some((l, r)) = bad.first() {
-        return Err(MathError::Divergent(format!(
-            "the integral (the integrand is not finite near {})",
+        return Err(MathError::Undetermined(format!(
+            "whether the integral converges: the integrand is not finite near {}",
             crate::number::format_f64(0.5 * (l + r), 6)
         )));
     }
@@ -131,7 +131,9 @@ pub(crate) fn adaptive(
         let total: f64 = panels.iter().map(|p| p.value).sum();
         let err: f64 = panels.iter().map(|p| p.err).sum();
         if !total.is_finite() {
-            return Err(MathError::Divergent("the integral".into()));
+            return Err(MathError::Undetermined(
+                "the integral: the numerical sum overflowed".into(),
+            ));
         }
         if err <= tol.max(tol * total.abs()) {
             return Ok((total, err));
@@ -171,8 +173,8 @@ pub(crate) fn adaptive(
                 });
             }
             _ => {
-                return Err(MathError::Divergent(format!(
-                    "the integral (the integrand is not finite near {})",
+                return Err(MathError::Undetermined(format!(
+                    "whether the integral converges: the integrand is not finite near {}",
                     crate::number::format_f64(m, 6)
                 )))
             }
@@ -181,8 +183,8 @@ pub(crate) fn adaptive(
 }
 
 fn not_settled(total: f64, err: f64) -> MathError {
-    MathError::Divergent(format!(
-        "the integral (the numerical value did not settle: about {} with error {}; it probably diverges)",
+    MathError::Undetermined(format!(
+        "whether the integral converges: the numerical value did not settle (about {} with estimated error {})",
         crate::number::format_f64(total, 8),
         crate::number::format_f64(err, 2)
     ))
@@ -270,7 +272,8 @@ pub(crate) fn quad(
 /// Uses adaptive Gauss–Kronrod 7–15 with at most a few thousand subintervals. Bounds may be
 /// `±∞`. Every other symbol in `f` must already have a value. An integral whose estimate does
 /// not settle, or whose integrand is not finite inside the range, is reported as
-/// [`MathError::Divergent`].
+/// [`MathError::Undetermined`] (divergence is only reported when it is proven, by the
+/// definite-integral code).
 pub fn numeric_integrate(f: &Expr, var: &str, a: f64, b: f64, tol: f64) -> MathResult<(f64, f64)> {
     if let Some(other) = f.free_symbols().iter().find(|s| &***s != var) {
         return Err(MathError::UnboundVariable(other.to_string()));

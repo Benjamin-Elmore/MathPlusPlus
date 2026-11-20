@@ -82,6 +82,14 @@ pub struct LineResult {
     pub steps: Option<Steps>,
     /// The display format the text was last shown under (see [`crate::numfmt`]).
     pub number_format: Option<crate::numfmt::Shown>,
+    /// The value is an auto-evaluation result (C8): shown in grey after the line in the
+    /// view only, never written to the file (see [`Evaluated::keep_result_text`]).
+    pub auto: bool,
+    /// An auto-evaluation is still running (the IDE shows a spinner);
+    /// [`crate::Session::refresh`] picks the answer up when it is done.
+    pub pending: bool,
+    /// Why no answer is shown yet, such as "fill in: upper bound" for an empty box.
+    pub hint: Option<String>,
 }
 
 impl LineResult {
@@ -101,7 +109,21 @@ impl LineResult {
             noeval: false,
             steps: None,
             number_format: None,
+            auto: false,
+            pending: false,
+            hint: None,
         }
+    }
+
+    /// The working as a foldable tree (top-level steps with their sub-steps), ending at
+    /// the answer; `None` when no steps were recorded.
+    pub fn step_tree(&self) -> Option<mpp_core::tools::StepTree> {
+        let steps = self.steps.as_ref()?;
+        let tree = match (&self.input, &self.value) {
+            (Some(q), Some(v)) => mpp_core::tools::StepTree::for_answer(steps, q, &v.expr()),
+            _ => mpp_core::tools::StepTree::from_steps(steps),
+        };
+        Some(tree)
     }
 
     /// Sets the value with its LaTeX and plain text.
@@ -114,6 +136,11 @@ impl LineResult {
                     body.to_latex()
                 ));
                 self.text = Some(format!("({}) ↦ {body}", params.join(", ")));
+            }
+            Value::Table(t) => {
+                let rows = mpp_core::tools::table::rows(t).unwrap_or_default();
+                self.latex = Some(mpp_core::tools::table::to_latex(&rows));
+                self.text = Some(mpp_core::tools::table::to_text(&rows));
             }
             other => {
                 let e = other.expr();
@@ -367,6 +394,83 @@ impl Evaluated {
         })
     }
 
+    /// Every line with an auto-evaluation result (C8), pending or hinted line, with its
+    /// block.
+    pub fn auto_results(&self) -> impl Iterator<Item = (&BlockResult, &LineResult)> {
+        self.blocks.iter().flat_map(|b| {
+            b.values
+                .iter()
+                .filter(|v| v.auto || v.pending || v.hint.is_some())
+                .map(move |v| (b, v))
+        })
+    }
+
+    /// `Ctrl+Enter` (keep the result): the new text for line `line` of block `block`
+    /// (an index into its [`BlockResult::values`]), with its auto result written into
+    /// the document as ordinary maths: `\int_0^1 x^2 \, dx = \frac{1}{3}`, or for an
+    /// equation `x^2 = 4 \implies x = -2 \lor x = 2`. The IDE replaces the text of the
+    /// line's span with it. A line with no auto result comes back unchanged.
+    pub fn keep_result_text(&self, block: BlockId, line: usize) -> String {
+        let Some(lr) = self
+            .blocks
+            .iter()
+            .find(|b| b.id == block)
+            .and_then(|b| b.values.get(line))
+        else {
+            return String::new();
+        };
+        let span = lr.span;
+        let original = self
+            .source
+            .get(span.start..span.end)
+            .unwrap_or("")
+            .to_string();
+        if !lr.auto {
+            return original;
+        }
+        let shown = match (&lr.latex, &lr.approx, &lr.text) {
+            (_, Some(a), None) => format!(" \\approx {a}"),
+            (Some(l), _, _) => {
+                let l = l.replace("\\;\\text{or}\\;", "\\lor");
+                let is_equation = matches!(
+                    lr.input.as_ref().map(Expr::node),
+                    Some(mpp_core::ExprNode::Relation(..))
+                );
+                if is_equation {
+                    format!(" \\implies {l}")
+                } else {
+                    format!(" = {l}")
+                }
+            }
+            _ => return original,
+        };
+        let end = self.statement_end(span).unwrap_or(span.end);
+        let cut = end.saturating_sub(span.start).min(original.len());
+        if !original.is_char_boundary(cut) {
+            return original;
+        }
+        format!("{}{shown}{}", &original[..cut], &original[cut..])
+    }
+
+    /// Where the statement of the display line at `span` ends (before its clauses).
+    fn statement_end(&self, span: Span) -> Option<usize> {
+        use mpp_syntax::document::BlockKind;
+        use mpp_syntax::math::Statement;
+        let mut found = None;
+        self.document.walk(&mut |b| {
+            if let BlockKind::DisplayMath(m) = &b.kind {
+                for line in &m.ast.lines {
+                    if line.span == span {
+                        if let Statement::Relation(n) = &line.statement {
+                            found = Some(n.span.end);
+                        }
+                    }
+                }
+            }
+        });
+        found
+    }
+
     fn snippet(&self, span: Span) -> String {
         let text = self.source.get(span.start..span.end).unwrap_or("");
         text.split_whitespace().collect::<Vec<_>>().join(" ")
@@ -375,8 +479,17 @@ impl Evaluated {
     /// A plain-text report: each query line with its answer, then the problems.
     pub fn report(&self) -> String {
         let mut out = String::new();
-        for (_, line) in self.queries() {
-            let answer = line.answer().unwrap_or_else(|| "(no answer)".into());
+        let answered = self.blocks.iter().flat_map(|b| {
+            b.values.iter().filter(|v| {
+                matches!(v.kind, LineKind::Query { .. } | LineKind::Check)
+                    || (v.kind == LineKind::Helper && v.value.is_some())
+            })
+        });
+        for line in answered {
+            let answer = line
+                .answer()
+                .unwrap_or_else(|| "(no answer)".into())
+                .replace('\n', "\n        ");
             let _ = writeln!(
                 out,
                 "{:>4}: {}  {answer}",

@@ -1,0 +1,42 @@
+# Show the working
+
+Write `= ?!` instead of `= ?` and every answer comes with its working, one rule per step.
+Turn on "Show steps" to get the working for every `= ?` query.
+
+## Derivatives
+
+The product, chain and power rules, each named as it is used.
+
+$$ \frac{d}{dx} x^2 \sin(3x) = ?! $$
+
+$$ \frac{d}{dx} \frac{\sin x}{x^2} = ?! $$
+
+## Integrals
+
+A substitution writes out $u$ and $du$:
+
+$$ \int 2x \cos(x^2) \, dx = ?! $$
+
+Integration by parts names $u$, $dv$, $du$ and $v$:
+
+$$ \int x e^x \, dx = ?! $$
+
+Partial fractions show the decomposition:
+
+$$ \int \frac{1}{x^2 - 1} \, dx = ?! $$
+
+A definite integral ends with the fundamental theorem of calculus:
+
+$$ \int_0^2 x^2 \, dx = ?! $$
+
+## Limits
+
+L'Hôpital's rule says which indeterminate form it removes:
+
+$$ \lim_{x \to 0} \frac{e^x - 1 - x}{x^2} = ?! $$
+
+## Series
+
+The Taylor coefficients are listed:
+
+$$ \operatorname{series}_{x=0}^{4} e^x \sin x = ?! $$

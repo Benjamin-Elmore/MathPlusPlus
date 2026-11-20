@@ -1,0 +1,53 @@
+# Lane notes: C6 (check helper + quick calculator)
+
+Engine lane (`wip/engine`). Code: `crates/mpp-eval/src/check.rs` (verdicts, spot checks,
+antiderivatives up to a constant), `crates/mpp-core/src/trig.rs` (trigonometric normal form
+and tidying), `crates/mpp-eval/src/calc.rs` (`calc_line`). Tests:
+`crates/mpp-eval/tests/checks.rs`; example: `examples/checks.mpp` with `.expected.txt`.
+
+## Guide text (for `docs/guide.mpp`)
+
+### Checking your work
+
+Put `\overset{?}{=}` between two sides to ask whether they are equal (you can also type `≟`
+or `?=`; the Insert menu has it under Symbols):
+
+$$ \sin^2 x + \cos^2 x \overset{?}{=} 1 $$
+
+The line gets a ✓ or a ✗ in the equation view. Math++ first tries to **prove** it: it simplifies
+the difference of the two sides, expands it, and uses the trigonometric identities
+(Pythagorean, double and multiple angles, angle sums, `\tan`, `\sec`, `\csc`, `\cot` in terms
+of `\sin` and `\cos`, `\cosh^2 - \sinh^2 = 1`). Then the ✓ says *proved symbolically*. When no
+proof is found it **compares the two sides** at random points; ✓ *agrees at 12 random points*
+means it is very likely true, and a ✗ always shows a point where the sides differ:
+
+$$ (x + 1)^2 \overset{?}{=} x^2 + 1 $$
+
+✗ (at x = 2.15876: left side 9.977…, right side 5.660…).
+
+Use it to check homework answers: put the question on the left and your answer on the right.
+
+$$ \frac{d}{dx} x^2 \sin x \overset{?}{=} 2x \sin x + x^2 \cos x $$
+
+$$ \int \sin x \cos x \, dx \overset{?}{=} -\frac{\cos^2 x}{2} $$
+
+An antiderivative is accepted when it differs from Math++'s by a constant (the note says
+"the two sides agree up to a constant of integration"). Checks never show an auto answer.
+
+### The quick calculator
+
+From a terminal: `mpp calc "\int_0^1 x^2 dx"` prints `1/3`. It takes one line of maths as you
+would write it in a maths block: an expression or equation (answered like the grey auto
+answers), a `= ?` or `≈ ?` query, or a check.
+
+## For the integrator
+
+- `mpp_eval::calc_line(&str) -> Result<String, CalcError>` is the library function behind
+  `mpp calc`; the CLI lane only needs to print its `Ok` text or the error.
+- Verdicts are on `LineResult::verdict` (`Verdict::Proved`, `Holds { points }`,
+  `Fails { at, lhs, rhs }`, `Unknown`), with `mark()` (✓ ✗ ?) and `describe()`.
+- `mpp_core::trig::{identity_zero, tidy}`: `tidy` now runs on every answer, so
+  `r\sin^2\theta + r\cos^2\theta` (a polar Jacobian) shows as `r`; it only applies when a
+  `cos²`/`cosh²` is present and the result is shorter.
+- The ✓/✗ for identities is "proved where both sides are defined": `\frac{x^2-1}{x-1}
+  \overset{?}{=} x + 1` is ✓.

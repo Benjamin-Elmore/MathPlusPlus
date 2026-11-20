@@ -27,7 +27,8 @@ impl Run<'_, '_> {
     ) -> Result<Expr, EvalError> {
         let value = crate::domains_wire::finish(&value).map_err(EvalError::Math)?;
         crate::units_wire::check(&value).map_err(EvalError::Math)?;
-        Ok(self.with_assumptions(value, steps))
+        // `r sin²θ + r cos²θ` reads as `r`.
+        Ok(mpp_core::trig::tidy(&self.with_assumptions(value, steps)))
     }
 
     /// `Solve $x^2 = 4$ for $x$.`, `Solve $x + y = 3, x - y = 1$ for $x, y$.` and a
@@ -133,7 +134,7 @@ fn equations_of(node: &Node) -> Vec<&Node> {
 
 /// `x = 2 or x = 3` for one unknown with finitely many solutions, `no solution` for
 /// none; other answers keep the solver's own form.
-fn solution_text(unknowns: &[String], v: &Expr) -> Option<(String, String)> {
+pub(super) fn solution_text(unknowns: &[String], v: &Expr) -> Option<(String, String)> {
     let [x] = unknowns else {
         return None;
     };

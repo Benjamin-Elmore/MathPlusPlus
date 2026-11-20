@@ -196,6 +196,18 @@ fn sets_and_membership() {
 }
 
 #[test]
+fn lagrange_systems_with_gradients() {
+    let a = answer(
+        r"$$ \operatorname{solve}_{x, y, \lambda} \left( \nabla (x y) = \lambda \nabla (x^2 + y^2 - 1), x^2 + y^2 = 1 \right) = ? $$",
+    );
+    assert_eq!(
+        a,
+        "{(x = -sqrt(2)/2, y = -sqrt(2)/2, λ = 1/2), (x = sqrt(2)/2, y = sqrt(2)/2, λ = 1/2), \
+         (x = -sqrt(2)/2, y = sqrt(2)/2, λ = -1/2), (x = sqrt(2)/2, y = -sqrt(2)/2, λ = -1/2)}"
+    );
+}
+
+#[test]
 fn differential_equations_use_the_full_integrator() {
     // ∫ x e^{x²} dx needs a substitution, which the basic built-in calculus lacks.
     let a = answer(r"$$ \operatorname{dsolve}(y' = x e^{x^2}, y, x) = ? $$");
