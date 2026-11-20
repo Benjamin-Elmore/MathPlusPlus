@@ -138,6 +138,9 @@ pub struct StepCheck {
     pub keys: Vec<String>,
     /// The results (`Lemma 2`) the step rests on, by their display names.
     pub uses: Vec<String>,
+    /// True for a prose step under a computational reason (`by algebra`) with no
+    /// relation to compute: structure only, and it can never close a gap.
+    pub prose: bool,
 }
 
 /// One proof of a result.

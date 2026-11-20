@@ -4,9 +4,12 @@
 //! - [`check_source`] / [`check_document`]: the checker. Statuses are preview data for
 //!   the equation view; nothing is written into the file.
 //! - [`model`]: what the checker reports.
+//! - [`lean`]: the Lean 4 + Mathlib export, `lake build`, and alignment data.
+//! - [`agent`]: the proof agent client (Managed Agents, custom tools run locally).
 
 #![forbid(unsafe_code)]
 
+pub mod agent;
 mod algebra;
 mod cas;
 pub mod checker;

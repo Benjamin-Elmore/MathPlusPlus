@@ -717,6 +717,7 @@ fn check_step(
         claims: Vec::new(),
         keys: Vec::new(),
         uses: Vec::new(),
+        prose: false,
     };
     for mark in prose_marks(&step.claim, src) {
         match mark {
@@ -900,6 +901,7 @@ fn check_step(
                 if maths.claims.is_empty() {
                     c.status = StepStatus::Structure;
                     c.detail = format!("by {rule}: a prose step with no relation to compute");
+                    c.prose = true;
                 } else {
                     let (status, detail) = claims_status(&maths, st, src, &mut c, false);
                     c.status = status.unwrap_or(StepStatus::Structure);
@@ -1256,5 +1258,15 @@ pub fn uses_map(check: &DocumentCheck) -> BTreeMap<String, Vec<String>> {
         .results
         .iter()
         .map(|r| (r.name.clone(), r.uses.clone()))
+        .collect()
+}
+
+/// Where each result sits in a document: its name, the span of its heading and
+/// statement, and the span of its first proof.
+pub fn result_spans(doc: &Document, src: &str) -> Vec<(String, Span, Option<Span>)> {
+    DocContext::read(doc, src, &[])
+        .items
+        .iter()
+        .map(|i| (i.name.clone(), i.span, i.proofs.first().map(|(_, s)| *s)))
         .collect()
 }
