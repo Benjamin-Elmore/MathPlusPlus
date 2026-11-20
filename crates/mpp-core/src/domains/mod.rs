@@ -9,6 +9,7 @@
 
 pub mod analysis_ext;
 pub mod calculus;
+pub mod discrete;
 pub mod fieldkit;
 pub mod linalg;
 pub mod nt_ext;
@@ -26,6 +27,7 @@ use crate::steps::Steps;
 
 pub use analysis_ext::Analysis;
 pub use calculus::{BasicCalculus, Calculus};
+pub use discrete::Discrete;
 pub use linalg::{LinearAlgebra, Matrix};
 pub use nt_ext::NumberTheoryExt;
 pub use number_theory::NumberTheory;
@@ -142,6 +144,7 @@ impl Registry {
         r.register(Box::new(SpecialFunctions));
         r.register(Box::new(NumberTheoryExt));
         r.register(Box::new(Analysis));
+        r.register(Box::new(Discrete));
         r
     }
 
