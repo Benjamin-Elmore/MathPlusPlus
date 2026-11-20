@@ -2,6 +2,7 @@
 
 mod assume;
 mod data;
+mod seed;
 mod sentences;
 mod units;
 
@@ -256,6 +257,7 @@ impl Run<'_, '_> {
         Lowerer::new(&view)
             .with_locals(locals.iter().cloned())
             .lower(node)
+            .map(|e| self.seeded(e, node.span))
     }
 
     fn lower_in_function(
@@ -270,6 +272,7 @@ impl Run<'_, '_> {
             .with_locals(locals.iter().cloned())
             .defining(name, params)
             .lower(node)
+            .map(|e| self.seeded(e, node.span))
     }
 
     fn resolve_full(
@@ -368,10 +371,8 @@ impl Run<'_, '_> {
             BlockKind::Solve(s) => self.solve_sentence(s),
             BlockKind::Assume(a) => self.assume_sentence(a),
             BlockKind::Data(d) => self.data_import(d),
-            BlockKind::Theorem(_)
-            | BlockKind::Directive(_)
-            | BlockKind::Rule
-            | BlockKind::Verbatim(_) => {}
+            BlockKind::Directive(d) => self.seed_directive(d, block.span),
+            BlockKind::Theorem(_) | BlockKind::Rule | BlockKind::Verbatim(_) => {}
         }
     }
 

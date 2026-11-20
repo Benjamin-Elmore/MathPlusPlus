@@ -22,6 +22,7 @@ pub mod check;
 pub mod data;
 pub mod domains_wire;
 pub mod error;
+pub mod fields_wire;
 pub mod files;
 pub mod graph;
 pub mod holders;
@@ -33,6 +34,7 @@ pub mod numfmt;
 pub mod resolve;
 pub mod result;
 mod session;
+pub mod stdlib;
 pub mod units_wire;
 pub mod value;
 #[cfg(feature = "watch")]
