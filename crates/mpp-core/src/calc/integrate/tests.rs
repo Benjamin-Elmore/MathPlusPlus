@@ -58,3 +58,32 @@ fn gauss_kronrod_is_exact_for_polynomials() {
     assert!((v - 64.0 / 6.0).abs() < 1e-12 && err < 1e-10);
     assert!(adaptive(&mut |_| None, 0.0, 1.0, 1e-10, 10).is_err());
 }
+
+fn ln(e: Expr) -> Expr {
+    Expr::call("ln", vec![e]).unwrap()
+}
+
+#[test]
+fn improper_integrals_with_logarithmic_tails() {
+    use super::integrate_definite;
+    use crate::error::MathError;
+    let inv_x_ln2 = Expr::one() / (x() * ln(x()).pow(2));
+    let inf = Expr::infinity();
+    // ∫_3^∞ dx / (x ln²x) = 1/ln 3: the antiderivative −1/ln x creeps to 0 slowly.
+    let v = integrate_definite(&inv_x_ln2, "x", &Expr::int(3), &inf, None).unwrap();
+    assert_eq!(v, Expr::one() / ln(Expr::int(3)));
+    let v = integrate_definite(&inv_x_ln2, "x", &Expr::int(2), &inf, None).unwrap();
+    assert_eq!(v, Expr::one() / ln(Expr::int(2)));
+    let v = integrate_definite(&inv_x_ln2, "x", &Expr::e(), &inf, None).unwrap();
+    assert_eq!(v, Expr::one());
+    // Written with (ln x)^3 the tail converges too: ∫_e^∞ dx / (x ln³x) = 1/2.
+    let cube = Expr::one() / (x() * ln(x()).pow(3));
+    let v = integrate_definite(&cube, "x", &Expr::e(), &inf, None).unwrap();
+    assert_eq!(v, Expr::rational(1, 2));
+    // ∫_2^∞ dx / (x ln x) = lim ln(ln x) diverges.
+    let inv_x_ln = Expr::one() / (x() * ln(x()));
+    assert!(matches!(
+        integrate_definite(&inv_x_ln, "x", &Expr::int(2), &inf, None),
+        Err(MathError::Divergent(_))
+    ));
+}

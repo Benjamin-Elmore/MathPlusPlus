@@ -206,3 +206,19 @@ fn limits_that_need_dominant_terms_or_series() {
     let e = (f("tan", f("sin", x())) - f("sin", f("tan", x()))) / x().pow(n(7));
     assert_eq!(lim(&e, &n(0), LimitDir::Both), Ok(q(1, 30)));
 }
+
+#[test]
+fn slow_logarithmic_limits_at_infinity() {
+    let ln_x = f("ln", x());
+    // −1/ln x and 1/ln²x reach 0 too slowly for the usual samples to show it.
+    assert_eq!(
+        lim(&(-(n(1) / ln_x.clone())), &inf(), LimitDir::Both).unwrap(),
+        n(0)
+    );
+    assert_eq!(
+        lim(&(n(1) / ln_x.clone().pow(2)), &inf(), LimitDir::Both).unwrap(),
+        n(0)
+    );
+    // ln(ln x) still grows without bound.
+    assert_eq!(lim(&f("ln", ln_x), &inf(), LimitDir::Both).unwrap(), inf());
+}

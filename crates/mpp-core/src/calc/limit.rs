@@ -257,15 +257,35 @@ fn numeric_check(e: &Expr, var: &str, point: &Point, side: Side, result: &Expr) 
     let Some(r) = numeric(result) else {
         return Ok(());
     };
+    let tolerance = 0.05 * r.abs().max(1.0);
     let best = values
         .iter()
         .map(|v| (v - r).abs())
         .fold(f64::INFINITY, f64::min);
-    if best <= 0.05 * r.abs().max(1.0) {
+    if best <= tolerance || slow_approach_at_infinity(e, var, point, r, tolerance) {
         Ok(())
     } else {
         Err(fail())
     }
+}
+
+/// True when `e` creeps towards `r` as `var → ∞` too slowly for the usual samples to show
+/// it (logarithmic convergence such as `−1/ln x → 0`): farther samples must close in on
+/// `r` steadily and end within `tolerance` of it.
+fn slow_approach_at_infinity(e: &Expr, var: &str, point: &Point, r: f64, tolerance: f64) -> bool {
+    if !matches!(point, Point::PosInf) {
+        return false;
+    }
+    let xs = sample_points(point, Side::Plus, &[1e-5, 1e-8, 1e-11, 1e-14, 1e-17]);
+    let gaps: Option<Vec<f64>> = xs
+        .iter()
+        .map(|x| eval_at(e, var, *x).map(|v| (v - r).abs()))
+        .collect();
+    let Some(gaps) = gaps else {
+        return false;
+    };
+    let closing = gaps.windows(2).all(|w| w[1] < w[0]);
+    closing && gaps.last().is_some_and(|g| *g <= tolerance)
 }
 
 /// Leading behaviour `c · x^p` as `x → ∞`, when it can be read off.
