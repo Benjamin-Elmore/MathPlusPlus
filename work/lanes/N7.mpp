@@ -1,0 +1,32 @@
+# N7 paper feel: notes for the integrator
+
+Lane `docs` (branch `wip/docs`). The example is `examples/paper-features.mpp` with `examples/paper-features.expected.txt`; render tests in `crates/mpp-render/tests/paper.rs`, parser tests in `crates/mpp-syntax/tests/notes.rs`. Grammar: `docs/grammar.mpp` §6.2 and §6.3. Everything is optional: `a_plain_worksheet_is_untouched` checks that a plain file renders the same bytes with and without the features, and that none of their markup appears.
+
+## What was built
+
+- **Already there from M4** (kept): theorem-style blocks with a bold run-in heading, an italic body for Theorem, Lemma, Corollary and Proposition, the closing ∎ on a proof (written or added), numbered equations and `\eqref` links, footnotes collected at the end.
+- **Numbered per section, on request.** `%number sections` (`DirectiveKind::NumberSections`) numbers the headings (`1`, `1.1`) and the theorems per top-level section (`Theorem 2.1`). A file with exactly one `#` and deeper headings treats the `#` as the title and starts sections at `##`. Without the directive theorems keep their single running number (`Theorem 1`), so an existing file does not change. `Remark` and `Proof` are not numbered.
+- **Title block.** `Title:`, `Author:` (repeatable), `Date:`, `Abstract:` lines before the first real block become `BlockKind::Title(TitleField { kind, content })`; the page draws one `<header class="title-block">` at the first of them, and the page title is the `Title:` text.
+- **Citations and references.** `InlineKind::Cite(Vec<Cite>)` for `[@key]` and `[@a; @b]`. `BlockKind::References(References { entries, from })` for `References` + entries or `References from [[refs.mpp]]`. An entry is `[@key] Author | Title | Year | link` (year and link optional, in either order after the title). `%cite numbered` (default) or `%cite author-year` (`DirectiveKind::Cite(CiteStyle)`; `Document::cite_style()`). The list is generated at the first `References` block; numbered style lists entries in order of first citation, uncited last; author-year is alphabetical. Cite links jump to `#ref-<key>`.
+- **Diagnostics.** The parser reports an unknown key (with the known keys as the expected list), a key defined twice and a malformed entry as errors. When the file has `References from [[file]]` the parser cannot know the keys: it reports nothing, and the caller must run `mpp_syntax::document::citation_diagnostics(&doc, &entries)` with `entries = parse_reference_entries(&file_text)` after loading the file and add the result to the file's diagnostics (the evaluator was not touched for this; wire it where imports are read). The renderer asks the provider for the file text through the new `ResultProvider::references_source(path)`; with no provider it prints "The references in refs.mpp are not loaded." and cites show a red `?`.
+- **Footnotes.** Numbered superscripts with the note text in a `title` attribute (hover) and the notes collected at the end (already so).
+- **Data tables.** Unrelated to N7 but in the same change: `ResultProvider::data_table(block, data) -> Option<DataRows>` draws a `Data:` block as a table (header cells are the typeset variable and its unit); without it the block reads "Data T from file.csv."
+
+## IDE requirements (the IDE crate is not on this branch)
+
+1. **Equation view.** Draw the title block (centred title, authors, date, a narrower justified abstract with a bold "Abstract" heading), numbered sections when the directive is on, theorem blocks as in the HTML page, the reference list at the `References` block, and citations as clickable `[n]` / `(Author Year)`. Clicking a citation scrolls to its entry; clicking an `\eqref` jumps to the equation (already specified by M4).
+2. **Hover.** Hovering a footnote number shows the note text in a card; hovering a citation shows the entry (author, title, year, link). A cite whose key is unknown draws a red `?` and gets the N9 error underline from the parser diagnostic.
+3. **Insert menu (C9).** A "Document" group: Title block (inserts `Title:`, `Author:`, `Date:` lines at the top of the file), Abstract, Theorem, Lemma, Definition, Example, Proof, Remark, Citation (a searchable list of the keys in the file's references, inserts `[@key]`), Reference entry (a small form: key, author, title, year, link), Footnote.
+4. **Outline (C10).** Theorems appear under their section ("Theorem 2.1"), the References block as "References", the title as the top entry.
+5. **Settings.** Two switches, both off by default: "Number sections" (writes or removes `%number sections`) and "Citation style" (writes `%cite author-year` or removes it). These are file directives, not IDE-only state.
+
+## N8 (export) notes
+
+- **LaTeX:** `Title:`/`Author:`/`Date:`/`Abstract:` map to `\title`, `\author`, `\date`, `\maketitle`, `abstract`; theorem blocks to `theorem`/`lemma`/`definition`/`proof` environments (numbered `within=section` when `%number sections`); citations to `\cite{key}` and the entries to a `thebibliography` (or `.bib` entries `@book{key, author, title, year, url}`); footnotes to `\footnote`; `\label`/`\eqref` as they are.
+- **PDF:** the same layout as the HTML page; the reference list at the end of the document with hanging indents.
+
+## Choices made (read these)
+
+- **Per-section numbering is opt-in** so a file that was fine before does not change its theorem numbers.
+- **Reference fields are plain text** (not markup); italics around the title come from the renderer. Author separators are ` and ` and `;`.
+- **Title lines are recognised only at the top** (after any directives and comments) so prose like "Title: a remark" later in a worksheet is untouched.

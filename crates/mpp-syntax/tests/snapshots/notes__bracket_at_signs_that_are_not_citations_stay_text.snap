@@ -1,0 +1,5 @@
+---
+source: crates/mpp-syntax/tests/notes.rs
+expression: "clean(\"Mail [@ me] or [@a b] or [@].\\n\")"
+---
+[0..29] Paragraph "Mail [@ me] or [@a b] or [@]."

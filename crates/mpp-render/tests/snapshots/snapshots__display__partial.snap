@@ -1,0 +1,11 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\frac{\\partial f}{\\partial x}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="27.96" height="42.02" viewBox="0 0 27.96 42.02" overflow="visible">
+<text x="3.22" y="14.32" font-family="Latin Modern Math" font-size="20" fill="#111111">∂</text>
+<text x="14.94" y="14.32" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑓</text>
+<text x="2.4" y="41.58" font-family="Latin Modern Math" font-size="20" fill="#111111">∂</text>
+<text x="14.12" y="41.58" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<rect x="0" y="22.46" width="27.96" height="0.8" fill="#111111"/>
+</svg>

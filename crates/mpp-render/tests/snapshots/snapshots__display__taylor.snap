@@ -1,0 +1,19 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "e^x = \\sum_{n=0}^{\\infty} \\frac{x^n}{n!}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="105.64" height="55.23" viewBox="0 0 105.64 55.23" overflow="visible">
+<text x="0" y="31.31" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑒</text>
+<text x="9.32" y="24.05" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑥</text>
+<text x="25.07" y="31.31" font-family="Latin Modern Math" font-size="20" fill="#111111">=</text>
+<text x="52.65" y="8.17" font-family="Latin Modern Math" font-size="14" fill="#111111">∞</text>
+<text x="46.25" y="52.95" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑛</text>
+<text x="56.14" y="52.95" font-family="Latin Modern Math" font-size="14" fill="#111111">=</text>
+<text x="67.03" y="52.95" font-family="Latin Modern Math" font-size="14" fill="#111111">0</text>
+<text x="46.18" y="31.31" font-family="Latin Modern Math" font-size="20" fill="#111111">∑</text>
+<text x="80.8" y="17.77" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="92.24" y="10.51" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑛</text>
+<text x="83.24" y="45.03" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑛</text>
+<text x="95.24" y="45.03" font-family="Latin Modern Math" font-size="20" fill="#111111">!</text>
+<rect x="78.4" y="25.91" width="27.24" height="0.8" fill="#111111"/>
+</svg>

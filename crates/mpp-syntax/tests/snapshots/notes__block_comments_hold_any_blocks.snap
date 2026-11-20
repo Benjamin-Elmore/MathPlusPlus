@@ -1,0 +1,17 @@
+---
+source: crates/mpp-syntax/tests/notes.rs
+expression: "clean(concat!(\"%{ Working:\\n\", \"- first $a$\\n\", \"- second\\n\", \"\\n\",\n\"| a | b |\\n\", \"|---|---|\\n\", \"| 1 | 2 |\\n\", \"$$ x := 1 \\\\label{gone} $$\\n\",\n\"%}\\n\", \"After.\\n\", \"%{ one line %}\\n\",))"
+---
+[0..92] Comment braces=true closed=true
+  [3..11] Paragraph "Working:"
+  [12..32] List
+    - "first " (math a)
+    - "second"
+  [34..63] Table [Default, Default]
+    head: "a" | "b"
+    row: "1" | "2"
+  [64..89] DisplayMath number=None label=None noeval=false closed=true raw=66..87
+    (def := x 1) | (label gone)
+[93..99] Paragraph "After."
+[100..114] Comment braces=true closed=true
+  [103..111] Paragraph "one line"

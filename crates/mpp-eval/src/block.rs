@@ -418,7 +418,11 @@ impl Run<'_, '_> {
             BlockKind::Solve(s) => self.solve_sentence(s),
             BlockKind::Assume(a) => self.assume_sentence(a),
             BlockKind::Data(d) => self.data_import(d),
-            BlockKind::Theorem(_)
+            // Comments are shown but never run: nothing in one is evaluated or defined.
+            BlockKind::Comment(_)
+            | BlockKind::Title(_)
+            | BlockKind::References(_)
+            | BlockKind::Theorem(_)
             | BlockKind::Directive(_)
             | BlockKind::Rule
             | BlockKind::Verbatim(_) => {}
