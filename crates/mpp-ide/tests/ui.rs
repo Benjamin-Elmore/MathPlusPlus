@@ -255,7 +255,10 @@ fn snapshots_light_and_dark() {
         ("ide-dark.png", theme::Mode::Dark),
     ] {
         let mut app = IdeApp::new();
-        app.mode = mode;
+        app.set_theme_choice(match mode {
+            theme::Mode::Light => theme::ThemeChoice::Light,
+            theme::Mode::Dark => theme::ThemeChoice::Dark,
+        });
         let mut h = settled(app);
         h.run_steps(2);
         save_png(&mut h, name);
@@ -271,24 +274,65 @@ fn welcome_text_parses_without_problems() {
 
 #[test]
 fn snapshot_errors_and_autocomplete() {
-    let mut app = IdeApp::empty();
-    app.new_file();
-    app.doc_mut().expect("doc").editor.set_text(
-        "# Problems\n\nThis line has a missing bound:\n\n$$ \\int_0^{} x \\, dx = ? $$\n\nand this one is fine:\n\n$$ a := 4 $$\n\n$$ a + x = ? $$\n",
-    );
-    let mut h = settled(app);
-    save_png(&mut h, "ide-errors.png");
+    for (suffix, choice) in [
+        ("light", theme::ThemeChoice::Light),
+        ("dark", theme::ThemeChoice::Dark),
+    ] {
+        let mut app = IdeApp::empty();
+        app.set_theme_choice(choice);
+        app.new_file();
+        app.doc_mut().expect("doc").editor.set_text(
+            "# Problems\n\nThis line has a missing bound:\n\n$$ \\int_0^{} x \\, dx = ? $$\n\nand this one is fine:\n\n$$ a := 4 $$\n\n$$ a + x = ? $$\n",
+        );
+        let mut h = settled(app);
+        save_png(&mut h, &format!("ide-errors-{suffix}.png"));
 
-    // Autocomplete: type a prefix at the end of the last maths block.
-    let end = doc_text(&h).rfind("= ?").expect("query") + 1;
-    h.state_mut()
-        .doc_mut()
-        .expect("doc")
-        .editor
-        .move_caret(end, false);
+        // Autocomplete: type a prefix at the end of the last maths block.
+        let end = doc_text(&h).rfind("= ?").expect("query") + 1;
+        h.state_mut()
+            .doc_mut()
+            .expect("doc")
+            .editor
+            .move_caret(end, false);
+        h.run_steps(2);
+        type_text(&mut h, " + alp");
+        save_png(&mut h, &format!("ide-completion-{suffix}.png"));
+    }
+}
+
+#[test]
+fn ctrl_k_then_ctrl_t_cycles_the_theme() {
+    let mut h = settled(IdeApp::new());
+    assert_eq!(h.state().theme_choice, theme::ThemeChoice::System);
+    let ctrl = Modifiers::COMMAND;
+    for expected in [
+        theme::ThemeChoice::Light,
+        theme::ThemeChoice::Dark,
+        theme::ThemeChoice::System,
+    ] {
+        h.key_press_modifiers(ctrl, Key::K);
+        h.run_steps(1);
+        h.key_press_modifiers(ctrl, Key::T);
+        h.run_steps(2);
+        assert_eq!(h.state().theme_choice, expected);
+    }
+    // Ctrl+T alone does nothing.
+    h.key_press_modifiers(ctrl, Key::T);
     h.run_steps(2);
-    type_text(&mut h, " + alp");
-    save_png(&mut h, "ide-completion.png");
+    assert_eq!(h.state().theme_choice, theme::ThemeChoice::System);
+}
+
+#[test]
+fn follow_windows_is_the_default_and_dark_changes_the_colours() {
+    let mut h = settled(IdeApp::new());
+    assert_eq!(h.state().mode, theme::Mode::Light, "no system theme: light");
+    h.state_mut().set_theme_choice(theme::ThemeChoice::Dark);
+    h.run_steps(2);
+    assert_eq!(h.state().mode, theme::Mode::Dark);
+    let dark = h.ctx.global_style().visuals.panel_fill;
+    h.state_mut().set_theme_choice(theme::ThemeChoice::Light);
+    h.run_steps(2);
+    assert_ne!(h.ctx.global_style().visuals.panel_fill, dark);
 }
 
 #[test]

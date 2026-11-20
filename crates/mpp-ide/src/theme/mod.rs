@@ -1,70 +1,77 @@
-//! Colours and fonts. Every colour comes from mpp-render's [`Theme`]; the UI
-//! chrome is set in Latin Modern Roman.
+//! Colours and fonts. Every colour comes from the [`Palette`] table and every
+//! piece of text is set in Latin Modern.
 
-use std::sync::Arc;
+mod fonts;
+mod moon;
+mod palette;
 
-use egui::{Color32, Context, FontData, FontDefinitions, FontFamily, FontId, TextStyle};
-use mpp_render::{FontId as RenderFont, Theme};
+use egui::Context;
 
-use crate::paint::c32;
+pub use fonts::{install_fonts, sans, sans_family};
+pub use moon::moon_button;
+pub use palette::{c32, contrast, luminance, Mode, Palette};
 
-/// Light or dark.
+/// What the user chose in Settings: a fixed theme, or follow Windows.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Mode {
-    #[default]
+pub enum ThemeChoice {
     Light,
     Dark,
+    /// Use the Windows app theme (the default).
+    #[default]
+    System,
 }
 
-impl Mode {
-    /// The render theme for this mode.
-    pub fn theme(self) -> Theme {
+impl ThemeChoice {
+    pub const ALL: [ThemeChoice; 3] = [ThemeChoice::Light, ThemeChoice::Dark, ThemeChoice::System];
+
+    /// The mode to draw in, given the system theme when it is known.
+    pub fn resolve(self, system: Option<egui::Theme>) -> Mode {
         match self {
-            Mode::Light => Theme::LIGHT,
-            Mode::Dark => Theme::DARK,
+            ThemeChoice::Light => Mode::Light,
+            ThemeChoice::Dark => Mode::Dark,
+            ThemeChoice::System => match system {
+                Some(egui::Theme::Dark) => Mode::Dark,
+                _ => Mode::Light,
+            },
         }
     }
-}
 
-fn mix(a: Color32, b: Color32, t: f32) -> Color32 {
-    let f = |x: u8, y: u8| (f32::from(x) * (1.0 - t) + f32::from(y) * t).round() as u8;
-    Color32::from_rgb(f(a.r(), b.r()), f(a.g(), b.g()), f(a.b(), b.b()))
-}
-
-/// Registers Latin Modern Roman as the interface font.
-pub fn install_fonts(ctx: &Context) {
-    let mut defs = FontDefinitions::default();
-    defs.font_data.insert(
-        "lm-roman".into(),
-        Arc::new(FontData::from_static(RenderFont::Text.bytes())),
-    );
-    defs.font_data.insert(
-        "lm-math".into(),
-        Arc::new(FontData::from_static(RenderFont::Math.bytes())),
-    );
-    for family in [FontFamily::Proportional, FontFamily::Monospace] {
-        let list = defs.families.entry(family).or_default();
-        list.insert(0, "lm-roman".into());
-        list.push("lm-math".into());
+    /// The name shown in menus.
+    pub fn label(self) -> &'static str {
+        match self {
+            ThemeChoice::Light => "Light",
+            ThemeChoice::Dark => "Dark",
+            ThemeChoice::System => "Follow Windows",
+        }
     }
-    ctx.set_fonts(defs);
-    ctx.global_style_mut(|style| {
-        style
-            .text_styles
-            .insert(TextStyle::Body, FontId::proportional(16.0));
-        style
-            .text_styles
-            .insert(TextStyle::Button, FontId::proportional(16.0));
-        style
-            .text_styles
-            .insert(TextStyle::Small, FontId::proportional(13.0));
-        style
-            .text_styles
-            .insert(TextStyle::Heading, FontId::proportional(22.0));
-        style
-            .text_styles
-            .insert(TextStyle::Monospace, FontId::proportional(15.0));
-    });
+
+    /// The next choice in the cycle Light, Dark, Follow Windows.
+    pub fn next(self) -> ThemeChoice {
+        match self {
+            ThemeChoice::Light => ThemeChoice::Dark,
+            ThemeChoice::Dark => ThemeChoice::System,
+            ThemeChoice::System => ThemeChoice::Light,
+        }
+    }
+
+    /// The word saved in settings.
+    pub fn to_stored(self) -> &'static str {
+        match self {
+            ThemeChoice::Light => "light",
+            ThemeChoice::Dark => "dark",
+            ThemeChoice::System => "system",
+        }
+    }
+
+    /// Reads a saved choice.
+    pub fn from_stored(s: &str) -> Option<ThemeChoice> {
+        match s {
+            "light" => Some(ThemeChoice::Light),
+            "dark" => Some(ThemeChoice::Dark),
+            "system" => Some(ThemeChoice::System),
+            _ => None,
+        }
+    }
 }
 
 /// Fonts and colours in one go.
@@ -75,29 +82,41 @@ pub fn setup(ctx: &Context, mode: Mode) {
 
 /// Applies a mode's colours to egui's widgets.
 pub fn apply(ctx: &Context, mode: Mode) {
-    let t = mode.theme();
-    let bg = c32(t.background);
-    let ink = c32(t.text);
+    let p = mode.palette();
+    let t = p.theme;
+    let (bg, ink, muted) = (c32(t.background), c32(t.text), c32(t.muted));
     let mut v = match mode {
         Mode::Light => egui::Visuals::light(),
         Mode::Dark => egui::Visuals::dark(),
     };
-    let panel = mix(bg, c32(t.code_background), 0.6);
-    v.panel_fill = panel;
-    v.window_fill = bg;
+    v.panel_fill = c32(p.panel);
+    v.window_fill = c32(p.tooltip);
+    v.window_stroke = egui::Stroke::new(1.0, c32(p.border));
     v.extreme_bg_color = bg;
     v.faint_bg_color = c32(t.code_background);
+    v.code_bg_color = c32(t.code_background);
     v.override_text_color = Some(ink);
+    v.weak_text_color = Some(muted);
     v.hyperlink_color = c32(t.link);
     v.error_fg_color = c32(t.error);
     v.warn_fg_color = c32(t.warning);
-    v.selection.bg_fill = mix(bg, c32(t.link), 0.28);
+    v.selection.bg_fill = c32(p.selection);
     v.selection.stroke = egui::Stroke::new(1.0, c32(t.link));
-    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, mix(bg, ink, 0.18));
-    v.widgets.inactive.bg_fill = mix(panel, ink, 0.05);
-    v.widgets.inactive.weak_bg_fill = mix(panel, ink, 0.05);
-    v.widgets.hovered.bg_fill = mix(panel, ink, 0.12);
-    v.widgets.hovered.weak_bg_fill = mix(panel, ink, 0.12);
+    v.widgets.noninteractive.bg_fill = c32(p.panel);
+    v.widgets.noninteractive.weak_bg_fill = c32(p.panel);
+    v.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, c32(p.border));
+    v.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, ink);
+    for (w, fill) in [
+        (&mut v.widgets.inactive, p.widget),
+        (&mut v.widgets.hovered, p.widget_hover),
+        (&mut v.widgets.active, p.widget_active),
+        (&mut v.widgets.open, p.widget_hover),
+    ] {
+        w.bg_fill = c32(fill);
+        w.weak_bg_fill = c32(fill);
+        w.bg_stroke = egui::Stroke::new(1.0, c32(p.border));
+        w.fg_stroke = egui::Stroke::new(1.5, ink);
+    }
     ctx.set_visuals_of(
         match mode {
             Mode::Light => egui::Theme::Light,
@@ -114,10 +133,85 @@ pub fn apply(ctx: &Context, mode: Mode) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mpp_render::Theme;
+    use std::path::{Path, PathBuf};
 
     #[test]
     fn modes_use_the_render_themes() {
         assert_eq!(Mode::Light.theme(), Theme::LIGHT);
         assert_eq!(Mode::Dark.theme(), Theme::DARK);
+    }
+
+    #[test]
+    fn follow_windows_reads_the_system_theme() {
+        let c = ThemeChoice::System;
+        assert_eq!(c.resolve(Some(egui::Theme::Dark)), Mode::Dark);
+        assert_eq!(c.resolve(Some(egui::Theme::Light)), Mode::Light);
+        assert_eq!(c.resolve(None), Mode::Light);
+        assert_eq!(
+            ThemeChoice::Dark.resolve(Some(egui::Theme::Light)),
+            Mode::Dark
+        );
+        assert_eq!(ThemeChoice::default(), ThemeChoice::System);
+    }
+
+    #[test]
+    fn choices_cycle_and_round_trip() {
+        let mut c = ThemeChoice::Light;
+        for _ in 0..3 {
+            assert_eq!(ThemeChoice::from_stored(c.to_stored()), Some(c));
+            c = c.next();
+        }
+        assert_eq!(c, ThemeChoice::Light);
+    }
+
+    fn rust_files(dir: &Path, out: &mut Vec<PathBuf>) {
+        for e in std::fs::read_dir(dir).expect("read dir").flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                rust_files(&p, out);
+            } else if p.extension().is_some_and(|x| x == "rs") {
+                out.push(p);
+            }
+        }
+    }
+
+    /// No colour is written in the IDE outside `theme/`: the palette is the
+    /// only place that names one.
+    #[test]
+    fn no_colour_literal_outside_the_theme_module() {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = vec![];
+        rust_files(&src, &mut files);
+        assert!(files.len() > 10);
+        let banned = [
+            "Color32::",
+            "Color::rgb",
+            "from_rgb",
+            "from_gray",
+            "Rgba::",
+            "Hsva",
+        ];
+        let mut hits = vec![];
+        for f in files {
+            if f.components().any(|c| c.as_os_str() == "theme") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&f).expect("read source");
+            for (n, line) in text.lines().enumerate() {
+                let code = line.split("//").next().unwrap_or("");
+                if code.trim_start().starts_with("use ") {
+                    continue;
+                }
+                if banned.iter().any(|b| code.contains(b)) {
+                    hits.push(format!("{}:{}: {}", f.display(), n + 1, line.trim()));
+                }
+            }
+        }
+        assert!(
+            hits.is_empty(),
+            "colour literals outside theme/:\n{}",
+            hits.join("\n")
+        );
     }
 }

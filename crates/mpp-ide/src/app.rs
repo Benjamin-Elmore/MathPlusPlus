@@ -13,7 +13,7 @@ use crate::files::Recent;
 use crate::layout::{BODY_SIZE, MAX_SIZE, MIN_SIZE, SIDE_PANEL_WIDTH};
 use crate::sample::WELCOME;
 use crate::tabs::{self, Tab, TabAction};
-use crate::theme::{self, Mode};
+use crate::theme::{self, Mode, ThemeChoice};
 use crate::typeset;
 use crate::view::{self, CompletionState, ViewCtx, ViewEvent};
 
@@ -22,11 +22,21 @@ const OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::O)
 const NEW: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
 const ZOOM_IN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Equals);
 const ZOOM_OUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Minus);
+/// Ctrl+K then Ctrl+T switches the theme.
+const CHORD_K: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
+const CHORD_T: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::T);
+/// How long the second key of a chord may take.
+const CHORD_SECONDS: f64 = 2.0;
+/// Size of the status bar text (Latin Modern Sans).
+const STATUS_SIZE: f32 = 14.0;
 
 /// The Math++ IDE.
 pub struct IdeApp {
     pub docs: Vec<Doc>,
     pub active: usize,
+    /// What the user chose (default: follow Windows).
+    pub theme_choice: ThemeChoice,
+    /// The mode drawn this frame: the choice resolved against the system theme.
     pub mode: Mode,
     pub size: f32,
     pub copy_format: CopyFormat,
@@ -40,6 +50,9 @@ pub struct IdeApp {
     clip: Option<(String, String)>,
     message: Option<String>,
     applied_mode: Option<Mode>,
+    /// Set by Ctrl+K while waiting for the second key of a chord (time of press).
+    chord_k: Option<f64>,
+    system_theme: Option<egui::Theme>,
 }
 
 impl Default for IdeApp {
@@ -54,6 +67,7 @@ impl IdeApp {
         IdeApp {
             docs: vec![Doc::with_text(WELCOME, None)],
             active: 0,
+            theme_choice: ThemeChoice::default(),
             mode: Mode::Light,
             size: BODY_SIZE,
             copy_format: CopyFormat::Unicode,
@@ -66,6 +80,8 @@ impl IdeApp {
             clip: None,
             message: None,
             applied_mode: None,
+            chord_k: None,
+            system_theme: None,
         }
     }
 
@@ -81,13 +97,30 @@ impl IdeApp {
         self.figures = drawer;
     }
 
+    /// Sets the theme choice (Light, Dark or Follow Windows) and updates the mode.
+    pub fn set_theme_choice(&mut self, choice: ThemeChoice) {
+        self.theme_choice = choice;
+        self.mode = choice.resolve(self.system_theme);
+    }
+
     /// Reads settings and the recent files from storage.
     pub fn restore(&mut self, storage: &dyn eframe::Storage) {
         if let Some(s) = storage.get_string("recent") {
             self.recent = Recent::from_stored(&s);
         }
-        if let Some(s) = storage.get_string("dark") {
-            self.mode = if s == "1" { Mode::Dark } else { Mode::Light };
+        // The old "dark" key (0 or 1) is read when no "theme" was saved yet.
+        let legacy = storage.get_string("dark").map(|s| {
+            if s == "1" {
+                ThemeChoice::Dark
+            } else {
+                ThemeChoice::Light
+            }
+        });
+        let saved = storage
+            .get_string("theme")
+            .and_then(|s| ThemeChoice::from_stored(&s));
+        if let Some(c) = saved.or(legacy) {
+            self.set_theme_choice(c);
         }
         if let Some(s) = storage
             .get_string("size")
@@ -107,10 +140,7 @@ impl IdeApp {
     /// Writes settings and the recent files. The raw-text pop-out is not saved.
     pub fn save_state(&self, storage: &mut dyn eframe::Storage) {
         storage.set_string("recent", self.recent.to_stored());
-        storage.set_string(
-            "dark",
-            if self.mode == Mode::Dark { "1" } else { "0" }.into(),
-        );
+        storage.set_string("theme", self.theme_choice.to_stored().into());
         storage.set_string("size", self.size.to_string());
         storage.set_string(
             "copy_latex",
@@ -309,6 +339,25 @@ impl IdeApp {
                 i.consume_shortcut(&ZOOM_OUT),
             )
         });
+        let (chord_k, chord_t, now) = ctx.input_mut(|i| {
+            (
+                i.consume_shortcut(&CHORD_K),
+                i.consume_shortcut(&CHORD_T),
+                i.time,
+            )
+        });
+        if chord_k {
+            self.chord_k = Some(now);
+        }
+        if chord_t {
+            if self.chord_k.is_some_and(|t| now - t <= CHORD_SECONDS) {
+                self.set_theme_choice(self.theme_choice.next());
+            }
+            self.chord_k = None;
+        }
+        if self.chord_k.is_some_and(|t| now - t > CHORD_SECONDS) {
+            self.chord_k = None;
+        }
         if save {
             self.save();
         }
@@ -381,10 +430,14 @@ impl IdeApp {
                 ui.weak("Copying gives Unicode maths by default");
             });
             ui.menu_button("View", |ui| {
-                let mut dark = self.mode == Mode::Dark;
-                if ui.checkbox(&mut dark, "Dark theme").changed() {
-                    self.mode = if dark { Mode::Dark } else { Mode::Light };
-                }
+                ui.menu_button("Theme", |ui| {
+                    for c in ThemeChoice::ALL {
+                        if ui.radio(self.theme_choice == c, c.label()).clicked() {
+                            self.set_theme_choice(c);
+                        }
+                    }
+                    ui.weak("Ctrl+K, then Ctrl+T, switches theme");
+                });
                 if ui.button("Larger text").clicked() {
                     self.size = (self.size + 1.0).min(MAX_SIZE);
                 }
@@ -434,11 +487,13 @@ impl IdeApp {
     /// Draws the whole window into `ui`.
     pub fn ui(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        self.shortcuts(&ctx);
+        self.system_theme = ctx.system_theme();
+        self.mode = self.theme_choice.resolve(self.system_theme);
         if self.applied_mode != Some(self.mode) {
             theme::apply(&ctx, self.mode);
             self.applied_mode = Some(self.mode);
         }
-        self.shortcuts(&ctx);
         let theme = self.mode.theme();
 
         egui::Panel::top("menu").show(ui, |ui| {
@@ -453,7 +508,7 @@ impl IdeApp {
                         errors: d.error_count(),
                     })
                     .collect();
-                match tabs::show(ui, &tab_list, self.active, crate::paint::c32(theme.error)) {
+                match tabs::show(ui, &tab_list, self.active, theme::c32(theme.error)) {
                     Some(TabAction::Select(i)) => self.active = i,
                     Some(TabAction::Close(i)) => self.close_tab(i),
                     None => {}
@@ -462,30 +517,42 @@ impl IdeApp {
         });
 
         egui::Panel::bottom("status").show(ui, |ui| {
+            let small = |s: &str| egui::RichText::new(s).font(theme::sans(STATUS_SIZE));
             ui.horizontal(|ui| {
                 let evaluating = self.doc().is_some_and(Doc::evaluating);
                 if evaluating {
                     ui.spinner();
-                    ui.label("Working\u{2026}");
+                    ui.label(small("Working\u{2026}"));
                 } else if let Some(d) = self.doc() {
                     let n = d.error_count();
                     if n == 0 {
-                        ui.label("Ready");
+                        ui.label(small("Ready"));
                     } else {
-                        ui.colored_label(
-                            crate::paint::c32(theme.error),
-                            if n == 1 {
-                                "1 problem".to_string()
-                            } else {
-                                format!("{n} problems")
-                            },
-                        );
+                        let text = if n == 1 {
+                            "1 problem".to_string()
+                        } else {
+                            format!("{n} problems")
+                        };
+                        ui.label(small(&text).color(theme::c32(theme.error)));
                     }
                 }
                 if let Some(m) = &self.message {
                     ui.separator();
-                    ui.colored_label(crate::paint::c32(theme.error), m);
+                    ui.label(small(m).color(theme::c32(theme.error)));
                 }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    let tip = format!(
+                        "Theme: {} (Ctrl+K, then Ctrl+T, switches)",
+                        self.theme_choice.label()
+                    );
+                    if theme::moon_button(ui, STATUS_SIZE)
+                        .on_hover_text(small(&tip))
+                        .clicked()
+                    {
+                        self.set_theme_choice(self.theme_choice.next());
+                    }
+                    ui.label(small(self.theme_choice.label()));
+                });
             });
         });
 
@@ -495,7 +562,7 @@ impl IdeApp {
             .show(ui, |ui| self.side_panel(ui));
 
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE.fill(crate::paint::c32(theme.background)))
+            .frame(egui::Frame::NONE.fill(theme::c32(theme.background)))
             .show(ui, |ui| {
                 let (mode, size, copy_format) = (self.mode, self.size, self.copy_format);
                 let Some(doc) = self.docs.get_mut(self.active) else {
@@ -550,6 +617,7 @@ impl IdeApp {
                     let mut shown: &str = &text;
                     ui.add(
                         egui::TextEdit::multiline(&mut shown)
+                            .font(egui::TextStyle::Monospace)
                             .desired_width(f32::INFINITY)
                             .desired_rows(14),
                     );

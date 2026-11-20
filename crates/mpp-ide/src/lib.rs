@@ -40,6 +40,7 @@ impl EframeApp {
             app.restore(s);
         }
         theme::install_fonts(&cc.egui_ctx);
+        app.mode = app.theme_choice.resolve(cc.egui_ctx.system_theme());
         theme::apply(&cc.egui_ctx, app.mode);
         if !paths.is_empty() {
             app.docs.clear();

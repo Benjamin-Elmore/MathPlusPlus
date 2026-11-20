@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
+pub use crate::theme::c32;
 use egui::epaint::{Mesh, PathShape, PathStroke};
 use egui::{Color32, Painter, Pos2, Rect, Shape, Stroke, Vec2};
 use lyon_tessellation::geom::point;
@@ -17,7 +18,7 @@ use lyon_tessellation::path::Path;
 use lyon_tessellation::{
     BuffersBuilder, FillOptions, FillRule, FillTessellator, FillVertex, VertexBuffers,
 };
-use mpp_render::{Color, DisplayList, FontId, Fonts, PathCmd, Primitive};
+use mpp_render::{DisplayList, FontId, Fonts, PathCmd, Primitive};
 
 /// Tessellated glyph outline in em units, y growing downwards from the baseline.
 #[derive(Debug, Default)]
@@ -27,6 +28,9 @@ pub struct GlyphMesh {
     /// Closed contours (flattened), for the anti-aliasing fringe.
     pub contours: Vec<Vec<[f32; 2]>>,
 }
+
+/// How much thicker glyph edges are painted in dark mode.
+const DARK_INK_BOOST: f32 = 2.6;
 
 type MeshCache = Mutex<HashMap<(FontId, u16), Arc<GlyphMesh>>>;
 
@@ -153,11 +157,6 @@ fn build_mesh(font: FontId, glyph: u16) -> GlyphMesh {
     }
 }
 
-/// An mpp-render colour as an egui colour.
-pub fn c32(c: Color) -> Color32 {
-    Color32::from_rgba_unmultiplied(c.r, c.g, c.b, c.a)
-}
-
 /// Paints one glyph with its baseline origin at `origin`.
 pub fn paint_glyph(
     painter: &Painter,
@@ -181,7 +180,14 @@ pub fn paint_glyph(
     }
     mesh.indices.extend_from_slice(&g.indices);
     painter.add(Shape::mesh(mesh));
-    let width = (size * 0.012).clamp(0.25, 0.6);
+    // Light ink on a dark page looks thinner than dark ink on a light one, so
+    // dark mode thickens the edge a little: maths then matches the prose weight.
+    let boost = if painter.ctx().global_style().visuals.dark_mode {
+        DARK_INK_BOOST
+    } else {
+        1.0
+    };
+    let width = (size * 0.012).clamp(0.25, 0.6) * boost;
     for c in &g.contours {
         let pts: Vec<Pos2> = c
             .iter()

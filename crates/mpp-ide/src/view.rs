@@ -8,8 +8,8 @@ use std::ops::Range;
 use std::sync::Arc;
 
 use egui::{
-    Align, Area, Color32, CursorIcon, Event, EventFilter, Frame, Key, Order, Pos2, Rect, Sense,
-    Stroke, Ui, Vec2,
+    Align, Area, CursorIcon, Event, EventFilter, Frame, Key, Order, Pos2, Rect, Sense, Stroke, Ui,
+    Vec2,
 };
 use mpp_render::Theme;
 use mpp_syntax::document::{Block, BlockKind, Document, Figure};
@@ -156,7 +156,7 @@ fn paint_page(
     let off = origin.to_vec2();
     if let Some(span) = doc.highlight {
         if let Some(r) = page.rect_of_span(span) {
-            let c = c32(theme.warning).gamma_multiply(0.28);
+            let c = c32(cx.mode.palette().highlight);
             painter.rect_filled(r.translate(off).expand(3.0), 4.0, c);
         }
     }
@@ -601,6 +601,8 @@ fn completion_popup(
             card_frame(ui).show(ui, |ui| {
                 for (i, item) in state.items.iter().enumerate() {
                     let selected = i == state.selected;
+                    // Reserve a slot so the highlight is painted behind the row.
+                    let backdrop = ui.painter().add(egui::Shape::Noop);
                     let row = ui.horizontal(|ui| {
                         ui.set_min_width(190.0);
                         typeset::show(ui, &item.latex, 18.0, *theme);
@@ -609,10 +611,9 @@ fn completion_popup(
                     });
                     let r = row.response.rect.expand2(Vec2::new(4.0, 1.0));
                     if selected {
-                        ui.painter().rect_filled(
-                            r,
-                            3.0,
-                            ui.visuals().selection.bg_fill.gamma_multiply(0.6),
+                        ui.painter().set(
+                            backdrop,
+                            egui::Shape::rect_filled(r, 3.0, c32(cx.mode.palette().row_selected)),
                         );
                     }
                     if ui
@@ -630,9 +631,4 @@ fn completion_popup(
         }
         accept_completion(doc, cx);
     }
-}
-
-/// A colour used for the page edge shadow in the app (kept here with the view's colours).
-pub fn edge_color(theme: &Theme) -> Color32 {
-    c32(theme.rule).gamma_multiply(0.15)
 }
