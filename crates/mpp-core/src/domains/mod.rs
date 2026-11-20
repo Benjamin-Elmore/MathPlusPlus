@@ -7,7 +7,9 @@
 //! relations already live in the expression tree, so a domain result can flow straight
 //! back into the evaluator, the printer and other domains.
 
+pub mod algebra_ext;
 pub mod analysis_ext;
+pub mod applied;
 pub mod calculus;
 pub mod discrete;
 pub mod fieldkit;
@@ -26,7 +28,9 @@ use crate::error::{MathError, MathResult};
 use crate::expr::Expr;
 use crate::steps::Steps;
 
+pub use algebra_ext::Algebra;
 pub use analysis_ext::Analysis;
+pub use applied::Applied;
 pub use calculus::{BasicCalculus, Calculus};
 pub use discrete::Discrete;
 pub use linalg::{LinearAlgebra, Matrix};
@@ -148,6 +152,8 @@ impl Registry {
         r.register(Box::new(Analysis));
         r.register(Box::new(Discrete));
         r.register(Box::new(Probability));
+        r.register(Box::new(Algebra));
+        r.register(Box::new(Applied));
         r
     }
 
