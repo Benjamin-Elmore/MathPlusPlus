@@ -94,6 +94,15 @@ fn factor_order(a: &Expr, b: &Expr) -> Ordering {
         .then_with(|| a.cmp(b))
 }
 
+/// `union(I₁, I₂, …)` of intervals and finite sets, printed `I₁ ∪ I₂ ∪ …`.
+fn is_set_union(name: &str, args: &[Expr]) -> bool {
+    name == "union"
+        && args.len() >= 2
+        && args
+            .iter()
+            .all(|a| matches!(a.node(), ExprNode::Interval { .. } | ExprNode::Set(_)))
+}
+
 fn is_negative_term(t: &Expr) -> bool {
     split_coeff(t).0.is_negative()
 }
@@ -256,6 +265,13 @@ fn plain(e: &Expr) -> (String, Prec) {
             (format!("{base}^{exp}"), Prec::Pow)
         }
         ExprNode::Func(f, args) => plain_func(*f, args),
+        ExprNode::Apply(name, args) if is_set_union(name, args) => (
+            args.iter()
+                .map(|a| plain(a).0)
+                .collect::<Vec<_>>()
+                .join(" ∪ "),
+            Prec::Add,
+        ),
         ExprNode::Apply(name, args) => (format!("{name}({})", plain_list(args)), Prec::Atom),
         ExprNode::Relation(op, a, b) => {
             let (sa, pa) = plain(a);
@@ -752,6 +768,13 @@ fn latex(e: &Expr) -> (String, Prec) {
             (format!("{base}^{{{}}}", latex(x).0), Prec::Pow)
         }
         ExprNode::Func(f, args) => latex_func(*f, args),
+        ExprNode::Apply(name, args) if is_set_union(name, args) => (
+            args.iter()
+                .map(|a| latex(a).0)
+                .collect::<Vec<_>>()
+                .join(" \\cup "),
+            Prec::Add,
+        ),
         ExprNode::Apply(name, args) => (
             format!("{}\\left({}\\right)", latex_name(name), latex_list(args)),
             Prec::Atom,

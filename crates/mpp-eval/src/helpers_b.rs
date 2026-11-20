@@ -36,6 +36,7 @@ const KEYWORDS: &[&str] = &[
     "series",
     "frobenius",
     "numeric",
+    "auto",
 ];
 
 /// Evaluates the operators of this module; `None` for anything else.
@@ -655,8 +656,32 @@ fn taylor_parts(call: &Call, what: &str) -> MathResult<(Expr, String, Expr, Expr
     Ok((f, var, a.clone(), x.clone(), last.clone()))
 }
 
+/// `taylorbound(f, a, n, x)` (the Insert menu's order: centre, degree, point), or with
+/// the point written as a condition, `taylorbound(f, a, n, x = 1)`.
 fn taylor_bound(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
-    let (f, var, a, x, n) = taylor_parts(call, "Taylor bound")?;
+    let what = "Taylor bound";
+    let p = call.parts();
+    let var = p.variable(what)?;
+    let f = p
+        .functions
+        .first()
+        .ok_or_else(|| missing(what, "a function"))?
+        .clone();
+    let at = p
+        .relations
+        .iter()
+        .find(|(l, _)| l.as_sym() == Some(var.as_str()))
+        .map(|(_, r)| r.clone());
+    let (a, n, x) = match (p.numbers.as_slice(), at) {
+        ([a, n], Some(x)) => (a.clone(), n.clone(), x),
+        ([a, n, x], None) => (a.clone(), n.clone(), x.clone()),
+        _ => {
+            return Err(missing(
+                what,
+                "the centre a, the degree n and the point x, in that order",
+            ))
+        }
+    };
     let n = to_count(&mpp_core::simplify(&(n + Expr::one())), "the degree")? - 1;
     let n = u32::try_from(n).map_err(|_| MathError::TooLarge("the degree".into()))?;
     let tb = logged(ctx, |s| tools_b::taylor_bound(&f, &var, &a, &x, n, s))?;
@@ -882,7 +907,7 @@ mod ode {
             if let Some(w) = keyword(a) {
                 if w == "numeric" {
                     numeric_wanted = true;
-                } else {
+                } else if w != "auto" {
                     options.method = Some(w);
                 }
             }

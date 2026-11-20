@@ -91,11 +91,8 @@ fn domain_range_asymptotes_of_a_rational_function() {
     let ev = run(src);
     no_errors(&ev);
     let a = answered(&ev);
-    assert_eq!(
-        a[0].text.as_deref(),
-        Some("union((-∞, -1), (-1, 1), (1, ∞))")
-    );
-    assert_eq!(a[1].text.as_deref(), Some("union((-∞, -1], (2, ∞))"));
+    assert_eq!(a[0].text.as_deref(), Some("(-∞, -1) ∪ (-1, 1) ∪ (1, ∞)"));
+    assert_eq!(a[1].text.as_deref(), Some("(-∞, -1] ∪ (2, ∞)"));
     assert_eq!(row(&a[2], "vertical"), "{x = -1, x = 1}");
     assert_eq!(row(&a[2], "horizontal"), "{y = 2}");
 }

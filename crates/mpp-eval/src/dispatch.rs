@@ -1,0 +1,427 @@
+//! One front door for operator names that more than one toolkit answers, and for the
+//! names the IDE's Insert menu writes.
+//!
+//! Several evaluators grew operators with the same name: `dsolve` and `rk4` exist in the
+//! domain registry (`dsolve(eq, y, x, (x₀, y₀))`, `rk4(f, x, y, x₀, y₀, x₁, n)`) and in the
+//! ODE toolkit (`dsolve(eq, conditions…)`, `rk4(f, x₀, y₀, h, n)`); `laplace` exists in the
+//! multivariable helpers and in the ODE toolkit. Registration order used to decide which
+//! one answered, so the form the other expected failed with a wrong-arity error. This
+//! holder is asked first: it reads the arguments' shape and sends the call to the
+//! evaluator whose form it is.
+//!
+//! It also maps the helper names of the Insert menu (`linearise`, `converges`,
+//! `directional`, `linearapprox`, `gauss`, `relatedrates`) onto the evaluators' own names,
+//! and turns the menu's separate "from" and "to" boxes (`\operatorname{area}_{0}^{1}`) into
+//! the interval the toolkits read.
+
+use mpp_core::{Expr, ExprNode, MathError, MathResult, Name, RelOp};
+
+use crate::holders::Ctx;
+
+/// An operator call, in either lowered form (`name(args…)` or
+/// `operatorname(name, sub, sup, (args…))`).
+#[derive(Clone, Debug)]
+struct Call {
+    name: String,
+    sub: Expr,
+    sup: Expr,
+    args: Vec<Expr>,
+    scripted: bool,
+}
+
+fn empty() -> Expr {
+    Expr::new(ExprNode::Tuple(Vec::new()))
+}
+
+fn is_empty(e: &Expr) -> bool {
+    matches!(e.node(), ExprNode::Tuple(items) if items.is_empty())
+}
+
+impl Call {
+    fn read(e: &Expr) -> Option<Call> {
+        let ExprNode::Apply(name, args) = e.node() else {
+            return None;
+        };
+        if &**name == "operatorname" {
+            let [which, sub, sup, body] = args.as_slice() else {
+                return None;
+            };
+            let ExprNode::Tuple(items) = body.node() else {
+                return None;
+            };
+            return Some(Call {
+                name: which.as_sym()?.to_string(),
+                sub: sub.clone(),
+                sup: sup.clone(),
+                args: items.clone(),
+                scripted: true,
+            });
+        }
+        Some(Call {
+            name: name.to_string(),
+            sub: empty(),
+            sup: empty(),
+            args: args.clone(),
+            scripted: false,
+        })
+    }
+
+    fn has_scripts(&self) -> bool {
+        !is_empty(&self.sub) || !is_empty(&self.sup)
+    }
+
+    /// The call written back as a holder (scripted form when it has scripts).
+    fn to_expr(&self) -> Expr {
+        if !self.scripted && !self.has_scripts() {
+            return Expr::apply(&self.name, self.args.clone());
+        }
+        Expr::apply(
+            "operatorname",
+            vec![
+                Expr::sym(&self.name),
+                self.sub.clone(),
+                self.sup.clone(),
+                Expr::new(ExprNode::Tuple(self.args.clone())),
+            ],
+        )
+    }
+
+    fn renamed(&self, name: &str) -> Call {
+        Call {
+            name: name.to_string(),
+            ..self.clone()
+        }
+    }
+}
+
+/// Which evaluator a shared name goes to.
+enum Route {
+    Registry,
+    OdeToolkit,
+}
+
+/// Insert-menu helper names and the evaluator names they stand for.
+const ALIASES: &[(&str, &str)] = &[
+    ("linearise", "linearisation"),
+    ("converges", "tests"),
+    ("convergence", "tests"),
+    ("directional", "dirderiv"),
+    ("linearapprox", "linapprox"),
+    ("gauss", "divthm"),
+    ("divergencetheorem", "divthm"),
+    ("relatedrates", "rates"),
+    ("inflections", "inflection"),
+];
+
+/// Helpers whose Insert-menu template has a "from" box below the name and a "to" box
+/// above it; the toolkit reads them as one interval argument.
+const FROM_TO: &[&str] = &[
+    "area",
+    "volume",
+    "arclength",
+    "surfacearea",
+    "average",
+    "work",
+    "centroid",
+    "riemann",
+    "midpoint",
+    "trapezoid",
+    "simpson",
+];
+
+/// The evaluator names this module routes, after aliases.
+fn routed(name: &str) -> bool {
+    matches!(
+        name,
+        "dsolve" | "rk4" | "rk4table" | "laplace" | "invlaplace" | "euler" | "tangentplane"
+    ) || ALIASES.iter().any(|(a, _)| *a == name)
+        || FROM_TO.contains(&name)
+}
+
+/// Asked before every other holder: routes shared operator names by argument shape.
+pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    let call = Call::read(e)?;
+    if !routed(&call.name) {
+        return None;
+    }
+    if let Some((_, to)) = ALIASES.iter().find(|(a, _)| *a == call.name) {
+        let renamed = adapt_alias(&call.renamed(to));
+        return Some(crate::holders::evaluate_holder(&renamed.to_expr(), ctx));
+    }
+    if call.name == "tangentplane" {
+        // `tangentplane_{(1, 2)} f`: the menu writes the point without its variables.
+        if is_empty(&call.sub) || is_relation(&call.sub) {
+            return None;
+        }
+        return crate::helpers::evaluate(&adapt_alias(&call).to_expr(), ctx);
+    }
+    if FROM_TO.contains(&call.name.as_str()) {
+        let adapted = from_to(&call)?;
+        return crate::helpers_b::evaluate(&adapted.to_expr(), ctx);
+    }
+    let route = match call.name.as_str() {
+        "dsolve" => {
+            if registry_dsolve(&call) {
+                Route::Registry
+            } else {
+                Route::OdeToolkit
+            }
+        }
+        "rk4" | "rk4table" => {
+            if registry_rk4(&call) || call.name == "rk4table" {
+                Route::Registry
+            } else {
+                Route::OdeToolkit
+            }
+        }
+        "euler" | "laplace" | "invlaplace" => Route::OdeToolkit,
+        _ => return None,
+    };
+    let expr = adapt_initial_condition(&call).to_expr();
+    match route {
+        Route::Registry => crate::domains_wire::evaluate(&expr, ctx),
+        Route::OdeToolkit => {
+            let first = crate::helpers_b::evaluate(&expr, ctx);
+            match (&first, call.name.as_str()) {
+                // The multivariable helpers have their own transform table; it answers
+                // when the toolkit's has no entry.
+                (
+                    Some(Err(MathError::Unsupported(_) | MathError::NoClosedForm(_))),
+                    "laplace" | "invlaplace",
+                ) => match crate::helpers::evaluate(&expr, ctx) {
+                    Some(Ok(v)) => Some(Ok(v)),
+                    _ => first,
+                },
+                _ => first,
+            }
+        }
+    }
+}
+
+/// True when `op(args…)` (without scripts) is the domain registry's form of an ODE
+/// operator: `dsolve(eq, y, x[, (x₀, y₀)])`, `rk4(f, x, y, x₀, y₀, x₁[, n])` or `rk4table`.
+pub fn is_registry_ode_form(op: &str, args: &[Expr]) -> bool {
+    let call = Call {
+        name: op.to_string(),
+        sub: empty(),
+        sup: empty(),
+        args: args.to_vec(),
+        scripted: false,
+    };
+    match op {
+        "dsolve" => registry_dsolve(&call),
+        "rk4" => registry_rk4(&call),
+        "rk4table" => true,
+        _ => false,
+    }
+}
+
+/// `dsolve(eq, y, x)` / `dsolve(eq, y, x, (x₀, y₀))`: the unknown and the variable are
+/// bare names in the second and third places.
+fn registry_dsolve(call: &Call) -> bool {
+    !call.has_scripts()
+        && (3..=4).contains(&call.args.len())
+        && call.args[1].as_sym().is_some()
+        && call.args[2].as_sym().is_some()
+}
+
+/// `rk4(f, x, y, x₀, y₀, x₁[, n])`: names in the second and third places.
+fn registry_rk4(call: &Call) -> bool {
+    !call.has_scripts()
+        && (6..=7).contains(&call.args.len())
+        && call.args[1].as_sym().is_some()
+        && call.args[2].as_sym().is_some()
+}
+
+/// The Insert-menu argument order for the aliased helpers, in the form their evaluator
+/// reads.
+fn adapt_alias(call: &Call) -> Call {
+    match call.name.as_str() {
+        // `directional(f, (1, 2), (3, 4))` → `dirderiv_{(x,y)=(1,2)}(f, (3, 4))`.
+        "dirderiv" if is_empty(&call.sub) && call.args.len() == 3 => {
+            let f = &call.args[0];
+            let point = &call.args[1];
+            let n = match point.node() {
+                ExprNode::Tuple(p) => p.len(),
+                _ => 1,
+            };
+            let vars = variables_of(f, n);
+            let sub = Expr::equation(
+                Expr::new(ExprNode::Tuple(vars.iter().map(|v| Expr::sym(v)).collect())),
+                point.clone(),
+            );
+            Call {
+                name: call.name.clone(),
+                sub,
+                sup: empty(),
+                args: vec![f.clone(), call.args[2].clone()],
+                scripted: true,
+            }
+        }
+        // `linapprox_{(1, 2)} f`: a bare point below the name gets the variables.
+        "linapprox" | "tangentplane" if !is_empty(&call.sub) && !is_relation(&call.sub) => {
+            let n = match call.sub.node() {
+                ExprNode::Tuple(p) => p.len(),
+                _ => 1,
+            };
+            let f = call.args.first().cloned().unwrap_or_else(empty);
+            let vars = variables_of(&f, n);
+            Call {
+                sub: Expr::equation(
+                    Expr::new(ExprNode::Tuple(vars.iter().map(|v| Expr::sym(v)).collect())),
+                    call.sub.clone(),
+                ),
+                ..call.clone()
+            }
+        }
+        _ => call.clone(),
+    }
+}
+
+fn is_relation(e: &Expr) -> bool {
+    matches!(e.node(), ExprNode::Relation(..))
+}
+
+/// The variables of `f` (x, y, z first), `n` of them.
+fn variables_of(f: &Expr, n: usize) -> Vec<String> {
+    let free: Vec<String> = f.free_symbols().iter().map(|s| s.to_string()).collect();
+    let standard = ["x", "y", "z"];
+    if free.iter().all(|s| standard.contains(&s.as_str())) || free.is_empty() {
+        return standard.iter().take(n).map(|s| s.to_string()).collect();
+    }
+    let mut out = free;
+    out.sort();
+    out.truncate(n);
+    out
+}
+
+/// `area_{a}^{b}(f, g)` → `area(f, g, [a, b])`: separate "from" and "to" boxes become one
+/// interval (a subscript that is a method word or a name stays a script).
+fn from_to(call: &Call) -> Option<Call> {
+    if is_empty(&call.sub) || is_empty(&call.sup) {
+        return Some(call.clone());
+    }
+    let script_like = |e: &Expr| {
+        e.as_sym().is_some_and(|s| s.chars().count() > 1)
+            || matches!(e.node(), ExprNode::Interval { .. } | ExprNode::Relation(..))
+    };
+    if script_like(&call.sub) || script_like(&call.sup) {
+        return Some(call.clone());
+    }
+    let mut args = call.args.clone();
+    args.push(Expr::new(ExprNode::Interval {
+        lo: call.sub.clone(),
+        hi: call.sup.clone(),
+        lo_closed: true,
+        hi_closed: true,
+    }));
+    Some(Call {
+        name: call.name.clone(),
+        sub: empty(),
+        sup: empty(),
+        args,
+        scripted: call.scripted,
+    })
+}
+
+/// `euler(y' = f, y(0) = 1, h, n)`: a starting value written as a condition becomes the
+/// tuple `(x₀, y₀)` the steppers read.
+fn adapt_initial_condition(call: &Call) -> Call {
+    if !matches!(call.name.as_str(), "euler" | "rk4") {
+        return call.clone();
+    }
+    let args = call
+        .args
+        .iter()
+        .map(|a| match a.node() {
+            ExprNode::Relation(RelOp::Eq, l, r) => match l.node() {
+                ExprNode::Apply(_, at) if at.len() == 1 && at[0].is_constant() => {
+                    Expr::new(ExprNode::Tuple(vec![at[0].clone(), r.clone()]))
+                }
+                _ => a.clone(),
+            },
+            _ => a.clone(),
+        })
+        .collect();
+    Call {
+        args,
+        ..call.clone()
+    }
+}
+
+/// Names bound by the aliased and routed forms (the point's variables of `directional`).
+pub fn bound_names(name: &str, args: &[Expr]) -> Vec<Name> {
+    let Some(call) = Call::read(&Expr::new(ExprNode::Apply(Name::from(name), args.to_vec())))
+    else {
+        return Vec::new();
+    };
+    match ALIASES.iter().find(|(a, _)| *a == call.name) {
+        Some((_, to)) => {
+            let adapted = adapt_alias(&call.renamed(to)).to_expr();
+            match adapted.node() {
+                ExprNode::Apply(n, a) => crate::calculus::bound_names(n, a),
+                _ => Vec::new(),
+            }
+        }
+        None => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn op(name: &str, args: Vec<Expr>) -> Expr {
+        Expr::apply(
+            "operatorname",
+            vec![
+                Expr::sym(name),
+                empty(),
+                empty(),
+                Expr::new(ExprNode::Tuple(args)),
+            ],
+        )
+    }
+
+    #[test]
+    fn registry_shapes() {
+        let y = Expr::sym("y");
+        let x = Expr::sym("x");
+        let eq = Expr::equation(Expr::sym("y′"), y.clone());
+        let c = Call::read(&op("dsolve", vec![eq.clone(), y.clone(), x.clone()])).unwrap();
+        assert!(registry_dsolve(&c));
+        let c = Call::read(&op("dsolve", vec![eq.clone()])).unwrap();
+        assert!(!registry_dsolve(&c));
+        let pair = Expr::new(ExprNode::Tuple(vec![Expr::zero(), Expr::one()]));
+        let c = Call::read(&op("dsolve", vec![eq, pair])).unwrap();
+        assert!(!registry_dsolve(&c));
+    }
+
+    #[test]
+    fn from_and_to_become_an_interval() {
+        let e = Expr::apply(
+            "operatorname",
+            vec![
+                Expr::sym("area"),
+                Expr::zero(),
+                Expr::one(),
+                Expr::new(ExprNode::Tuple(vec![Expr::sym("x")])),
+            ],
+        );
+        let c = from_to(&Call::read(&e).unwrap()).unwrap();
+        assert_eq!(c.args.len(), 2);
+        assert!(matches!(c.args[1].node(), ExprNode::Interval { .. }));
+        // A method word below the name stays a script.
+        let e = Expr::apply(
+            "operatorname",
+            vec![
+                Expr::sym("riemann"),
+                Expr::sym("left"),
+                Expr::one(),
+                Expr::new(ExprNode::Tuple(vec![Expr::sym("x")])),
+            ],
+        );
+        let c = from_to(&Call::read(&e).unwrap()).unwrap();
+        assert_eq!(c.args.len(), 1);
+    }
+}

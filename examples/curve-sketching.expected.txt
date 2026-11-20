@@ -4,7 +4,7 @@
   14: Find the critical points of $f$.  = {0, 2}
   16: Find the local extrema of $f$.  = local maxima: {(0, 1)}
         local minima: {(2, -3)}
-  18: Find the intervals of increase of $f$.  = increasing on: union((-∞, 0), (2, ∞))
+  18: Find the intervals of increase of $f$.  = increasing on: (-∞, 0) ∪ (2, ∞)
         decreasing on: (0, 2)
   20: Find the concavity of $f$.  = concave up on: (1, ∞)
         concave down on: (-∞, 1)
@@ -19,8 +19,8 @@
   32: Find the tangent line of $f$ at $x = 1$.  = y = -3*x + 2
   34: Find the normal line of $f$ at $x = 3$.  = y = -x/9 + 4/3
   36: \operatorname{linearisation}_{x=3} f = ?  = L(x) = 9*x - 26
-  42: Find the domain of $g$.  = union((-∞, -1), (-1, 1), (1, ∞))
-  44: Find the range of $g$.  = union((-∞, -1], (2, ∞))
+  42: Find the domain of $g$.  = (-∞, -1) ∪ (-1, 1) ∪ (1, ∞)
+  44: Find the range of $g$.  = (-∞, -1] ∪ (2, ∞)
   46: Find the asymptotes of $g$.  = vertical: {x = -1, x = 1}
         horizontal: {y = 2}
         slant: none

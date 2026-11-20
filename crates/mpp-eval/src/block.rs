@@ -397,16 +397,6 @@ impl Run<'_, '_> {
         }
     }
 
-    fn helper(&mut self, nodes: &[&Node]) {
-        for node in nodes {
-            if let Ok(input) = self.lower(node, &[]) {
-                let mut line = LineResult::new(node.span, LineKind::Helper);
-                line.input = Some(input);
-                self.push(line);
-            }
-        }
-    }
-
     /// "Find the critical points of $f$ on $[0, 4]$." and "Analyse $f$.": the same
     /// holder as the operator form, answered on the sentence's line.
     fn helper_sentence(
@@ -445,7 +435,14 @@ impl Run<'_, '_> {
             self.warn(span, note.clone());
         }
         match resolved.value {
-            Ok(v) => lr.set_value(Value::from_expr(v)),
+            Ok(v) => {
+                let shown = crate::domains_wire::present_set(&v);
+                lr.set_value(Value::from_expr(v));
+                if let Some((text, latex)) = shown {
+                    lr.text = Some(text);
+                    lr.latex = Some(latex);
+                }
+            }
             Err(err) => self.error(target.span, err),
         }
         if let Some(log) = resolved.steps.filter(|l| !l.is_empty()) {

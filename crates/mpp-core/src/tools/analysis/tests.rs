@@ -36,12 +36,12 @@ fn domains_of_textbook_functions() {
     );
     assert_eq!(
         s(&an("1/(x^2 - 1)").domain().unwrap().to_expr()),
-        "union((-∞, -1), (-1, 1), (1, ∞))"
+        "(-∞, -1) ∪ (-1, 1) ∪ (1, ∞)"
     );
     assert_eq!(s(&an("ln(x - 2)").domain().unwrap().to_expr()), "(2, ∞)");
     assert_eq!(
         s(&an("ln(x^2 - 4)").domain().unwrap().to_expr()),
-        "union((-∞, -2), (2, ∞))"
+        "(-∞, -2) ∪ (2, ∞)"
     );
     assert_eq!(s(&an("x^3 - 3*x").domain().unwrap().to_expr()), "(-∞, ∞)");
     assert_eq!(
@@ -50,7 +50,7 @@ fn domains_of_textbook_functions() {
     );
     assert_eq!(
         s(&an("sqrt(x)/(x - 4)").domain().unwrap().to_expr()),
-        "union([0, 4), (4, ∞))"
+        "[0, 4) ∪ (4, ∞)"
     );
 }
 
@@ -58,10 +58,7 @@ fn domains_of_textbook_functions() {
 fn ranges() {
     assert_eq!(s(&an("x^2 - 4*x + 7").range().unwrap().to_expr()), "[3, ∞)");
     assert_eq!(s(&an("sqrt(4 - x^2)").range().unwrap().to_expr()), "[0, 2]");
-    assert_eq!(
-        s(&an("1/x").range().unwrap().to_expr()),
-        "union((-∞, 0), (0, ∞))"
-    );
+    assert_eq!(s(&an("1/x").range().unwrap().to_expr()), "(-∞, 0) ∪ (0, ∞)");
     assert_eq!(s(&an("exp(x)").range().unwrap().to_expr()), "(0, ∞)");
     assert_eq!(
         s(&an("x/(x^2 + 1)").range().unwrap().to_expr()),
@@ -130,7 +127,7 @@ fn closed_interval_method() {
 fn increasing_decreasing_and_concavity() {
     let mut a = an("x^3 - 3*x");
     let (up, down) = a.monotonicity().unwrap();
-    assert_eq!(s(&up.to_expr()), "union((-∞, -1), (1, ∞))");
+    assert_eq!(s(&up.to_expr()), "(-∞, -1) ∪ (1, ∞)");
     assert_eq!(s(&down.to_expr()), "(-1, 1)");
     let (cu, cd) = a.concavity().unwrap();
     assert_eq!(s(&cu.to_expr()), "(0, ∞)");
@@ -144,7 +141,7 @@ fn increasing_decreasing_and_concavity() {
     // 1/x decreases on each side separately.
     assert_eq!(
         s(&an("1/x").monotonicity().unwrap().1.to_expr()),
-        "union((-∞, 0), (0, ∞))"
+        "(-∞, 0) ∪ (0, ∞)"
     );
     // x e^{-x}: inflection at (2, 2/e^2).
     let infl = an("x*exp(-x)").inflection_points().unwrap();

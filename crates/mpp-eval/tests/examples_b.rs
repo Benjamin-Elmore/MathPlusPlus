@@ -79,3 +79,8 @@ fn numerical_methods() {
 fn differential_equations() {
     check("differential-equations");
 }
+
+#[test]
+fn insert_menu_helpers() {
+    check("insert-helpers");
+}

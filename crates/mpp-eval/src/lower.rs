@@ -825,19 +825,35 @@ impl<'a> Lowerer<'a> {
         }))
     }
 
+    /// An operator's argument or script: a one-word `\text{…}` (`\text{shell}`,
+    /// `\text{mid}`) is a method word, read as a name; anything else lowers as usual.
+    fn op_argument(&mut self, node: &Node) -> LowerResult {
+        if let NodeKind::Text(t) = &node.ungrouped().kind {
+            let word = t.trim();
+            if !word.is_empty() && word.chars().all(char::is_alphabetic) {
+                return Ok(Expr::sym(word));
+            }
+        }
+        self.lower(node)
+    }
+
     fn named_op(&mut self, op: &NamedOp) -> LowerResult {
-        let mut args = self.lower_all(&op.args)?;
+        let mut args = op
+            .args
+            .iter()
+            .map(|a| self.op_argument(a))
+            .collect::<Result<Vec<_>, _>>()?;
         crate::domains_wire::protect_ode_args(&op.name, &mut args);
         if op.sub.is_none() && op.sup.is_none() {
             return Ok(Expr::apply(&op.name, args));
         }
         let empty = || Expr::new(ExprNode::Tuple(Vec::new()));
         let sub = match &op.sub {
-            Some(s) => self.lower(s)?,
+            Some(s) => self.op_argument(s)?,
             None => empty(),
         };
         let sup = match &op.sup {
-            Some(s) => self.lower(s)?,
+            Some(s) => self.op_argument(s)?,
             None => empty(),
         };
         Ok(Expr::apply(

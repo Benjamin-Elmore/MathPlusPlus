@@ -198,6 +198,7 @@ impl Default for Holders {
         h.register(crate::domains_wire::evaluate);
         h.register(crate::units_wire::evaluate);
         h.register(crate::assume::evaluate);
+        h.register(crate::dispatch::evaluate);
         h
     }
 }

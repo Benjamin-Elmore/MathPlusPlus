@@ -54,7 +54,7 @@ Answers are exact when the integrals are, and otherwise numbers marked ≈. `= ?
 | `\operatorname{trapezoid}(f, [a, b], n)`, `\operatorname{simpson}(f, [a, b], n)` | the trapezoid and Simpson rules |
 | `\operatorname{newton}(f, x_0)` | Newton's method; `= ?!` lists every iteration |
 | `\operatorname{euler}(f, x_0, y_0, h, n)`, `\operatorname{rk4}(…)` | Euler's method and RK4 for $y' = f(x, y)$ |
-| `\operatorname{taylorbound}(f, a, x, n)` | the Lagrange bound on the error of $T_n$ at $x$ |
+| `\operatorname{taylorbound}(f, a, n, x)` | the Lagrange bound on the error of $T_n$ at $x$ (centre, degree, point: the Insert menu order; the point may be written `x = 1`) |
 | `\operatorname{termsneeded}(f, a, x, \varepsilon)` | the smallest degree whose bound is below $\varepsilon$ |
 
 Each rule also reports its error bound ($M_1(b-a)^2/2n$, $M_2(b-a)^3/24n^2$, $M_2(b-a)^3/12n^2$, $M_4(b-a)^5/180n^4$) and, when the exact integral is known, the actual error.
