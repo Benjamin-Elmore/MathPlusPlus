@@ -1,0 +1,10 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\sqrt[3]{x}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="29.35" height="20.8" viewBox="0 0 29.35 20.8" overflow="visible">
+<text x="5.56" y="8.58" font-family="Latin Modern Math" font-size="10" fill="#111111">3</text>
+<text x="1.25" y="1.6" font-family="Latin Modern Math" font-size="20" fill="#111111">√</text>
+<rect x="17.91" y="0.8" width="11.44" height="0.8" fill="#111111"/>
+<text x="17.91" y="16.99" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+</svg>

@@ -1,0 +1,11 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\alpha \\beta \\Gamma \\theta \\omega"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="58.44" height="18" viewBox="0 0 58.44 18" overflow="visible">
+<text x="0" y="14.12" font-family="Latin Modern Math" font-size="20" fill="#111111">𝛼</text>
+<text x="12.8" y="14.12" font-family="Latin Modern Math" font-size="20" fill="#111111">𝛽</text>
+<text x="24.12" y="14.12" font-family="Latin Modern Math" font-size="20" fill="#111111">Γ</text>
+<text x="36.62" y="14.12" font-family="Latin Modern Math" font-size="20" fill="#111111">𝜃</text>
+<text x="46" y="14.12" font-family="Latin Modern Math" font-size="20" fill="#111111">𝜔</text>
+</svg>

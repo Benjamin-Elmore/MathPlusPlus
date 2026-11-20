@@ -1,0 +1,13 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\frac{1}{1 + \\frac{1}{x}}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="53.12" height="48.88" viewBox="0 0 53.12 48.88" overflow="visible">
+<text x="21.56" y="13.32" font-family="Latin Modern Math" font-size="20" fill="#111111">1</text>
+<text x="2.4" y="41.84" font-family="Latin Modern Math" font-size="20" fill="#111111">1</text>
+<text x="16.84" y="41.84" font-family="Latin Modern Math" font-size="20" fill="#111111">+</text>
+<text x="39.8" y="33.96" font-family="Latin Modern Math" font-size="14" fill="#111111">1</text>
+<text x="39.25" y="48.74" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑥</text>
+<rect x="36.85" y="36.44" width="13.87" height="0.8" fill="#111111"/>
+<rect x="0" y="21.46" width="53.12" height="0.8" fill="#111111"/>
+</svg>

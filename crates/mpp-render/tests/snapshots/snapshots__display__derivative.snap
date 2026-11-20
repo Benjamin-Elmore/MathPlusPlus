@@ -1,0 +1,12 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\frac{d}{dx} x^2"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="50.5" height="41.36" viewBox="0 0 50.5 41.36" overflow="visible">
+<text x="8.12" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="2.4" y="41.14" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="12.8" y="41.14" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<rect x="0" y="22.02" width="26.64" height="0.8" fill="#111111"/>
+<text x="29.97" y="27.42" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="41.41" y="20.16" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+</svg>

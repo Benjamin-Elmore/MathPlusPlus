@@ -1,0 +1,12 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "g \\equiv 9.81"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="71.77" height="17.42" viewBox="0 0 71.77 17.42" overflow="visible">
+<text x="0" y="13.32" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑔</text>
+<text x="15.1" y="13.32" font-family="Latin Modern Math" font-size="20" fill="#111111">≡</text>
+<text x="36.21" y="13.32" font-family="Latin Modern Math" font-size="20" fill="#111111">9</text>
+<text x="46.21" y="13.32" font-family="Latin Modern Math" font-size="20" fill="#111111">.</text>
+<text x="51.77" y="13.32" font-family="Latin Modern Math" font-size="20" fill="#111111">8</text>
+<text x="61.77" y="13.32" font-family="Latin Modern Math" font-size="20" fill="#111111">1</text>
+</svg>

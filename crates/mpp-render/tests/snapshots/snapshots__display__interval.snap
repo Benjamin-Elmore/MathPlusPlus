@@ -1,0 +1,13 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "x \\in [0, 1)"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="78.12" height="20" viewBox="0 0 78.12 20" overflow="visible">
+<text x="0" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="17" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">∈</text>
+<text x="35.89" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">[</text>
+<text x="41.45" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">0</text>
+<text x="51.45" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">,</text>
+<text x="60.34" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">1</text>
+<text x="70.34" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+</svg>

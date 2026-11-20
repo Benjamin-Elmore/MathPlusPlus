@@ -1,0 +1,10 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\binom{n}{k}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="40.68" height="36.86" viewBox="0 0 40.68 36.86" overflow="visible">
+<text x="0" y="22.92" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="14.34" y="9.38" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑛</text>
+<text x="15.13" y="36.64" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑘</text>
+<text x="28.74" y="22.92" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+</svg>
