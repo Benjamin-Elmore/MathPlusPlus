@@ -1,0 +1,54 @@
+# Statistics
+
+## A table in the document
+
+A cart rolls down a ramp; its position $x$ is measured every second.
+
+| $t$ (s) | $x$ (m) |
+|---|---|
+| 0 | 1 |
+| 1 | 3 |
+| 2 | 5 |
+| 3 | 7 |
+
+$$ \bar{x} = ? $$
+
+$$ \sum_i x_i = ? $$
+
+$$ \operatorname{median}(x) = ? $$
+
+$$ \operatorname{std}(x) = ? $$
+
+$$ \operatorname{quartiles}(x) = ? $$
+
+$$ \max(x) = ? $$
+
+A straight line fits exactly, so $R^2 = 1$:
+
+$$ p(u) := \operatorname{linreg}(t, x) $$
+
+$$ p(10) = ? $$
+
+## Data from a file
+
+Data: $D$ from [[measurements.csv]].
+
+$$ \bar{h} = ? $$
+
+$$ \operatorname{var}(m) = ? $$
+
+$$ \operatorname{pvar}(m) = ? $$
+
+$$ \operatorname{corr}(h, m) \approx ? $$
+
+$$ \operatorname{ci}(m, 0.95) \approx ? $$
+
+## Distributions
+
+$$ \operatorname{normalcdf}(1.96) \approx ? $$
+
+$$ \operatorname{invnorm}(0.975) \approx ? $$
+
+$$ \operatorname{binompdf}(10, 0.5, 5) = ? $$
+
+$$ \operatorname{tcdf}(2.228, 10) \approx ? $$

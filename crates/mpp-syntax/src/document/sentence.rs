@@ -1,5 +1,5 @@
 //! The sentence forms of grammar §3: `Using … from`, the helpers, `Analyse`,
-//! `Solve`, `Assume` and the `Let` convenience definition.
+//! `Solve`, `Assume`, `Data` and the `Let` convenience definition.
 //!
 //! A sentence is recognised by its shape alone (words and `$…$` spans). Only
 //! once the shape fits is the maths parsed, so prose that merely starts with
@@ -51,6 +51,9 @@ pub(crate) fn parse_sentence(
         return Some(kind);
     }
     if let Some(kind) = assume(src, range, diags) {
+        return Some(kind);
+    }
+    if let Some(kind) = data(src, range, diags) {
         return Some(kind);
     }
     let_sentence(src, range, diags)
@@ -201,6 +204,31 @@ fn assume(src: &str, range: Span, diags: &mut Vec<Diagnostic>) -> Option<BlockKi
         conditions.push(node);
     }
     Some(BlockKind::Assume(Assume { conditions }))
+}
+
+/// `Data: $T$ from [[measurements.csv]].`
+fn data(src: &str, range: Span, diags: &mut Vec<Diagnostic>) -> Option<BlockKind> {
+    let mut c = Cursor::new(src, range);
+    if !c.word("data") || !c.eat(':') {
+        return None;
+    }
+    let name = c.math()?;
+    if !c.word("from") {
+        return None;
+    }
+    let path = c.wiki_path()?;
+    if !c.finish_sentence() {
+        return None;
+    }
+    let (name, d) = parse_expr(text(src, name), name.start);
+    diags.extend(d);
+    let raw = text(src, path);
+    let shown = raw.split('|').next().unwrap_or(raw).trim().to_string();
+    Some(BlockKind::Data(DataImport {
+        name,
+        path: shown,
+        path_span: path,
+    }))
 }
 
 /// The equations of `Solve $…$`: one equation, or several separated by top-level

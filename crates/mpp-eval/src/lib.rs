@@ -19,6 +19,7 @@ pub mod assume;
 mod block;
 pub mod calculus;
 pub mod check;
+pub mod data;
 pub mod domains_wire;
 pub mod error;
 pub mod files;

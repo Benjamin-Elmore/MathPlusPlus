@@ -1,6 +1,7 @@
 //! Running one block: its statements, in order, against the environment.
 
 mod assume;
+mod data;
 mod sentences;
 mod units;
 
@@ -336,8 +337,10 @@ impl Run<'_, '_> {
             | BlockKind::FootnoteDef { content, .. } => self.prose(content),
             BlockKind::List(list) => self.list(list),
             BlockKind::Table(t) => {
-                for cell in t.header.iter().chain(t.rows.iter().flatten()) {
-                    self.prose(cell);
+                if !self.data_table(t) {
+                    for cell in t.header.iter().chain(t.rows.iter().flatten()) {
+                        self.prose(cell);
+                    }
                 }
             }
             BlockKind::Quote(paragraphs) => {
@@ -364,6 +367,7 @@ impl Run<'_, '_> {
             }
             BlockKind::Solve(s) => self.solve_sentence(s),
             BlockKind::Assume(a) => self.assume_sentence(a),
+            BlockKind::Data(d) => self.data_import(d),
             BlockKind::Theorem(_)
             | BlockKind::Directive(_)
             | BlockKind::Rule
@@ -656,6 +660,9 @@ impl Run<'_, '_> {
             Err(l) => return self.located(l),
         };
         let mut body_expr = with_locals(lowered, s.locals, &names);
+        if let Some(fitted) = self.fitted_body(&body_expr, &names, body.span) {
+            body_expr = fitted;
+        }
         if !s.conditions.is_empty() {
             let mut conds = Vec::new();
             for c in s.conditions {

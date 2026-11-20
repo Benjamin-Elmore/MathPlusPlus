@@ -35,6 +35,14 @@ pub const MAT_POW: &str = "matrix power";
 /// Transpose `(a)`.
 pub const MAT_T: &str = "matrix transpose";
 
+/// `max(x)` / `min(x)` of a data column (the core's `max` of one argument is itself).
+pub const LIST_MAX: &str = "largest entry";
+/// See [`LIST_MAX`].
+pub const LIST_MIN: &str = "smallest entry";
+
+/// `element(column, k)`: the `k`-th entry (from 1) of a data column, `x_k`.
+pub const ELEMENT: &str = "element";
+
 /// `set of(x, domain, condition)`: set-builder notation (`domain` is `()` when absent).
 pub const SET_OF: &str = "set of";
 
@@ -67,6 +75,9 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     if let Some(r) = piecewise_calculus(e, ctx) {
         return Some(r);
     }
+    if let Some(r) = sum_of_entries(e) {
+        return Some(r);
+    }
     let ExprNode::Apply(name, args) = e.node() else {
         return None;
     };
@@ -89,6 +100,10 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
             _ => None,
         },
         SET_OF => Some(set_builder(args)),
+        ELEMENT => match args.as_slice() {
+            [list, k] if k.as_number().is_some() => Some(entry(list, k)),
+            _ => None,
+        },
         op if SET_OPS.contains(&op) => {
             let args: Vec<Expr> = args.iter().map(as_real_set).collect();
             Some(call(op, &args, ctx))
@@ -103,9 +118,16 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
             let swapped: Vec<Expr> = args.iter().rev().cloned().collect();
             Some(call("subset", &swapped, ctx))
         }
+        LIST_MAX | LIST_MIN => match args.as_slice() {
+            [list] => Some(list_extreme(list, &**name == LIST_MAX)),
+            _ => None,
+        },
         op if registry().handles(op) => {
             if args.iter().any(crate::holders::contains_holder) {
                 return None;
+            }
+            if let Some(r) = statistics_with_units(op, args, ctx) {
+                return Some(r);
             }
             Some(call(op, args, ctx))
         }
@@ -257,6 +279,211 @@ fn protect(e: &Expr) -> Expr {
         }
         _ => Expr::new(e.map_children(&mut protect)),
     }
+}
+
+// ---- data entries ------------------------------------------------------------------
+
+/// The `k`-th entry (from 1) of a list.
+fn entry(list: &Expr, k: &Expr) -> MathResult<Expr> {
+    let ExprNode::Tuple(items) = list.node() else {
+        return Err(MathError::NotANumber(format!("{list} as a list of data")));
+    };
+    let i = mpp_core::domains::util::integer(k)
+        .and_then(|i| usize::try_from(i).ok())
+        .filter(|i| (1..=items.len()).contains(i))
+        .ok_or_else(|| MathError::Domain {
+            function: "an entry of the data".into(),
+            detail: format!(
+                "the index {k} must be a whole number from 1 to {}",
+                items.len()
+            ),
+        })?;
+    Ok(items[i - 1].clone())
+}
+
+/// Replaces every `element(list, k)` with a known `k` by the entry.
+fn pick_entries(e: &Expr) -> MathResult<Expr> {
+    if let ExprNode::Apply(name, args) = e.node() {
+        if &**name == ELEMENT {
+            if let [list, k] = args.as_slice() {
+                let k = pick_entries(k)?.simplify();
+                if k.as_number().is_some() {
+                    return entry(list, &k);
+                }
+            }
+        }
+    }
+    let mut failure = None;
+    let node = e.map_children(&mut |c| match pick_entries(c) {
+        Ok(v) => v,
+        Err(err) => {
+            failure.get_or_insert(err);
+            c.clone()
+        }
+    });
+    match failure {
+        Some(err) => Err(err),
+        None => Ok(mpp_core::simplify::canonical(node)),
+    }
+}
+
+/// `∑_{i=1}^{n} x_i` (and `∏`) over data entries, term by term.
+fn sum_of_entries(e: &Expr) -> Option<MathResult<Expr>> {
+    let ExprNode::BigOp {
+        kind,
+        expr,
+        var,
+        lower,
+        upper,
+    } = e.node()
+    else {
+        return None;
+    };
+    if !mentions_entry(expr) {
+        return None;
+    }
+    let lo = lower.as_number()?.as_i64()?;
+    let hi = upper.as_number()?.as_i64()?;
+    if hi.saturating_sub(lo) >= crate::holders::MAX_EXACT_TERMS {
+        return None;
+    }
+    let mut terms = Vec::new();
+    for k in lo..=hi {
+        match pick_entries(&expr.subs(var, &Expr::int(k))) {
+            Ok(t) => terms.push(t),
+            Err(err) => return Some(Err(err)),
+        }
+    }
+    Some(Ok(match kind {
+        mpp_core::BigOpKind::Sum => mpp_core::add(terms),
+        mpp_core::BigOpKind::Product => mpp_core::mul(terms),
+    }))
+}
+
+fn mentions_entry(e: &Expr) -> bool {
+    matches!(e.node(), ExprNode::Apply(n, _) if &**n == ELEMENT)
+        || e.children().into_iter().any(mentions_entry)
+}
+
+/// Statistics whose result has the data's unit to this power (0: no unit).
+const STAT_UNITS: &[(&str, i64)] = &[
+    ("mean", 1),
+    ("median", 1),
+    ("mode", 1),
+    ("std", 1),
+    ("pstd", 1),
+    ("var", 2),
+    ("pvar", 2),
+    ("quartiles", 1),
+    ("iqr", 1),
+    ("ci", 1),
+    ("corr", 0),
+];
+
+/// Regression fits: computed on the plain values when the data have units.
+const FIT_OPS: &[&str] = &["linreg", "polyreg", "expreg", "powreg", "logreg"];
+
+/// A statistic of data with units: computed on the plain values in one unit, with the
+/// unit put back on the answer (`var` in m², `corr` without one).
+fn statistics_with_units(op: &str, args: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    let power = STAT_UNITS.iter().find(|(o, _)| *o == op).map(|(_, p)| *p);
+    let fit = FIT_OPS.contains(&op);
+    if power.is_none() && !fit {
+        return None;
+    }
+    if !args.iter().any(crate::units_wire::contains_units) {
+        return None;
+    }
+    let mut plain = Vec::with_capacity(args.len());
+    let mut first_unit = None;
+    let mut units = Vec::new();
+    for a in args {
+        match crate::units_wire::strip_list(a) {
+            Ok(Some((values, u))) => {
+                units.push(u.text());
+                if first_unit.is_none() {
+                    first_unit = Some(u);
+                }
+                plain.push(Expr::new(ExprNode::Tuple(values)));
+            }
+            Ok(None) => plain.push(a.clone()),
+            Err(err) => return Some(Err(err)),
+        }
+    }
+    let result = match call(op, &plain, ctx) {
+        Ok(r) => r,
+        Err(err) => return Some(Err(err)),
+    };
+    if fit {
+        ctx.note(format!("fitted to the values in {}", units.join(" and ")));
+        return Some(Ok(result));
+    }
+    let unit = match (first_unit, power) {
+        (Some(u), Some(1)) => u,
+        (Some(u), Some(2)) => match u.mul(&u) {
+            Ok(u2) => u2,
+            Err(err) => return Some(Err(err)),
+        },
+        _ => return Some(Ok(result)),
+    };
+    let f = crate::units_wire::factor(&unit);
+    let attach = |v: &Expr| (v * &f).simplify();
+    Some(Ok(match result.node() {
+        ExprNode::Tuple(items) => Expr::new(ExprNode::Tuple(items.iter().map(attach).collect())),
+        ExprNode::Interval {
+            lo,
+            hi,
+            lo_closed,
+            hi_closed,
+        } => Expr::new(ExprNode::Interval {
+            lo: attach(lo),
+            hi: attach(hi),
+            lo_closed: *lo_closed,
+            hi_closed: *hi_closed,
+        }),
+        _ => attach(&result),
+    }))
+}
+
+/// The largest or smallest entry of a list (of numbers, or of quantities of one kind).
+fn list_extreme(list: &Expr, largest: bool) -> MathResult<Expr> {
+    let ExprNode::Tuple(items) = list.node() else {
+        return Ok(Expr::new(ExprNode::Func(
+            if largest {
+                mpp_core::Func::Max
+            } else {
+                mpp_core::Func::Min
+            },
+            vec![list.clone()],
+        )));
+    };
+    let (values, unit) = match crate::units_wire::strip_list(list)? {
+        Some((v, u)) => (v, Some(u)),
+        None => (items.clone(), None),
+    };
+    let mut best: Option<usize> = None;
+    for (i, v) in values.iter().enumerate() {
+        best = Some(match best {
+            None => i,
+            Some(b) => match mpp_core::domains::util::compare(v, &values[b]) {
+                Some(std::cmp::Ordering::Greater) if largest => i,
+                Some(std::cmp::Ordering::Less) if !largest => i,
+                Some(_) => b,
+                None => {
+                    return Err(MathError::Unsupported(format!(
+                        "comparing {v} and {} (the entries must be numbers)",
+                        values[b]
+                    )))
+                }
+            },
+        });
+    }
+    let i =
+        best.ok_or_else(|| MathError::Undefined("the largest entry of an empty list".into()))?;
+    Ok(match unit {
+        Some(u) => (values[i].clone() * crate::units_wire::factor(&u)).simplify(),
+        None => values[i].clone(),
+    })
 }
 
 // ---- sets ------------------------------------------------------------------------
@@ -632,6 +859,7 @@ fn matrix_pow(args: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
 /// here (their order doesn't matter); a product of several matrices is an error, since
 /// its order is no longer known.
 pub fn finish(e: &Expr) -> MathResult<Expr> {
+    let e = &spread_lists(e);
     if !contains_matrix(e) {
         return Ok(e.clone());
     }
@@ -688,6 +916,25 @@ pub fn finish(e: &Expr) -> MathResult<Expr> {
             reg.call("matpow", &[b.clone(), k.clone()], &mut dctx)
         }
         _ => Ok(e),
+    }
+}
+
+/// `max(x)` and `min(x)` of a data column: the largest or smallest entry.
+fn spread_lists(e: &Expr) -> Expr {
+    let e = Expr::new(e.map_children(&mut spread_lists));
+    match e.node() {
+        ExprNode::Func(f @ (mpp_core::Func::Min | mpp_core::Func::Max), args) => {
+            match args.as_slice() {
+                [list] => match list.node() {
+                    ExprNode::Tuple(items) if !items.is_empty() => {
+                        Expr::func(*f, items.clone()).unwrap_or(e.clone())
+                    }
+                    _ => e,
+                },
+                _ => e,
+            }
+        }
+        _ => e.simplify(),
     }
 }
 

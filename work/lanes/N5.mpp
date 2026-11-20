@@ -1,0 +1,49 @@
+# N5 data tables and statistics: notes for the integrator
+
+Lane `domains` (branch `wip/domains`). The example is `examples/statistics.mpp` with `examples/measurements.csv` and `examples/statistics.expected.txt` (checked by `crates/mpp-eval/tests/examples.rs`); document tests are in `crates/mpp-eval/tests/statistics.rs`.
+
+## What was built
+
+- **Core statistics** (`crates/mpp-core/src/domains/distributions.rs`, `regression.rs`, built on a side worktree and merged into this item): normal, binomial, Poisson, Student t and χ² (pdf/pmf, cdf, inverse; exact rationals for binomial and Poisson with rational parameters), confidence intervals (`ci(data, level)`: a t-interval with the sample standard deviation and n − 1 degrees of freedom, stated in the remark; z and Wald intervals in the API), least-squares fits (`linreg`, `polyreg(x, y, d)`, `expreg`, `powreg`, `logreg`; exact rational coefficients and R² for exact data, R² on the original data for the transformed fits), `corr` (Pearson r, exact for exact data), `quartiles` and `iqr` (median-of-halves). Variance and standard deviation say which they are ("sample variance (divides by n − 1)", "population standard deviation (divides by n)").
+- **Data in documents** (`crates/mpp-eval/src/data.rs`, `block/data.rs`): a `.mpp` table whose header names variables (`| $t$ (s) | $x$ [m] |`) defines data columns (tuples, of quantities when a unit is given); `Data: $T$ from [[measurements.csv]].` reads a CSV file relative to the document through the importer (`Importer::read_data`, an additive method with a disk default; `FileImporter` reads through its source), defines its columns and the matrix `T`, lists the file in the block's imports so the file watcher reloads it, and reports bad files at the link with the line number. `\bar{x}` is the mean, `x_i` an entry, `\sum_i x_i` runs over all entries, `\max(x)` / `\min(x)` the extremes.
+- **Fitted functions:** `f(u) := \operatorname{linreg}(t, d)` (or `polyreg`, `expreg`, `powreg`, `logreg`) stores the fitted model in `u` as the body of `f`, with "linear fit, R² = …" as a remark; `f` then works like any function.
+- **Units:** statistics of columns with units are computed on the plain values in one unit and the unit is put back (`var` in m², `corr` without one); fits are made on the plain values and say so.
+- **Parser:** `BlockKind::Data(DataImport { name, path, path_span })` for the `Data:` sentence; crates that match `BlockKind` exhaustively need the arm.
+
+## Figure hooks: the contract with `mpp-plot` (M13 is not on this branch)
+
+`mpp_eval::data` defines the data a figure needs, as plain `f64`s with the units as text:
+
+| Struct | Built by | Fields |
+|---|---|---|
+| `Scatter` | `data::scatter(xs, ys)` (two columns) | `points: Vec<(f64, f64)>`, `x_unit`, `y_unit` |
+| `FittedCurve` | `data::fitted_curve(&fit, var, lo, hi, samples)` | `points`, `formula: Expr`, `r_squared: Option<f64>` |
+| `Histogram` | `data::histogram(column, bins)` (Sturges' rule when `bins` is `None`) | `bins: Vec<(lo, hi, count)>` (the last bar closed), `unit` |
+| `BoxPlot` | `data::box_plot(column)` | `low`, `q1`, `median`, `q3`, `high` (whiskers at the furthest values within 1.5 IQR), `outliers`, `unit` |
+
+Suggested figure syntax for M13 to wire (not parsed yet): `Figure: scatter($t$, $x$), fit($f$)`, `Figure: histogram($s$)`, `Figure: boxplot($s$)`. The columns are the values of the named bindings (tuples), so the plot lane can call these builders on `Evaluated` values.
+
+## Grammar
+
+Applied to `docs/grammar.mpp` §3 (the `data` rule and the **Data** paragraph).
+
+## Guide section (for `docs/guide.mpp`)
+
+> ## Data and statistics
+>
+> A table becomes data when its header names variables in maths, with an optional unit:
+>
+> ```
+> | $t$ (s) | $x$ (m) |
+> |---|---|
+> | 0 | 1 |
+> | 1 | 3 |
+> ```
+>
+> Each column is a list you can use in maths: `$\bar{x} = ?$` is the mean, `$x_2 = ?$` an entry, `$\sum_i x_i = ?$` the total. To read a spreadsheet, export it as CSV and write `Data: $D$ from [[measurements.csv]].`; the first row names the columns (`h (cm), m (kg)`), and Math++ reads the file again when it changes.
+>
+> Statistics: `\operatorname{mean}`, `median`, `mode`, `var` and `std` (sample, dividing by n − 1), `pvar` and `pstd` (population), `quartiles`, `iqr`, `\min`, `\max`, `corr` (Pearson r). Each answer says which kind it is.
+>
+> Fits: `$f(u) := \operatorname{linreg}(t, x)$` defines `f` as the least-squares line, with R² shown; `polyreg(t, x, 2)`, `expreg`, `powreg` and `logreg` give other models. Use `f` like any function.
+>
+> Distributions: `\operatorname{normalcdf}(x, μ, σ)` (or `normalcdf(a, b, μ, σ)` for a range), `invnorm(p, μ, σ)`, `binompdf(n, p, k)`, `binomcdf`, `poissonpdf(λ, k)`, `poissoncdf`, `tcdf(t, ν)`, `invt`, `chi2cdf(x, k)`, `invchi2`, and `ci(data, 0.95)` for a confidence interval for the mean. See [[../examples/statistics.mpp]].

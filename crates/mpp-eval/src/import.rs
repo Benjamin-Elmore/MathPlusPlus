@@ -135,6 +135,23 @@ pub trait Importer: Send + Sync {
     /// Forgets what is cached for the file at `path`, or for every file when
     /// `None`, so the next import reads it again.
     fn invalidate(&self, _path: Option<&Path>) {}
+
+    /// Reads a data file (`Data: $T$ from [[measurements.csv]].`) relative to `base`:
+    /// where it is and its text. The default reads from disk.
+    fn read_data(&self, base: Option<&Path>, path: &str) -> Result<(PathBuf, String), String> {
+        read_data_with(&crate::files::FsSource, base, path)
+    }
+}
+
+/// Finds and reads a data file through `source`.
+pub fn read_data_with(
+    source: &dyn crate::files::SourceProvider,
+    base: Option<&Path>,
+    path: &str,
+) -> Result<(PathBuf, String), String> {
+    let found = source.locate(base, path)?;
+    let text = source.read(&found.key)?;
+    Ok((found.key, text))
 }
 
 /// An importer that loads nothing.

@@ -5,7 +5,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use mpp_eval::{FileImporter, Session};
+use mpp_eval::{FileImporter, LineKind, QueryMode, Session};
 
 /// The answers of a document in order: query answers, with errors in place.
 fn answers_of(path: &Path) -> Vec<String> {
@@ -26,7 +26,21 @@ fn answers_of(path: &Path) -> Vec<String> {
                 used[i] = true;
                 errors[i].message.clone()
             }
-            None => line.text.clone().unwrap_or_else(|| "<none>".into()),
+            None => {
+                let approx_query = matches!(
+                    line.kind,
+                    LineKind::Query {
+                        mode: QueryMode::Approx,
+                        ..
+                    }
+                );
+                let shown = if approx_query {
+                    line.approx.clone().or_else(|| line.text.clone())
+                } else {
+                    line.text.clone()
+                };
+                shown.unwrap_or_else(|| "<none>".into())
+            }
         };
         items.push((line.span.start, text));
     }
@@ -64,4 +78,9 @@ fn assumptions_example() {
 #[test]
 fn piecewise_sets_example() {
     check("piecewise-sets");
+}
+
+#[test]
+fn statistics_example() {
+    check("statistics");
 }

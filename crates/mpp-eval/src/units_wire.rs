@@ -334,6 +334,36 @@ fn fold_many(f: Func, args: &[Expr]) -> MathResult<Folded> {
     Ok(known(Quantity::new(Expr::func(f, values)?, unit), true))
 }
 
+/// A list of quantities as plain values in the first entry's unit, and that unit;
+/// `None` when the list has no units.
+pub fn strip_list(e: &Expr) -> MathResult<Option<(Vec<Expr>, Unit)>> {
+    let ExprNode::Tuple(items) = e.node() else {
+        return Ok(None);
+    };
+    if !contains_units(e) {
+        return Ok(None);
+    }
+    let mut unit: Option<Unit> = None;
+    let mut out = Vec::with_capacity(items.len());
+    for item in items {
+        let Folded::Known { q, .. } = fold(item)? else {
+            return Err(MathError::Dimension(format!(
+                "the units of {} are not known",
+                show_raw(item).0
+            )));
+        };
+        let q = match &unit {
+            None => {
+                unit = Some(q.unit.clone());
+                q
+            }
+            Some(u) => q.convert_to(u)?,
+        };
+        out.push(q.value);
+    }
+    Ok(unit.map(|u| (out, u)))
+}
+
 // ---- the holder -----------------------------------------------------------------
 
 /// Conversions, and definite integrals whose bounds carry units.
@@ -501,6 +531,10 @@ pub fn present(e: &Expr) -> MathResult<Option<Presented>> {
             }));
         }
     }
+    // A list, set or interval of quantities: each entry shown as a quantity.
+    if let Some(p) = present_each(e)? {
+        return Ok(Some(p));
+    }
     let shown = match fold(e)? {
         Folded::Known { q, exact, .. } => {
             let q = if exact { q } else { q.simplified() };
@@ -521,6 +555,45 @@ pub fn present(e: &Expr) -> MathResult<Option<Presented>> {
         }
     };
     Ok(Some(shown))
+}
+
+/// Entries of a tuple, set or interval shown one by one: `(150 cm, 160 cm)`.
+fn present_each(e: &Expr) -> MathResult<Option<Presented>> {
+    let one = |x: &Expr| -> MathResult<(String, String)> {
+        Ok(match present(x)? {
+            Some(p) => (p.text, p.latex),
+            None => (x.to_string(), x.to_latex()),
+        })
+    };
+    let (parts, open, close, lopen, lclose): (Vec<&Expr>, &str, &str, &str, &str) = match e.node() {
+        ExprNode::Tuple(items) => (items.iter().collect(), "(", ")", "\\left(", "\\right)"),
+        ExprNode::Set(items) => (items.iter().collect(), "{", "}", "\\left\\{", "\\right\\}"),
+        ExprNode::Interval {
+            lo,
+            hi,
+            lo_closed,
+            hi_closed,
+        } => (
+            vec![lo, hi],
+            if *lo_closed { "[" } else { "(" },
+            if *hi_closed { "]" } else { ")" },
+            if *lo_closed { "\\left[" } else { "\\left(" },
+            if *hi_closed { "\\right]" } else { "\\right)" },
+        ),
+        _ => return Ok(None),
+    };
+    let mut text = Vec::with_capacity(parts.len());
+    let mut latex = Vec::with_capacity(parts.len());
+    for p in parts {
+        let (t, l) = one(p)?;
+        text.push(t);
+        latex.push(l);
+    }
+    Ok(Some(Presented {
+        text: format!("{open}{}{close}", text.join(", ")),
+        latex: format!("{lopen}{}{lclose}", latex.join(", ")),
+        approx: None,
+    }))
 }
 
 /// `686.7 N` for a quantity whose exact value is not a plain fraction or integer.

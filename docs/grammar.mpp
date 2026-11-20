@@ -222,9 +222,12 @@ helper_name   = "the domain" | "the range" | "the intercepts" | "the critical po
 analyse       = ("Analyse" | "Analyze") " " "$" expr "$" [ " on " "$" interval "$" ] "." ;
 solve         = "Solve" " " "$" equations "$" [ " for " "$" name_list "$" ] "." ;
 equations     = expr { "," expr } | cases ;                (* several equations are a system *)
+data          = "Data:" " " "$" name "$" " from " wiki_link "." ;   (* a CSV file, relative to the document *)
 assume        = "Assume" [ " that" ] " " "$" condition "$" { ( "," [ " and" ] | " and" ) " " "$" condition "$" } "." ;
 condition     = relation_chain | name "\in" ( mathbb | interval ) ;   (* a bound on one name *)
 ```
+
+**Data.** A table whose header cells are each a name in maths, optionally followed by a unit in brackets (`| $t$ (s) | $x$ [m] |`), and whose cells are numbers, defines one data column per header. `Data: $T$ from [[file.csv]].` reads a CSV file the same way: a header row of names with optional units (`t (s), x (m)`; commas, semicolons or tabs), then rows of numbers; it also names the whole table `T` (a matrix), and the file is read again when it changes. For a column `x`, `\bar{x}` is its mean, `x_i` its entry `i` (from 1) and `\sum_i x_i` runs over all its entries, unless those decorated names are defined on their own.
 
 **Assumptions** hold from the sentence to the end of the document (and in files that import it), like definitions. A condition in round brackets after a query or check, `\sqrt{y^2} = ? \quad (y < 0)`, holds for that display block only. Each condition bounds one name: `x > 0`, `0 < x \le 1`, `2x - 1 \ge 0`, `a \neq 0`, `n \in \mathbb{Z}`, `n \in \mathbb{N}`, `x \in [0, 1]`, `x \in \mathbb{R}`. Conditions that contradict the ones in force are an error, and so is assuming something about a name that already has a value.
 
