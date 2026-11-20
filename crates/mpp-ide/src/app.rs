@@ -10,9 +10,10 @@ use crate::doc::Doc;
 use crate::explorer;
 use crate::figure::{FigureDrawer, PlaceholderFigure};
 use crate::files::Recent;
+use crate::insert::{InsertSettings, InsertUi};
 use crate::layout::{BODY_SIZE, MAX_SIZE, MIN_SIZE};
 use crate::sample::WELCOME;
-use crate::theme::{self, Mode};
+use crate::theme::{self, Mode, ThemeChoice};
 use crate::view::CompletionState;
 use crate::workspace::Workspace;
 
@@ -23,11 +24,17 @@ const ZOOM_IN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key:
 const ZOOM_OUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Minus);
 const ZOOM_IN_PLUS: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Plus);
 const ZOOM_RESET: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Num0);
+/// Shows or hides the Problems tile.
+const PROBLEMS: KeyboardShortcut =
+    KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::M);
 
 /// The Math++ IDE.
 pub struct IdeApp {
     pub docs: Vec<Doc>,
     pub active: usize,
+    /// What the user chose (default: follow Windows).
+    pub theme_choice: ThemeChoice,
+    /// The mode drawn this frame: the choice resolved against the system theme.
     pub mode: Mode,
     pub size: f32,
     pub copy_format: CopyFormat,
@@ -40,6 +47,13 @@ pub struct IdeApp {
     pub(crate) clip: Option<(String, String)>,
     pub(crate) message: Option<String>,
     applied_mode: Option<Mode>,
+    system_theme: Option<egui::Theme>,
+    /// The Insert menu, its recently used items and its settings.
+    pub insert: InsertUi,
+    /// The quick-fix menu and the problem card kept open by F8.
+    pub diag: crate::diagnostics::ui::DiagUi,
+    /// The Problems tile's state (Ctrl+Shift+M).
+    pub problems: crate::problems::ProblemsView,
 }
 
 impl Default for IdeApp {
@@ -54,6 +68,7 @@ impl IdeApp {
         IdeApp {
             docs: vec![Doc::with_text(WELCOME, None)],
             active: 0,
+            theme_choice: ThemeChoice::default(),
             mode: Mode::Light,
             size: BODY_SIZE,
             copy_format: CopyFormat::Unicode,
@@ -65,6 +80,10 @@ impl IdeApp {
             clip: None,
             message: None,
             applied_mode: None,
+            system_theme: None,
+            insert: InsertUi::default(),
+            diag: Default::default(),
+            problems: Default::default(),
         }
     }
 
@@ -80,19 +99,39 @@ impl IdeApp {
         self.figures = drawer;
     }
 
+    /// Sets the theme choice (Light, Dark or Follow Windows) and updates the mode.
+    pub fn set_theme_choice(&mut self, choice: ThemeChoice) {
+        self.theme_choice = choice;
+        self.mode = choice.resolve(self.system_theme);
+    }
+
     /// Reads settings and the recent files from storage.
     pub fn restore(&mut self, storage: &dyn eframe::Storage) {
         if let Some(s) = storage.get_string("recent") {
             self.recent = Recent::from_stored(&s);
         }
-        if let Some(s) = storage.get_string("dark") {
-            self.mode = if s == "1" { Mode::Dark } else { Mode::Light };
+        // The old "dark" key (0 or 1) is read when no "theme" was saved yet.
+        let legacy = storage.get_string("dark").map(|s| {
+            if s == "1" {
+                ThemeChoice::Dark
+            } else {
+                ThemeChoice::Light
+            }
+        });
+        let saved = storage
+            .get_string("theme")
+            .and_then(|s| ThemeChoice::from_stored(&s));
+        if let Some(c) = saved.or(legacy) {
+            self.set_theme_choice(c);
         }
         if let Some(s) = storage
             .get_string("size")
             .and_then(|s| s.parse::<f32>().ok())
         {
             self.size = s.clamp(MIN_SIZE, MAX_SIZE);
+        }
+        if let Some(s) = storage.get_string("insert") {
+            self.insert.settings = InsertSettings::from_stored(&s);
         }
         if let Some(s) = storage.get_string("copy_latex") {
             self.copy_format = if s == "1" {
@@ -106,11 +145,9 @@ impl IdeApp {
     /// Writes settings and the recent files. The raw-text pop-out is not saved.
     pub fn save_state(&self, storage: &mut dyn eframe::Storage) {
         storage.set_string("recent", self.recent.to_stored());
-        storage.set_string(
-            "dark",
-            if self.mode == Mode::Dark { "1" } else { "0" }.into(),
-        );
+        storage.set_string("theme", self.theme_choice.to_stored().into());
         storage.set_string("size", self.size.to_string());
+        storage.set_string("insert", self.insert.settings.to_stored());
         storage.set_string(
             "copy_latex",
             if self.copy_format == CopyFormat::Latex {
@@ -322,6 +359,9 @@ impl IdeApp {
         if zreset {
             self.size = BODY_SIZE;
         }
+        if ctx.input_mut(|i| i.consume_shortcut(&PROBLEMS)) {
+            self.toggle_problems();
+        }
         if (zdelta - 1.0).abs() > 0.001 {
             self.size = (self.size * zdelta).clamp(MIN_SIZE, MAX_SIZE);
         }
@@ -391,10 +431,14 @@ impl IdeApp {
             });
             ui.menu_button("Edit", |ui| self.edit_menu(ui));
             ui.menu_button("View", |ui| {
-                let mut dark = self.mode == Mode::Dark;
-                if ui.checkbox(&mut dark, "Dark theme").changed() {
-                    self.mode = if dark { Mode::Dark } else { Mode::Light };
-                }
+                ui.menu_button("Theme", |ui| {
+                    for c in ThemeChoice::ALL {
+                        if ui.radio(self.theme_choice == c, c.label()).clicked() {
+                            self.set_theme_choice(c);
+                        }
+                    }
+                    ui.weak("Ctrl+K, then Ctrl+T, switches theme");
+                });
                 if ui.button("Larger text").clicked() {
                     self.size = (self.size + 1.0).min(MAX_SIZE);
                 }
@@ -412,6 +456,13 @@ impl IdeApp {
                     ui.close();
                 }
                 if ui
+                    .add(egui::Button::new("Problems").shortcut_text("Ctrl+Shift+M"))
+                    .clicked()
+                {
+                    self.toggle_problems();
+                    ui.close();
+                }
+                if ui
                     .add(egui::Button::new("Go to file\u{2026}").shortcut_text("Ctrl+P"))
                     .clicked()
                 {
@@ -419,21 +470,39 @@ impl IdeApp {
                     ui.close();
                 }
                 ui.separator();
+                ui.menu_button("Insert settings", |ui| {
+                    let s = &mut self.insert.settings;
+                    ui.label("Integral bounds");
+                    ui.radio_value(&mut s.integral_side, false, "Above and below the sign");
+                    ui.radio_value(&mut s.integral_side, true, "At the side of the sign");
+                    ui.separator();
+                    ui.checkbox(
+                        &mut s.shortcuts,
+                        "Typing shortcuts: int + space for \u{222b}, / for a fraction",
+                    );
+                    ui.checkbox(&mut s.fourier_k, "Fourier transforms use k (not \u{3c9})");
+                });
+                ui.separator();
                 ui.checkbox(&mut self.show_file_text, "Show file text");
             });
             let ctx = ui.ctx().clone();
             ui.menu_button("Help", |ui| self.help_menu(ui, &ctx));
+            if crate::insert::menu::insert_button(ui).clicked() {
+                self.insert.menu.open_at(None);
+            }
         });
     }
 
     /// Draws the whole window into `ui`.
     pub fn ui(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        self.shortcuts(&ctx);
+        self.system_theme = ctx.system_theme();
+        self.mode = self.theme_choice.resolve(self.system_theme);
         if self.applied_mode != Some(self.mode) {
             theme::apply(&ctx, self.mode);
             self.applied_mode = Some(self.mode);
         }
-        self.shortcuts(&ctx);
         let theme = self.mode.theme();
 
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
@@ -443,6 +512,7 @@ impl IdeApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(crate::paint::c32(theme.background)))
             .show(ui, |ui| self.tiles_ui(ui));
+        self.problems.open = self.has_pane(&crate::layout::Pane::Problems);
 
         self.file_text_window(&ctx);
         self.overlays(&ctx);
@@ -468,6 +538,60 @@ impl IdeApp {
         }
     }
 
+    /// Shows or hides the Problems tile (Ctrl+Shift+M).
+    pub fn toggle_problems(&mut self) {
+        self.toggle_pane(crate::layout::Pane::Problems);
+        self.problems.open = self.has_pane(&crate::layout::Pane::Problems);
+    }
+
+    /// Every problem of the open files and the files they import, grouped by
+    /// file (what the Problems panel lists).
+    pub fn project_problems(&mut self) -> Vec<crate::problems::FileProblems> {
+        crate::problems::gather(&mut self.docs)
+    }
+
+    /// The error, warning and note counts of a file (for tab and explorer badges).
+    pub fn problem_counts_for(&mut self, path: &Path) -> crate::diagnostics::Counts {
+        let list = self.project_problems();
+        crate::problems::counts_for(&list, path)
+    }
+
+    /// The counts of every file with problems (open files and their imports).
+    pub fn file_counts(&mut self) -> Vec<(PathBuf, crate::diagnostics::Counts)> {
+        self.project_problems()
+            .iter()
+            .filter_map(|f| Some((f.path.clone()?, f.counts())))
+            .collect()
+    }
+
+    /// The number of errors in a file (0 when it is not open or imported).
+    pub fn error_count(&mut self, path: &Path) -> usize {
+        self.problem_counts_for(path).errors
+    }
+
+    /// Goes to a problem chosen in the Problems panel.
+    pub fn jump_to(&mut self, jump: &crate::problems::Jump) {
+        let (tab, span) = match jump {
+            crate::problems::Jump::Open { tab, span } => (Some(*tab), *span),
+            crate::problems::Jump::File { path, span } => match self.open_file(path, false) {
+                Ok(i) => (Some(i), *span),
+                Err(m) => {
+                    self.message = Some(m);
+                    (None, *span)
+                }
+            },
+        };
+        let Some(i) = tab.filter(|i| *i < self.docs.len()) else {
+            return;
+        };
+        self.active = i;
+        if let Some(doc) = self.docs.get_mut(i) {
+            doc.editor.move_caret(span.start, false);
+            doc.scroll_to = Some(span);
+        }
+        self.diag.peek = Some(span);
+    }
+
     fn file_text_window(&mut self, ctx: &Context) {
         if !self.show_file_text {
             return;
@@ -486,6 +610,7 @@ impl IdeApp {
                     let mut shown: &str = &text;
                     ui.add(
                         egui::TextEdit::multiline(&mut shown)
+                            .font(egui::TextStyle::Monospace)
                             .desired_width(f32::INFINITY)
                             .desired_rows(14),
                     );

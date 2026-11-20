@@ -269,7 +269,7 @@ fn compare_grid(ui: &mut egui::Ui, left: &str, right: &str, theme: &Theme) {
                     };
                     let frame = egui::Frame::NONE
                         .inner_margin(egui::Margin::symmetric(4, 2))
-                        .fill(tint.map_or(egui::Color32::TRANSPARENT, |c| c.gamma_multiply(0.16)));
+                        .fill(tint.map_or(crate::theme::CLEAR, |c| c.gamma_multiply(0.16)));
                     frame.show(ui, |ui| {
                         ui.set_min_width(300.0);
                         match side {

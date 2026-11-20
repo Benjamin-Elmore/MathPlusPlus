@@ -265,55 +265,20 @@ impl IdeApp {
         self.ws.vars.live = Some((name.to_string(), range.start..range.start + text.len(), rev));
     }
 
-    /// The problems of the current file, clickable.
+    /// The Problems tile: every problem of the open files and the files they
+    /// import, grouped by file and typeset; a click goes there.
     pub(crate) fn problems_tile(&mut self, ui: &mut Ui, theme: &Theme) {
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.add_space(10.0);
-            ui.label(
-                egui::RichText::new("PROBLEMS")
-                    .size(13.5)
-                    .color(c32(theme.muted)),
-            );
-        });
-        let problems = self
-            .doc()
-            .map(crate::doc::Doc::problems)
-            .unwrap_or_default();
-        if problems.is_empty() {
-            ui.horizontal(|ui| {
-                ui.add_space(12.0);
-                ui.weak("No problems.");
-            });
-        }
+        let list = self.project_problems();
+        let size = (self.size * 0.85).max(14.0);
         let mut jump = None;
-        egui::ScrollArea::vertical()
-            .id_salt("problems-tile")
-            .auto_shrink([false, false])
+        egui::Frame::NONE
+            .inner_margin(egui::Margin::symmetric(10, 6))
             .show(ui, |ui| {
-                for p in &problems {
-                    let color = match p.severity {
-                        mpp_syntax::Severity::Error => c32(theme.error),
-                        mpp_syntax::Severity::Warning => c32(theme.warning),
-                    };
-                    ui.horizontal(|ui| {
-                        ui.add_space(12.0);
-                        let r = ui.add(
-                            egui::Label::new(egui::RichText::new(&p.message).color(color))
-                                .sense(Sense::click()),
-                        );
-                        if r.clicked() {
-                            jump = Some(p.span);
-                        }
-                    });
-                }
+                jump = self.problems.ui(ui, &list, theme, size);
             });
-        if let Some(span) = jump {
+        if let Some(j) = jump {
             self.note_place();
-            if let Some(d) = self.doc_mut() {
-                d.editor.move_caret(span.start, false);
-                d.scroll_to = Some(span);
-            }
+            self.jump_to(&j);
             self.note_place();
         }
     }

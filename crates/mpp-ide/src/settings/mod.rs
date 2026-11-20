@@ -1,6 +1,6 @@
 //! Settings and session, kept as one small JSON file in the app-data folder
-//! (never inside a project): the last folder and tabs, zoom, autosave, and
-//! whether the tutorial has been shown.
+//! (never inside a project): the last folder and tabs, zoom, autosave, the
+//! theme, the Insert menu's settings, and whether the tutorial has been shown.
 
 use std::path::{Path, PathBuf};
 
@@ -42,6 +42,12 @@ pub struct Settings {
     pub size: f32,
     pub autosave: AutosaveMode,
     pub tutorial_seen: bool,
+    /// Light, dark or follow Windows (`ThemeChoice::to_stored`).
+    pub theme: String,
+    /// The Insert menu's settings and recently used items (`InsertSettings::to_stored`).
+    pub insert: String,
+    /// Copy maths as LaTeX instead of Unicode.
+    pub copy_latex: bool,
 }
 
 impl Default for Settings {
@@ -56,6 +62,9 @@ impl Default for Settings {
             size: crate::layout::BODY_SIZE,
             autosave: AutosaveMode::Delay,
             tutorial_seen: false,
+            theme: crate::theme::ThemeChoice::default().to_stored().into(),
+            insert: String::new(),
+            copy_latex: false,
         }
     }
 }

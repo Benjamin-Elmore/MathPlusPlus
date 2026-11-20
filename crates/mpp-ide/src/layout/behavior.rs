@@ -13,6 +13,7 @@ use mpp_syntax::document::Figure;
 use super::persist::{self, LayoutFile};
 use super::tiles::{self, Dir, Pane, Preset};
 use crate::app::IdeApp;
+use crate::diagnostics::Counts;
 use crate::paint::c32;
 use crate::settings::SideView;
 use crate::tabs::breadcrumbs;
@@ -25,6 +26,8 @@ const SPLIT_DOWN: KeyboardShortcut =
 const MAXIMISE: KeyboardShortcut =
     KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::Enter);
 const CHORD: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::K);
+/// Ctrl+K then Ctrl+T switches the theme.
+const CHORD_T: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::T);
 
 /// State of the tile manager.
 #[derive(Default)]
@@ -38,7 +41,8 @@ pub struct TileState {
     /// The file that was active last frame (to notice changes from outside).
     last_active_doc: Option<u64>,
     next_view: u32,
-    /// Ctrl+K was pressed; an arrow key finishes the chord.
+    /// Ctrl+K was pressed; an arrow key (move focus) or Ctrl+T (theme)
+    /// finishes the chord.
     pub chord_k: bool,
     /// Saved layouts of the open project.
     pub file: LayoutFile,
@@ -75,6 +79,8 @@ struct AppBehavior<'a> {
     crumb: Option<PathBuf>,
     empty_groups: Vec<TileId>,
     many_tiles: bool,
+    /// Problem counts of the files with problems (for the tab titles).
+    counts: Vec<(PathBuf, Counts)>,
 }
 
 impl AppBehavior<'_> {
@@ -168,8 +174,18 @@ impl Behavior<Pane> for AppBehavior<'_> {
                 if self.app.is_preview(d) {
                     t = t.italics();
                 }
-                if d.error_count() > 0 {
-                    t = t.color(c32(self.theme.error));
+                let c = d
+                    .path
+                    .as_ref()
+                    .and_then(|p| self.counts.iter().find(|(q, _)| q == p))
+                    .map(|(_, c)| *c)
+                    .unwrap_or_else(|| d.problem_counts());
+                if c.errors > 0 {
+                    t = egui::RichText::new(format!("{}  {}", t.text(), c.errors))
+                        .color(c32(self.theme.error));
+                    if self.app.is_preview(d) {
+                        t = t.italics();
+                    }
                 }
                 t.into()
             }
@@ -273,7 +289,7 @@ impl Behavior<Pane> for AppBehavior<'_> {
         if state.active {
             c32(self.theme.background)
         } else {
-            Color32::TRANSPARENT
+            crate::theme::CLEAR
         }
     }
 
@@ -732,6 +748,9 @@ impl IdeApp {
         }
         if chord {
             self.ws.tiles.chord_k = true;
+        } else if self.ws.tiles.chord_k && ctx.input_mut(|i| i.consume_shortcut(&CHORD_T)) {
+            self.set_theme_choice(self.theme_choice.next());
+            self.ws.tiles.chord_k = false;
         } else if self.ws.tiles.chord_k {
             let dir = ctx.input_mut(|i| {
                 [
@@ -804,6 +823,7 @@ impl IdeApp {
             .filter(|(id, t)| matches!(t, egui_tiles::Tile::Pane(_)) && tree.is_visible(**id))
             .count()
             > 1;
+        let counts = self.file_counts();
         let mut b = AppBehavior {
             app: self,
             theme,
@@ -814,6 +834,7 @@ impl IdeApp {
             crumb: None,
             empty_groups,
             many_tiles: many,
+            counts,
         };
         match maximised {
             Some(m) => draw_maximised(&mut b, &mut tree, ui, m),
@@ -883,6 +904,11 @@ impl IdeApp {
                 ViewEvent::OpenLinkAt(o) => self.open_link_at(o),
                 ViewEvent::Save => self.save(),
                 ViewEvent::OpenFigureTile(f) => self.open_graph_tile(idx, f),
+                ViewEvent::Open(p) => {
+                    if let Err(m) = self.open_file(&p, false) {
+                        self.message = Some(m);
+                    }
+                }
             }
         }
         if let Some(p) = crumb {
@@ -930,6 +956,11 @@ impl IdeApp {
         let Some(doc) = self.docs.get_mut(idx) else {
             return vec![];
         };
+        doc.integral_limits = if self.insert.settings.integral_side {
+            mpp_render::IntegralLimits::Side
+        } else {
+            mpp_render::IntegralLimits::AboveBelow
+        };
         let mut cx = ViewCtx {
             mode,
             size,
@@ -937,6 +968,8 @@ impl IdeApp {
             completion: &mut self.completion,
             clip: &mut self.clip,
             copy_format,
+            insert: &mut self.insert,
+            diag: &mut self.diag,
         };
         let events = view::show(ui, doc, &mut cx);
         let dropped = ui.interact(

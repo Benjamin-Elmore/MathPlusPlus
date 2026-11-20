@@ -3,8 +3,8 @@
 use egui::{Pos2, Rect, Vec2};
 use mpp_eval::{BlockResult, Evaluated, LineKind};
 use mpp_render::{
-    layout_math, CaretStop, DisplayList, FontId, LayoutOptions, LineResult, MathStyle, Primitive,
-    Rect as RRect, ResultKind, Theme,
+    layout_math, CaretStop, DisplayList, FontId, IntegralLimits, LayoutOptions, LineResult,
+    MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
 };
 use mpp_syntax::document::{
     Align, Block, BlockKind, DisplayMath, Document, Inline, InlineKind, InlineMath, List,
@@ -27,6 +27,10 @@ pub struct PageInput<'a> {
     pub size: f32,
     /// Available width in pixels (the column is at most 70 em).
     pub width: f32,
+    /// Integral bounds above and below the sign, or at its side.
+    pub integral_limits: IntegralLimits,
+    /// Labels for the empty boxes of templates being edited, by offset.
+    pub slot_labels: &'a [(usize, String)],
 }
 
 /// The column width for a window width: about 70 em, never wider than the window.
@@ -40,6 +44,7 @@ pub fn build_page(input: &PageInput<'_>) -> Page {
     let cx = Cx {
         src: input.src,
         theme: input.theme,
+        slot_labels: input.slot_labels,
     };
     let mut page = Page {
         width: col,
@@ -397,8 +402,18 @@ fn layout_block(
         BlockKind::Figure(f) => {
             let box_h = size * 9.0;
             let box_w = (w * 0.7).min(size * 40.0);
+            // The figure's maths (what is drawn, the ranges) as an editable line
+            // above it, typeset, so its template boxes can be filled in.
+            let spec = figure_spec_inlines(input.src, b, f);
+            let mut top = size * 0.3;
+            if !spec.is_empty() {
+                let mut st = style(input, FontId::Text, 0.95);
+                st.color = input.theme.muted;
+                top += flow(cx, &spec, st, x0 + (w - box_w) / 2.0, 0.0, box_w, &mut c);
+                top += size * 0.3;
+            }
             let rect = Rect::from_min_size(
-                Pos2::new(x0 + (w - box_w) / 2.0, size * 0.3),
+                Pos2::new(x0 + (w - box_w) / 2.0, top),
                 Vec2::new(box_w, box_h),
             );
             tag = BlockTag::Figure(rect);
@@ -474,6 +489,39 @@ fn layout_block(
     Some((c, h, tag))
 }
 
+/// The maths of a `Figure:` line without the `Figure:` keyword and the final
+/// full stop (the caption is laid out separately).
+fn figure_spec_inlines(src: &str, b: &Block, f: &mpp_syntax::document::Figure) -> Vec<Inline> {
+    let end = f
+        .caption
+        .first()
+        .map_or(b.span.end, |c| c.span.start)
+        .min(b.span.end);
+    let mut inl = scan_inlines(src, Span::new(b.span.start, end));
+    if let Some(Inline {
+        kind: InlineKind::Text(t),
+        span,
+    }) = inl.first_mut()
+    {
+        if let Some(rest) = t.strip_prefix("Figure:") {
+            let cut = t.len() - rest.trim_start().len();
+            *t = rest.trim_start().to_string();
+            span.start += cut;
+        }
+    }
+    if let Some(Inline {
+        kind: InlineKind::Text(t),
+        span,
+    }) = inl.last_mut()
+    {
+        let kept = t.trim_end().trim_end_matches('.').len();
+        span.end = span.start + kept;
+        t.truncate(kept);
+    }
+    inl.retain(|i| !matches!(&i.kind, InlineKind::Text(t) if t.is_empty()));
+    inl
+}
+
 fn rrect(x: f32, y: f32, w: f32, h: f32) -> RRect {
     RRect { x, y, w, h }
 }
@@ -542,8 +590,15 @@ fn layout_display(
         equation_number: m.number.map(|n| n.to_string()),
         width: Some(w),
         results,
+        slot_labels: input
+            .slot_labels
+            .iter()
+            .filter(|(o, _)| m.raw.start <= *o && *o <= m.raw.end)
+            .cloned()
+            .collect(),
         ..LayoutOptions::default()
-    };
+    }
+    .with_integral_limits(input.integral_limits);
     let dl = layout_math(&m.ast, &opts);
     let pad = size * 0.35;
     let before = c.stops.len();
@@ -714,6 +769,8 @@ mod tests {
             theme: Theme::LIGHT,
             size: 18.0,
             width: 900.0,
+            integral_limits: IntegralLimits::AboveBelow,
+            slot_labels: &[],
         })
     }
 

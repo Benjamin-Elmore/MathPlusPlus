@@ -14,12 +14,16 @@ use std::time::Duration;
 
 use mpp_eval::{Evaluated, Session};
 
+use crate::diagnostics::background::{self, Background, FileCache};
+
 pub use importer::FsImporter;
 
 struct Job {
     generation: u64,
     text: String,
     base: Option<PathBuf>,
+    /// The file being edited (left out of the project index).
+    path: Option<PathBuf>,
 }
 
 /// A finished evaluation.
@@ -27,6 +31,8 @@ pub struct Done {
     pub generation: u64,
     pub text: String,
     pub eval: Arc<Evaluated>,
+    /// Problems of imported files and the names other files define.
+    pub background: Arc<Background>,
 }
 
 /// One evaluator thread with its own [`Session`] (so edits re-run only changed blocks).
@@ -58,6 +64,7 @@ impl EvalWorker {
             .spawn(move || {
                 let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
                 let mut base: Option<PathBuf> = None;
+                let mut files = FileCache::default();
                 while let Ok(mut job) = jobs.recv() {
                     while let Ok(newer) = jobs.try_recv() {
                         job = newer;
@@ -67,10 +74,17 @@ impl EvalWorker {
                         base = job.base.clone();
                     }
                     let eval = Arc::new(session.update(&job.text).clone());
+                    let extras = background::compute(
+                        &eval,
+                        job.base.as_deref(),
+                        job.path.as_deref(),
+                        &mut files,
+                    );
                     let done = Done {
                         generation: job.generation,
                         text: job.text,
                         eval,
+                        background: Arc::new(extras),
                     };
                     if done_tx.send(done).is_err() {
                         break;
@@ -89,11 +103,18 @@ impl EvalWorker {
 
     /// Asks for `text` to be evaluated; imports resolve against `base`.
     pub fn submit(&mut self, text: &str, base: Option<&Path>) {
+        self.submit_file(text, base, None);
+    }
+
+    /// Asks for the text of the file at `path` to be evaluated; imports resolve
+    /// against `base` (its folder, or the folder an unsaved file belongs to).
+    pub fn submit_file(&mut self, text: &str, base: Option<&Path>, path: Option<&Path>) {
         self.sent += 1;
         let job = Job {
             generation: self.sent,
             text: text.to_string(),
             base: base.map(Path::to_path_buf),
+            path: path.map(Path::to_path_buf),
         };
         if let Some(tx) = &self.tx {
             if tx.send(job).is_err() {

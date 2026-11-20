@@ -18,9 +18,11 @@ pub mod explorer;
 pub mod figure;
 pub mod files;
 pub mod history;
+pub mod insert;
 pub mod layout;
 pub mod page;
 pub mod paint;
+pub mod problems;
 mod sample;
 pub mod settings;
 pub mod suggest;
@@ -46,12 +48,15 @@ impl EframeApp {
             app.restore(s);
         }
         theme::install_fonts(&cc.egui_ctx);
-        theme::apply(&cc.egui_ctx, app.mode);
         // The page zooms its own text (Ctrl+= and friends); egui must not also scale.
         cc.egui_ctx.options_mut(|o| o.zoom_with_keyboard = false);
         if let Some(dir) = settings::app_data_dir() {
             app.start_up(&dir, Some(&cc.egui_ctx));
         }
+        // Did-you-mean for problem cards and quick fixes comes from the project.
+        diagnostics::suggest::set_suggester(std::sync::Arc::new(suggest::Suggester));
+        app.mode = app.theme_choice.resolve(cc.egui_ctx.system_theme());
+        theme::apply(&cc.egui_ctx, app.mode);
         if !paths.is_empty() {
             app.docs.clear();
             for p in paths {

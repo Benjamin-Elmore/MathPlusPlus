@@ -19,6 +19,8 @@ use crate::paint::c32;
 use crate::settings::SideView;
 use crate::typeset;
 
+/// Size of the status bar text (Latin Modern Sans).
+const STATUS_SIZE: f32 = 14.0;
 const TOGGLE_SIDE: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::B);
 const QUICK_OPEN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::P);
 const SEARCH_ALL: KeyboardShortcut =
@@ -191,15 +193,18 @@ impl IdeApp {
                     broken: d.path.as_deref().and_then(Path::parent).is_some_and(|dir| {
                         explorer::panel::has_broken_import(d.editor.text(), dir)
                     }),
+                    path: d.path.clone(),
                 })
                 .collect();
         let linked = self.current_imports();
         let current = self.doc().and_then(|d| d.path.clone());
+        let counts = self.file_counts();
         let cx = ExplorerCtx {
             theme: *theme,
             open: &open,
             current: current.as_deref(),
             linked: &linked,
+            counts: &counts,
         };
         let mut actions = vec![];
         egui::ScrollArea::vertical()
@@ -423,7 +428,7 @@ impl IdeApp {
         }
     }
 
-    /// The status bar: imports, definitions, problems, evaluation.
+    /// The status bar: imports, definitions, problem counts, evaluation, theme.
     pub(crate) fn status_ui(&mut self, ui: &mut Ui) {
         let theme = self.mode.theme();
         let imports = self.current_imports();
@@ -433,17 +438,15 @@ impl IdeApp {
             .map(|e| defs::all(e).iter().filter(|d| d.file.is_none()).count())
             .unwrap_or(0);
         let evaluating = self.doc().is_some_and(crate::doc::Doc::evaluating);
-        let problems = self
+        let counts = self
             .doc()
-            .map(crate::doc::Doc::problems)
+            .map(crate::doc::Doc::problem_counts)
             .unwrap_or_default();
-        let errors = problems
-            .iter()
-            .filter(|p| p.severity == mpp_syntax::Severity::Error)
-            .count();
         let mut open_import = None;
         let mut show_outline = false;
-        let mut jump = None;
+        let mut show_problems = false;
+        let mut cycle_theme = false;
+        let theme_label = self.theme_choice.label();
         egui::Panel::bottom("status")
             .frame(
                 egui::Frame::NONE
@@ -451,6 +454,8 @@ impl IdeApp {
                     .inner_margin(egui::Margin::symmetric(10, 3)),
             )
             .show(ui, |ui| {
+                // The status bar is set in Latin Modern Sans (it reads better small).
+                ui.style_mut().override_font_id = Some(crate::theme::sans(STATUS_SIZE));
                 ui.horizontal(|ui| {
                     let (label, color) = (
                         plural(imports.len(), "import", "imports"),
@@ -495,30 +500,51 @@ impl IdeApp {
                     if evaluating {
                         ui.spinner();
                         ui.label("Working\u{2026}");
-                    } else if problems.is_empty() {
-                        ui.label("No problems");
                     } else {
-                        let text = plural(problems.len(), "problem", "problems");
-                        let color = if errors > 0 {
-                            c32(theme.error)
-                        } else {
-                            c32(theme.warning)
+                        let color = match counts.worst() {
+                            Some(crate::diagnostics::Level::Error) => c32(theme.error),
+                            Some(crate::diagnostics::Level::Warning) => c32(theme.warning),
+                            _ => c32(theme.text),
                         };
-                        ui.menu_button(egui::RichText::new(text).color(color), |ui| {
-                            for p in problems.iter().take(30) {
-                                if ui.button(&p.message).clicked() {
-                                    jump = Some(p.span);
-                                    ui.close();
-                                }
-                            }
-                        });
+                        let text = if counts.problems() == 0 {
+                            "No problems".to_string()
+                        } else {
+                            counts.summary()
+                        };
+                        // Clicking the count opens the Problems tile, like Ctrl+Shift+M.
+                        if ui
+                            .add(
+                                egui::Label::new(egui::RichText::new(text).color(color))
+                                    .sense(Sense::click()),
+                            )
+                            .on_hover_text("Problems (Ctrl+Shift+M)")
+                            .clicked()
+                        {
+                            show_problems = true;
+                        }
                     }
                     if let Some(m) = &self.message {
                         ui.separator();
                         ui.colored_label(c32(theme.error), m);
                     }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let tip = format!("Theme: {theme_label} (Ctrl+K, then Ctrl+T, switches)");
+                        if crate::theme::moon_button(ui, STATUS_SIZE)
+                            .on_hover_text(tip)
+                            .clicked()
+                        {
+                            cycle_theme = true;
+                        }
+                        ui.label(theme_label);
+                    });
                 });
             });
+        if show_problems {
+            self.open_pane(crate::layout::Pane::Problems);
+        }
+        if cycle_theme {
+            self.set_theme_choice(self.theme_choice.next());
+        }
         if let Some(p) = open_import {
             if p.is_file() {
                 if let Err(m) = self.open_file(&p, false) {
@@ -528,14 +554,6 @@ impl IdeApp {
         }
         if show_outline {
             self.show_side(SideView::Outline);
-        }
-        if let Some(span) = jump {
-            self.note_place();
-            if let Some(d) = self.doc_mut() {
-                d.editor.move_caret(span.start, false);
-                d.scroll_to = Some(span);
-            }
-            self.note_place();
         }
     }
 

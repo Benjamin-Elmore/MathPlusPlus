@@ -19,6 +19,10 @@ pub static LM_ROMAN: &[u8] = include_bytes!("../fonts/lmroman10-regular.otf");
 pub static LM_ROMAN_ITALIC: &[u8] = include_bytes!("../fonts/lmroman10-italic.otf");
 /// Latin Modern Roman 10 Bold (GUST Font License).
 pub static LM_ROMAN_BOLD: &[u8] = include_bytes!("../fonts/lmroman10-bold.otf");
+/// Latin Modern Sans 10 Regular (GUST Font License): small interface text.
+pub static LM_SANS: &[u8] = include_bytes!("../fonts/lmsans10-regular.otf");
+/// Latin Modern Mono 10 Regular (GUST Font License): the file-text pop-out only.
+pub static LM_MONO: &[u8] = include_bytes!("../fonts/lmmono10-regular.otf");
 /// The licence the fonts are distributed under.
 pub static FONT_LICENCE: &str = include_str!("../fonts/GUST-FONT-LICENSE.txt");
 

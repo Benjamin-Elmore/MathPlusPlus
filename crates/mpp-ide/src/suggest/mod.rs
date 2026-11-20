@@ -216,9 +216,45 @@ impl Suggester {
     }
 }
 
+/// The live-problem cards and quick fixes ask this matcher too. Only names
+/// that are actually defined come back (a quick fix must not offer a name that
+/// has no value), with the look-alike Greek variants (θ and ϑ) first.
+impl crate::diagnostics::suggest::Suggest for Suggester {
+    fn names(&self, unknown: &str, known: &[String]) -> Vec<String> {
+        let basic = crate::diagnostics::suggest::BasicSuggest;
+        let mut out = crate::diagnostics::suggest::Suggest::names(&basic, unknown, known);
+        for n in Suggester::names(self, unknown, known) {
+            if known.contains(&n) && !out.contains(&n) {
+                out.push(n);
+            }
+        }
+        out.truncate(MAX);
+        out
+    }
+
+    fn files(&self, unknown: &str, known: &[String]) -> Vec<String> {
+        Suggester::files(self, unknown, known)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plugs_into_the_live_problems() {
+        use crate::diagnostics::suggest::Suggest;
+        let s: &dyn Suggest = &Suggester;
+        let k = v(&["ϑ", "velocity", "mass"]);
+        assert_eq!(s.names("θ", &k), ["ϑ"]);
+        assert_eq!(s.names("velcoity", &k), ["velocity"]);
+        // A Greek letter that is not defined is never offered.
+        assert!(s.names("alpah", &k).is_empty());
+        assert_eq!(
+            s.files("mechanic.mpp", &v(&["mechanics.mpp", "launch.mpp"])),
+            ["mechanics.mpp"]
+        );
+    }
 
     fn v(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| (*s).to_string()).collect()

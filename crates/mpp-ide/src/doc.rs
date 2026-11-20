@@ -6,10 +6,11 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use mpp_eval::Evaluated;
+use mpp_render::IntegralLimits;
 use mpp_syntax::document::{parse_document, Document};
 use mpp_syntax::Span;
 
-use crate::diagnostics::{self, Problem};
+use crate::diagnostics::{self, Background, Counts, Problem};
 use crate::editor::Editor;
 use crate::eval::EvalWorker;
 use crate::layout::DEBOUNCE_MS;
@@ -23,6 +24,9 @@ struct CacheKey {
     width: u32,
     size: u32,
     mode: Mode,
+    limits: IntegralLimits,
+    /// The template the caret is filling in (its problems are not shown yet).
+    quiet: Option<(usize, usize)>,
 }
 
 /// A laid-out page with the parse it came from and its problems.
@@ -46,6 +50,7 @@ pub struct Doc {
     saved: String,
     worker: EvalWorker,
     pub eval: Option<Arc<Evaluated>>,
+    background: Option<Arc<Background>>,
     eval_text: String,
     eval_id: u64,
     submitted: Option<u64>,
@@ -59,6 +64,11 @@ pub struct Doc {
     pub scroll_to: Option<Span>,
     /// The x the caret keeps while moving up and down.
     pub want_x: Option<f32>,
+    /// Integral bounds above and below the sign (default) or at its side.
+    pub integral_limits: IntegralLimits,
+    /// The width, size and mode of the last page laid out (problem lists of
+    /// files that are not on screen use them).
+    last_layout: (f32, f32, Mode),
 }
 
 impl Doc {
@@ -71,6 +81,7 @@ impl Doc {
             saved: text.to_string(),
             worker: EvalWorker::new(),
             eval: None,
+            background: None,
             eval_text: String::new(),
             eval_id: 0,
             submitted: None,
@@ -80,6 +91,8 @@ impl Doc {
             highlight: None,
             scroll_to: None,
             want_x: None,
+            integral_limits: IntegralLimits::AboveBelow,
+            last_layout: (800.0, crate::layout::BODY_SIZE, Mode::Light),
         };
         d.submit_now();
         d
@@ -120,14 +133,6 @@ impl Doc {
         self.touched();
     }
 
-    /// The problems of the current page (empty before the first layout).
-    pub fn problems(&self) -> Vec<Problem> {
-        self.cache
-            .as_ref()
-            .map(|c| c.problems.clone())
-            .unwrap_or_default()
-    }
-
     /// Writes the file to its path.
     pub fn save(&mut self) -> std::io::Result<()> {
         let Some(p) = self.path.clone() else {
@@ -153,7 +158,9 @@ impl Doc {
     fn submit_now(&mut self) {
         let text = self.editor.text().to_string();
         let base = self.base().map(Path::to_path_buf);
-        self.worker.submit(&text, base.as_deref());
+        let path = self.path.clone();
+        self.worker
+            .submit_file(&text, base.as_deref(), path.as_deref());
         self.submitted = Some(self.editor.revision());
     }
 
@@ -163,6 +170,7 @@ impl Doc {
         if let Some(done) = self.worker.poll() {
             self.eval_text = done.text;
             self.eval = Some(done.eval);
+            self.background = Some(done.background);
             self.eval_id += 1;
         }
         if self.submitted != Some(self.editor.revision()) {
@@ -195,6 +203,7 @@ impl Doc {
         if let Some(done) = self.worker.wait(Duration::from_secs(30)) {
             self.eval_text = done.text;
             self.eval = Some(done.eval);
+            self.background = Some(done.background);
             self.eval_id += 1;
         }
         self.cache = None;
@@ -211,17 +220,39 @@ impl Doc {
         self.last_edit.elapsed()
     }
 
-    /// The number of errors in the current evaluation and parse.
-    pub fn error_count(&self) -> usize {
+    /// Problems of imported files and the names other files define, from the
+    /// last evaluation.
+    pub fn background(&self) -> Option<&Background> {
+        self.background.as_deref()
+    }
+
+    /// The problems of the current text (laid out at the last page size when
+    /// the page is not built yet).
+    pub fn problems(&mut self) -> Vec<Problem> {
+        let (w, s, m) = self.last_layout;
+        self.page(w, s, m).problems.clone()
+    }
+
+    /// The error, warning and note counts of the last laid-out page.
+    pub fn problem_counts(&self) -> Counts {
         self.cache
             .as_ref()
-            .map(|c| {
-                c.problems
-                    .iter()
-                    .filter(|p| p.severity == mpp_syntax::Severity::Error)
-                    .count()
-            })
-            .unwrap_or(0)
+            .map(|c| Counts::of(&c.problems))
+            .unwrap_or_default()
+    }
+
+    /// The number of errors in the current evaluation and parse.
+    pub fn error_count(&self) -> usize {
+        self.problem_counts().errors
+    }
+
+    /// The template the caret is filling in, while it still has empty boxes.
+    fn quiet_range(&self) -> Option<(usize, usize)> {
+        let caret = self.editor.caret();
+        let s = self.editor.session_at(caret)?;
+        s.tab_boxes()
+            .any(|b| b.range.is_empty())
+            .then_some((s.range.start, s.range.end))
     }
 
     /// The laid-out page for a window width, rebuilt only when something changed.
@@ -232,7 +263,10 @@ impl Doc {
             width: width.to_bits(),
             size: size.to_bits(),
             mode,
+            limits: self.integral_limits,
+            quiet: self.quiet_range(),
         };
+        self.last_layout = (width, size, mode);
         if self.cache.as_ref().is_some_and(|c| c.key != key) {
             let old = self.cache.take();
             let spare = self.spare.take();
@@ -244,10 +278,13 @@ impl Doc {
         let editor = &self.editor;
         let eval = self.eval.as_deref();
         let fresh = self.eval.is_some() && self.eval_text == editor.text();
+        let limits = self.integral_limits;
+        let background = self.background.clone();
         self.cache
             .get_or_insert_with(|| {
                 let src = editor.text();
                 let doc = parse_document(src);
+                let labels = editor.slot_labels();
                 let input = PageInput {
                     src,
                     doc: &doc,
@@ -255,9 +292,19 @@ impl Doc {
                     theme: mode.theme(),
                     size,
                     width,
+                    integral_limits: limits,
+                    slot_labels: &labels,
                 };
                 let page = build_page(&input);
-                let problems = diagnostics::collect(&doc, eval, fresh, &page);
+                let inputs = diagnostics::Inputs {
+                    src,
+                    doc: &doc,
+                    eval,
+                    eval_fresh: fresh,
+                    background: background.as_deref(),
+                    quiet: key.quiet.map(|(a, b)| a..b),
+                };
+                let problems = diagnostics::collect(&inputs, &page);
                 Arc::new(PageCache {
                     key,
                     page,

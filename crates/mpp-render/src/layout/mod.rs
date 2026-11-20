@@ -105,6 +105,9 @@ pub struct LayoutOptions {
     pub width: Option<f32>,
     /// Results to fill in, by line.
     pub results: Vec<LineResult>,
+    /// Labels for empty slots by source offset (the editor's template boxes
+    /// know better names than the layout's generic hints: `top curve`, `axis`).
+    pub slot_labels: Vec<(usize, String)>,
 }
 
 impl Default for LayoutOptions {
@@ -117,6 +120,7 @@ impl Default for LayoutOptions {
             equation_number: None,
             width: None,
             results: vec![],
+            slot_labels: vec![],
         }
     }
 }
@@ -137,6 +141,12 @@ impl LayoutOptions {
             font_size,
             ..LayoutOptions::default()
         }
+    }
+
+    /// The same options with integral bounds placed as given.
+    pub fn with_integral_limits(mut self, limits: IntegralLimits) -> Self {
+        self.integral_limits = limits;
+        self
     }
 
     fn sanitized_size(&self) -> f32 {

@@ -200,7 +200,7 @@ impl IdeApp {
     }
 
     /// Opens a file and puts the caret (and the view) at `span`.
-    pub fn jump_to(&mut self, path: &Path, span: Span) -> Result<(), String> {
+    pub fn jump_to_file(&mut self, path: &Path, span: Span) -> Result<(), String> {
         let i = self.open_file(path, false)?;
         if let Some(d) = self.docs.get_mut(i) {
             let at = span.start.min(d.editor.text().len());
@@ -496,7 +496,7 @@ impl IdeApp {
 
     /// Opens a hit of a search.
     pub fn open_hit(&mut self, hit: &Hit) {
-        if let Err(m) = self.jump_to(&hit.file, hit.span) {
+        if let Err(m) = self.jump_to_file(&hit.file, hit.span) {
             self.message = Some(m);
         }
     }
@@ -568,6 +568,9 @@ impl IdeApp {
         s.side_width = self.ws.side_width;
         s.size = self.size;
         s.autosave = self.autosave_mode();
+        s.theme = self.theme_choice.to_stored().into();
+        s.insert = self.insert.settings.to_stored();
+        s.copy_latex = self.copy_format == crate::copy::CopyFormat::Latex;
         s.last_folder = self.ws.explorer.root.clone();
         s.tabs = self.docs.iter().filter_map(|d| d.path.clone()).collect();
         s.active = self
@@ -601,6 +604,15 @@ impl IdeApp {
         self.ws.side_width = s.side_width;
         self.size = s.size;
         self.set_autosave_mode(s.autosave);
+        if let Some(c) = crate::theme::ThemeChoice::from_stored(&s.theme) {
+            self.set_theme_choice(c);
+        }
+        if !s.insert.is_empty() {
+            self.insert.settings = crate::insert::InsertSettings::from_stored(&s.insert);
+        }
+        if s.copy_latex {
+            self.copy_format = crate::copy::CopyFormat::Latex;
+        }
         if let Some(folder) = s.last_folder.clone().filter(|f| f.is_dir()) {
             self.open_folder(&folder, ctx);
         }

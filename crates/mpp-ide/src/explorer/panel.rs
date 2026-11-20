@@ -12,6 +12,7 @@ use mpp_render::Theme;
 
 use super::tree::{self, Row};
 use super::{icons, links, ops};
+use crate::diagnostics::Counts;
 use crate::paint::c32;
 
 const ROW_H: f32 = 24.0;
@@ -26,6 +27,8 @@ pub struct OpenFile {
     pub active: bool,
     pub preview: bool,
     pub broken: bool,
+    /// The file on disk (none for an unsaved new file).
+    pub path: Option<PathBuf>,
 }
 
 /// What the panel needs to know to draw.
@@ -35,6 +38,39 @@ pub struct ExplorerCtx<'a> {
     pub current: Option<&'a Path>,
     /// Files the current file imports.
     pub linked: &'a [PathBuf],
+    /// Error, warning and note counts of files with problems.
+    pub counts: &'a [(PathBuf, Counts)],
+}
+
+impl ExplorerCtx<'_> {
+    /// The problem counts of a file (zero when it has none).
+    fn counts_of(&self, path: &Path) -> Counts {
+        self.counts
+            .iter()
+            .find(|(p, _)| p == path)
+            .map(|(_, c)| *c)
+            .unwrap_or_default()
+    }
+}
+
+/// Paints a file's error count (or its warning count when it has no errors)
+/// right-aligned at `right`; returns the width used.
+fn paint_count(p: &egui::Painter, right: egui::Pos2, c: Counts, t: &Theme) -> f32 {
+    let (n, color) = if c.errors > 0 {
+        (c.errors, t.error)
+    } else if c.warnings > 0 {
+        (c.warnings, t.warning)
+    } else {
+        return 0.0;
+    };
+    p.text(
+        right,
+        Align2::RIGHT_CENTER,
+        n.to_string(),
+        FontId::proportional(14.0),
+        c32(color),
+    )
+    .width()
 }
 
 /// What the user asked for in the panel.
@@ -257,6 +293,14 @@ impl ExplorerState {
                 } else if resp.hovered() {
                     icons::cross(&p, close, muted);
                 }
+                if let Some(path) = &f.path {
+                    paint_count(
+                        &p,
+                        egui::pos2(rect.right() - 26.0, rect.center().y),
+                        cx.counts_of(path),
+                        &t,
+                    );
+                }
                 let on_close = resp
                     .interact_pointer_pos()
                     .or_else(|| ui.input(|i| i.pointer.latest_pos()))
@@ -448,13 +492,21 @@ impl ExplorerState {
                 );
                 icons::link(&p, m, c32(t.link));
             }
-            if broken {
+            let counts = cx.counts_of(&r.path);
+            if broken && counts.errors == 0 {
                 p.text(
                     egui::pos2(rect.right() - 10.0, rect.center().y),
                     Align2::RIGHT_CENTER,
                     "!",
                     FontId::proportional(15.0),
                     c32(t.error),
+                );
+            } else if !r.is_dir {
+                paint_count(
+                    &p,
+                    egui::pos2(rect.right() - 10.0, rect.center().y),
+                    counts,
+                    &t,
                 );
             }
             if let Some(d) = cx
