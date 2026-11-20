@@ -1,0 +1,41 @@
+# Math++ build plan
+
+The queue is in [[RUN-STATE.mpp]] and the grammar is in [[../docs/grammar.mpp]]. This page records the crate layout, the main types each crate exposes, and every change from the queue's defaults.
+
+## Crates
+
+| Crate | Job | Depends on |
+|---|---|---|
+| `mpp-syntax` | symbol table, lexer, maths parser, `.mpp` document parser; every node has a source span | — |
+| `mpp-core` | expression tree, exact numbers, simplification, the CAS (calculus, series, solving), the `Domain` trait, step log | — |
+| `mpp-eval` | turns the syntax tree into core expressions, runs a document top to bottom: scopes, `:=` / `≡`, functions, queries, imports, dependency graph, auto-evaluation | syntax, core |
+| `mpp-render` | maths layout (TeX-style boxes using the OpenType MATH table), output as a display list, SVG and HTML | syntax, eval |
+| `mpp-plot` | 2D and 3D figures as a display list (lines, triangles, text) | core, eval |
+| `mpp-ide` | the `eframe` app: equation view, editor, explorer, tabs | all |
+| `mpp-cli` | the `mpp` command: `run`, `check`, `render`, `calc`, `ide` | all |
+
+`mpp-syntax` and `mpp-core` don't depend on each other. `mpp-eval` lowers the syntax tree (which keeps presentation details such as `\frac` against `/`, needed for typesetting) into the core tree (which keeps only meaning).
+
+## Main types (contracts between items)
+
+- `mpp_syntax::symbols::{SYMBOLS, lookup_name, lookup_char, Symbol, SymbolKind}`: one table, name → Unicode → LaTeX → kind (M2).
+- `mpp_syntax::Span { start, end }` (byte offsets) and `Diagnostic { span, message, expected }`.
+- `mpp_syntax::math::{parse_math(&str, base_offset) -> (MathAst, Vec<Diagnostic>)}`, with `MathAst` an enum of statements (`Definition`, `Query`, `Check`, `Relation`, `NameList`) over `Node { kind: NodeKind, span: Span }` (M3).
+- `mpp_syntax::document::{parse_document(&str) -> Document}`, a `Vec<Block>` where maths spans are already parsed (M4).
+- `mpp_core::Expr`: a reference-counted immutable tree (`Rc`-free `Arc<ExprNode>` so the IDE can evaluate on a background thread). Numbers are `Number` (big rational, plus complex rational and `f64` for approximate values). `simplify`, `expand`, `factor`, `eval_f64`, `subs` (M5).
+- `mpp_core::calc::{diff, limit, integrate, sum, series}` returning `Result<Expr, MathError>` and logging into an optional `&mut Steps` (M8 to M10, C1).
+- `mpp_core::domain::Domain` trait: `fn name(&self)`, `fn operators(&self) -> &[&str]`, `fn apply(&self, op, args, &mut Ctx) -> Option<Result<Value, MathError>>`. Each field (linear algebra, solving, ODEs, sets, number theory, statistics, helpers) is one module that implements it and is registered in a `Registry` (M11).
+- `mpp_eval::{Session, Evaluated}`: `Session::run(path or text) -> Evaluated`, where each block has its values, query results (exact, approximate, steps), diagnostics, figures, and the names it defines and uses (M6, M7).
+- `mpp_render::{layout_math, DisplayList, to_svg, render_html}` (M12) and `mpp_plot::{Figure, plot_2d, plot_3d}` (M13).
+
+## Changes from the queue defaults
+
+- **3D graphs** are drawn by our own projection onto egui meshes (depth-sorted triangles, shaded by height), not `wgpu` or `three-d`. Surfaces of a few thousand triangles draw fast this way, the same code feeds the SVG export and image snapshots, and there are no GPU driver issues.
+- **Arbitrary-precision floats:** exact rationals cover the exact side. For `≈` the CAS works in `f64` with careful algorithms (Gauss–Kronrod, compensated sums) and prints 10 significant digits; exact results are turned into decimals to any number of digits from the rational. `rug` is skipped because it needs GMP (LGPL, painful on Windows).
+- **Font:** STIX Two Math (OFL) is embedded with its licence (`OFL.txt`). The OpenType MATH table is read with `ttf-parser`.
+- **Images for snapshot tests:** the layout engine's snapshot tests are SVG text snapshots (`insta`), which diff cleanly. IDE screenshots use `egui_kittest`.
+- **Definition syntax:** both `:=` and the sentence "Let $a = 3$." define a variable (the second as a convenience); `≡` makes a constant.
+
+## Build order
+
+M2 → M3 → M4 (PR 1), M5 → M7 (PR 2), M8 → M10 (PR 3), M11 (PR 4), C1 → C4, C7, C8 (PR 4b), M12, M13, C5 (PR 5), M14, C10, C9, C6, M15 (PR 6), then M16 and M17 (PR 7).

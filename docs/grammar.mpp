@@ -1,0 +1,204 @@
+# The Math++ grammar
+
+This is the grammar of a `.mpp` file, written as EBNF. A `.mpp` file is a paper: prose with maths in it. The parser has two layers. The **document layer** splits the file into blocks (headings, paragraphs, lists, tables, maths, figures, imports). The **maths layer** parses what sits between `$ … $` and `$$ … $$`.
+
+Notation: `"x"` is literal text, `[ a ]` is optional, `{ a }` is zero or more, `a | b` is a choice, `(* … *)` is a comment. `NL` is a line break and `BLANK` is an empty line.
+
+## 1. Document layer
+
+```
+document      = { block } ;
+block         = heading | rule | display_math | figure | embed_import
+              | verbatim | table | quote | list | footnote_def
+              | directive | theorem | paragraph ;
+
+heading       = ("#" | "##" | "###" | "####" | "#####" | "######") " " inline NL ;
+rule          = "---" NL ;                                 (* horizontal line *)
+display_math  = "$$" math_text "$$" [ " " "(" label_number ")" ] NL ;   (* may span lines *)
+figure        = "Figure:" " " figure_spec [ "." " " inline ] NL ;
+embed_import  = "![[" path "]]" NL ;                       (* import every name *)
+verbatim      = "```" NL { any_line } "```" NL ;           (* shown as-is, never evaluated *)
+table         = table_row NL table_rule NL { table_row NL } ;
+table_row     = "|" { inline "|" } ;
+table_rule    = "|" { ("---" | ":--" | "--:" | ":-:") { "-" } "|" } ;
+quote         = { ">" " " inline NL }- ;
+list          = { list_item }- ;
+list_item     = { "  " } ("- " | "* " | digit { digit } ". ") inline NL ;
+footnote_def  = "[^" name "]:" " " inline NL ;
+directive     = "%" { any_char } NL ;                      (* comment line, or %noeval *)
+theorem       = "**" theorem_kind "." "**" " " paragraph_text ;
+theorem_kind  = "Definition" | "Theorem" | "Lemma" | "Corollary"
+              | "Proposition" | "Example" | "Remark" | "Proof" ;
+paragraph     = paragraph_text ;                           (* lines up to a BLANK *)
+paragraph_text= inline { NL inline } ( BLANK | EOF ) ;
+```
+
+A paragraph that matches one of the sentence forms in §3 (imports and helpers) is read as that form; any other paragraph is plain prose. A `**Proof.**` block ends at the `∎` (or `\qed`) that closes it.
+
+### Inline markup
+
+```
+inline        = { inline_item } ;
+inline_item   = text | emphasis | strong | inline_math | wiki_link
+              | link | footnote_ref | eqref | escape ;
+emphasis      = "*" inline "*" ;
+strong        = "**" inline "**" ;
+inline_math   = "$" math_text "$" ;
+wiki_link     = "[[" path [ "|" text ] "]]" ;              (* link to another .mpp file *)
+link          = "[" inline "](" url ")" ;
+footnote_ref  = "[^" name "]" ;
+eqref         = "\eqref{" name "}" ;
+escape        = "\" ( "$" | "*" | "[" | "]" | "\" | "|" | "#" | "%" ) ;
+```
+
+## 2. Maths layer
+
+### 2.1 Statements
+
+Every maths span (inline or display) is one **statement line**, or several lines joined by `\\` (inside `aligned`, an `&` marks where lines line up and is otherwise ignored).
+
+```
+math_text     = statement { "\\" statement } [ label ] ;
+label         = "\label{" name "}" ;
+statement     = core { "," clause } [ "%noeval" ] ;
+core          = definition | query | check | relation_chain | name_list ;
+definition    = def_head (":=" | "≡" | "\equiv") expr ;
+def_head      = name [ "(" name { "," name } ")" ]         (* f(x, y) := … *)
+              | name "_{" name "+1}"                       (* recurrence: a_{n+1} := … *)
+              | name "_" integer ;                         (* initial term: a_1 := 1 *)
+query         = expr ( "=" | "≈" | "\approx" ) "?" [ "!" ] ;
+check         = expr "\overset{?}{=}" expr ;
+relation_chain= expr { relation expr } ;
+name_list     = name { "," name } ;                        (* only inside Using … from *)
+clause        = name "=" expr                              (* where-binding *)
+              | name { "," name } "\in" set_expr           (* range, slider *)
+              | relation_chain ;                           (* condition, e.g. x > 0 *)
+```
+
+- `:=` makes a changeable variable or a function, `≡` makes a constant. A head with arguments defines a function; a bare name with an expression that mentions other names is a no-argument function that recomputes when they change.
+- `= ?` asks for the exact answer, `≈ ?` for a number, and `= ?!` for the answer with its working (steps).
+- A where-binding after a comma holds only for that statement: `$$ A = \pi r^2, \quad r = 3 $$`. Spacing commands (`\quad`, `\;`, `\,`, `\ `) are ignored by the parser.
+- A display block that is a bare expression, or an equation with an unknown, is evaluated automatically (preview only), unless it is a definition, a check, or marked `%noeval`.
+
+### 2.2 Expressions
+
+Precedence, lowest first:
+
+| Level | Operators | Associativity |
+|---|---|---|
+| relation | `= ≠ < > ≤ ≥ ≈ ≡ ∼ ≅ ∝ ≪ ≫ ∈ ∉ ⊂ ⊆ ⇒ ⇔ →` | chain |
+| logic | `∨`, then `∧`, then `¬` (prefix) | left |
+| additive | `+ − ± ∓ ∪ ∖` | left |
+| multiplicative | `· × ÷ / ∘ ⊗ ⊕ ∩`, implicit product | left |
+| unary | prefix `−`, `+`, `±` | prefix |
+| big operator | `∑ ∏ ∫ ∬ ∭ ∮ lim`, `d/dx`, `∂`, `∇` | takes the term to its right |
+| power | `^`, `_`, primes `′ ″`, `!`, Unicode `²³` | right (for `^`) |
+| atom | number, name, group, call, fraction, root, matrix … | |
+
+```
+expr          = logic_or ;
+logic_or      = logic_and { ("∨" | "\lor") logic_and } ;
+logic_and     = logic_not { ("∧" | "\land") logic_not } ;
+logic_not     = [ "¬" | "\neg" ] additive ;
+additive      = [ sign ] term { add_op term } ;
+term          = factor { [ mul_op ] factor } ;             (* no operator = implicit product *)
+factor        = big_op | postfix ;
+postfix       = atom { "^" script | "_" script | prime | "!" | unicode_super } ;
+script        = "{" expr "}" | atom_no_postfix ;           (* x^2, x^{n+1}, a_n, x_{max} *)
+prime         = "'" | "′" | "″" ;
+
+big_op        = sum_like | integral | limit | derivative | nabla_op | named_op ;
+sum_like      = ("\sum" | "∑" | "sum" | "\prod" | "∏" | "prod")
+                [ "_" bound_index ] [ "^" script ] term ;
+bound_index   = "{" name "=" expr "}" | "(" name "=" expr ")" ;
+integral      = int_sign [ "_" script ] [ "^" script ] expr_until_d differential ;
+int_sign      = "\int" | "∫" | "int" | "\iint" | "∬" | "\iiint" | "∭"
+              | "\oint" | "∮" | "\oiint" | "∯" ;
+differential  = [ "\," ] "d" name { [ "\," ] "d" name }    (* dx, dy dx, dA, dV, d\mathbf r *)
+limit         = ("\lim" | "lim") "_" "{" name ("\to" | "→" | "->") expr [ "^+" | "^-" ] "}" term ;
+derivative    = "\frac{d" [ "^" integer ] "}{d" name [ "^" integer ] "}" term
+              | "\frac{d" name "}{d" name "}"              (* dy/dx as a whole *)
+              | "\frac{\partial" [ "^" integer ] [ name ] "}{" partial_dens "}" [ term ]
+              | ("\partial_" | "D_") script term
+              | "d/d" name term ;
+nabla_op      = ("\nabla" | "∇" | "nabla") [ "^2" ] [ ("\cdot" | "·" | "\times" | "×") ] term ;
+named_op      = "\operatorname{" name "}" [ "_" script ] [ "^" script ] ( call_args | term ) ;
+
+atom          = number | constant | name_or_call | group | abs | norm | floor | ceil
+              | frac | sqrt | binom | matrix | cases | set_lit | interval
+              | accent | font_name | text | mathbb ;
+number        = digit { digit } [ "." digit { digit } ] [ ("e" | "E") [ "-" ] digit { digit } ] ;
+constant      = "\pi" | "π" | "pi" | "e" | "i" | "\infty" | "∞" | "inf" ;
+name_or_call  = name [ call_args ] ;                       (* f(x): call if f is a function, else f·(x) *)
+call_args     = ( "(" | "\left(" ) expr { "," expr } ( ")" | "\right)" ) ;
+name          = letter [ "_" script ] | greek | func_name | "\operatorname{" letters "}"
+              | "\mathrm{" letters "}" | accent ;
+group         = "(" expr ")" | "[" expr "]" | "{" expr "}" | "\left" delim expr "\right" delim ;
+abs           = "|" expr "|" | "\left|" expr "\right|" | "\abs{" expr "}" ;
+norm          = "\|" expr "\|" | "‖" expr "‖" ;
+floor         = "\lfloor" expr "\rfloor" | "⌊" expr "⌋" | "floor(" expr ")" ;
+ceil          = "\lceil" expr "\rceil" | "⌈" expr "⌉" | "ceil(" expr ")" ;
+frac          = ( "\frac" | "\tfrac" | "\dfrac" ) "{" expr "}" "{" expr "}"
+              | "\tfrac12" ;                               (* digit shorthand: \frac12 = 1/2 *)
+sqrt          = "\sqrt" [ "[" expr "]" ] "{" expr "}" | "√" atom | "sqrt(" expr ")"
+              | "root(" expr "," expr ")" ;
+binom         = "\binom{" expr "}{" expr "}" | "binom(" expr "," expr ")" ;
+matrix        = "\begin{" mat_env "}" row { "\\" row } "\end{" mat_env "}" ;
+mat_env       = "pmatrix" | "bmatrix" | "vmatrix" | "matrix" ;   (* vmatrix = determinant *)
+row           = expr { "&" expr } ;
+cases         = "\begin{cases}" case_row { "\\" case_row } "\end{cases}" ;
+case_row      = expr "&" ( relation_chain | "\text{otherwise}" | "otherwise" ) ;
+set_lit       = "\{" [ expr { "," expr } ] "\}" | "∅" | "\emptyset" ;
+interval      = ( "[" | "(" ) expr "," expr ( "]" | ")" ) ;
+accent        = ( "\hat" | "\bar" | "\vec" | "\dot" | "\ddot" | "\tilde" ) "{" name "}" ;
+font_name     = ( "\mathbf" | "\mathcal" | "\mathfrak" ) "{" letters "}" ;
+mathbb        = "\mathbb{" ("N" | "Z" | "Q" | "R" | "C") "}" | "ℕ" | "ℤ" | "ℚ" | "ℝ" | "ℂ" ;
+text          = "\text{" any "}" ;
+```
+
+**The three input forms.** LaTeX (`\frac{a}{b}`, `\alpha`, `\int_0^1`), the plain form (`a/b`, `alpha`, `sqrt(x)`, `sum_(n=1)^inf`, `int_0^1`, `lim_(x->0)`, `<=`, `>=`, `!=`, `->`) and Unicode typed directly (`α`, `∫`, `∑`, `≤`, `x²`) all produce the same tree. Every name in the symbol table (`alpha`, `Omega`, `nabla`, `infty`, `partial`, `in`, `forall` …) means its symbol, with or without the backslash.
+
+**Names.** A run of letters that is a known name (a Greek letter, a symbol, or a function such as `sin`, `ln`, `exp`, `det`) is that name. Any other run of letters is a product of single letters, so `xy` is $x y$. Longer names are written `\operatorname{name}` or `\mathrm{name}`, or get a subscript (`v_0`, `x_{max}`).
+
+**Calls against products.** `f(x)` is parsed as a call node. The evaluator decides: if `f` is a function it is applied, otherwise it is $f \cdot x$. A known function written without brackets takes the product to its right up to the next function name, `+` or `−`: `\sin 2x` is $\sin(2x)$, and `\sin x \cos x` is $\sin(x)\cos(x)$. Powers on a function name apply to the result: `\sin^2 x` is $(\sin x)^2$, except `^{-1}`, which means the inverse function.
+
+**Integral bodies** run up to their differential: in `\int_0^1 x^2 + 1 \, dx` the body is $x^2 + 1$. A `\sum`, `\prod` or `\lim` takes the multiplicative term to its right, so it stops at the next `+` or `−` (use brackets to take more).
+
+## 3. Sentence forms
+
+These prose sentences are read as statements. A sentence may end with `.` and the words are not case-sensitive.
+
+```
+using         = "Using" " " "$" name_list "$" [ " as " "$" name_list "$" ] " from " wiki_link "." ;
+helper        = verb " " helper_name " of " "$" expr "$" [ " on " "$" interval "$" ]
+                [ " at " "$" clause "$" ] "." ;
+verb          = "Find" | "Compute" | "Determine" ;
+helper_name   = "the domain" | "the range" | "the intercepts" | "the critical points"
+              | "the extrema" | "the local extrema" | "the absolute extrema"
+              | "the intervals of increase" | "the concavity" | "the inflection points"
+              | "the asymptotes" | "the tangent line" | "the normal line"
+              | "the linearisation" | "the linearization" ;
+analyse       = ("Analyse" | "Analyze") " " "$" expr "$" [ " on " "$" interval "$" ] "." ;
+solve         = "Solve" " " "$" expr "$" [ " for " "$" name_list "$" ] "." ;
+```
+
+Every helper has an operator form that means the same thing: `\operatorname{crit} f = ?`, `\operatorname{extrema}_{[0,4]} f = ?`, `\operatorname{tangent}_{x=1} f = ?`, `\operatorname{solve}_x (x^2 = 4) = ?`.
+
+## 4. Figures
+
+```
+figure_spec   = fig_item { "," " " fig_item } ;
+fig_item      = "$" expr "$"                               (* curve, surface or equation *)
+              | "$" name { "," name } "\in" interval "$"    (* plotting range *)
+              | fig_keyword [ " " "$" clause "$" ] ;
+fig_keyword   = "polar" | "parametric" | "implicit" | "points" | "contour" | "slope field"
+              | "vector field" | "gradient field" | "tangent at" | "tangent plane at"
+              | "riemann left" | "riemann right" | "riemann mid" | "area between"
+              | "revolve about" | "taylor" | "newton from" ;
+```
+
+`Figure: $y(x)$, $x \in [0, R]$.` draws a curve. An item with two free variables, or a range for both $x$ and $y$, makes a 3D surface: `Figure: $z = x^2 - y^2$, $x, y \in [-2, 2]$.` The text after the first `. ` is the caption.
+
+## 5. Errors
+
+A maths error is reported at the exact span it comes from, says what was expected ("expected the upper bound after `^`"), and the parser carries on at the next block, so one bad line never stops the rest of the document. Unclosed `$$` closes at the next blank line, with an error.
