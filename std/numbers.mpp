@@ -1,0 +1,107 @@
+# Numbers
+
+Primes, the totient and divisor functions, and the famous integer sequences: Fibonacci, Lucas, Catalan and Bernoulli numbers. Deeper number theory is in [[std/number-theory.mpp]]. Import with `![[std/numbers.mpp]]`.
+
+## Primes
+
+Whether a number is prime, the next prime, and how many primes there are up to a bound: there are 25 below 100 and 168 below 1000.
+
+$$ \operatorname{nextprime}(100) \overset{?}{=} 101 $$
+
+$$ \operatorname{primepi}(100) \overset{?}{=} 25 $$
+
+$$ \operatorname{primepi}(1000) \overset{?}{=} 168 $$
+
+$$ \operatorname{primepi}(30) \overset{?}{=} 10 $$
+
+The primes up to 30 are 2, 3, 5, 7, 11, 13, 17, 19, 23 and 29; their product is the primorial of 30.
+
+$$ 2 \cdot 3 \cdot 5 \cdot 7 \cdot 11 \cdot 13 \cdot 17 \cdot 19 \cdot 23 \cdot 29 \overset{?}{=} 6469693230 $$
+
+## Divisors and the totient
+
+The totient counts the numbers up to $n$ that share no factor with it, the divisor count $\tau(n)$ counts the divisors, and the divisor sum $\sigma(n)$ adds them.
+
+$$ \operatorname{totient}(36) \overset{?}{=} 12 $$
+
+$$ \varphi(10) \overset{?}{=} 4 $$
+
+$$ \tau(12) \overset{?}{=} 6 $$
+
+$$ \sigma(12) \overset{?}{=} 28 $$
+
+A perfect number is the sum of its proper divisors: $\sigma(n) = 2n$.
+
+$$ \sigma(28) \overset{?}{=} 2 \cdot 28 $$
+
+$$ \sigma(496) \overset{?}{=} 2 \cdot 496 $$
+
+## Fibonacci and Lucas numbers
+
+The Fibonacci numbers: $F_0 = 0$, $F_1 = 1$, $F_{n+2} = F_{n+1} + F_n$.
+
+$$ F_{n+1} := F_n + F_{n-1} $$
+
+$$ F_0 := 0 $$
+
+$$ F_1 := 1 $$
+
+$$ F_{10} \overset{?}{=} 55 $$
+
+$$ F_{20} \overset{?}{=} 6765 $$
+
+Binet's closed form, through the golden ratio $(1 + \sqrt 5)/2$.
+
+$$ F_{\text{Binet}}(n) := \frac{1}{\sqrt{5}}\left(\left(\frac{1 + \sqrt{5}}{2}\right)^n - \left(\frac{1 - \sqrt{5}}{2}\right)^n\right) $$
+
+$$ F_{\text{Binet}}(10) \overset{?}{=} F_{10} $$
+
+$$ F_{\text{Binet}}(12) \overset{?}{=} 144 $$
+
+The Lucas numbers: $L_0 = 2$, $L_1 = 1$, the same rule.
+
+$$ L_{n+1} := L_n + L_{n-1} $$
+
+$$ L_0 := 2 $$
+
+$$ L_1 := 1 $$
+
+$$ L_{10} \overset{?}{=} 123 $$
+
+$$ L_{10} \overset{?}{=} F_{9} + F_{11} $$
+
+Cassini's identity, $F_{n-1}F_{n+1} - F_n^2 = (-1)^n$, at $n = 10$.
+
+$$ F_{9} F_{11} - F_{10}^2 \overset{?}{=} 1 $$
+
+The Fibonacci generating function $\sum F_n x^n = x/(1 - x - x^2)$, as a formal power series; at $x = 1/10$ the series converges, and 31 terms already agree to 24 digits.
+
+$$ G_{\text{Fib}}(x) := \frac{x}{1 - x - x^2} $$
+
+$$ \sum_{k=0}^{30} F_{\text{Binet}}(k) \left(\frac{1}{10}\right)^k \overset{?}{=} G_{\text{Fib}}(\tfrac{1}{10}) $$
+
+$$ G_{\text{Fib}}(\tfrac{1}{10}) \overset{?}{=} \frac{10}{89} $$
+
+## Catalan numbers
+
+$C_n = \binom{2n}{n}/(n + 1)$: 1, 1, 2, 5, 14, 42, …, counting bracketings, binary trees and Dyck paths.
+
+$$ C_{\text{Cat}}(n) := \frac{1}{n + 1} \binom{2n}{n} $$
+
+$$ C_{\text{Cat}}(5) \overset{?}{=} 42 $$
+
+$$ C_{\text{Cat}}(10) \overset{?}{=} \operatorname{catalan}(10) $$
+
+$$ C_{\text{Cat}}(0) + C_{\text{Cat}}(1) + C_{\text{Cat}}(2) + C_{\text{Cat}}(3) + C_{\text{Cat}}(4) \overset{?}{=} 1 + 1 + 2 + 5 + 14 $$
+
+## Bernoulli numbers
+
+$B_0 = 1$, $B_1 = -1/2$, $B_2 = 1/6$, and $B_n = 0$ for odd $n > 1$. They give the sums of powers and the values of $\zeta$ at even numbers.
+
+$$ \operatorname{bernoulli}(2) \overset{?}{=} \frac{1}{6} $$
+
+$$ \operatorname{bernoulli}(10) \overset{?}{=} \frac{5}{66} $$
+
+$$ \operatorname{bernoulli}(7) \overset{?}{=} 0 $$
+
+$$ \zeta(4) \overset{?}{=} -\frac{(2\pi)^4 \operatorname{bernoulli}(4)}{2 \cdot 4!} $$
