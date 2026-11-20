@@ -109,12 +109,71 @@ pub fn check(lhs: &Expr, rhs: &Expr) -> Verdict {
     if diff.is_zero() || diff.expand().is_ok_and(|d| d.is_zero()) {
         return Verdict::Proved;
     }
+    // Trigonometric identities: sin²x + cos²x = 1, double angles, tan² + 1 = sec² ….
+    if mpp_core::trig::identity_zero(&diff) {
+        return Verdict::Proved;
+    }
     if contains_holder(lhs) || contains_holder(rhs) {
         return Verdict::Unknown(
             "a side holds a calculus expression that is not evaluated yet".into(),
         );
     }
     spot_check(lhs, rhs)
+}
+
+/// Checks an antiderivative: `∫ f dx` and an answer agree when they differ by a constant.
+/// `vars` are the integration variables, `constants` the names of the constants of
+/// integration (set to 0). `None` when they do not agree this way either.
+pub fn check_up_to_constant(
+    lhs: &Expr,
+    rhs: &Expr,
+    vars: &[String],
+    constants: &[String],
+) -> Option<Verdict> {
+    if vars.is_empty() || !is_comparable(lhs) || !is_comparable(rhs) {
+        return None;
+    }
+    let mut d = (lhs - rhs).simplify();
+    for c in constants {
+        d = d.subs(c, &Expr::zero());
+    }
+    let mut numeric = None;
+    for v in vars {
+        let dd = mpp_core::calc::diff(&d, v, 1, None).ok()?.simplify();
+        let proved = dd.is_zero()
+            || dd.expand().is_ok_and(|e| e.is_zero())
+            || mpp_core::trig::identity_zero(&dd);
+        if !proved {
+            match spot_check(&dd, &Expr::zero()) {
+                Verdict::Holds { points } => numeric = Some(points),
+                _ => return None,
+            }
+        }
+    }
+    Some(match numeric {
+        Some(points) => Verdict::Holds { points },
+        None => Verdict::Proved,
+    })
+}
+
+/// The integration variables of the indefinite integrals in `e`.
+pub fn indefinite_variables(e: &Expr) -> Vec<String> {
+    let mut out = Vec::new();
+    fn walk(e: &Expr, out: &mut Vec<String>) {
+        if let ExprNode::Integral {
+            var, bounds: None, ..
+        } = e.node()
+        {
+            if !out.iter().any(|v| v == &**var) {
+                out.push(var.to_string());
+            }
+        }
+        for c in e.children() {
+            walk(c, out);
+        }
+    }
+    walk(e, &mut out);
+    out
 }
 
 fn spot_check(lhs: &Expr, rhs: &Expr) -> Verdict {

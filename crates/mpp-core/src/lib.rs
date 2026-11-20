@@ -19,6 +19,7 @@ pub mod steps;
 pub mod subs;
 pub mod tools;
 pub mod tools_b;
+pub mod trig;
 pub mod units;
 
 pub use domains::{Ctx, Domain, Registry};

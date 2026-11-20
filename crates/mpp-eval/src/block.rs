@@ -1107,15 +1107,49 @@ impl Run<'_, '_> {
         let (l_in, r_in) = match sides {
             Ok(v) => v,
             Err(l) => {
+                if matches!(l.error, EvalError::EmptyBox(_)) {
+                    lr.hint = Some(l.error.to_string());
+                }
                 self.located(l);
                 return self.push(lr);
             }
         };
         lr.input = Some(Expr::equation(l_in.clone(), r_in.clone()));
-        let l = self.resolve_full(&l_in, s.locals, &[], false, false).value;
-        let r = self.resolve_full(&r_in, s.locals, &[], false, false).value;
+        let side = |run: &Self, e: &Expr| {
+            run.resolve_full(e, s.locals, &[], false, false)
+                .value
+                .and_then(|v| run.finish_logged(v, None))
+        };
+        let l = side(self, &l_in);
+        let r = side(self, &r_in);
         match (l, r) {
-            (Ok(l), Ok(r)) => lr.verdict = Some(check(&l, &r)),
+            (Ok(l), Ok(r)) => {
+                let mut verdict = check(&l, &r);
+                // `\int f \, dx \overset{?}{=} F`: antiderivatives agree up to a constant.
+                if verdict.passed() != Some(true) {
+                    let mut vars = crate::check::indefinite_variables(&l_in);
+                    vars.extend(crate::check::indefinite_variables(&r_in));
+                    let written: BTreeSet<String> = l_in
+                        .free_symbols()
+                        .union(&r_in.free_symbols())
+                        .map(|n| n.to_string())
+                        .collect();
+                    let constants: Vec<String> = l
+                        .free_symbols()
+                        .union(&r.free_symbols())
+                        .map(|n| n.to_string())
+                        .filter(|n| !written.contains(n) && n.starts_with('C'))
+                        .collect();
+                    if let Some(v) = crate::check::check_up_to_constant(&l, &r, &vars, &constants) {
+                        self.warn(
+                            line.span,
+                            "the two sides agree up to a constant of integration",
+                        );
+                        verdict = v;
+                    }
+                }
+                lr.verdict = Some(verdict);
+            }
             (Err(err), _) => self.error(lhs.span, err),
             (_, Err(err)) => self.error(rhs.span, err),
         }

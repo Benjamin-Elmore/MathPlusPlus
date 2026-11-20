@@ -27,7 +27,8 @@ impl Run<'_, '_> {
     ) -> Result<Expr, EvalError> {
         let value = crate::domains_wire::finish(&value).map_err(EvalError::Math)?;
         crate::units_wire::check(&value).map_err(EvalError::Math)?;
-        Ok(self.with_assumptions(value, steps))
+        // `r sin²θ + r cos²θ` reads as `r`.
+        Ok(mpp_core::trig::tidy(&self.with_assumptions(value, steps)))
     }
 
     /// `Solve $x^2 = 4$ for $x$.`, `Solve $x + y = 3, x - y = 1$ for $x, y$.` and a

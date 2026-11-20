@@ -1,0 +1,45 @@
+# Checking identities and answers
+
+Write `\overset{?}{=}` (or `≟`, or `?=`) between two sides to check them. Math++ tries a
+symbolic proof first, then compares the sides at random points, and marks the line ✓ or ✗;
+a ✗ shows a point where the sides differ.
+
+## Identities
+
+$$ \sin^2 x + \cos^2 x \overset{?}{=} 1 $$
+
+$$ \sin 2x \overset{?}{=} 2 \sin x \cos x $$
+
+$$ \cos 2x \overset{?}{=} \cos^2 x - \sin^2 x $$
+
+$$ \tan^2 x + 1 \overset{?}{=} \sec^2 x $$
+
+$$ \sin(x + y) \overset{?}{=} \sin x \cos y + \cos x \sin y $$
+
+$$ \cosh^2 x - \sinh^2 x ≟ 1 $$
+
+$$ (a + b)^2 ?= a^2 + 2ab + b^2 $$
+
+## Homework answers
+
+$$ \frac{d}{dx} x^2 \sin x \overset{?}{=} 2x \sin x + x^2 \cos x $$
+
+$$ \int x e^x \, dx \overset{?}{=} (x - 1) e^x $$
+
+An antiderivative may differ from Math++'s by a constant and still be right:
+
+$$ \int \sin x \cos x \, dx \overset{?}{=} -\frac{\cos^2 x}{2} $$
+
+$$ \lim_{x \to 0} \frac{1 - \cos x}{x^2} \overset{?}{=} \frac{1}{2} $$
+
+$$ \sum_{n=1}^{\infty} \frac{1}{2^n} \overset{?}{=} 1 $$
+
+## Mistakes
+
+$$ (x + 1)^2 \overset{?}{=} x^2 + 1 $$
+
+$$ \sqrt{x^2} \overset{?}{=} x $$
+
+$$ \frac{d}{dx} \ln(2x) \overset{?}{=} \frac{2}{x} $$
+
+$$ \int_0^1 x^2 \, dx \overset{?}{=} \frac{1}{2} $$
