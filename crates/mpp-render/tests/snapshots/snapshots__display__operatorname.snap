@@ -1,0 +1,9 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\operatorname{tr} A"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="33.95" height="14.54" viewBox="0 0 33.95 14.54" overflow="visible">
+<text x="0" y="14.32" font-family="Latin Modern Math" font-size="20" fill="#111111">t</text>
+<text x="7.78" y="14.32" font-family="Latin Modern Math" font-size="20" fill="#111111">r</text>
+<text x="18.95" y="14.32" font-family="Latin Modern Math" font-size="20" fill="#111111">𝐴</text>
+</svg>

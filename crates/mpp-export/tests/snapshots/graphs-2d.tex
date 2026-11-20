@@ -1,0 +1,145 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Graphs in two dimensions}
+\date{}
+\begin{document}
+\maketitle
+A \texttt{Figure:} line draws a graph. List what to draw, separated by commas, and give a range for
+the variable with \texttt{x \textbackslash{}in [a, b]}. Text after the first \texttt{. } is the caption.
+
+\section*{Curves}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig1.png}
+\caption{Sine and cosine on two full turns, with a legend.}
+\end{figure}
+Your own functions and constants are used as they are defined above the figure.
+
+\begin{equation*}
+  g \equiv 9.81
+\end{equation*}
+\begin{equation*}
+  h(t) \coloneqq  20 t - \frac{g}{2} t^2
+\end{equation*}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig2.png}
+\caption{Height of a ball thrown up at $20$ m/s.}
+\end{figure}
+\section*{Sliders}
+
+A variable declared with a range gets a slider, and the figure redraws as you drag it.
+
+\begin{equation*}
+  a \coloneqq  1, \; a \in [0, 3]
+\end{equation*}
+\begin{equation*}
+  b \coloneqq  0, \; b \in [-2, 2]
+\end{equation*}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig3.png}
+\caption{Amplitude $a$ and shift $b$.}
+\end{figure}
+\section*{Asymptotes and jumps}
+
+The curve is broken at an asymptote instead of joined by a vertical line.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig4.png}
+\caption{Tangent.}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig5.png}
+\caption{Two reciprocals.}
+\end{figure}
+At a jump, an open dot marks the end that is not included and a closed dot the end that is.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig6.png}
+\caption{A step.}
+\end{figure}
+\section*{Equations}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig7.png}
+\caption{A circle (equal scales are used when you give no range).}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig8.png}
+\caption{An ellipse and a hyperbola.}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig9.png}
+\caption{A parabola opening sideways.}
+\end{figure}
+\section*{Parametric and polar}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig10.png}
+\caption{A Lissajous curve.}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig11.png}
+\caption{A cardioid.}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig12.png}
+\caption{A three-petal rose.}
+\end{figure}
+\section*{Inequalities}
+
+An inequality shades the region where it holds. A dashed edge means the edge itself is not included.
+Where regions overlap, the colours blend.
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig13.png}
+\caption{Two inequalities.}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig14.png}
+\caption{A ring.}
+\end{figure}
+\section*{Points and level curves}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig15.png}
+\caption{Two marked points on a parabola.}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-2d-fig16.png}
+\caption{Level curves.}
+\end{figure}
+\end{document}

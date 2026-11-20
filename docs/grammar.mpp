@@ -10,7 +10,7 @@ Notation: `"x"` is literal text, `[ a ]` is optional, `{ a }` is zero or more, `
 document      = { block } ;
 block         = heading | rule | display_math | figure | embed_import
               | verbatim | table | quote | list | footnote_def
-              | directive | theorem | paragraph ;
+              | directive | comment | title_line | references | theorem | paragraph ;
 
 heading       = ("#" | "##" | "###" | "####" | "#####" | "######") " " inline NL ;
 rule          = "---" NL ;                                 (* horizontal line *)
@@ -25,7 +25,11 @@ quote         = { ">" " " inline NL }- ;
 list          = { list_item }- ;
 list_item     = { "  " } ("- " | "* " | digit { digit } ". ") inline NL ;
 footnote_def  = "[^" name "]:" " " inline NL ;
-directive     = "%" { any_char } NL ;                      (* comment line, %noeval, or a display directive (§2.4) *)
+directive     = "%" letter { any_char } NL ;              (* %noeval, %sf 4, %cite …: a word straight after the % (§2.4, §6) *)
+comment       = ( "% " { any_char } NL ) { "% " { any_char } NL }
+              | "%{" { any_char | NL } "%}" NL ;           (* formatted comment (§6) *)
+title_line    = ( "Title:" | "Author:" | "Date:" | "Abstract:" ) " " inline NL ;   (* only before the first real block (§6) *)
+references    = "References" [ ":" ] NL { ref_entry NL } | "References from " wiki_link NL ;   (* §6 *)
 theorem       = "**" theorem_kind "." "**" " " paragraph_text ;
 theorem_kind  = "Definition" | "Theorem" | "Lemma" | "Corollary"
               | "Proposition" | "Example" | "Remark" | "Proof" ;
@@ -40,7 +44,7 @@ A paragraph that matches one of the sentence forms in §3 (imports and helpers) 
 ```
 inline        = { inline_item } ;
 inline_item   = text | emphasis | strong | inline_math | code | wiki_link
-              | link | footnote_ref | eqref | escape ;
+              | link | footnote_ref | eqref | citation | escape ;
 code          = "`" { any_char } "`" ;                     (* shown as typed; no markup inside *)
 emphasis      = "*" inline "*" ;
 strong        = "**" inline "**" ;
@@ -50,6 +54,7 @@ link          = "[" inline "](" url ")" ;
 footnote_ref  = "[^" name "]" ;
 eqref         = "\eqref{" name "}" ;
 escape        = "\" ( "$" | "*" | "[" | "]" | "\" | "|" | "#" | "%" ) ;
+citation      = "[@" key { ( ";" | "," ) " " "@" key } "]" ;       (* §6 *)
 ```
 
 ## 2. Maths layer
@@ -275,3 +280,36 @@ fig_keyword   = "polar" | "parametric" | "implicit" | "points" | "contour" | "sl
 ## 5. Errors
 
 A maths error is reported at the exact span it comes from, says what was expected ("expected the upper bound after `^`"), and the parser carries on at the next block, so one bad line never stops the rest of the document. Unclosed `$$` closes at the next blank line, with an error. Inside a maths span the parser recovers at the next `,` or line break (`\\`), putting an error placeholder where something was missing, so it always returns a tree. Nesting deeper than about 30 brackets, or more than 256 operators in a row on one line, is reported as an error instead of being followed.
+
+## 6. Comments and paper features
+
+Everything here is optional. A file that uses none of it reads and renders exactly as before.
+
+### 6.1 Formatted comments
+
+```
+comment       = line_comment | block_comment ;
+line_comment  = { ( "%" | "%" " " ) { any_char } NL }- ;   (* consecutive lines are one comment *)
+block_comment = "%{" { any_char | NL } "%}" ;              (* may start and end mid-line *)
+```
+
+`% text` is a one-line comment and `%{ … %}` a block comment. A `%` followed straight away by a word (`%noeval`, `%sf 4`, `%cite author-year`) stays a directive; a comment line has a space (or nothing) after the `%`. The text of a comment is read like the rest of the file (headings, paragraphs, lists, tables, **bold**, *italic*, links, `$…$` and `$$…$$` maths), so it can hold anything a block can, but it is only ever shown: its maths is typeset and never evaluated, no definition, assumption, import, label or `%noeval` inside it takes effect, it takes no equation number, and errors inside it are not reported. A comment sits between blocks, or right after a display equation on the same line (`$$ x = 1 $$ % because …`) or the next. An unclosed `%{` is an error and the comment runs to the end of the file. A comment holding nothing but display maths is maths commented out.
+
+### 6.2 Title block, citations, references
+
+```
+title_line    = ( "Title:" | "Author:" | "Date:" | "Abstract:" ) " " inline NL ;
+citation      = "[@" key { ( ";" | "," ) " "* "@" key } "]" ;
+references    = "References" [ ":" ] NL { ref_entry NL }
+              | "References from [[" path "]]" ;
+ref_entry     = "[@" key "]" [ ":" ] " " author " | " title [ " | " year ] [ " | " link ] ;
+key           = { letter | digit | "_" | "-" | ":" | "." | "/" }- ;
+```
+
+`Title:`, `Author:` (one line each, repeatable), `Date:` and `Abstract:` (runs to the next blank line) are a title block only when they come before the first real block of the file (directives and comments may come first); later they are ordinary prose. A citation `[@key]`, `[@a; @b]` is checked against the entries written in the file's `References` block; an unknown key, a key defined twice and a malformed entry are errors. `References from [[refs.mpp]]` names a file whose `[@key] Author | Title | Year | link` lines are the entries (every other line of that file is ignored); because the file is read by the caller, the keys are then checked with `citation_diagnostics(doc, entries)`. A `[@` that is not a well-formed citation is plain text.
+
+### 6.3 Directives of the paper features
+
+- `%cite numbered` (the default): citations read `[1]`, numbered in order of first citation, and the list is in that order, uncited entries last. `%cite author-year`: citations read `(Knuth 1984)` (`(Smith and Lee 2001)`, `(Walker et al. 2014)`), and the list is alphabetical. Authors are separated by ` and ` or `;`, and a surname is the part before the first comma, or the last word.
+- `%number sections`: headings are numbered (`1`, `1.1`) and theorem-style blocks are numbered per section (`Theorem 2.1`, counting from 1 in each top-level section; `Remark` and `Proof` are not numbered). When the file has exactly one `#` heading and deeper ones, the `#` is the title and the `##` headings are the sections. Without it theorems are numbered in one sequence (`Theorem 1`, `Theorem 2`).
+- Proofs always end with `∎`, written or added. Footnotes are numbered superscripts with the notes collected at the end. Equations that have a `\label` are numbered and `\eqref` links to them.

@@ -1,0 +1,15 @@
+# Series
+
+Sums, infinite or finite.
+
+$$ \sum_{k=1}^{100} k = ? $$
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n^2} = ? $$
+
+$$ \sum_{n=0}^{\infty} \frac{x^n}{n!} = ? $$
+
+$$ \sum_{n=0}^{\infty} \left(\frac{1}{2}\right)^n = ? $$
+
+A telescoping sum:
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n (n + 1)} = ? $$

@@ -1,0 +1,77 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Assumptions}
+\date{}
+\begin{document}
+\maketitle
+Without knowing anything about $x$, Math++ keeps the safe form and says why in the working (a query that ends in \texttt{?!} shows it):
+
+\begin{equation*}
+  \sqrt{x^2} = \left|x\right|
+\end{equation*}
+A power integral has two cases, so the answer is piecewise:
+
+\begin{align*}
+  \int x^n \, dx = \begin{cases} \frac{x^{n + 1}}{n + 1} & n \neq -1 \\ \ln\left(\left|x\right|\right) & \text{otherwise} \end{cases} + C
+\end{align*}
+An improper integral that depends on a parameter:
+
+\begin{align*}
+  \int_1^\infty x^{-p} \, dx = \begin{cases} \infty & p \le 1 \\ -\frac{1}{-p + 1} & \text{otherwise} \end{cases}
+\end{align*}
+A condition in brackets holds for its block only:
+
+\begin{equation*}
+  \sqrt{y^2} = -y \quad (y < 0)
+\end{equation*}
+From here on, $x$ is positive, $n$ is an integer and $a$ is negative.
+
+Assume $x > 0$.
+
+Assume $n \in \mathbb{Z}$, $a < 0$.
+
+\begin{equation*}
+  \sqrt{x^2} = x
+\end{equation*}
+\begin{equation*}
+  \ln(e^x) = x
+\end{equation*}
+\begin{equation*}
+  \cos(n \pi) = \left(-1\right)^{n}
+\end{equation*}
+\begin{equation*}
+  \lim_{x \to \infty} e^{a x} = 0
+\end{equation*}
+\begin{equation*}
+  \int_0^\infty e^{a x} \, dx = -\frac{1}{a}
+\end{equation*}
+Assume $p > 1$.
+
+\begin{equation*}
+  \int_1^\infty x^{-p} \, dx = -\frac{1}{-p + 1}
+\end{equation*}
+\section*{Mistakes the checker catches}
+
+Assumptions that contradict the ones above are an error:
+
+Assume $x < 0$.
+
+\end{document}

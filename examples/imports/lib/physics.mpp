@@ -1,0 +1,9 @@
+# Physics constants
+
+Gravity near the Earth's surface:
+
+$$ g \equiv 9.81 $$
+
+The area of a circle of radius $r$:
+
+$$ A(r) := \pi r^2 $$

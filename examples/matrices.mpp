@@ -1,0 +1,25 @@
+# Matrices
+
+Write a matrix with `pmatrix`, then work with it.
+
+$$ A := \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} $$
+
+$$ B := \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix} $$
+
+The product keeps the order you write it in:
+
+$$ A B = ? $$
+
+$$ B A = ? $$
+
+$$ A^{-1} = ? $$
+
+$$ A^T = ? $$
+
+$$ \det A = ? $$
+
+$$ \operatorname{rank} A = ? $$
+
+A matrix times a vector:
+
+$$ A \begin{pmatrix} 1 \\ 1 \end{pmatrix} = ? $$

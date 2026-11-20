@@ -1,0 +1,52 @@
+---
+source: crates/mpp-render/tests/paper.rs
+expression: skeleton(&html)
+---
+ class="paper">
+<svg/>
+<header class="title-block">
+<h1 class="doc-title">Projectile motion on a slope</h1>
+<p class="doc-author">Ben Elmore</p>
+<p class="doc-date">20 November 2026</p>
+<div class="abstract"><p class="abstract-head">Abstract</p><p>We find how far a projectile launched at speed <svg/> and angle <svg/> travels, following the classical treatment (<a class="cite" href="#ref-halliday14">Halliday et al. 2014</a>) and the numerical study of (<a class="cite" href="#ref-lee20">Lee and Park 2020</a>; <a class="cite" href="#ref-knuth84">Knuth 1984</a>).</p></div>
+</header>
+<h1><span class="sec-num">1</span> Introduction</h1>
+<p>Every worksheet works without any of this: the title block, numbered theorems, citations and notes are all optional.</p>
+<h1><span class="sec-num">2</span> Range on flat ground</h1>
+<p>Let <svg/> and <svg/>. The range is given in <a class="eqref" href="#eq-1">(1)</a>.</p>
+<div class="eq" id="eq-1"><svg/><span class="eq-num">(1)</span></div>
+<div class="eq"><svg/></div>
+<div class="theorem"><span class="thm-head">Definition 2.1.</span>
+<p>The <em>range</em> of a launch is the horizontal distance to the point where the projectile lands again.</p>
+</div>
+<div class="theorem slanted"><span class="thm-head">Theorem 2.2.</span>
+<p>For a fixed launch speed the range is largest when <svg/>.</p>
+</div>
+<div class="theorem proof"><span class="thm-head">Proof.</span>
+<p>By <a class="eqref" href="#eq-1">(1)</a> the range is proportional to <svg/>, which is at most <svg/> and equals <svg/> exactly when <svg/>.<sup class="fnref" id="fnref-max" title="Strictly, for ."><a href="#fn-max">1</a></sup><span class="qed">∎</span></p>
+</div>
+<div class="theorem"><span class="thm-head">Remark.</span>
+<p>Air resistance is ignored throughout.</p>
+</div>
+<h1><span class="sec-num">3</span> Slopes</h1>
+<div class="theorem slanted"><span class="thm-head">Lemma 3.1.</span>
+<p>A slope shortens the range of an uphill launch.</p>
+</div>
+<div class="theorem slanted"><span class="thm-head">Corollary 3.2.</span>
+<p>The best angle on a slope is below <svg/>.</p>
+</div>
+<section class="references">
+<h2>References</h2>
+<ol class="refs author-year">
+<li id="ref-halliday14">Halliday, D.; Resnick, R.; Walker, J. <em>Fundamentals of Physics</em>, 2014.</li>
+<li id="ref-knuth84">Knuth, D. E. <em>The TeXbook</em>, 1984. <a href="https://example.org/texbook">https://example.org/texbook</a></li>
+<li id="ref-lee20">Lee, K. and Park, H. <em>Slopes and projectiles</em>, 2020.</li>
+</ol>
+</section>
+<hr class="notes">
+<ol class="footnotes">
+<li value="1" id="fn-max">Strictly, for <svg/>. <a href="#fnref-max">↩</a></li>
+</ol>
+</main>
+</body>
+</html>

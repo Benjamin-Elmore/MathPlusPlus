@@ -1,0 +1,32 @@
+# N6 formatted comments: notes for the integrator
+
+Lane `docs` (branch `wip/docs`, on `feat/domains` plus the layout engine and the graphs crate). The example is `examples/comments.mpp` with `examples/comments.expected.txt` (only the two queries outside comments have answers), checked by `crates/mpp-eval/tests/examples.rs`. Grammar: `docs/grammar.mpp` §6.1.
+
+## What was built (model and render side)
+
+- **Parser** (`crates/mpp-syntax/src/document/block.rs`): `BlockKind::Comment(Comment { blocks, braces, closed })`. `% text` (a space or nothing after the `%`; consecutive lines are one comment) and `%{ … %}`. `%word` with no space is still a `Directive`. The inside is parsed with a context of its own, so its problems are dropped and nothing in it takes effect: no labels, no equation numbers, no `%noeval`, no definitions. `Document::walk` and `walk_inlines` do not go into comments; `block_at` returns the comment block itself. A `% note` straight after `$$ … $$ (n)` on the same line is its own `Comment` block after the equation. A comment between a `%noeval` and its maths keeps the flag. An unclosed `%{` is an error.
+- **Evaluator** (`crates/mpp-eval/src/block.rs`, one arm): `BlockKind::Comment(_)` does nothing. This is the whole of the interpreter change: comments are skipped because nothing looks inside them.
+- **Render** (`crates/mpp-render/src/html/paper.rs`): `HtmlOptions::include_comments` (default **false**: an export leaves the author's notes out). When on, a comment is `<aside class="note">` with a ✎ marker; a comment that holds nothing but display maths is `note off` (dashed edge). Maths inside a comment is typeset, never given results, never numbered, and drawn at 60% opacity. Theme colours `note_background` and `note_accent` (light and dark) are CSS variables `--mpp-note-background` and `--mpp-note-accent`.
+- `Comment::is_commented_out_maths()` says whether a comment is only display maths.
+
+## IDE requirements (the IDE crate is not on this branch)
+
+1. **Show as notes.** In the equation view a `Comment` block draws as the soft tinted box with the ✎ marker and slightly smaller text (same look as the HTML `.note`: background `Theme::note_background`, left bar and marker `Theme::note_accent`, prose in `Theme::muted`). Its inner blocks are laid out like any block (paragraphs with inline maths, lists, tables). Maths inside is greyed and has no results, no ghost results and no steps.
+2. **Fold.** Each note folds to one line (marker plus the first line of text, an ellipsis, and a chevron). The fold state is per block id (`Block::id`) and is not saved in the file. Notes start unfolded.
+3. **View → Comments.** A toggle that shows or hides every note at once (hidden: the notes take no space at all). It maps to `HtmlOptions::include_comments` for the preview and has nothing to do with the exporter's own option. The state is remembered per user, not per file.
+4. **Ctrl+/ on the current block.** On a prose or maths block: wrap it as a comment (a maths block becomes `%{ … %}` so its `$$` lines stay readable; prose becomes `% ` lines). On a block that is already a `Comment`: remove the comment markers (the reverse). A multi-block selection becomes one `%{ … %}`. After commenting a maths block out its results disappear and the block shows greyed; the equation numbers after it renumber (the parser does this).
+5. **Insert → Comment.** Puts `% ` at the cursor in a new block and starts typing in the note box; Enter on an empty note line ends the note. The C9 Insert dropdown lists "Comment" in a "Text" group.
+6. **Hover and outline.** A folded note shows its full text on hover. The C10 Outline lists notes under their section only when View → Comments is on, with the first words of the note.
+7. **Never hide a mistake.** A `%{` with no `%}` is an error: show the red underline on the `%{` marker even though the rest of the file below it counts as comment text.
+8. **Equation view rule.** The `%` and `%{ %}` markers are never shown raw (they are file text). The note box is the only visual.
+
+## N8 (export) notes
+
+PDF and LaTeX export should honour `include_comments` (default off) the same way: `render_html_with(.., &HtmlOptions { include_comments: true, .. })` for HTML, and for the other targets walk `BlockKind::Comment` and draw the same box (PDF) or a `\begin{quote}` marked with a `% ` prefix (LaTeX).
+
+## Choices made (read these)
+
+- **Consecutive `%` lines are one note**, a blank line between them makes two. A `% ` line directly under a maths block stays a separate block (it renders tight under the equation).
+- **`% sf 4` is a comment** (it was one before and the grammar says so); `%sf 4` is the directive.
+- **`snapshots/document__noeval_directive.snap` changed on purpose**: the old `Directive Comment "a comment"` is now `Comment` with a paragraph inside. `DirectiveKind::Comment` still exists for `%word` lines that are not a known directive.
+- **Comments are hidden by default in `render_html`**, as the row asks. The preview should pass `include_comments: true`.

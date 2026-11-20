@@ -1,0 +1,15 @@
+---
+source: crates/mpp-syntax/tests/notes.rs
+expression: "clean(concat!(\"% a leading comment is fine\\n\", \"Title: Projectile *motion*\\n\",\n\"Author: Ben Elmore\\n\", \"Date: 20 November 2026\\n\",\n\"Abstract: We study $y(x)$\\n\", \"on a slope.\\n\", \"\\n\", \"# Intro\\n\",\n\"Following [@knuth84] and [@lee20; @knuth84], see [@lee20].\\n\", \"\\n\",\n\"References\\n\",\n\"[@knuth84] Knuth, D. E. | The TeXbook | 1984 | https://example.org/tex\\n\",\n\"[@lee20]: Lee, K. and Park, H. | Slopes | 2020\\n\",))"
+---
+[0..27] Comment braces=false closed=true
+  [2..27] Paragraph "a leading comment is fine"
+[28..54] Title Title "Projectile " (em "motion")
+[55..73] Title Author "Ben Elmore"
+[74..96] Title Date "20 November 2026"
+[97..134] Title Abstract "We study " (math (call y x)) <br> "on a slope."
+[136..143] Heading(1) "Intro"
+[144..202] Paragraph "Following " (cite knuth84) " and " (cite lee20 knuth84) ", see " (cite lee20) "."
+[204..332] References from=None
+  @knuth84 "Knuth, D. E." "The TeXbook" Some("1984") Some("https://example.org/tex")
+  @lee20 "Lee, K. and Park, H." "Slopes" Some("2020") None

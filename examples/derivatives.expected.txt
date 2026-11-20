@@ -1,0 +1,7 @@
+d/dx x³ sin x = ? → x^3*cos(x) + 3*x^2*sin(x)
+d/dx e^(x²) = ? → 2*e^(x^2)*x
+d/dx ln(cos x) = ? → -sin(x)/cos(x)
+d/dx f(x) = ? → x + 2*x*ln(x)
+f'(1) = ? → 1
+d²/dx² sin(3 x) = ? → -9*sin(3*x)
+∂/∂y (x² y³) = ? → 3*x^2*y^2

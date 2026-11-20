@@ -1,0 +1,13 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\mathbb{R} \\subseteq \\mathcal{C}, \\quad \\mathbf{v} \\in \\mathfrak{g}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="128.08" height="18.12" viewBox="0 0 128.08 18.12" overflow="visible">
+<text x="0" y="13.94" font-family="Latin Modern Math" font-size="20" fill="#111111">ℝ</text>
+<text x="18.34" y="13.94" font-family="Latin Modern Math" font-size="20" fill="#111111">⊆</text>
+<text x="39.45" y="13.94" font-family="Latin Modern Math" font-size="20" fill="#111111">𝒞</text>
+<text x="52.53" y="13.94" font-family="Latin Modern Math" font-size="20" fill="#111111">,</text>
+<text x="81.42" y="13.94" font-family="Latin Modern Math" font-size="20" fill="#111111">𝐯</text>
+<text x="99.12" y="13.94" font-family="Latin Modern Math" font-size="20" fill="#111111">∈</text>
+<text x="118.02" y="13.94" font-family="Latin Modern Math" font-size="20" fill="#111111">𝔤</text>
+</svg>
