@@ -1,0 +1,16 @@
+[package]
+name = "mpp-plot"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Math++ graphs: 2D and 3D figures as a backend-neutral display list, with SVG and PNG export"
+
+[dependencies]
+mpp-core = { path = "../mpp-core" }
+mpp-syntax = { path = "../mpp-syntax" }
+mpp-eval = { path = "../mpp-eval" }
+resvg = { version = "0.45", default-features = false, features = ["text", "system-fonts"] }
+
+[dev-dependencies]
+insta = "1.49"
+proptest = "1.12"
