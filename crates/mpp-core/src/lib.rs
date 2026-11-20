@@ -4,6 +4,7 @@
 #![forbid(unsafe_code)]
 
 pub mod calc;
+pub mod domains;
 pub mod error;
 pub mod eval;
 pub mod expand;
@@ -17,6 +18,7 @@ pub mod simplify;
 pub mod steps;
 pub mod subs;
 
+pub use domains::{Ctx, Domain, Registry};
 pub use error::{MathError, MathResult};
 pub use eval::{EmptyEnv, Env};
 pub use expand::expand;
