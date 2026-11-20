@@ -74,3 +74,8 @@ fn integral_applications() {
 fn numerical_methods() {
     check("numerical-methods");
 }
+
+#[test]
+fn differential_equations() {
+    check("differential-equations");
+}

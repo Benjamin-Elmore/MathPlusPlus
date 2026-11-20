@@ -10,6 +10,7 @@
 pub mod applications;
 pub mod convergence;
 pub mod numerics;
+pub mod ode;
 mod util;
 
 pub use applications::{

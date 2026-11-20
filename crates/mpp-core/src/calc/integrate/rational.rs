@@ -166,7 +166,7 @@ fn solve(mut a: Vec<Vec<BigRational>>, mut b: Vec<BigRational>) -> Option<Vec<Bi
 
 /// Partial fractions of `rem/den` (`deg rem < deg den`, `den` monic): the factors and the
 /// numerator of each term.
-fn decompose(rem: &Poly, den: &Poly) -> Option<Vec<(Poly, u32, Poly)>> {
+pub(crate) fn decompose(rem: &Poly, den: &Poly) -> Option<Vec<(Poly, u32, Poly)>> {
     let (c, factors) = factor_poly(den);
     if factors
         .iter()

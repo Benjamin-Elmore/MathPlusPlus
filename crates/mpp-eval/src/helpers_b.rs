@@ -32,10 +32,17 @@ const KEYWORDS: &[&str] = &[
     "washer",
     "shell",
     "shells",
+    "laplace",
+    "series",
+    "frobenius",
+    "numeric",
 ];
 
 /// Evaluates the operators of this module; `None` for anything else.
 pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    if let Some(kept) = unknown_function_derivative(e) {
+        return Some(Ok(kept));
+    }
     let call = Call::read(e)?;
     if let Some(f) = special_function(&call.name) {
         return Some(match call.args.as_slice() {
@@ -66,6 +73,20 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
         "tests" | "convtests" | "convergencetests" => tests(&call, ctx),
         "radius" | "roc" | "radiusofconvergence" => power_series(&call, ctx, true),
         "ioc" | "intervalofconvergence" => power_series(&call, ctx, false),
+        "dsolve" | "odesolve" | "ode" => ode::dsolve(&call, ctx),
+        "solve"
+            if call
+                .args
+                .first()
+                .is_some_and(is_differential_equation_or_system) =>
+        {
+            ode::dsolve(&call, ctx)
+        }
+        "laplace" => ode::laplace(&call, ctx, false),
+        "invlaplace" | "ilaplace" | "inverselaplace" => ode::laplace(&call, ctx, true),
+        "heat" | "heatequation" => ode::pde(&call, ctx, ode::Pde::Heat),
+        "wave" | "waveequation" => ode::pde(&call, ctx, ode::Pde::Wave),
+        "laplacerect" | "laplaceequation" => ode::pde(&call, ctx, ode::Pde::Laplace),
         _ => return None,
     };
     Some(result)
@@ -713,4 +734,328 @@ fn power_series(call: &Call, ctx: &Ctx<'_>, radius: bool) -> MathResult<Expr> {
         ctx.note(format!("at {x} = {end}: {report}"));
     }
     Ok(if radius { r.radius } else { r.interval })
+}
+
+// ---- differential equations ----------------------------------------------------
+
+/// `dⁿy/dxⁿ` of a name with no value (an unknown function) stays as written, so that a
+/// differential equation reaches the solver intact instead of `y` being treated as a
+/// constant with derivative 0.
+fn unknown_function_derivative(e: &Expr) -> Option<Expr> {
+    let ExprNode::Derivative { expr, vars } = e.node() else {
+        return None;
+    };
+    let name = expr.as_sym()?;
+    if vars.iter().any(|(v, _)| &**v == name) {
+        return None;
+    }
+    Some(e.clone())
+}
+
+fn is_differential_equation_or_system(e: &Expr) -> bool {
+    match e.node() {
+        ExprNode::Tuple(items) => {
+            !items.is_empty() && items.iter().all(tools_b::ode::is_differential_equation)
+        }
+        _ => tools_b::ode::is_differential_equation(e),
+    }
+}
+
+/// Solves a statement that is a differential equation (for the engine: an equation with
+/// `y′`, `dy/dx` or `y″` in a query or an auto-evaluated block, with its conditions).
+/// `None` when `e` is not a differential equation.
+pub fn ode_statement(e: &Expr, conditions: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    if !is_differential_equation_or_system(e) {
+        return None;
+    }
+    let mut args = vec![e.clone()];
+    args.extend(conditions.iter().cloned());
+    let call = Call {
+        name: "dsolve".into(),
+        sub: None,
+        sup: None,
+        args,
+    };
+    Some(ode::dsolve(&call, ctx))
+}
+
+/// The differential-equation operators: `dsolve`, `laplace`, `invlaplace` and the PDE
+/// helpers.
+mod ode {
+    use mpp_core::tools_b::ode::{
+        self as core_ode, laplace as lt, pde as core_pde, systems, Condition, Form, Options,
+    };
+    use mpp_core::{Expr, ExprNode, MathError, MathResult, RelOp};
+
+    use super::{keyword, logged, missing, to_f64, Call};
+    use crate::holders::Ctx;
+
+    /// Reads conditions: `y(a) = v`, `y′(a) = v` (as `subs` holders), or a tuple
+    /// `(x₀, y₀, y′₀, …)` of starting values.
+    fn conditions(args: &[Expr], y: &str) -> MathResult<Vec<Condition>> {
+        let mut out = Vec::new();
+        for a in args {
+            match a.node() {
+                ExprNode::Relation(RelOp::Eq, l, r) => {
+                    if let Some(c) = condition_of(l, r, y) {
+                        out.push(c);
+                    } else if l.is_constant() && r.is_constant() {
+                        return Err(MathError::Domain {
+                            function: "dsolve".into(),
+                            detail: format!(
+                                "the condition {a} was read as numbers only; write the starting values as a tuple (x₀, y₀, y′₀, …)"
+                            ),
+                        });
+                    }
+                }
+                ExprNode::Tuple(items)
+                    if items.len() >= 2 && items.iter().all(Expr::is_constant) =>
+                {
+                    for (k, v) in items[1..].iter().enumerate() {
+                        out.push(Condition::derivative(k as u32, items[0].clone(), v.clone()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        Ok(out)
+    }
+
+    fn condition_of(l: &Expr, r: &Expr, y: &str) -> Option<Condition> {
+        let ExprNode::Apply(f, args) = l.node() else {
+            return None;
+        };
+        // y(a) = v
+        if &**f == y && args.len() == 1 && args[0].is_constant() {
+            return Some(Condition::value(args[0].clone(), r.clone()));
+        }
+        // y′(a) = v, lowered as subs(dᵏ/dxᵏ y(x), x = a)
+        if &**f == "subs" && args.len() == 2 {
+            let ExprNode::Derivative { expr, vars } = args[0].node() else {
+                return None;
+            };
+            let inner_ok =
+                expr.is_sym(y) || matches!(expr.node(), ExprNode::Apply(g, _) if &**g == y);
+            let ExprNode::Relation(RelOp::Eq, _, at) = args[1].node() else {
+                return None;
+            };
+            let k: u32 = vars.iter().map(|(_, k)| *k).sum();
+            return inner_ok.then(|| Condition::derivative(k, at.clone(), r.clone()));
+        }
+        // y′(a) typed as a call of the name `y′`.
+        if args.len() == 1 && args[0].is_constant() {
+            let base = f.trim_end_matches(['\'', '′']);
+            if base == y && base.len() < f.len() {
+                let k = (f.chars().count() - base.chars().count()) as u32;
+                return Some(Condition::derivative(k, args[0].clone(), r.clone()));
+            }
+        }
+        None
+    }
+
+    /// `\operatorname{dsolve}(equation, conditions…)` (also `solve` with a differential
+    /// equation, and a tuple of equations for a system).
+    pub(super) fn dsolve(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
+        let Some(eq) = call.args.first() else {
+            return Err(missing("dsolve", "a differential equation"));
+        };
+        if let ExprNode::Tuple(eqs) = eq.node() {
+            return system(eqs, &call.args[1..], ctx);
+        }
+        let parsed = core_ode::parse(eq, None, None)?;
+        let rest: Vec<Expr> = call
+            .args
+            .iter()
+            .skip(1)
+            .chain(call.sub.iter())
+            .chain(call.sup.iter())
+            .cloned()
+            .collect();
+        let conds = conditions(&rest, &parsed.y)?;
+        let mut options = Options {
+            y: Some(parsed.y.clone()),
+            ..Options::default()
+        };
+        let mut numeric_wanted = false;
+        let mut end = None;
+        for a in &rest {
+            if let Some(w) = keyword(a) {
+                if w == "numeric" {
+                    numeric_wanted = true;
+                } else {
+                    options.method = Some(w);
+                }
+            }
+            if let ExprNode::Interval { hi, .. } = a.node() {
+                end = Some(hi.clone());
+            }
+            // A known solution, written y_1 = … (Riccati or reduction of order).
+            if let ExprNode::Relation(RelOp::Eq, l, r) = a.node() {
+                let known = format!("{}_", parsed.y);
+                if l.as_sym().is_some_and(|s| s.starts_with(&known)) {
+                    options.known = Some(r.clone());
+                }
+            }
+        }
+        let exact = if numeric_wanted {
+            Err(MathError::NoClosedForm(
+                "(a numerical solution was asked for)".into(),
+            ))
+        } else {
+            logged(ctx, |s| core_ode::dsolve(eq, &conds, &options, s))
+        };
+        match exact {
+            Ok(sol) => {
+                ctx.note(format!("{}: {}", sol.method, sol.verified.describe()));
+                for n in &sol.notes {
+                    ctx.note(n.clone());
+                }
+                if let Form::Series { .. } = &sol.form {
+                    ctx.note("a truncated series solution");
+                }
+                Ok(sol.to_expr())
+            }
+            Err(MathError::NoClosedForm(_) | MathError::Unsupported(_)) if !conds.is_empty() => {
+                let x0 = to_f64(&conds[0].at, "the starting point")?;
+                let x_end = match end {
+                    Some(e) => to_f64(&e, "the end point")?,
+                    None => x0 + 10.0,
+                };
+                let num = logged(ctx, |s| core_ode::solve_numeric(&parsed, &conds, x_end, s))?;
+                let (xe, ye) = num
+                    .last()
+                    .ok_or_else(|| MathError::Undefined("the numerical solution".into()))?;
+                ctx.note(format!(
+                    "no closed form was found, so the equation was solved numerically ({}{}); {} points are available for a graph",
+                    num.method,
+                    if num.stiff { ", stiffness detected" } else { "" },
+                    num.points.len()
+                ));
+                Ok(Expr::relation(
+                    RelOp::Approx,
+                    Expr::apply(&parsed.y, vec![Expr::float(xe)]),
+                    Expr::float(ye),
+                ))
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    fn system(eqs: &[Expr], rest: &[Expr], ctx: &Ctx<'_>) -> MathResult<Expr> {
+        let initial: Option<Vec<Expr>> = rest.iter().find_map(|a| match a.node() {
+            ExprNode::Tuple(v) if v.iter().all(Expr::is_constant) => Some(v.clone()),
+            _ => None,
+        });
+        let sol = logged(ctx, |s| systems::solve_system(eqs, initial.as_deref(), s))?;
+        ctx.note(format!(
+            "matrix exponential e^(At) = L⁻¹{{(sI − A)⁻¹}}; the eigenvalues of A are {}",
+            sol.eigenvalues
+                .iter()
+                .map(|e| e.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        if let Some(p) = &sol.portrait {
+            ctx.note(format!("the origin is a {}", p.kind.name()));
+        }
+        Ok(Expr::new(ExprNode::Tuple(
+            sol.unknowns
+                .iter()
+                .zip(&sol.solution)
+                .map(|(u, s)| Expr::equation(Expr::apply(u, vec![Expr::sym(&sol.t)]), s.clone()))
+                .collect(),
+        )))
+    }
+
+    /// `\operatorname{laplace}(f)` from `t` to `s`, and the inverse.
+    pub(super) fn laplace(call: &Call, ctx: &Ctx<'_>, inverse: bool) -> MathResult<Expr> {
+        let p = call.parts();
+        let f = p
+            .functions
+            .first()
+            .or(p.numbers.first())
+            .ok_or_else(|| missing("laplace", "a function"))?;
+        let v = if inverse {
+            lt::inverse(f, "s", "t")?
+        } else {
+            lt::transform(f, "t", "s")?
+        };
+        ctx.log(
+            if inverse {
+                "inverse Laplace transform"
+            } else {
+                "Laplace transform"
+            },
+            f,
+            &v,
+            Some(if inverse {
+                "partial fractions and the table, with e^(−as)F(s) ↔ H(t − a)f(t − a)".into()
+            } else {
+                "the table: L{tⁿe^(at)} = n!/(s − a)^(n+1), L{sin bt} = b/(s² + b²), L{H(t − a)f(t − a)} = e^(−as)F(s), L{δ(t − a)} = e^(−as)".into()
+            }),
+        );
+        Ok(v)
+    }
+
+    /// The PDE helpers.
+    pub(super) enum Pde {
+        Heat,
+        Wave,
+        Laplace,
+    }
+
+    pub(super) fn pde(call: &Call, ctx: &Ctx<'_>, which: Pde) -> MathResult<Expr> {
+        let p = call.parts();
+        let mut values: Vec<Expr> = p.functions.clone();
+        values.extend(p.numbers.iter().cloned());
+        let get = |i: usize, what: &str| -> MathResult<Expr> {
+            values
+                .get(i)
+                .cloned()
+                .ok_or_else(|| missing("the PDE helper", what))
+        };
+        let (v, second) = match which {
+            Pde::Heat => {
+                let (f, l, k) = (
+                    get(0, "f(x)")?,
+                    get(1, "the length L")?,
+                    get(2, "the constant k")?,
+                );
+                (
+                    logged(ctx, |s| core_pde::heat(&f, "x", "t", &l, &k, s))?,
+                    "t",
+                )
+            }
+            Pde::Wave => {
+                let (f, g, l, c) = (
+                    get(0, "f(x)")?,
+                    get(1, "g(x)")?,
+                    get(2, "the length L")?,
+                    get(3, "the speed c")?,
+                );
+                (
+                    logged(ctx, |s| core_pde::wave(&f, &g, "x", "t", &l, &c, s))?,
+                    "t",
+                )
+            }
+            Pde::Laplace => {
+                let (f, a, b) = (
+                    get(0, "f(x)")?,
+                    get(1, "the width a")?,
+                    get(2, "the height b")?,
+                );
+                (
+                    logged(ctx, |s| {
+                        core_pde::laplace_rectangle(&f, "x", "y", &a, &b, s)
+                    })?,
+                    "y",
+                )
+            }
+        };
+        ctx.note("separation of variables with a Fourier sine series; each term satisfies the equation and the boundary conditions");
+        Ok(Expr::equation(
+            Expr::apply("u", vec![Expr::sym("x"), Expr::sym(second)]),
+            v,
+        ))
+    }
 }
