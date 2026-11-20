@@ -1,0 +1,142 @@
+# N16 wider function coverage: notes for the integrator
+
+Lane `fields` (branch `wip/fields`). Everything is new code under `crates/mpp-core/src/domains/`, registered as `Domain` operators. No new dependencies, no changes to the workspace `Cargo.toml`, `Cargo.lock`, `mpp-eval`, `functions.rs` or any existing domain file.
+
+## Edits outside the lane's new modules
+
+- `crates/mpp-core/src/domains/mod.rs`: one `pub mod …;` line, one `pub use …;` line and one `r.register(…)` line per new domain (additive only). The domains lane is editing this file too; take both sides when merging.
+- `crates/mpp-core/tests/fields_example.rs` (new) and `examples/fields.mpp` + `examples/fields.expected.txt` (new).
+
+## New modules
+
+| Module | Domain (registry name) | What it holds |
+|---|---|---|
+| `domains/fieldkit.rs` | (helpers) | argument readers with caps, `NumericFn` (numeric evaluation with relations as 0/1 indicators), `FieldEnv` (an `Env` that reaches the special functions by name) |
+| `domains/special/` | special functions | erf/erfc, Lambert W (branches 0, −1), Bessel J_n, beta, Legendre and Chebyshev T/U, complete elliptic K and E, the derivative table `partial`, the numeric hooks `call_real`/`call_complex` |
+| `domains/nt_ext/` | number theory (extended) | τ, σ_k, μ, Dirichlet convolution, Möbius inversion, π(x), p-adics, continued fractions, Gaussian integers, finite fields, Bernoulli numbers, ζ, Hurwitz ζ, L(s, χ) |
+| `domains/analysis_ext/` | analysis | Heaviside, δ and δ^{(j)}, the δ pairing, L^p norms, DFT/FFT, Bernstein polynomials, fixed-point iteration, adaptive Gauss–Kronrod quadrature |
+| `domains/discrete/` | discrete mathematics | Catalan, hook lengths, permutation groups and Burnside, necklaces/bracelets, graphs, Ramsey search, Hamming distance, linear codes |
+| `domains/probability/` | probability and information | Markov chains, the seeded generator `Rng`, uniform/normal samples, Monte Carlo, Brownian paths, entropy, mutual information, channel capacity |
+| `domains/algebra_ext/` | algebra | kernel, matrix exponential, Lie bracket, character tables, group order, orbits, stabilisers |
+| `domains/applied/` | applied mathematics | gradient descent, KKT check, zero-sum games (exact simplex), Shapley values, controllability, present value, put–call parity, Hamilton's equations |
+
+Already present before this lane and reused, not rebuilt: `powmod` (repeated squaring), `crt`, `totient`, `rank`, `trace`, `nullspace` (M11), and Γ for complex arguments (the built-in `Gamma`, Lanczos; checked against Γ(1 + i) in `special::tests`).
+
+## Operators
+
+Lists are tuples `(a, b, …)`; matrices are matrix values. "≈" marks numeric results (a note says so). Exact inputs give exact outputs wherever a closed form exists.
+
+| Operator | Arguments | Result |
+|---|---|---|
+| `divcount` | n | τ(n) |
+| `divsum` | n [, k] | σ_k(n), k = 1 by default |
+| `mobius` | n | μ(n) |
+| `dirconv` | (f(1)…f(N)), (g(1)…g(N)) | ((f∗g)(1) … (f∗g)(N)) |
+| `mobiusinv` | (F(1)…F(N)) | (f(1) … f(N)) with F = Σ_{d∣n} f(d) |
+| `primepi` | x | π(x) exactly, x ≤ 10⁸ |
+| `primepiapprox` | x | ≈ x / ln x |
+| `padicval` | p, x | v_p(x) (∞ for 0), x rational |
+| `padicabs` | p, x | \|x\|_p exactly |
+| `factorialval` | p, n | v_p(n!) (Legendre) |
+| `contfrac` | x [, n] | terms; for a quadratic surd without n: (a₀, …, (repeating block)) |
+| `convergents` | x or (a₀, a₁, …) [, n] | (p₀/q₀, p₁/q₁, …) |
+| `contfracvalue` | (a₀, a₁, …) | the rational value |
+| `gaussfactor` | a + bi | (unit, ((π₁, e₁), …)) |
+| `gfmodulus` | p, m | the modulus polynomial in x of 𝔽_{p^m} |
+| `gfadd`, `gfmul` | p, m, a, b | element as (c₀, …, c_{m−1}) (an integer when m = 1) |
+| `gfinv`, `frobenius` | p, m, a | a⁻¹, a^p |
+| `gfpow` | p, m, a, e | a^e (e may be negative) |
+| `gftrace` | p, m, a | Tr(a) ∈ 𝔽_p |
+| `zeta` | s | exact at even s ≥ 2 and s ≤ 0, else ≈ (complex s allowed) |
+| `hurwitzzeta` | s, a | ≈ ζ(s, a) |
+| `dirichletl` | s, (χ(1), …, χ(q)) | ≈ L(s, χ) |
+| `bernoulli` | n | B_n exactly (B₁ = −1/2) |
+| `erf`, `erfc` | x | exact at 0, else ≈; symbolic x stays `erf(x)` |
+| `lambertw` | x [, k] | W_k(x), k ∈ {0, −1}; exact at 0, e, −1/e |
+| `besselj` | n, x | J_n(x), integer n |
+| `beta` | a, b | exact through Γ for rationals (B(1/2, 1/2) = π), else ≈ (complex allowed) |
+| `legendrep`, `chebyshevt`, `chebyshevu` | n, x | a polynomial for symbolic x, exact for rational x, ≈ otherwise |
+| `ellipk`, `ellipe` | k | K(k), E(k) with **modulus** k (parameter m = k²) |
+| `heaviside` | x | 0, 1, and 1/2 at 0 (noted); symbolic stays |
+| `dirac` | x [, j] | 0 away from 0; δ(0) is an error (a distribution); symbolic stays |
+| `diracpair` | ψ, x [, j [, a]] | ⟨δ_a^{(j)}, ψ⟩ = (−1)^j ψ^{(j)}(a), exact |
+| `lpnorm` | v, p or f, x, a, b, p | exact for vectors (p = ∞ allowed), ≈ for functions |
+| `dft`, `idft`, `fft`, `ifft` | list | ≈ X[k] = Σ x[j] e^{−2πijk/N} (inverse divides by N) |
+| `bernstein` | f, x, n | B_n[f] as an expanded polynomial |
+| `bernsteinbasis` | k, n, x | C(n,k) x^k (1 − x)^{n−k} |
+| `fixedpoint` | g, x, x₀ [, tol [, steps]] | ≈ x*, with a note on \|g′(x*)\| |
+| `catalan` | n | C_n |
+| `hooklength` | (λ₁, λ₂, …) | f^λ |
+| `burnside` | generators, k | colourings with k colours up to the group generated |
+| `necklaces`, `bracelets` | n, k | closed forms (cyclic, dihedral) |
+| `graphdegrees`, `adjacency`, `graphlaplacian`, `istree`, `spanningtrees` | edge list ((u, v), …) or adjacency matrix [, n] | degrees, A, L = D − A, true/false, Kirchhoff count |
+| `ramsey` | s, t, n | true when every 2-colouring of K_n has a red K_s or blue K_t (n ≤ 7); a note gives a counterexample otherwise |
+| `ramseynumber` | s, t | R(s, t) when it is at most 7 |
+| `hamming` | two tuples, or two integers (bits) | the distance |
+| `codeparams` | generator matrix, q | (n, k, d), q prime |
+| `hammingcode` | m | the generator matrix of the [2^m − 1, 2^m − 1 − m, 3] code |
+| `markovpower` | P, k | P^k exactly |
+| `stationary` | P | π with πP = π, Σπ = 1 (an error when not unique) |
+| `runif`, `rnorm` | seed, n [, a, b] or [, μ, σ] | n samples (reproducible) |
+| `montecarlo` | f, ((x, a, b), …), N, seed | (≈ ∫ f over the box, standard error); relations in f count as 0/1 |
+| `brownian` | seed, n, T | (W(0), W(T/n), …, W(T)) |
+| `entropy` | (p₁, …) [, base] | ≈ H in bits by default |
+| `jointentropy`, `condentropy`, `mutualinfo` | joint matrix p(x, y) | H(X,Y), H(Y\|X), I(X;Y) |
+| `bsccapacity` | p | 1 − H₂(p) (exact at 0, 1/2, 1) |
+| `capacity` | channel matrix W[x][y] = P(y\|x) | ≈ capacity by Blahut–Arimoto (note: optimal input) |
+| `kernel` | A | basis of ker A (same as `nullspace`, note gives the dimension) |
+| `expm` | A [, t] | exp(tA): exact for nilpotent, 2 × 2 and diagonalisable with real exact eigenvalues, else ≈ |
+| `liebracket` | X, Y | XY − YX |
+| `chartable` | C<n>, V4, S3, D4, Q8, A4, S4 | ((class sizes), character matrix) |
+| `grouporder`, `orbit`, `stabilizer` | generators [, point] | \|G\|, the orbit set, \|Stab\| (note checks orbit–stabiliser) |
+| `graddescent` | f, (x, y, …), (x₀, y₀, …), η [, steps] | ≈ the point reached |
+| `kkt` | f, (g₁ ≤ 0 or relations …), vars, point [, multipliers] | (true/false, multipliers); multipliers are fitted on the active set if not given |
+| `gamevalue` | payoff matrix | (value, row strategy, column strategy), exact |
+| `shapley` | v({1}), v({2}), v({1,2}) | (φ₁, φ₂) |
+| `ctrb`, `ctrbrank` | A, B | [B, AB, …], its rank (note: controllable or not) |
+| `presentvalue` | FV, r, T | FV e^{−rT} |
+| `putfromcall`, `callfromput` | price, S, K, r, T | put–call parity |
+| `hamilton` | H, (q…), (p…) | ((q, ∂H/∂p), …, (p, −∂H/∂q), …) |
+
+## Wiring for the engine lane (mpp-eval is not touched here)
+
+1. **Dispatch.** Every name above is reached the same way as the M11 operators: an unknown function name in a document (`\operatorname{divcount}(360)`, or a plain call) goes to `Registry::standard().call(name, args, ctx)`. All operator names are unique across the registry (the registry test checks this).
+2. **Textbook names.** Map these typeset names to operators when they are applied to arguments (the stdlib clash rule: bare names stay constants): `\tau(n)` → `divcount`, `\sigma(n)` / `\sigma_k(n)` → `divsum` (k from the subscript), `\mu(n)` → `mobius`, `\pi(x)` → `primepi`, `\zeta(s)` → `zeta`, `\zeta(s, a)` → `hurwitzzeta`, `L(s, \chi)` → `dirichletl`, `B(a, b)` / `\mathrm B` → `beta`, `W(x)`, `W_0(x)`, `W_{-1}(x)` → `lambertw` (branch from the subscript), `J_n(x)` → `besselj(n, x)`, `P_n(x)` → `legendrep`, `T_n(x)` → `chebyshevt`, `U_n(x)` → `chebyshevu`, `K(k)`, `E(k)` → `ellipk`, `ellipe`, `\delta(x)` → `dirac`, `\delta'(x)` → `dirac(x, 1)`, `H(x)` / `\theta(x)` (Heaviside) → `heaviside`, `C_n` (Catalan, from `std/numbers`) → `catalan`, `v_p(x)` → `padicval(p, x)`, `|x|_p` → `padicabs(p, x)`, `\operatorname{Tr}` on a field element → `gftrace`, `[X, Y]` on matrices → `liebracket`, `e^{tA}` / `\exp(tA)` with a matrix → `expm(A, t)`, `\ker A` → `kernel`.
+3. **`%seed n`.** Keep one `mpp_core::domains::probability::rng::Rng` per document, created with `Rng::seeded(n)` when `%seed n` is read (default seed 0 if a sampling operator runs without one, with a note). The operators take the seed as their first argument today, so the simplest wiring is to pass the document seed (plus a per-call counter, e.g. `seed + k` for the k-th sampling call, so two calls differ but stay reproducible). Lab 11 is then `\operatorname{montecarlo}(4 \cdot \mathbf 1[X^2 + Y^2 \le 1], ((X, 0, 1), (Y, 0, 1)), N, \text{seed})`, and `\mathbf 1[\,\cdot\,]` should lower to the relation itself (relations already evaluate as 0/1 inside `montecarlo`). The generator's algorithm is documented in `rng.rs` and pinned by reference-vector tests, so results are the same on every platform.
+4. **Numeric evaluation inside expressions.** `domains::special::call_real(name, args)` and `call_complex` evaluate `erf`, `erfc`, `lambertw`, `besselj`, `beta`, `legendrep`, `chebyshevt`, `chebyshevu`, `ellipk`, `ellipe`, `heaviside`, `dirac` by name. Have the evaluator's `Env::call_real` / `call_complex` fall back to them, so `2 J_0(1) + \operatorname{erf}(x)` evaluates numerically (and plots) like any built-in.
+5. **erf overlap.** `wip/tools-b` adds `Func::Erf` to `functions.rs` (with its own `functions/special.rs`). Once both are merged, the parser maps `erf` to `Func::Erf` before the registry is asked, so this lane's `erf` operator becomes a fallback only; nothing breaks. Either implementation can serve the other (this lane's `special::erf::{erf, erfc}` is accurate to ~1e−15 with an `erfc` tail by continued fraction).
+6. **Lab 2.** `T_{\text{exact}} = 4\sqrt{L/g}\,K(\sin\tfrac{\theta_0}{2})` uses the modulus convention, which is what `ellipk` takes (checked: 2.041 s at θ₀ = 30°, in `special::elliptic::tests`).
+
+## Hook for the calculus (derivatives of the new functions)
+
+`domains::special::partial(name, args, index)` returns ∂/∂(argument `index`) of the application `name(args)` (outer derivative; the caller multiplies by the inner derivative). Covered: `erf`, `erfc`, `lambertw` (W′ = W / (x(1 + W))), `besselj` (J_n′ = (J_{n−1} − J_{n+1})/2), `legendrep`, `chebyshevt`, `chebyshevu`, `ellipk`, `ellipe`, `beta` (both arguments, via ψ), `heaviside` (H′ = δ) and `dirac` (δ^{(j)} → δ^{(j+1)}). All are checked against finite differences. To use it, `calc::diff` on `ExprNode::Apply(name, args)` should try `special::partial(name, args, i)` for each argument that contains the variable and sum `partial · d(arg_i)/dx` (chain rule); `special::is_special(e)` says whether an `Apply` node is one of these. `calc` is not edited by this lane.
+
+## Hand-off to C7 (Hamilton's equations)
+
+`domains::applied::hamilton_system(H, &qs, &ps, calculus) -> Vec<(String, Expr)>` returns the first-order system as data: pairs `(state variable, right-hand side)`, the q's first (q̇ᵢ = ∂H/∂pᵢ), then the p's (ṗᵢ = −∂H/∂qᵢ). C7's numeric solver (RK45) can integrate `d(name)/dt = rhs` for each pair with initial values for every q and p; for a linear H the system is linear, so the matrix-exponential route applies (`algebra_ext::matexp::expm`). The `hamilton` operator shows the same pairs in a document.
+
+## For N12 (standard library)
+
+The `std/number-theory`, `std/special`, `std/analysis`, `std/discrete`, `std/probability`, `std/information`, `std/algebra-structures` and `std/applied` files can define their textbook names directly on these operators. Catalogue lines covered as **compute** by N16: τ, σ, φ (existing `totient`), μ, Dirichlet convolution, Möbius inversion, ζ(s) (exact values and numeric), π(x) and x/ln x, L(s, χ), Gaussian-integer factorisation (h_{ℚ(i)} = 1), repeated squaring (existing `powmod`), v_p(n!), continued fractions and convergents, |x|_p, 𝔽_q arithmetic/Frobenius/trace, Γ (existing), B(a, b), erf, Lambert W, J₀, Legendre and Chebyshev polynomials, L^p norms, the indicator (relations as 0/1), δ and δ′ pairing, Heaviside′ = δ, fixed-point iteration, Bernstein approximation, Catalan, Cayley/Kirchhoff, graph Laplacian, R(3,3) = 6 by search, Burnside, hook lengths, Markov P^k and πP = π, Brownian paths (quadratic variation is checked in tests), entropy, mutual information, BSC capacity, Hamming distance, linear codes and the Singleton bound, Hamming codes, kernel, matrix exponential and exp(sX)exp(tX) = exp((s+t)X), Lie bracket, characters and Σ d_i² = |G|, orbit–stabiliser, gradient descent, KKT, zero-sum game value (matching pennies = 0), two-player Shapley value, controllability rank, the DFT and X[0]/N = mean, Hamilton's equations, present value and put–call parity. Identities the stdlib marks **check** have a matching property test here (cited in each test).
+
+## Guide text (for `docs/guide.mpp`, section "Functions across the fields")
+
+Math++ knows the standard functions of number theory, special functions, analysis, discrete maths, probability, information theory, algebra and applied maths. Write them with their textbook names, such as $\tau(360)$, $\zeta(3)$, $J_0(1)$ or $K(\sin 15°)$, or with `\operatorname{…}` and the names in the table, such as $\operatorname{catalan}(10)$ or $\operatorname{gamevalue}(A)$. Exact inputs give exact answers where a closed form exists: $\zeta(2) = \pi^2/6$, $B(\tfrac12, \tfrac12) = \pi$, $\operatorname{stationary}(P) = (\tfrac13, \tfrac23)$. Otherwise the answer is a decimal, marked as approximate. Symbolic arguments stay as they are, so $\operatorname{erf}(x)$ can be differentiated and plotted.
+
+**Reproducible randomness.** Put `%seed 42` in a document and every sample, Monte Carlo sum and Brownian path in it comes out the same each time, on every computer. Monte Carlo results show their standard error next to the estimate.
+
+**Conventions.** $K(k)$ and $E(k)$ take the modulus $k$, not $m = k^2$. $H(0) = \tfrac12$. The DFT has no factor in front and the inverse divides by $N$. $\delta$ is a distribution, so pair it with a test function using $\operatorname{diracpair}$ rather than evaluating $\delta(0)$. Finite-field elements are coefficient lists over the modulus that $\operatorname{gfmodulus}(p, m)$ shows.
+
+**Limits.** Exact prime counts go up to $10^8$. Ramsey searches go up to $K_7$. Groups go up to 40320 elements. Codes go up to $2^{20}$ codewords. Larger requests say so instead of running for ever.
+
+## Example
+
+`examples/fields.mpp` asks for 35 values across every field. Its expected output `examples/fields.expected.txt` is produced and checked by `crates/mpp-core/tests/fields_example.rs`, which evaluates the same operator with the same arguments for each `= ?` in order through `Registry::standard()`. The labels are short descriptions because the document wiring isn't there yet. When the engine lane dispatches these operators, regenerate the file from the document in the usual `label → result` form. The values must not change.
+
+## Tests and gates
+
+Every function has reference values with their source cited in a comment (DLMF, Abramowitz & Stegun, OEIS, standard texts) and at least one property test (proptest): multiplicativity, Euler product, Hurwitz shift, field axioms, Frobenius^m = id, three-term recurrences, Legendre's relation for K and E, Parseval, Burnside against closed forms, Σ(f^λ)² = n!, Cayley's formula, the Singleton bound, Blahut–Arimoto against the BSC closed form, one-parameter subgroups, optimal strategies guaranteeing the value, Shapley efficiency, and more. `cargo build`, `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings` and `cargo fmt --all --check` are green on `wip/fields`.
+
+## Not built here
+
+Statements that cannot be computed (Yoneda, Gauss–Bonnet, π₁(S¹) ≅ ℤ, adjunctions, Krull dimension, Cauchy's integral formula as a theorem) are left to N12 as stated theorems, as the row says.

@@ -7,17 +7,25 @@
 //! relations already live in the expression tree, so a domain result can flow straight
 //! back into the evaluator, the printer and other domains.
 
+pub mod algebra_ext;
+pub mod analysis_ext;
+pub mod applied;
 pub mod assume;
 pub mod calculus;
+pub mod discrete;
 pub mod distributions;
+pub mod fieldkit;
 pub mod intervals;
 pub mod linalg;
+pub mod nt_ext;
 pub mod number_theory;
 pub mod ode;
 pub mod piecewise;
+pub mod probability;
 pub mod regression;
 pub mod sets;
 pub mod solve;
+pub mod special;
 pub mod stats;
 pub mod util;
 
@@ -25,15 +33,22 @@ use crate::error::{MathError, MathResult};
 use crate::expr::Expr;
 use crate::steps::Steps;
 
+pub use algebra_ext::Algebra;
+pub use analysis_ext::Analysis;
+pub use applied::Applied;
 pub use assume::Assumptions;
 pub use calculus::{BasicCalculus, Calculus, FullCalculus};
+pub use discrete::Discrete;
 pub use distributions::Distributions;
 pub use linalg::{LinearAlgebra, Matrix};
+pub use nt_ext::NumberTheoryExt;
 pub use number_theory::NumberTheory;
 pub use ode::Odes;
+pub use probability::Probability;
 pub use regression::{Fit, FitKind, Regression};
 pub use sets::{RealSet, Sets};
 pub use solve::{Solutions, Solving};
+pub use special::SpecialFunctions;
 pub use stats::Statistics;
 
 /// What a domain operator returns. Matrices, sets, tuples and relations are all
@@ -142,6 +157,13 @@ impl Registry {
         r.register(Box::new(Statistics));
         r.register(Box::new(Distributions));
         r.register(Box::new(Regression));
+        r.register(Box::new(SpecialFunctions));
+        r.register(Box::new(NumberTheoryExt));
+        r.register(Box::new(Analysis));
+        r.register(Box::new(Discrete));
+        r.register(Box::new(Probability));
+        r.register(Box::new(Algebra));
+        r.register(Box::new(Applied));
         r
     }
 
