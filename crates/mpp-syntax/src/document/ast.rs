@@ -311,6 +311,9 @@ pub struct Directive {
 pub enum DirectiveKind {
     /// `%noeval`: the next maths block is never auto-evaluated.
     NoEval,
+    /// A number-display directive such as `%sf 4` or `%block dp 2`; read it with
+    /// [`crate::document::display::parse_display_directive`].
+    Display,
     /// Any other `%` line.
     Comment,
 }

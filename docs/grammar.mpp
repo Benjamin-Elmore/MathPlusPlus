@@ -25,7 +25,7 @@ quote         = { ">" " " inline NL }- ;
 list          = { list_item }- ;
 list_item     = { "  " } ("- " | "* " | digit { digit } ". ") inline NL ;
 footnote_def  = "[^" name "]:" " " inline NL ;
-directive     = "%" { any_char } NL ;                      (* comment line, or %noeval *)
+directive     = "%" { any_char } NL ;                      (* comment line, %noeval, or a display directive (§2.4) *)
 theorem       = "**" theorem_kind "." "**" " " paragraph_text ;
 theorem_kind  = "Definition" | "Theorem" | "Lemma" | "Corollary"
               | "Proposition" | "Example" | "Remark" | "Proof" ;
@@ -204,6 +204,30 @@ conversion    = expr ( "\operatorname{in}" | "\text{in}" | "in" ) unit ;
 - **Plain units after a number** need a space (`3 m`) unless they can't be a single letter (`2kg`, `10min`, `9.81m/s^2`), so `2x` and `5t^2` stay products. A plain one-letter unit that is a name in scope at that point (a function parameter, an index, an integration variable, a defined variable) is that name: with `f(t) := 3 t^2`, `t` is the parameter, and with `g := 9.81\,\mathrm{m/s^2}`, `2 g` is twice gravity, not two grams. Write `\mathrm{}` to force the unit. The words `in`, `sec`, `hr`, `deg` and `l` are never plain units, and a unit can't be followed by `(` (so `2 \min(a, b)` is a function).
 - `30^\circ` is 30 degrees; `{}^\circ\mathrm{C}` and `^\circ C` are degrees Celsius.
 - **Conversion** (`v \operatorname{in} \mathrm{km/h}`, or the prose form `v in km/h`) binds more loosely than `+` and `·`, so `v t \operatorname{in} \mathrm{m}` converts the product. After a bare `in`, a one-letter plain unit is not enough (`x in S` is membership); write `\operatorname{in}` or `\mathrm{}` for those.
+
+### 2.4 Number display
+
+A `%` line whose first character after the `%` is a letter and whose first word is one of the keywords below is a display directive; `% sf 4` (a space first) and any other `%` line stay comments. Directives change how results are shown, never what they are.
+
+```
+display     = "%" [ "block" " " ] option NL ;
+option      = "sf" " " digits            (* significant figures, 1 to 50; trailing zeros kept *)
+            | "dp" " " digits            (* decimal places, 0 to 50; trailing zeros kept *)
+            | "sci" [ " " digits ]       (* scientific notation, from 10^n up and below 10^-n; default 4 and -3 *)
+            | "eng" [ " " digits ]       (* engineering notation, exponents in steps of 3, same thresholds *)
+            | "exact" | "decimal"        (* exact values stay exact (default) | every number as a decimal *)
+            | "mixed" | "improper"       (* 3 1/2 | 7/2 (default) *)
+            | "deg" | "rad"              (* angle results in degrees | radians (default) *)
+            | "polar" | "rect"           (* r∠θ | a + bi (default) *)
+            | "plain" ;                  (* no forced notation, ten significant figures again *)
+```
+
+- **Scope.** A directive applies from its line to the end of the file (so one at the top is file-wide) and later directives override earlier ones. `%block sf 3` applies only to the next block that has results; any number of `%block` lines before a block all apply to it.- **What each option shows.** Exact numbers stay fractions under `%exact`, whatever `%sf` or `%dp` say; those apply to decimals (approximations, `≈ ?` answers, and every number under `%decimal`). Under `%decimal` whole numbers stay whole unless `%sf`/`%dp` is set. `%sci` and `%eng` also rewrite exact integers outside the thresholds, keeping every digit unless `%sf`/`%dp` is set. Without them a decimal switches to powers of ten from 10^21 up and below 10^-7.
+- **Notation.** Plain text shows `6.02 × 10²³`; LaTeX shows `6.02 \times 10^{23}`. `6.02e23` is never shown.
+- **Angles.** `%deg` shows an answer in degrees when it is exactly one inverse trig call (`\arcsin`, `\arccos`, `\arctan`, `\operatorname{atan2}`, `\arg`, `\sin^{-1}`…): `\arcsin(1/2) = ?` reads `30°`. It also gives the angle of a polar complex number in degrees. It never changes how inputs are read: `30^\circ` and `30°` are always degrees and a bare `\sin(30)` is always the sine of 30 radians.
+- **Complex numbers.** `%polar` shows `5∠0.927295218` in text and `5 e^{0.927295218 i}` in LaTeX (`5∠53.13°` and `5\angle 53.13^\circ` with `%deg`); the magnitude and angle are decimals.
+- **Units** follow the same rules: the number in front of the unit is formatted, the unit is untouched.
+- **Errors.** A directive that names an option but is malformed (`%sf`, `%sf x`, `%dp 99`, `%exact now`, `%block`) is an error on its own line; the rest of the file runs normally.
 
 ## 3. Sentence forms
 

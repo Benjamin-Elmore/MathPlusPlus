@@ -29,6 +29,7 @@ pub mod import;
 pub mod lower;
 pub mod names;
 pub mod numeric;
+pub mod numfmt;
 pub mod resolve;
 pub mod result;
 mod session;
@@ -48,6 +49,7 @@ pub use import::{
     Exports, FileDiagnostic, ImportContext, ImportError, ImportErrorKind, ImportRequest, Importer,
     NoImports,
 };
+pub use mpp_core::display::NumberFormat;
 pub use mpp_syntax::math::QueryMode;
 pub use result::{
     BlockResult, DefinitionKind, Evaluated, ImportInfo, LineIndex, LineKind, LineResult, RangeInfo,

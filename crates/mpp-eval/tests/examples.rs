@@ -84,3 +84,8 @@ fn piecewise_sets_example() {
 fn statistics_example() {
     check("statistics");
 }
+
+#[test]
+fn number_display_example() {
+    check("number-display");
+}

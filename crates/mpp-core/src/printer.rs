@@ -190,7 +190,20 @@ fn rel_symbol(op: RelOp) -> &'static str {
     }
 }
 
+fn hint_prec(h: crate::display::Hint) -> Prec {
+    use crate::display::Hint;
+    match h {
+        Hint::Atom => Prec::Atom,
+        Hint::Neg => Prec::Neg,
+        Hint::Mul => Prec::Mul,
+        Hint::Add => Prec::Add,
+    }
+}
+
 fn plain_number(n: &Number) -> (String, Prec) {
+    if let Some((s, h)) = crate::display::render_active(n, false) {
+        return (s, hint_prec(h));
+    }
     let s = n.to_string();
     let prec = match n {
         Number::Rational(r) if r.is_negative() => Prec::Neg,
@@ -616,6 +629,9 @@ fn latex_name_plain(s: &str) -> String {
 }
 
 fn latex_number(n: &Number) -> (String, Prec) {
+    if let Some((s, h)) = crate::display::render_active(n, true) {
+        return (s, hint_prec(h));
+    }
     match n {
         Number::Rational(r) => {
             if r.is_integer() {
