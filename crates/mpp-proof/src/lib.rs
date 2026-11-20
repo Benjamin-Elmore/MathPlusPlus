@@ -11,6 +11,7 @@ mod algebra;
 mod cas;
 pub mod checker;
 mod fields;
+pub mod lean;
 pub mod model;
 mod notation;
 
