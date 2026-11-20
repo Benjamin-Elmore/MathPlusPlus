@@ -1048,14 +1048,22 @@ impl Run<'_, '_> {
             }
             QueryMode::Approx => match approximate(&value) {
                 Ok(a) => lr.approx = Some(a),
-                Err(EvalError::Unbound(names)) => self.unbound(expr, names),
+                // No number, so no result at all: `sin θ ≈ ?` with θ unknown shows
+                // only the error, never `sin(θ)` as if it were the answer.
+                Err(EvalError::Unbound(names)) => {
+                    self.unbound(expr, names);
+                    return self.push(lr);
+                }
                 Err(EvalError::Math(MathError::NotANumber(what))) if contains_holder(&value) => {
                     self.warn(
                         expr.span,
                         format!("{what} cannot be computed yet, so it is kept as written"),
                     )
                 }
-                Err(err) => self.error(expr.span, err),
+                Err(err) => {
+                    self.error(expr.span, err);
+                    return self.push(lr);
+                }
             },
         }
         let approximate_only = value.as_number().is_some_and(|n| !n.is_exact());

@@ -135,3 +135,12 @@ fn derivatives_of_special_functions() {
         "ellipe(k)/(k*(-k^2 + 1)) - ellipk(k)/k"
     );
 }
+
+#[test]
+fn a_numeric_query_with_an_unknown_name_shows_no_result() {
+    let ev = run(r"$$ \sin\theta \approx ? $$");
+    assert_eq!(ev.errors().len(), 1);
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.answer(), None, "{:?}", line.text);
+    assert!(line.value.is_none());
+}
