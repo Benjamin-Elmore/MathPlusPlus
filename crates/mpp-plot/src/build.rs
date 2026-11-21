@@ -313,7 +313,12 @@ impl Builder<'_> {
             .keep
             .iter()
             .cloned()
-            .chain(STANDARD_NAMES.iter().map(|s| (*s).to_string()))
+            .chain(
+                STANDARD_NAMES
+                    .iter()
+                    .filter(|n| !self.is_function(n))
+                    .map(|s| (*s).to_string()),
+            )
             .collect();
         match Lowerer::new(self.scope).with_locals(locals).lower(node) {
             Ok(e) => Some(e),
@@ -324,17 +329,26 @@ impl Builder<'_> {
         }
     }
 
+    /// True when the document defines `name` as a function (`u(t) := t^2`), so
+    /// `u(t)` in a figure is a call, not the product of two plot variables.
+    fn is_function(&self, name: &str) -> bool {
+        self.scope
+            .binding(name)
+            .is_some_and(|b| matches!(&*b, Binding::Function { .. }))
+    }
+
     fn add_standard_names(&mut self) {
         for n in STANDARD_NAMES {
-            let constant = self.scope.binding(n).is_some_and(|b| {
-                matches!(
-                    &*b,
-                    Binding::Variable {
-                        kind: VarKind::Constant,
-                        ..
-                    }
-                )
-            });
+            let constant = self.is_function(n)
+                || self.scope.binding(n).is_some_and(|b| {
+                    matches!(
+                        &*b,
+                        Binding::Variable {
+                            kind: VarKind::Constant,
+                            ..
+                        }
+                    )
+                });
             if !constant {
                 self.keep.insert(n.to_string());
             }
