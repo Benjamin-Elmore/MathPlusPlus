@@ -10,7 +10,7 @@ use mpp_proof::agent::{
 };
 use serde_json::json;
 
-const KEY: &str = "sk-ant-test-0123456789abcdef";
+const KEY: &str = "fake-key-for-tests-0123456789abcdef";
 
 const GAP_DOC: &str = "**Theorem 1.** For every real $m$, $(2m+1)^2 = 4m^2 + 4m + 1$.\n\n\
 **Proof.**\n1. It holds — *(gap: not shown yet)*.\n∎\n";
