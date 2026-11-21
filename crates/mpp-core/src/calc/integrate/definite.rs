@@ -18,9 +18,9 @@ use crate::poly::Poly;
 use crate::simplify::{add, mul, simplify};
 use crate::steps::Steps;
 
-use super::asymptotic::Far;
+use super::asymptotic::{oscillates, phase_at, Far};
 use super::engine::{div, linear_coeffs};
-use super::numeric::{quad, DEFAULT_TOLERANCE};
+use super::numeric::{quad, quad_full, Quad, DEFAULT_TOLERANCE};
 use super::{definite_holder, integrate, oscillatory};
 
 /// Subintervals allowed for the numerical value of one definite integral.
@@ -173,24 +173,25 @@ fn numeric_bounds(
         },
         Err(_) => None,
     };
-    // A tail that starts very far out cannot be sampled: its expansion or nothing.
-    let far = match points.as_slice() {
-        [.., (c, cv), (_, end)] if *end == f64::INFINITY => {
-            super::asymptotic::far_tail(e, var, c, *cv)
-        }
-        _ => None,
-    };
+    // An oscillating integrand far out cannot be sampled well: its expansion or nothing.
+    let far = super::asymptotic::far_range(e, var, (a, av), (b, bv));
     let numeric = match &far {
-        Some(Far::Value(v, err, _)) => Ok((*v, *err)),
+        Some(Far::Value(v, err, _)) => Ok(Quad {
+            value: *v,
+            error: *err,
+            abs: v.abs(),
+        }),
         Some(Far::Refused(why)) => Err(MathError::Undetermined(why.clone())),
         None => numeric_pieces(e, var, &points),
     };
     let holder = definite_holder(e, var, a, b);
+    let shown = |q: Quad| shown(q, e, var, (a, b));
     if let Some((value, big_f, note)) = exact {
         let ev = value.eval_f64(&EmptyEnv).ok();
         let disagree = match (&numeric, ev) {
-            (Ok((nv, err)), Some(ev)) => {
-                *err <= 1e-8 * (1.0 + nv.abs()) && (nv - ev).abs() > 1e-6 * (1.0 + nv.abs())
+            (Ok(q), Some(ev)) => {
+                let nv = q.value;
+                q.error <= 1e-8 * (1.0 + nv.abs()) && (nv - ev).abs() > 1e-6 * (1.0 + nv.abs())
             }
             _ => false,
         };
@@ -221,7 +222,11 @@ fn numeric_bounds(
     }
     match far {
         Some(Far::Value(v, err, note)) => {
-            let result = Expr::float(certified(v, err));
+            let result = shown(Quad {
+                value: v,
+                error: err,
+                abs: v.abs(),
+            })?;
             Steps::record(
                 &mut log,
                 "asymptotic expansion",
@@ -235,8 +240,8 @@ fn numeric_bounds(
         None => {}
     }
     match numeric {
-        Ok((v, err)) => {
-            let result = Expr::float(certified(v, err));
+        Ok(q) => {
+            let result = shown(q)?;
             Steps::record(
                 &mut log,
                 "numerical integration",
@@ -244,8 +249,8 @@ fn numeric_bounds(
                 &result,
                 Some(format!(
                     "no closed form was found, so adaptive Gauss–Kronrod (7–15 point) quadrature gives ≈ {} with estimated error ≤ {}",
-                    format_f64(v, 10),
-                    format_f64(err.max(f64::MIN_POSITIVE), 2)
+                    format_f64(q.value, 10),
+                    format_f64(q.error.max(f64::MIN_POSITIVE), 2)
                 )),
             );
             Ok(result)
@@ -256,8 +261,8 @@ fn numeric_bounds(
                     "∫ {e} d{var} from {a} to {b} ({reason})"
                 )));
             }
-            if let Some((v, err, note)) = oscillating(e, var, &points) {
-                let result = Expr::float(certified(v, err));
+            if let Some((q, note)) = oscillating(e, var, &points) {
+                let result = shown(q)?;
                 Steps::record(
                     &mut log,
                     "integrate between zeros",
@@ -268,7 +273,11 @@ fn numeric_bounds(
                 return Ok(result);
             }
             if let Some((v, err, note)) = super::improper::convergent(e, var, &points) {
-                let result = Expr::float(certified(v, err));
+                let result = shown(Quad {
+                    value: v,
+                    error: err,
+                    abs: v.abs(),
+                })?;
                 Steps::record(&mut log, "comparison test", &holder, &result, Some(note));
                 return Ok(result);
             }
@@ -282,13 +291,47 @@ fn numeric_bounds(
     }
 }
 
-/// `v`, or 0 when it is below its own error estimate (so rounding noise such as
-/// `-3.8e-16` is never shown as the value of an integral that is 0).
-fn certified(v: f64, err: f64) -> f64 {
-    if v.is_finite() && v.abs() <= err {
-        0.0
-    } else {
-        v
+/// Fewest significant digits worth showing; a numerical value its error estimate leaves
+/// fewer digits of is refused.
+const MIN_DIGITS: i32 = 3;
+/// Digits shown for a numerical value.
+const SHOWN_DIGITS: i32 = 10;
+
+/// The numerical value `q` as a number, with only the digits its error estimate supports:
+/// all ten when the error is below half a unit of the tenth digit, fewer (rounded) when it
+/// is larger, and a refusal when not even [`MIN_DIGITS`] are right. A value below its
+/// own error is shown as 0 only when that error is rounding noise next to `∫|f|` (so
+/// `-3.8e-16` is never shown as the value of an integral that is 0, and an unresolved
+/// value is never shown as 0 either).
+fn certified(q: Quad) -> Option<f64> {
+    let (v, err) = (q.value, q.error.max(0.0));
+    if !v.is_finite() || !err.is_finite() {
+        return None;
+    }
+    if v.abs() <= err {
+        return (err <= 1e-9 * q.abs).then_some(0.0);
+    }
+    // d digits are right when err ≤ ½·10^(1−d)·|v|.
+    let digits = (5.0 * v.abs() / err).log10().floor() as i32;
+    let digits = digits.min(SHOWN_DIGITS);
+    if digits >= SHOWN_DIGITS {
+        return Some(v);
+    }
+    if digits < MIN_DIGITS {
+        return None;
+    }
+    format!("{:.*e}", (digits - 1) as usize, v).parse().ok()
+}
+
+/// [`certified`] as the result of `∫_a^b e d(var)`, or the refusal that says why.
+fn shown(q: Quad, e: &Expr, var: &str, (a, b): (&Expr, &Expr)) -> MathResult<Expr> {
+    match certified(q) {
+        Some(v) => Ok(Expr::float(v)),
+        None => Err(MathError::Undetermined(format!(
+            "∫ {e} d{var} from {a} to {b} to any reliable digit (the numerical estimate ≈ {} has an estimated error of {}, about as large as the value itself)",
+            format_f64(q.value, 4),
+            format_f64(q.error, 2)
+        ))),
     }
 }
 
@@ -359,7 +402,7 @@ fn has_undefined(e: &Expr) -> bool {
 
 /// The value of an integral with an infinite bound whose integrand oscillates, summed
 /// between the zeros of the integrand (see [`super::oscillatory`]).
-fn oscillating(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<(f64, f64, String)> {
+fn oscillating(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<(Quad, String)> {
     let (lo, hi) = (points.first()?.1, points.last()?.1);
     if lo.is_finite() && hi.is_finite() {
         return None;
@@ -403,7 +446,29 @@ fn oscillating(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<(f64, f64,
         parts += t.value.abs();
         notes.push(tail_note(&t, var, true));
     }
-    Some((total, err.max(4e-15 * parts), notes.join("; ")))
+    let q = Quad {
+        value: total,
+        error: err
+            .max(4e-15 * parts)
+            .max(phase_error(e, var, &finite, parts)),
+        abs: parts,
+    };
+    Some((q, notes.join("; ")))
+}
+
+/// The error from rounding the sample points of an oscillating integrand near the finite
+/// ends `ends`: each moves the phase by about `|x θ′(x)|` units of roundoff, against the
+/// scale `abs` of `∫|f|`.
+fn phase_error(e: &Expr, var: &str, ends: &[f64], abs: f64) -> f64 {
+    if !oscillates(e, var) {
+        return 0.0;
+    }
+    let phase = ends
+        .iter()
+        .filter(|x| x.is_finite())
+        .map(|x| phase_at(e, var, *x))
+        .fold(0.0, f64::max);
+    2.2e-16 * phase * abs
 }
 
 fn tail_note(t: &oscillatory::Tail, var: &str, negative: bool) -> String {
@@ -479,15 +544,18 @@ fn value_at(
     }
 }
 
-fn numeric_pieces(e: &Expr, var: &str, points: &[(Expr, f64)]) -> MathResult<(f64, f64)> {
-    let (mut total, mut err) = (0.0, 0.0);
+fn numeric_pieces(e: &Expr, var: &str, points: &[(Expr, f64)]) -> MathResult<Quad> {
+    let mut total = Quad::default();
     for w in points.windows(2) {
         let mut g = super::numeric::sampler(e, var, w[0].1, w[1].1);
-        let (v, de) = quad(&mut g, w[0].1, w[1].1, DEFAULT_TOLERANCE, MAX_INTERVALS)?;
-        total += v;
-        err += de;
+        let q = quad_full(&mut g, w[0].1, w[1].1, DEFAULT_TOLERANCE, MAX_INTERVALS)?;
+        total.value += q.value;
+        total.error += q.error;
+        total.abs += q.abs;
     }
-    Ok((total, err))
+    let ends: Vec<f64> = points.iter().map(|p| p.1).collect();
+    total.error = total.error.max(phase_error(e, var, &ends, total.abs));
+    Ok(total)
 }
 
 /// Points strictly inside `(lo, hi)` where the integrand is not finite, sorted.
