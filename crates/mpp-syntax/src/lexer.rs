@@ -117,6 +117,8 @@ pub enum Tok {
     Assign,
     /// `\overset{?}{=}`, `≟`, `?=`.
     CheckEq,
+    /// `\overset{?}{\equiv}`: a congruence check, with `\pmod{n}` after its right side.
+    CheckEquiv,
     Question,
     Period,
     /// A run of Unicode superscripts, as plain text (`²` is `"2"`, `⁻¹` is `"-1"`).
@@ -584,7 +586,10 @@ impl<'a> Lexer<'a> {
                 Some(text) => Tok::Label(text.trim().to_string()),
                 None => Tok::Command(name.to_string()),
             },
-            "overset" | "stackrel" if self.check_eq_args() => Tok::CheckEq,
+            "overset" | "stackrel" => match self.check_args() {
+                Some(tok) => tok,
+                None => Tok::Command(name.to_string()),
+            },
             "lvert" => open(Delim::Bar),
             "rvert" => close(Delim::Bar),
             "lVert" => open(Delim::DoubleBar),
@@ -745,18 +750,21 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    /// After `\overset`: true (and consumed) when the arguments are `{?}{=}`.
-    fn check_eq_args(&mut self) -> bool {
+    /// The arguments of `\overset{?}{=}` (a check) or `\overset{?}{\equiv}` (a
+    /// congruence check); anything else is left unread.
+    fn check_args(&mut self) -> Option<Tok> {
         let save = self.pos;
         let first = self.braced_raw();
         let second = self.braced_raw();
-        if first.as_deref().map(str::trim) == Some("?")
-            && second.as_deref().map(str::trim) == Some("=")
-        {
-            return true;
+        if first.as_deref().map(str::trim) == Some("?") {
+            match second.as_deref().map(str::trim) {
+                Some("=") => return Some(Tok::CheckEq),
+                Some("\\equiv" | "≡") => return Some(Tok::CheckEquiv),
+                _ => {}
+            }
         }
         self.pos = save;
-        false
+        None
     }
 }
 
@@ -968,6 +976,7 @@ mod tests {
             ]
         );
         assert_eq!(kinds("\\overset{?}{=}"), vec![Tok::CheckEq]);
+        assert_eq!(kinds("\\overset{?}{\\equiv}"), vec![Tok::CheckEquiv]);
         assert_eq!(
             kinds("\\text{if } x"),
             vec![Tok::Text("if ".into()), Tok::Letter('x')]

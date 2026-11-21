@@ -187,3 +187,15 @@ fn checking_never_changes_the_file() {
     let _ = check_source(src);
     assert_eq!(src, copy);
 }
+
+#[test]
+fn congruence_checks_in_steps_stay_congruences() {
+    // Read as an equation, `3^{12} = 1` would be ✗; as a congruence mod 13 it holds.
+    let src = "**Theorem 1.** It holds.\n\n**Proof.**\n\
+               1. $3^{12} \\overset{?}{\\equiv} 1 \\pmod{13}$ — by algebra.\n\
+               2. For an integer $m$: $3^{12} \\overset{?}{\\equiv} 2 \\pmod{13}$ — by algebra.\n∎\n";
+    let c = check_source(src);
+    let steps = &c.results[0].proofs[0].steps;
+    assert!(steps[0].status.is_computed(), "{}", c.report());
+    assert_eq!(steps[1].status, StepStatus::Wrong, "{}", c.report());
+}

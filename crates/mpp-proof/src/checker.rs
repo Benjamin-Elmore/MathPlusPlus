@@ -13,7 +13,7 @@ use mpp_syntax::document::{
     inline_plain_text, parse_document, Block, BlockKind, Document, Inline, InlineKind, Reference,
     Theorem, TheoremKind,
 };
-use mpp_syntax::math::{Clause, DefHead, MathAst, Node, NodeKind, Statement};
+use mpp_syntax::math::{BinOp, Clause, DefHead, MathAst, Node, NodeKind, Statement};
 use mpp_syntax::Span;
 
 use crate::algebra::{self, Claim, Condition, Equation, Knowledge};
@@ -669,16 +669,9 @@ fn step_maths(claim: &[Inline], src: &str) -> StepMaths {
                                 }
                             }
                         }
-                        Statement::Check { lhs, rhs } => out.claims.push((
-                            Link {
-                                lhs: lhs.clone(),
-                                op: ClaimOp::Eq,
-                                rhs: rhs.clone(),
-                                modulus: None,
-                                span: lhs.span.join(rhs.span),
-                            },
-                            notation::text(src, lhs.span.join(rhs.span)).to_string(),
-                        )),
+                        Statement::Check { lhs, rhs } => out
+                            .claims
+                            .push(check_statement_link(lhs, rhs, line.span, src)),
                         _ => {}
                     }
                     for c in &line.clauses {
@@ -700,6 +693,50 @@ fn step_maths(claim: &[Inline], src: &str) -> StepMaths {
         }
     }
     out
+}
+
+/// The claim of a check line: `a \overset{?}{=} b` is an equation, and
+/// `a \overset{?}{\equiv} b \pmod{n}` (read by the parser as `a mod n = b mod n`) is the
+/// congruence it was written as. Returns the link and its source text.
+fn check_statement_link(lhs: &Node, rhs: &Node, line: Span, src: &str) -> (Link, String) {
+    let remainder = |n: &Node| match &n.kind {
+        NodeKind::Binary {
+            op: BinOp::Mod,
+            lhs,
+            rhs,
+        } => Some((
+            (**lhs).clone(),
+            notation::text(src, rhs.span).trim().to_string(),
+        )),
+        _ => None,
+    };
+    if let (Some((a, m)), Some((b, m2))) = (remainder(lhs), remainder(rhs)) {
+        if m == m2 && !m.is_empty() {
+            let span = a.span.join(b.span);
+            let text = notation::text(src, Span::new(span.start, line.end.max(span.end)));
+            return (
+                Link {
+                    lhs: a,
+                    op: ClaimOp::Congruent,
+                    rhs: b,
+                    modulus: Some(m),
+                    span,
+                },
+                text.trim().to_string(),
+            );
+        }
+    }
+    let span = lhs.span.join(rhs.span);
+    (
+        Link {
+            lhs: lhs.clone(),
+            op: ClaimOp::Eq,
+            rhs: rhs.clone(),
+            modulus: None,
+            span,
+        },
+        notation::text(src, span).to_string(),
+    )
 }
 
 fn check_step(

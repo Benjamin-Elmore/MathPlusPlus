@@ -393,6 +393,7 @@ fn is_terminator(t: &Tok) -> bool {
             | Tok::End(_)
             | Tok::Assign
             | Tok::CheckEq
+            | Tok::CheckEquiv
             | Tok::Period
     )
 }

@@ -44,7 +44,6 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
         "historic/pythagoras.mpp",
         "area-counting premise; prose figure",
     ),
-    ("historic/fermat-little.mpp", "\\overset{?}{\\equiv} checks"),
     ("labs/01-projectile-drag.mpp", "`T ≈ ?` has no definition: T is introduced only by the prose \"lands when $y(T) = 0$ with $T > 0$\" (prose relations define nothing; for Ben: `T := \\operatorname{solve}_t(y(t) = 0, t > 0)` would say it in maths); and the drag system ẍ = −kẋ, ÿ = −g − kẏ has unit-carrying coefficients, which the ODE solver does not take yet, so x and y are not defined"),
     ("labs/02-pendulum.mpp", "`T ≈ ?` has no definition: T is \"the time between successive maxima of θ(t)\" in prose only (for Ben: there is no maths construct for it); the nonlinear pendulum also needs a numerical solution defined from the statement. T₀ ≈ 2.006 s and T_exact ≈ 2.041 s are computed"),
     ("labs/03-damped-spring.mpp", "`\\text{ for all } t \\ge 0` quantified checks are not supported, and the ODE m ẍ + c ẋ + k x = 0 with unit-carrying m, c, k is not solved yet, so x and E(t) have no value; ζ ≈ 0.0632 and T_d ≈ 0.9954 s are computed"),

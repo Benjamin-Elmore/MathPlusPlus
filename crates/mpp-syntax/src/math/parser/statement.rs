@@ -290,6 +290,11 @@ impl Parser<'_> {
                 let rhs = self.parse_body("the right side of the check");
                 Statement::Check { lhs, rhs }
             }
+            Some(Tok::CheckEquiv) => {
+                self.bump();
+                let rhs = self.parse_body("the right side of the check");
+                self.congruence_check(lhs, rhs)
+            }
             Some(Tok::Rel(op @ (RelOp::Eq | RelOp::Approx)))
                 if matches!(self.peek_n(1), Some(Tok::Question)) =>
             {
@@ -308,6 +313,34 @@ impl Parser<'_> {
                 }
             }
             _ => self.relation_or_const(lhs),
+        }
+    }
+
+    /// `a \overset{?}{\equiv} b \pmod{n}` as the check `a mod n = b mod n`: the
+    /// remainders on division by `n` agree exactly when `n` divides `a - b`.
+    fn congruence_check(&mut self, lhs: Node, rhs: Node) -> Statement {
+        let Some((rhs, modulus)) = split_pmod(&rhs) else {
+            self.error(
+                rhs.span,
+                "a congruence check needs its modulus after the right side",
+                &["`\\pmod{n}`"],
+            );
+            return Statement::Check { lhs, rhs };
+        };
+        let remainder = |side: Node| {
+            let span = side.span;
+            Node::new(
+                NodeKind::Binary {
+                    op: BinOp::Mod,
+                    lhs: Box::new(side),
+                    rhs: Box::new(modulus.clone()),
+                },
+                span,
+            )
+        };
+        Statement::Check {
+            lhs: remainder(lhs),
+            rhs: remainder(rhs),
         }
     }
 
@@ -532,6 +565,33 @@ fn rebind_params(head: &DefHead, body: &mut Node) {
     }
 }
 
+/// Splits a trailing `\pmod{n}` off `b \pmod{n}` (`a^p + 1 \pmod p` is read as
+/// `a^p + (1 \pmod p)`, so the modulus is taken off the rightmost term): the side without
+/// it and the modulus.
+fn split_pmod(node: &Node) -> Option<(Node, Node)> {
+    let NodeKind::Binary { op, lhs, rhs } = &node.kind else {
+        return None;
+    };
+    if matches!(op, BinOp::Mul(_)) {
+        if let NodeKind::NamedOp(m) = &rhs.kind {
+            if m.name == "mod" && m.args.len() == 1 {
+                return Some(((**lhs).clone(), m.args.first()?.clone()));
+            }
+        }
+    }
+    let (inner, modulus) = split_pmod(rhs)?;
+    let span = lhs.span.join(inner.span);
+    let side = Node::new(
+        NodeKind::Binary {
+            op: *op,
+            lhs: lhs.clone(),
+            rhs: Box::new(inner),
+        },
+        span,
+    );
+    Some((side, modulus))
+}
+
 /// True when `node` contains `\pmod`, so `a \equiv b \pmod{n}` stays a congruence.
 fn mentions_mod(node: &Node) -> bool {
     if let NodeKind::NamedOp(op) = &node.kind {
@@ -582,4 +642,37 @@ fn name_list(statement: &Statement, clauses: &[Clause]) -> Option<Vec<Node>> {
         }
     }
     Some(names)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::math::ast::{BinOp, NodeKind, Statement};
+    use crate::math::parse_math;
+
+    #[test]
+    fn congruence_check_compares_remainders() {
+        let src = r"(a + 1)^p \overset{?}{\equiv} a^p + 1 \pmod p";
+        let (ast, diags) = parse_math(src, 0);
+        assert!(diags.is_empty(), "{diags:?}");
+        let Statement::Check { lhs, rhs } = &ast.lines[0].statement else {
+            panic!("expected a check");
+        };
+        for side in [lhs, rhs] {
+            let NodeKind::Binary { op, rhs: m, .. } = &side.kind else {
+                panic!("expected a remainder");
+            };
+            assert_eq!(*op, BinOp::Mod);
+            assert_eq!(&src[m.span.start..m.span.end], "p");
+        }
+        let NodeKind::Binary { lhs: b, .. } = &rhs.kind else {
+            unreachable!()
+        };
+        assert_eq!(&src[b.span.start..b.span.end], "a^p + 1");
+    }
+
+    #[test]
+    fn congruence_check_needs_a_modulus() {
+        let (_, diags) = parse_math(r"2^{10} \overset{?}{\equiv} 1", 0);
+        assert!(diags.iter().any(|d| d.message.contains("modulus")));
+    }
 }
