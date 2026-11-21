@@ -917,8 +917,51 @@ pub fn finish(e: &Expr) -> MathResult<Expr> {
             }
             reg.call("matpow", &[b.clone(), k.clone()], &mut dctx)
         }
+        // e^{tA}: the matrix exponential, with a common symbol written as its time.
+        ExprNode::Pow(b, k) if is_euler(b) && is_matrix(k) => {
+            let (m, t) = split_time(k);
+            reg.call("expm", &[m, t], &mut dctx)
+        }
+        // [X, Y] of two matrices: the Lie bracket XY − YX (an interval of matrices
+        // means nothing else).
+        ExprNode::Interval { lo, hi, .. } if is_matrix(lo) && is_matrix(hi) => {
+            reg.call("liebracket", &[lo.clone(), hi.clone()], &mut dctx)
+        }
+        // Tr A, tr A, ker A.
+        ExprNode::Apply(name, args) if args.len() == 1 && is_matrix(&args[0]) => match &**name {
+            "Tr" | "tr" => reg.call("trace", args, &mut dctx),
+            "ker" | "Ker" => reg.call("kernel", args, &mut dctx),
+            _ => Ok(e),
+        },
         _ => Ok(e),
     }
+}
+
+fn is_euler(e: &Expr) -> bool {
+    *e == Expr::e()
+}
+
+/// `M = t·N` with `N` free of symbols: `(N, t)`; otherwise `(M, 1)`.
+fn split_time(m: &Expr) -> (Expr, Expr) {
+    let free = m.free_symbols();
+    if let [t] = free.iter().collect::<Vec<_>>().as_slice() {
+        let t = Expr::sym(t);
+        if let ExprNode::Matrix { rows, cols, data } = m.node() {
+            let scaled: Vec<Expr> = data
+                .iter()
+                .map(|x| (x.clone() / t.clone()).simplify())
+                .collect();
+            if scaled.iter().all(|x| x.free_symbols().is_empty()) {
+                let n = Expr::new(ExprNode::Matrix {
+                    rows: *rows,
+                    cols: *cols,
+                    data: scaled,
+                });
+                return (n, t);
+            }
+        }
+    }
+    (m.clone(), Expr::one())
 }
 
 /// `max(x)` and `min(x)` of a data column: the largest or smallest entry.

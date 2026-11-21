@@ -177,3 +177,41 @@ fn line_integrals_of_differential_forms() {
     // Prose about the form is not an error.
     assert!(errors(r"Green: $\oint_C (P\,dx + Q\,dy) = \iint_D (Q_x - P_y)\,dA$.").is_empty());
 }
+
+#[test]
+fn textbook_forms_of_the_library_operators() {
+    // |x|_p is the p-adic absolute value.
+    assert_eq!(answer(r"$$ |8|_2 = ? $$"), "1/8");
+    let mats = concat!(
+        r"$$ A := \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} $$",
+        "\n\n",
+        r"$$ B := \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix} $$",
+        "\n\n",
+        r"$$ J := \begin{pmatrix} 0 & -1 \\ 1 & 0 \end{pmatrix} $$",
+        "\n\n",
+    );
+    let with = |q: &str| format!("{mats}{q}");
+    assert_eq!(answer(&with(r"$$ \operatorname{Tr}(A) = ? $$")), "5");
+    assert_eq!(answer(&with(r"$$ \operatorname{tr} A = ? $$")), "5");
+    // [A, B] = AB − BA for matrices; for numbers it stays an interval.
+    assert_eq!(answer(&with(r"$$ [A, B] = ? $$")), "[[-1, -3], [3, 1]]");
+    assert_eq!(answer(r"$$ [1, 2] = ? $$"), "[1, 2]");
+    // e^{tJ} is the matrix exponential.
+    assert_eq!(
+        answer(&with(r"$$ e^{tJ} = ? $$")),
+        "[[cos(t), -sin(t)], [sin(t), cos(t)]]"
+    );
+    assert_eq!(
+        answer(r"$$ \ker \begin{pmatrix} 1 & 2 \\ 2 & 4 \end{pmatrix} = ? $$"),
+        "([[-2], [1]])"
+    );
+    // C_n is the Catalan number only when a query is made of nothing else …
+    assert_eq!(answer(r"$$ C_5 = ? $$"), "42");
+    assert_eq!(answer(r"$$ C_{10} - C_9 = ? $$"), "11934");
+    // … and stays a name next to anything else, or when the document defines C.
+    assert_eq!(answer(r"$$ C_1 x + C_2 = ? $$"), "C_1*x + C_2");
+    assert_eq!(
+        answer(concat!(r"$$ C_5 := 3 $$", "\n\n", r"$$ C_5 = ? $$")),
+        "3"
+    );
+}

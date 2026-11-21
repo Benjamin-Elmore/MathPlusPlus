@@ -983,6 +983,7 @@ impl Run<'_, '_> {
             }
         };
         lr.input = Some(input.clone());
+        let input = self.catalan_numbers(input, expr.span);
         // `y'' + y = 0 = ?`: a differential equation goes to the solver with the
         // line's conditions.
         let input = self.ode_input(&input, s).unwrap_or(input);
@@ -1086,6 +1087,33 @@ impl Run<'_, '_> {
             lr.latex = Some(s.latex);
         }
         self.push(lr);
+    }
+
+    /// `C_5 = ?`, `C_{10}/C_9 = ?`: when every free name of a query is a `C` with a whole
+    /// number subscript and the document gives none of them (nor `C`) a value, they are
+    /// the Catalan numbers. Anywhere else `C_1`, `C_2` stay names (the constants of a
+    /// general solution), so nothing changes meaning silently.
+    fn catalan_numbers(&mut self, input: Expr, span: Span) -> Expr {
+        let free = input.free_symbols();
+        if free.is_empty() || self.view().get("C", false).is_some() {
+            return input;
+        }
+        let mut pairs = Vec::new();
+        for name in free.iter() {
+            let Some(n) = name.strip_prefix("C_").and_then(|d| d.parse::<i64>().ok()) else {
+                return input;
+            };
+            if self.view().get(name, false).is_some() || !(0..=10_000).contains(&n) {
+                return input;
+            }
+            pairs.push((name.to_string(), n));
+        }
+        let mut out = input;
+        for (name, n) in &pairs {
+            out = out.subs(name, &Expr::apply("catalan", vec![Expr::int(*n)]));
+        }
+        self.warn(span, "C_n is read as the n-th Catalan number".to_string());
+        out
     }
 
     /// Reports names without values in a `≈ ?` query.

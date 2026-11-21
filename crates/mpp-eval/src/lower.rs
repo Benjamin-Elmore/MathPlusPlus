@@ -304,10 +304,29 @@ impl<'a> Lowerer<'a> {
                 Ok(n / d)
             }
             K::Pow { base, exp } => self.power(base, exp),
-            K::Subscript { .. } => Err(fail(
-                span,
-                EvalError::Unsupported("a subscript on this expression".into()),
-            )),
+            K::Subscript { base, sub } => match &base.ungrouped().kind {
+                // `|x|_p`: the p-adic absolute value; `‖v‖_p`: the L^p norm.
+                K::Fenced {
+                    fence: Fence::Abs,
+                    inner,
+                    ..
+                } => Ok(Expr::apply(
+                    "padicabs",
+                    vec![self.lower(sub)?, self.lower(inner)?],
+                )),
+                K::Fenced {
+                    fence: Fence::Norm,
+                    inner,
+                    ..
+                } => Ok(Expr::apply(
+                    "lpnorm",
+                    vec![self.lower(inner)?, self.lower(sub)?],
+                )),
+                _ => Err(fail(
+                    span,
+                    EvalError::Unsupported("a subscript on this expression".into()),
+                )),
+            },
             K::Prime { base, count } => self.prime(base, *count, span),
             K::Factorial { operand, count } => {
                 let x = self.lower(operand)?;
