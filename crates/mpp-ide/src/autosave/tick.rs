@@ -33,6 +33,10 @@ pub struct AutosaveState {
     last_recovery: Instant,
     was_focused: bool,
     pub dialog: Option<RecoveryDialog>,
+    /// This window's name on its recovery copies (see [`super::instance_id`]).
+    pub owner: String,
+    /// The lock that tells other windows this one is still running.
+    lock: Option<std::fs::File>,
 }
 
 impl Default for AutosaveState {
@@ -42,6 +46,16 @@ impl Default for AutosaveState {
             last_recovery: Instant::now(),
             was_focused: true,
             dialog: None,
+            owner: super::instance_id(),
+            lock: None,
+        }
+    }
+}
+
+impl AutosaveState {
+    fn hold_lock(&mut self, dir: &std::path::Path) {
+        if self.lock.is_none() {
+            self.lock = super::hold_lock(dir, &self.owner);
         }
     }
 }
@@ -91,6 +105,8 @@ impl IdeApp {
         let Some(dir) = self.ws.settings_dir.clone() else {
             return;
         };
+        self.ws.autosave.hold_lock(&dir);
+        let owner = self.ws.autosave.owner.clone();
         let mut live: Vec<u64> = vec![];
         for d in &self.docs {
             let key = key_for(d.path.as_deref(), d.id);
@@ -109,13 +125,14 @@ impl IdeApp {
                         path: d.path.clone(),
                         title: d.title(),
                         text: d.editor.text().to_string(),
+                        owner: owner.clone(),
                     };
                     if super::write(&dir, &key, &r).is_ok() {
                         self.ws.autosave.written.insert(d.id, (key, rev));
                     }
                 }
             } else if let Some((old, _)) = self.ws.autosave.written.remove(&d.id) {
-                super::remove(&dir, &old);
+                super::remove(&dir, &old, &owner);
             }
         }
         // Files closed since the last pass.
@@ -129,7 +146,7 @@ impl IdeApp {
             .collect();
         for id in gone {
             if let Some((old, _)) = self.ws.autosave.written.remove(&id) {
-                super::remove(&dir, &old);
+                super::remove(&dir, &old, &owner);
             }
         }
     }
@@ -139,7 +156,14 @@ impl IdeApp {
         let Some(dir) = self.ws.settings_dir.clone() else {
             return;
         };
-        let found = super::worth_restoring(&dir, super::load_all(&dir));
+        self.ws.autosave.hold_lock(&dir);
+        // Copies of windows that are still running are theirs, not a crash's.
+        let own = self.ws.autosave.owner.clone();
+        let orphans: Vec<Recovered> = super::load_all(&dir)
+            .into_iter()
+            .filter(|r| r.owner != own && !super::owner_alive(&dir, &r.owner))
+            .collect();
+        let found = super::worth_restoring(&dir, orphans);
         if !found.is_empty() {
             self.ws.autosave.dialog = Some(RecoveryDialog { files: found });
         }
@@ -150,7 +174,12 @@ impl IdeApp {
         let Some(d) = self.ws.autosave.dialog.take() else {
             return;
         };
+        let dir = self.ws.settings_dir.clone();
         for r in d.files {
+            // The crashed window's copy is replaced by this window's own.
+            if let Some(dir) = &dir {
+                super::remove(dir, &r.key, &r.owner);
+            }
             let text_end;
             match &r.path {
                 Some(p) if p.is_file() => {
@@ -184,19 +213,23 @@ impl IdeApp {
         if let (Some(d), Some(dir)) = (self.ws.autosave.dialog.take(), self.ws.settings_dir.clone())
         {
             for r in d.files {
-                super::remove(&dir, &r.key);
+                super::remove(&dir, &r.key, &r.owner);
             }
         }
     }
 
-    /// Removes every recovery copy: the app is closing cleanly.
+    /// Removes this window's recovery copies: it is closing cleanly. Other windows'
+    /// copies are left alone.
     pub fn clear_recovery_on_exit(&mut self) {
         // Unsaved edits at a clean exit are kept: the user chose to quit with
         // them, and saving or closing each file already asked.
         if self.docs.iter().any(Doc::is_dirty) {
             self.write_recovery();
+            // No lock any more: the next start offers the kept copies.
+            self.ws.autosave.lock = None;
         } else if let Some(dir) = self.ws.settings_dir.clone() {
-            super::clear(&dir);
+            self.ws.autosave.lock = None;
+            super::clear_own(&dir, &self.ws.autosave.owner);
         }
     }
 

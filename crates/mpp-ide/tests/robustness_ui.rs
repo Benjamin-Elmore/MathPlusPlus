@@ -43,3 +43,39 @@ fn a_slow_file_in_the_folder_never_holds_up_the_open_file() {
     assert_eq!(bg.index.files_defining("θ"), ["slow.mpp"]);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+#[test]
+fn a_second_window_never_takes_the_first_windows_recovery_copies() {
+    use mpp_ide::settings::AutosaveMode;
+    let d = scratch("two-windows");
+    let data = d.join("appdata");
+    let f = d.join("m.mpp");
+    std::fs::write(&f, "# M\n").expect("write");
+    let offered = |app: &IdeApp| app.ws.autosave.dialog.as_ref().map_or(0, |x| x.files.len());
+    // Window A edits and keeps a recovery copy.
+    let mut a = IdeApp::empty();
+    a.start_up(&data, None);
+    a.open_file(&f, false).expect("open");
+    a.set_autosave_mode(AutosaveMode::Off);
+    {
+        let doc = a.doc_mut().expect("doc");
+        doc.editor.move_caret(4, false);
+        doc.editor.insert_text("\n$$ precious := 1 $$\n");
+        doc.touched();
+    }
+    a.write_recovery();
+    // Window B starts while A runs: A's live edits are not a crash.
+    let mut b = IdeApp::empty();
+    b.start_up(&data, None);
+    assert_eq!(offered(&b), 0);
+    // B closes cleanly; that must not delete A's copy.
+    b.clear_recovery_on_exit();
+    drop(b);
+    a.write_recovery();
+    // A crashes (no clean exit): the next start offers its copy.
+    drop(a);
+    let mut c = IdeApp::empty();
+    c.start_up(&data, None);
+    assert_eq!(offered(&c), 1);
+    let _ = std::fs::remove_dir_all(&d);
+}
