@@ -417,6 +417,11 @@ fn complex_pow(b: Complex64, x: Complex64) -> MathResult<Complex64> {
         return Err(MathError::DivisionByZero);
     }
     if x.im == 0.0 && x.re.fract() == 0.0 && x.re.abs() <= f64::from(i32::MAX) {
+        // A real base in real arithmetic: the complex reciprocal squares the modulus
+        // first, so 1/100! would underflow to 0 through (100!)² = ∞.
+        if b.im == 0.0 {
+            return Ok(Complex64::new(b.re.powi(x.re as i32), 0.0));
+        }
         return Ok(b.powi(x.re as i32));
     }
     if b.im == 0.0 && b.re > 0.0 && x.im == 0.0 {

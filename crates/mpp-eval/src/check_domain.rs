@@ -118,9 +118,22 @@ pub fn check_on_domain(lhs: &Expr, rhs: &Expr, conditions: &[Expr]) -> Option<Ve
             None => {}
         }
     }
+    let piecewise = match &claim {
+        Claim::Truth(p, _) => crate::check::piecewise_name(p),
+        Claim::Equal(a, b) => {
+            crate::check::piecewise_name(a).or_else(|| crate::check::piecewise_name(b))
+        }
+    };
     Some(if decided < WANTED {
         Verdict::Unknown(format!(
             "the statement could be decided at only {decided} points of its domain"
+        ))
+    } else if let Some(name) = piecewise {
+        // Points tried prove nothing about a function that changes rule between them.
+        Verdict::Unknown(crate::check::piecewise_unknown(
+            name,
+            decided,
+            "the statement holds",
         ))
     } else {
         Verdict::Holds { points: decided }

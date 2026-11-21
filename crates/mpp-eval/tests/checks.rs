@@ -187,3 +187,79 @@ $$ \frac{dE}{dt} \ge 0 \ \text{ for all } t \ge 0 \overset{?}{=} \text{true} $$"
         .collect();
     assert_eq!(verdicts, vec![Some(true), Some(false)]);
 }
+
+/// A check over a symbolic variable passes only when it holds for every value: random
+/// points never land on the integers or on 0, where piecewise functions change rule,
+/// so those are tried on purpose and a sampled piecewise identity is never ✓.
+#[test]
+fn false_identities_never_pass_by_sampling() {
+    for src in [
+        r"$$ \lfloor x \rfloor + \lfloor -x \rfloor \overset{?}{=} -1 $$",
+        r"$$ \lceil x \rceil - \lfloor x \rfloor \overset{?}{=} 1 $$",
+        r"$$ \lceil x \rceil \overset{?}{=} \lfloor x \rfloor + 1 $$",
+        r"$$ \lfloor x + y \rfloor \overset{?}{=} \lfloor x \rfloor + \lfloor y \rfloor $$",
+        r"$$ \lfloor 3x \rfloor \overset{?}{=} 3 \lfloor x \rfloor $$",
+        r"$$ \lfloor x \rfloor^2 \overset{?}{=} \lfloor x^2 \rfloor $$",
+        r"$$ \operatorname{sgn}(x)^2 \overset{?}{=} 1 $$",
+        r"$$ \operatorname{sgn}(x y) \overset{?}{=} \operatorname{sgn}(x) $$",
+        r"$$ |x| \overset{?}{=} x $$",
+        r"$$ |x + 1| \overset{?}{=} |x| + 1 $$",
+        r"$$ \frac{|x|}{x} \overset{?}{=} 1 $$",
+        r"$$ \max(x, 5) \overset{?}{=} 5 $$",
+        r"$$ \min(x, -x) \overset{?}{=} -x $$",
+        r"$$ \sqrt{x^2} \overset{?}{=} x $$",
+        r"$$ (x^a)^b \overset{?}{=} x^{a b} $$",
+        r"$$ \ln(x y) \overset{?}{=} \ln x + \ln y $$",
+        r"$$ \ln(x^2) \overset{?}{=} 2 \ln x $$",
+        r"$$ \sqrt{x y} \overset{?}{=} \sqrt{x} \sqrt{y} $$",
+        r"$$ \arcsin(\sin x) \overset{?}{=} x $$",
+        r"$$ \arctan x + \arctan \frac{1}{x} \overset{?}{=} \frac{\pi}{2} $$",
+        r"$$ \sqrt{x^2 - 16} \overset{?}{=} \sqrt{x - 4} \sqrt{x + 4} $$",
+        r"$$ x^2 > 0 \overset{?}{=} \text{true} $$",
+        r"$$ (x - 1)^2 > 0 \overset{?}{=} \text{true} $$",
+        r"$$ x^2 + y^2 > 0 \overset{?}{=} \text{true} $$",
+    ] {
+        let v = verdict(src);
+        assert_eq!(v.passed(), Some(false), "{src}: {v:?}");
+    }
+    // The reviewer's case: the counterexample is x = 0.
+    let v = verdict(r"$$ \lfloor x \rfloor + \lfloor -x \rfloor \overset{?}{=} -1 $$");
+    let Verdict::Fails { at, lhs, rhs } = &v else {
+        panic!("{v:?}");
+    };
+    assert_eq!(at, &[("x".to_string(), "0".to_string())]);
+    assert_eq!((lhs.as_str(), rhs.as_str()), ("0", "-1"));
+}
+
+/// True identities with `| |` and `sgn` are proved by cases on the signs of the
+/// variables; a true-looking piecewise identity that cannot be proved stays undecided.
+#[test]
+fn piecewise_identities_are_proved_or_left_undecided() {
+    for src in [
+        r"$$ |x|^2 \overset{?}{=} x^2 $$",
+        r"$$ |x y| \overset{?}{=} |x| |y| $$",
+        r"$$ \operatorname{sgn}(x) |x| \overset{?}{=} x $$",
+        r"$$ \frac{x}{|x|} \overset{?}{=} \operatorname{sgn}(x) $$",
+    ] {
+        assert_eq!(verdict(src), Verdict::Proved, "{src}");
+    }
+    let v = verdict(r"$$ \lfloor x \rfloor \le x \overset{?}{=} \text{true} $$");
+    assert_eq!(v.passed(), None, "{v:?}");
+    assert_eq!(v.mark(), "?");
+}
+
+/// d/dx ⌊x⌋ = 0 only away from the integers, and the answer says so.
+#[test]
+fn derivative_of_floor_notes_the_integers() {
+    let ev = run(r"$$ \frac{d}{dx} \lfloor x \rfloor = ? $$");
+    let (block, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.plain_answer().as_deref(), Some("= 0"));
+    assert!(
+        block
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("except there") && d.message.contains("integers")),
+        "{:?}",
+        block.diagnostics
+    );
+}
