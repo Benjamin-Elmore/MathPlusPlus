@@ -999,7 +999,7 @@ pub fn place(mut problems: Vec<Problem>, page: &Page, src: &str) -> Vec<Problem>
                 }
             }
             Kind::Import { .. } => {
-                let r = map::line_ink(page, p.span);
+                let r = map::line_ink(page, block_span(page, p.span));
                 if r.is_empty() {
                     map::rects_for_span(page, p.span)
                 } else {

@@ -26,7 +26,11 @@ impl Label {
     pub fn text(s: &str) -> Label {
         Label {
             plain: s.to_string(),
-            latex: s.to_string(),
+            latex: if s.contains(' ') {
+                format!("{}text{{{s}}}", '\x5c')
+            } else {
+                s.to_string()
+            },
         }
     }
 }

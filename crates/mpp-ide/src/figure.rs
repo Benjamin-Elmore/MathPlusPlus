@@ -630,11 +630,9 @@ pub fn readout_latex(r: &str) -> String {
     match r.split_once(':') {
         Some((label, rest)) => {
             let (words, maths) = split_words(label.trim());
-            let mut out = format!("\\text{{{}}}", clean(words));
-            if !maths.is_empty() {
-                out.push_str(&format!("\\; {}", clean(maths)));
-            }
-            out.push_str(&format!("\\text{{:}}\\; {}", clean(rest.trim())));
+            let mut out = format!("\\text{{{} }}", clean(words));
+            out.push_str(&clean(maths));
+            out.push_str(&format!("\\text{{: }}{}", clean(rest.trim())));
             out
         }
         None => format!("\\text{{{}}}", clean(r)),
@@ -645,7 +643,7 @@ pub fn readout_latex(r: &str) -> String {
 fn split_words(s: &str) -> (&str, &str) {
     let mut end = 0;
     for w in s.split(' ') {
-        if w.chars().count() > 2 && w.chars().all(char::is_alphabetic) {
+        if w.chars().count() >= 2 && w.chars().all(char::is_alphabetic) {
             end += w.len() + 1;
         } else {
             break;
