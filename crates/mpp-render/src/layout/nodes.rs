@@ -1,5 +1,6 @@
 //! Typesetting each kind of expression node.
 
+use mpp_syntax::math::display::{operator_display, OpDisplay, Piece};
 use mpp_syntax::math::visit;
 use mpp_syntax::math::{
     Accent, BigOp, BigOpKind, BinOp, Bracket, CaseCondition, Constant, DerivNotation, Derivative,
@@ -9,6 +10,7 @@ use mpp_syntax::math::{
 use mpp_syntax::symbols::Font;
 
 use super::boxes::{LBox, Placed};
+use super::chars;
 use super::engine::{Atom, Engine, MAX_DEPTH};
 use super::style::{Class, Level, Style};
 use super::IntegralLimits;
@@ -890,10 +892,105 @@ impl Engine<'_> {
     }
 
     fn named_op(&mut self, n: &Node, op: &NamedOp, st: Style, path: &NodePath) -> Atom {
+        match operator_display(&op.name) {
+            Some(OpDisplay::Transform { letter, inverse }) => {
+                return self.transform(n, op, letter, inverse, st, path)
+            }
+            Some(OpDisplay::Phrase(pieces, _)) if op.args.len() == 1 => {
+                return self.phrase(n, op, pieces, st, path)
+            }
+            Some(OpDisplay::Words(words) | OpDisplay::Phrase(_, words)) => {
+                let word = self.text(words, FontId::Text, st);
+                return self.named_op_with(n, op, word, st, path);
+            }
+            None => {}
+        }
         let saved = self.font;
         self.font = Some(Font::Roman);
         let word = self.word(&op.name, st);
         self.font = saved;
+        self.named_op_with(n, op, word, st, path)
+    }
+
+    /// `ℒ_{t→s}{f}`, `ℒ⁻¹{F}`, `𝓕{f}`, `𝓕⁻¹{F}`.
+    fn transform(
+        &mut self,
+        n: &Node,
+        op: &NamedOp,
+        letter: char,
+        inverse: bool,
+        st: Style,
+        path: &NodePath,
+    ) -> Atom {
+        let head = self.sym(chars::in_font(Font::Calligraphic, letter), st);
+        let sub = op.sub.as_ref().map(|s| self.child(n, s, st.sub(), path).b);
+        let sup = if inverse {
+            let ss = st.sup();
+            let minus = Atom::ord(self.sym('−', ss));
+            let one = Atom::ord(self.sym('1', ss));
+            Some(self.group(vec![minus, one], ss).b)
+        } else {
+            None
+        };
+        let head = self.scripts(head, sub, sup, st, false);
+        let inner = self.list(n, &op.args, st, path);
+        let body = self.fenced(Some('{'), inner, Some('}'), st);
+        self.group(vec![Atom::ord(head), body], st)
+    }
+
+    /// A helper as a sentence: "Critical points of f on [0, 4]".
+    fn phrase(
+        &mut self,
+        n: &Node,
+        op: &NamedOp,
+        pieces: &[Piece],
+        st: Style,
+        path: &NodePath,
+    ) -> Atom {
+        let space = 0.3 * self.scale(st);
+        let mut parts: Vec<LBox> = vec![];
+        for piece in pieces {
+            let (words, node) = match piece {
+                Piece::Text(w) => (*w, None),
+                Piece::Args => ("", Some(None)),
+                Piece::Sub(w) => match &op.sub {
+                    Some(s) => (*w, Some(Some(s))),
+                    None => continue,
+                },
+                Piece::Sup(w) => match &op.sup {
+                    Some(s) => (*w, Some(Some(s))),
+                    None => continue,
+                },
+            };
+            if !words.is_empty() {
+                let punct = words.starts_with([',', ':', '?', '.']);
+                if !punct && !parts.is_empty() {
+                    parts.push(LBox::kern(space));
+                }
+                parts.push(self.text(words, FontId::Text, st));
+            }
+            if let Some(node) = node {
+                let b = match node {
+                    Some(s) => self.child(n, s, st, path).b,
+                    None => self.list(n, &op.args, st, path).b,
+                };
+                if !parts.is_empty() {
+                    parts.push(LBox::kern(space));
+                }
+                parts.push(b);
+            }
+        }
+        Atom::new(Class::Inner, LBox::hlist(parts))
+    }
+
+    fn named_op_with(
+        &mut self,
+        n: &Node,
+        op: &NamedOp,
+        word: LBox,
+        st: Style,
+        path: &NodePath,
+    ) -> Atom {
         let sub = op.sub.as_ref().map(|s| self.child(n, s, st.sub(), path).b);
         let sup = op.sup.as_ref().map(|s| self.child(n, s, st.sup(), path).b);
         let head = self.scripts(word, sub, sup, st, false);

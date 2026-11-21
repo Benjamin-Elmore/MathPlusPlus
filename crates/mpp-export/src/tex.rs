@@ -129,7 +129,102 @@ pub(crate) fn texify_math(src: &str) -> String {
             c => o.push(c),
         }
     }
-    neutralise_file_commands(&o)
+    neutralise_file_commands(&display_operator_names(&o))
+}
+
+/// `\operatorname{laplace}(f)` → `\mathcal{L}\left\{ f \right\}`, `\operatorname{crit}` →
+/// `\operatorname{Critical\ points}`: the TeX export names helpers the way the page does
+/// (see [`mpp_syntax::math::display`]).
+pub(crate) fn display_operator_names(src: &str) -> String {
+    use mpp_syntax::math::display::{operator_display, operator_words, OpDisplay};
+    const KEY: &str = r"\operatorname{";
+    let mut o = String::with_capacity(src.len());
+    let mut rest = src;
+    while let Some(at) = rest.find(KEY) {
+        o.push_str(&rest[..at]);
+        let after = &rest[at + KEY.len()..];
+        let Some(close) = after.find('}') else {
+            o.push_str(&rest[at..]);
+            return o;
+        };
+        let name = &after[..close];
+        let tail = &after[close + 1..];
+        match operator_display(name) {
+            Some(OpDisplay::Transform { letter, inverse }) => {
+                let _ = write!(o, r"\mathcal{{{letter}}}");
+                if inverse {
+                    o.push_str("^{-1}");
+                }
+                // The scripts stay; brackets around the operand become braces.
+                let (scripts, body) = split_scripts(tail);
+                o.push_str(scripts);
+                let trimmed = body.trim_start();
+                match trimmed
+                    .strip_prefix('(')
+                    .and_then(|b| matching_close(b).map(|e| (b, e)))
+                {
+                    Some((b, end)) => {
+                        let _ = write!(o, r"\left\{{ {} \right\}}", &b[..end]);
+                        rest = &b[end + 1..];
+                    }
+                    None => rest = body,
+                }
+                continue;
+            }
+            Some(_) => {
+                let words = operator_words(name).unwrap_or(name).replace(' ', r"\ ");
+                let _ = write!(o, r"\operatorname{{{words}}}");
+            }
+            None => {
+                let _ = write!(o, r"\operatorname{{{name}}}");
+            }
+        }
+        rest = tail;
+    }
+    o.push_str(rest);
+    o
+}
+
+/// `_{t \to s}^{…}` at the start of `s`, and what follows.
+fn split_scripts(s: &str) -> (&str, &str) {
+    let mut i = 0;
+    let bytes = s.as_bytes();
+    while i < bytes.len() && matches!(bytes[i], b'_' | b'^') {
+        i += 1;
+        if bytes.get(i) == Some(&b'{') {
+            match matching_brace(&s[i + 1..]) {
+                Some(e) => i += e + 2,
+                None => return (s, ""),
+            }
+        } else {
+            i += s[i..].chars().next().map_or(0, char::len_utf8);
+        }
+    }
+    (&s[..i], &s[i..])
+}
+
+fn matching_brace(s: &str) -> Option<usize> {
+    matching(s, '{', '}')
+}
+
+fn matching_close(s: &str) -> Option<usize> {
+    matching(s, '(', ')')
+}
+
+/// The byte offset of the bracket closing an already-opened `open`.
+fn matching(s: &str, open: char, close: char) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in s.char_indices() {
+        if c == open {
+            depth += 1;
+        } else if c == close {
+            if depth == 0 {
+                return Some(i);
+            }
+            depth -= 1;
+        }
+    }
+    None
 }
 
 /// LaTeX commands that read or write files or run programs. A shared `.mpp` must not be
@@ -807,6 +902,18 @@ mod neutralise_tests {
             !out.contains("\\input") && !out.contains("\\write") && !out.contains("\\immediate")
         );
         assert!(out.contains("\\backslash input"));
+    }
+
+    #[test]
+    fn helpers_and_transforms_use_textbook_names() {
+        assert_eq!(
+            texify_math(r"\operatorname{invlaplace}_{s \to t}(\frac{1}{s^2 + 4}) = 1"),
+            r"\mathcal{L}^{-1}_{s \to t}\left\{ \frac{1}{s^2 + 4} \right\} = 1"
+        );
+        assert_eq!(
+            texify_math(r"\operatorname{taylorbound}(f) + \operatorname{rank} A"),
+            r"\operatorname{Taylor\ bound}(f) + \operatorname{rank} A"
+        );
     }
 
     #[test]

@@ -164,3 +164,28 @@ $$ R(2) = ? $$
         "{listed:?}"
     );
 }
+
+/// Transforms and helpers are typeset in textbook notation, never by operator name.
+#[test]
+fn helpers_and_transforms_show_no_operator_names() {
+    let path = root().join("examples/helpers-fixture.mpp");
+    let src = r"$$ \mathcal{L}_{t \to s}\left\{ t^2 \right\} = ? $$
+
+$$ \mathcal{F}^{-1}_{\omega \to x}\left\{ \frac{1}{1 + \omega^2} \right\} $$
+
+$$ \operatorname{taylorbound}(e^x, 0, 3, 1) $$
+
+$$ \operatorname{rk4}(x + y, 0, 1, 0.1, 5) $$
+
+$$ \operatorname{mvt}_{[0, 2]} x^2 = ? $$
+
+$$ \operatorname{series}_{x=0}^{5} \sin x = ? $$
+";
+    let (doc, ev) = evaluate(src, &path);
+    let text = page_text(src, &doc, &ev);
+    for name in ["laplace", "fourier", "taylorbound", "rk4", "mvt"] {
+        assert!(!text.contains(name), "{name} in {text}");
+    }
+    assert!(text.contains('ℒ') && text.contains('ℱ'), "{text}");
+    assert!(text.contains("Taylorseriesof"), "{text}");
+}

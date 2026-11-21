@@ -1,6 +1,7 @@
 //! The maths layer: syntax tree, parser and debug printer.
 
 pub mod ast;
+pub mod display;
 mod parser;
 pub mod sexpr;
 pub mod visit;
