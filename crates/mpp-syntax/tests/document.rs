@@ -428,6 +428,23 @@ fn a_display_after_a_list_number_or_prose_is_its_own_block() {
 }
 
 #[test]
+fn display_marks_inside_code_spans_stay_prose() {
+    let src = "The maths sits between `$ x $` and `$$ x $$` in a file.
+
+See ``$$ a $$`` too.
+";
+    let doc = parse_document(src);
+    assert!(doc.diagnostics.is_empty(), "{:?}", doc.diagnostics);
+    assert!(
+        doc.blocks
+            .iter()
+            .all(|b| matches!(b.kind, BlockKind::Paragraph(_))),
+        "{}",
+        dump(&doc)
+    );
+}
+
+#[test]
 fn a_letter_after_a_number_is_a_variable_where_it_is_one() {
     // g is defined before, t is the function's parameter, the figure's range or a
     // letter the same line uses: each is the variable, set in italic.
