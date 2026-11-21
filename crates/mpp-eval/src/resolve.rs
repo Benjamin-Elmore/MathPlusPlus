@@ -12,12 +12,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use mpp_core::calc::Recurrence;
+use mpp_core::domains::probability::random::Dist;
 use mpp_core::simplify::canonical;
-use mpp_core::{EmptyEnv, Expr, ExprNode, LogicOp, Name, RelOp};
+use mpp_core::{BigOpKind, EmptyEnv, Expr, ExprNode, LogicOp, Name, RelOp};
 
 use crate::calculus;
 use crate::error::EvalError;
 use crate::holders::{evaluate_holder, Ctx};
+use crate::random::{FAMILY_KEY, RV_KEY};
 use crate::value::{Binding, Sequence, VarKind};
 
 /// How the resolver finds names.
@@ -154,6 +156,9 @@ impl<'a> Resolver<'a> {
                 lower,
                 upper,
             } => {
+                if let Some(v) = self.random_sum(*kind, expr, var, lower, upper)? {
+                    return Ok(v);
+                }
                 let lower = self.resolve(lower)?.simplify();
                 let upper = self.resolve(upper)?.simplify();
                 let body = self.with_mask(std::slice::from_ref(var), |r| r.resolve(expr))?;
@@ -258,6 +263,11 @@ impl<'a> Resolver<'a> {
     }
 
     fn apply(&mut self, name: &Name, args: &[Expr]) -> Result<Expr> {
+        if self.scope.lookup(name).is_none() {
+            if let Some(v) = self.random_operator(name, args)? {
+                return Ok(v);
+            }
+        }
         let mut bound = calculus::bound_names(name, args);
         bound.extend(crate::domains_wire::bound_names(name, args));
         bound.extend(crate::dispatch::bound_names(name, args));
@@ -628,6 +638,195 @@ pub fn decide(cond: &Expr) -> Option<bool> {
         }
         _ => None,
     }
+}
+
+// ---- random variables ------------------------------------------------------------
+
+impl Resolver<'_> {
+    /// The distribution stored under the hidden key `key`, with its parameters resolved.
+    fn stored_dist(&mut self, key: &str) -> Result<Option<Dist>> {
+        let Some(binding) = self.scope.lookup(key) else {
+            return Ok(None);
+        };
+        let Binding::Variable { value, .. } = &*binding else {
+            return Ok(None);
+        };
+        let mut failure = None;
+        let dist = crate::random::dist_of(value, &mut |p| {
+            self.unmasked(|r| r.resolve(p))
+                .map(|v| v.simplify())
+                .map_err(|e| {
+                    let msg = e.to_string();
+                    failure.get_or_insert(e);
+                    mpp_core::MathError::NotANumber(msg)
+                })
+        });
+        match (dist, failure) {
+            (Ok(d), _) => Ok(Some(d)),
+            (Err(_), Some(e)) => Err(e),
+            (Err(e), None) => Err(EvalError::Math(e)),
+        }
+    }
+
+    /// The families (`X_j ∼ D`) whose members `e` uses, with their distributions.
+    fn families_in(&mut self, e: &Expr) -> Result<Vec<(String, Dist)>> {
+        fn walk(e: &Expr, out: &mut Vec<String>) {
+            if let ExprNode::Apply(name, args) = e.node() {
+                if args.len() == 1 && !out.iter().any(|n| **n == **name) {
+                    out.push(name.to_string());
+                }
+            }
+            for c in e.children() {
+                walk(c, out);
+            }
+        }
+        let mut names = Vec::new();
+        walk(e, &mut names);
+        let mut out = Vec::new();
+        for n in names {
+            if self.is_masked(&n) || self.locals.contains_key(&n) {
+                continue;
+            }
+            if let Some(d) = self.stored_dist(&format!("{FAMILY_KEY}{n}"))? {
+                self.touched.insert(n.clone());
+                out.push((n, d));
+            }
+        }
+        Ok(out)
+    }
+
+    /// The document seed (`%seed n`), or 0 with a note saying so.
+    fn document_seed(&self) -> u64 {
+        let seed = match self.scope.lookup(crate::fields_wire::SEED_KEY).as_deref() {
+            Some(Binding::Variable { value, .. }) => value
+                .as_number()
+                .and_then(|n| n.as_integer())
+                .and_then(|n| i64::try_from(n).ok()),
+            _ => None,
+        };
+        match seed {
+            Some(s) => s as u64,
+            None => {
+                self.ctx
+                    .note("no `%seed` line in the document, so the seed is 0");
+                0
+            }
+        }
+    }
+
+    /// `Σ_{j=a}^{b} f(X_j, …)` over members of random families: a seeded Monte Carlo
+    /// sum (`None` when the body uses no family).
+    fn random_sum(
+        &mut self,
+        kind: BigOpKind,
+        expr: &Expr,
+        var: &Name,
+        lower: &Expr,
+        upper: &Expr,
+    ) -> Result<Option<Expr>> {
+        let families = self.with_mask(std::slice::from_ref(var), |r| r.families_in(expr))?;
+        if families.is_empty() {
+            return Ok(None);
+        }
+        let bound = |r: &mut Self, e: &Expr, which: &str| -> Result<i64> {
+            let v = r.resolve(e)?.simplify();
+            v.as_number()
+                .and_then(|n| n.as_integer())
+                .and_then(|n| i64::try_from(n).ok())
+                .ok_or_else(|| {
+                    EvalError::Math(mpp_core::MathError::NotANumber(format!(
+                        "the {which} of a sum over random samples must be a whole number, not {v}"
+                    )))
+                })
+        };
+        let lo = bound(self, lower, "start")?;
+        let hi = bound(self, upper, "end")?;
+        let mut masked: Vec<Name> = vec![var.clone()];
+        masked.extend(families.iter().map(|(n, _)| Name::from(n.as_str())));
+        let body = self.with_mask(&masked, |r| r.resolve(expr))?.simplify();
+        let seed = self.document_seed();
+        let v = crate::random::mc_sum(&crate::random::McSum {
+            body: &body,
+            var: var.as_ref(),
+            lo,
+            hi,
+            families: &families,
+            seed,
+            product: kind == BigOpKind::Product,
+        })
+        .map_err(EvalError::Math)?;
+        Ok(Some(Expr::float(v)))
+    }
+
+    /// `E[g]`, `Var(g)` and `P(A)` over declared random variables, exactly.
+    fn random_operator(&mut self, name: &str, args: &[Expr]) -> Result<Option<Expr>> {
+        let op = match name {
+            crate::random::EXPECTATION | crate::random::VARIANCE | crate::random::PROBABILITY => {
+                name
+            }
+            _ => return Ok(None),
+        };
+        let [arg] = args else {
+            return Ok(None);
+        };
+        // Plain random variables (`X ∼ D`).
+        let mut rvs: Vec<(String, Dist)> = Vec::new();
+        for s in arg.free_symbols() {
+            if self.is_masked(&s) || self.locals.contains_key(&*s) {
+                continue;
+            }
+            if let Some(d) = self.stored_dist(&format!("{RV_KEY}{s}"))? {
+                self.touched.insert(s.to_string());
+                rvs.push((s.to_string(), d));
+            } else if let Some((base, _)) = s.split_once('_') {
+                // `X_j` outside a sum over j: one member of the family X.
+                if let Some(d) = self.stored_dist(&format!("{FAMILY_KEY}{base}"))? {
+                    self.touched.insert(base.to_string());
+                    rvs.push((s.to_string(), d));
+                }
+            }
+        }
+        let families = self.families_in(arg)?;
+        let mut masked: Vec<Name> = rvs.iter().map(|(n, _)| Name::from(n.as_str())).collect();
+        masked.extend(families.iter().map(|(n, _)| Name::from(n.as_str())));
+        let resolved = self.with_mask(&masked, |r| r.resolve(arg))?.simplify();
+        // Each family member is its own variable (members are independent).
+        let mut members: Vec<(Expr, String)> = Vec::new();
+        let renamed = replace_members(&resolved, &mut |e| {
+            let (fam, index) = crate::random::member_of(e, &families)?;
+            if let Some((_, n)) = members.iter().find(|(m, _)| m == e) {
+                return Some(Expr::sym(n));
+            }
+            let n = format!("{fam}#{}", index.to_text());
+            members.push((e.clone(), n.clone()));
+            Some(Expr::sym(&n))
+        });
+        for (e, n) in &members {
+            if let Some((fam, _)) = crate::random::member_of(e, &families) {
+                if let Some((_, d)) = families.iter().find(|(f, _)| *f == fam) {
+                    rvs.push((n.clone(), d.clone()));
+                }
+            }
+        }
+        use mpp_core::domains::probability::random as rv;
+        let out = match op {
+            crate::random::EXPECTATION => rv::expectation(&renamed, &rvs),
+            crate::random::VARIANCE => rv::variance(&renamed, &rvs),
+            _ => rv::probability(&renamed, &rvs),
+        }
+        .map_err(EvalError::Math)?;
+        Ok(Some(out))
+    }
+}
+
+fn replace_members(e: &Expr, f: &mut impl FnMut(&Expr) -> Option<Expr>) -> Expr {
+    if let Some(r) = f(e) {
+        return r;
+    }
+    if e.children().is_empty() {
+        return e.clone();
+    }
+    Expr::new(e.map_children(&mut |c| replace_members(c, f)))
 }
 
 #[cfg(test)]

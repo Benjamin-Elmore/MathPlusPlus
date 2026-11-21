@@ -152,6 +152,14 @@ $$ \operatorname{std}(d) \approx ? $$
 
 For a spreadsheet, export it as CSV and write `Data: $D$ from [[data.csv]].` The first row names the columns. The statistics tools are `mean`, `median`, `var` and `std`, with `pvar` and `pstd` for a whole population, plus `corr`, quartiles, least-squares fits (`linreg`, `polyreg`), and the usual distributions (`normalcdf`, `binompdf`, and others).
 
+A random variable is declared with `\sim`, and a subscript makes an independent family of them:
+
+$$ X \sim \mathrm{Uniform}[0, 1] $$
+$$ K \sim \mathrm{Poisson}(3) $$
+$$ Z_j \sim \mathcal{N}(0, 1) $$
+
+The distributions are `Uniform`, `Normal` (written $\mathcal{N}(\mu, \sigma^2)$), `Bernoulli`, `Binomial`, `Poisson` and `Exponential`. Expectations, variances and probabilities come exactly from the distribution: $\mathbb{E}[X^2] = ?$ gives $1/3$, $\operatorname{Var}(K) = ?$ gives 3, and $P(K = 0) = ?$ gives $e^{-3}$. A sum over a family's members draws samples, so $\frac{1}{1000}\sum_{j=1}^{1000} Z_j \approx ?$ is the mean of a thousand samples. The samples come from the `%seed` line, so the same file gives the same numbers on every computer, and $Z_7$ is the same number wherever it is used.
+
 ## 11. Showing numbers your way
 
 Math++ works out results exactly and shows them the way you ask. A line that starts with `%` and a keyword changes the display from that line to the end of the file: `%sf 4` for four significant figures, `%dp 2` for two decimal places, `%decimal` to see fractions as decimals and `%exact` to go back, `%sci` for scientific notation, and `%plain` to clear everything.

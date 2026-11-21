@@ -41,6 +41,7 @@ pub mod names;
 pub mod numeric;
 pub mod numfmt;
 pub mod pde_wire;
+pub mod random;
 pub mod resolve;
 pub mod result;
 mod session;

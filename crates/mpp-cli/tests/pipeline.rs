@@ -37,7 +37,7 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
     ("labs/03-damped-spring.mpp", "needs Ben: T_d = 2π/√39.84 s = 0.99545172… s, which rounds to 0.9955, not the expected 0.9954 (0.9954 is the value cut off after four decimals); everything else passes, including the ODE solution with units and the check dE/dt ≤ 0 for all t ≥ 0"),
     ("labs/06-reaction-kinetics.mpp", "needs Ben: a definition whose head is an expression (`\\frac{k(T_2)}{k(T_1)} := …` with where-clauses), bracket names `[A]_0` and the function `[A](t)`, and a fit of `ln k = ln A − (E_a/R)(1/T)` where E_a is already defined, with `E_{a,fit}` read as its fitted value"),
     ("labs/07-boyles-law.mpp", "needs Ben: the least-squares slope of the table is 99.30 J (within the stated 0.5 of 99.2), so the recovered amount is n_fit = 0.04006 mol, which rounds to 0.0401, not the expected 0.0400; and `R^2 ≈ ?` is the square of the gas constant R defined above, not the fit's coefficient of determination (the fit line reports R² ≈ 0.999985 itself)"),
-    ("labs/11-monte-carlo-pi.mpp", "random variables are not built yet: `X_j, Y_j \\sim \\mathrm{Uniform}[0, 1]` declares nothing, so the seeded Monte Carlo sum for π̂ has no value (`\\hat\\pi` is now a name); and needs Ben: p is defined only in prose (`$p = \\pi/4$` in a sentence is not a definition), so σ and the 3σ check have no number"),
+    ("labs/11-monte-carlo-pi.mpp", "needs Ben: p is defined only in prose (`$p = \\pi/4$` in a sentence is not a definition), so σ has no number. Everything else runs: `X_j, Y_j \\sim \\mathrm{Uniform}[0, 1]` declares two i.i.d. families, and the seeded Monte Carlo sum gives π̂ ≈ 3.1398 with seed 42 (within 3σ ≈ 0.0049 of π, and the same on every run)"),
 ];
 
 fn root() -> PathBuf {

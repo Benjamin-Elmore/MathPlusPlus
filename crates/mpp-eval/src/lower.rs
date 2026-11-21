@@ -25,6 +25,7 @@ use crate::error::{EvalError, Located};
 use crate::names::{base_key, name_key, node_key};
 use crate::value::Binding;
 
+mod random;
 mod region;
 
 /// What lowering needs to know about the names in scope.
@@ -251,6 +252,14 @@ impl<'a> Lowerer<'a> {
     pub fn lower(&mut self, node: &Node) -> LowerResult {
         use NodeKind as K;
         let span = node.span;
+        if matches!(
+            node.kind,
+            K::Call { .. } | K::Binary { .. } | K::NamedOp(_) | K::FuncApp(_)
+        ) {
+            if let Some(e) = self.random_operator(node)? {
+                return Ok(e);
+            }
+        }
         match &node.kind {
             K::Number(text) => Number::parse_decimal(text).map(Expr::num).ok_or_else(|| {
                 fail(

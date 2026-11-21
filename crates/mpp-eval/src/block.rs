@@ -5,6 +5,7 @@ mod auto;
 mod data;
 mod fit;
 mod ode;
+mod random;
 mod seed;
 mod sentences;
 mod units;
@@ -644,6 +645,9 @@ impl Run<'_, '_> {
             }
             Statement::Check { lhs, rhs } => self.check_line(line, lhs, rhs, &scope),
             Statement::Relation(node) => {
+                if place != Place::Prose && self.random_declaration(line, place) {
+                    return;
+                }
                 if place == Place::Let && self.let_definition(line, node, &scope) {
                     return;
                 }

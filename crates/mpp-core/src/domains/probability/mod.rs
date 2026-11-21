@@ -4,6 +4,7 @@
 //! entropy, mutual information and channel capacity.
 
 pub mod information;
+pub mod random;
 pub mod rng;
 
 use crate::domains::fieldkit::{
