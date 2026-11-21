@@ -30,15 +30,7 @@ use mpp_syntax::document::parse_document;
 const KNOWN_FAILURES: &[(&str, &str)] = &[
     (
         "navier-stokes.mpp",
-        "Lean export: ≈ steps on fields cannot be exported without sorry",
-    ),
-    (
-        "historic/archimedes-parabola.mpp",
-        "geometry steps the CAS cannot check",
-    ),
-    (
-        "historic/pythagoras.mpp",
-        "area-counting premise; prose figure",
+        "needs Ben: may a step checked numerically (≈) export to Lean as `sorry`? Lemmas 3–5 have ≈ steps on random field instances, and vector calculus on fields has no Lean translation (Mathlib `fderiv` on `EuclideanSpace ℝ (Fin 3)` would be needed), so the header's \"no sorry where each step was checked\" cannot hold today; every other expectation passes. Also for Ben: Theorem 6 honestly counts 2 external results (OpenAI's claim and the KCL/Cambridge preprint), where the header's wording says 1",
     ),
     ("labs/01-projectile-drag.mpp", "`T ≈ ?` has no definition: T is introduced only by the prose \"lands when $y(T) = 0$ with $T > 0$\" (prose relations define nothing; for Ben: `T := \\operatorname{solve}_t(y(t) = 0, t > 0)` would say it in maths); and the drag system ẍ = −kẋ, ÿ = −g − kẏ has unit-carrying coefficients, which the ODE solver does not take yet, so x and y are not defined"),
     ("labs/02-pendulum.mpp", "`T ≈ ?` has no definition: T is \"the time between successive maxima of θ(t)\" in prose only (for Ben: there is no maths construct for it); the nonlinear pendulum also needs a numerical solution defined from the statement. T₀ ≈ 2.006 s and T_exact ≈ 2.041 s are computed"),

@@ -19,6 +19,7 @@ use mpp_syntax::Span;
 use crate::algebra::{self, Claim, Condition, Equation, Knowledge};
 use crate::cas::Def;
 use crate::fields::FieldScope;
+use crate::geometry::{self, Scene};
 use crate::indexed;
 use crate::model::*;
 use crate::notation::{self, ClaimOp, Link};
@@ -83,6 +84,8 @@ struct DocContext<'a> {
     conditions: Vec<(usize, Condition)>,
     /// Facts read from prose: primes, universal and real names, indexed families.
     marks: Vec<(usize, Mark)>,
+    /// Prose outside theorems, for the geometry it sets up (curves, chords).
+    prose: Vec<(usize, &'a [Inline])>,
     /// Maths outside theorems that can declare fields, with its block index.
     field_maths: Vec<(usize, &'a Node)>,
     /// Definitions that sum over an indexed family.
@@ -98,6 +101,7 @@ impl<'a> DocContext<'a> {
             defs: Vec::new(),
             conditions: Vec::new(),
             marks: Vec::new(),
+            prose: Vec::new(),
             field_maths: Vec::new(),
             indexed: BTreeSet::new(),
         };
@@ -168,6 +172,7 @@ impl<'a> DocContext<'a> {
         for p in prose_marks(inlines, src) {
             self.marks.push((pos, p));
         }
+        self.prose.push((pos, inlines));
         // "with $a < b$": an inequality the document assumes from here on.
         for (link, hyp) in prose_relations(inlines, src) {
             let inequality = matches!(
@@ -541,6 +546,15 @@ struct ProofState<'c> {
     uses: Vec<usize>,
     /// Index of the result being proved.
     me: usize,
+    /// Curves and chords set up so far.
+    scene: Scene,
+    /// True once a step was proved by construction.
+    constructed: bool,
+    /// Outcomes decided for the current step's relations by geometry, by span.
+    overrides: HashMap<(usize, usize), ClaimOutcome>,
+    /// Each earlier step's status, and the sides of the relations it checked.
+    statuses: HashMap<u32, StepStatus>,
+    terms: Vec<(u32, String)>,
 }
 
 fn check_proof(
@@ -580,8 +594,17 @@ fn check_proof(
     }
     // The statement: definitions, declarations, conditions and quantifiers.
     let mut eqrefs: BTreeSet<String> = BTreeSet::new();
+    let mut scene = Scene::default();
+    for (pos, p) in &ctx.prose {
+        if *pos < item.position {
+            geometry::read_scene(p, src, &mut scene);
+        }
+    }
     for b in &item.theorem.body {
         read_statement_block(b, src, &mut k, &mut fields, &mut eqrefs);
+        if let BlockKind::Paragraph(p) = &b.kind {
+            geometry::read_scene(p, src, &mut scene);
+        }
     }
     if let Some(title) = &item.theorem.title {
         collect_eqrefs(title, &mut eqrefs);
@@ -621,6 +644,11 @@ fn check_proof(
         inductive_step: false,
         uses: Vec::new(),
         me,
+        scene,
+        constructed: false,
+        overrides: HashMap::new(),
+        statuses: HashMap::new(),
+        terms: Vec::new(),
     };
     let mut checks = Vec::new();
     for s in &steps.steps {
@@ -862,6 +890,7 @@ fn check_step(
     for mark in prose_marks(&step.claim, src) {
         apply_mark(&mut st.k, mark);
     }
+    geometry::read_scene(&step.claim, src, &mut st.scene);
     let maths = step_maths(&step.claim, src);
     for (d, uses, head, body) in &maths.defs {
         if notation::has_indexed_family(body, src) {
@@ -873,6 +902,10 @@ fn check_step(
     for h in &maths.hypotheses {
         add_fact(&mut st.k, h, src);
     }
+    st.overrides = geometry::step_outcomes(&step.claim, src, &st.scene, &st.k, st.constructed)
+        .into_iter()
+        .map(|(span, o)| ((span.start, span.end), o))
+        .collect();
     let reason_kind = step.reason.as_ref().map(|r| r.kind);
     match step.label {
         Some(StepLabel::BaseCase) => st.base_case = true,
@@ -1007,6 +1040,8 @@ fn check_step(
                     c.detail = "induction: base case and inductive step are both present".into();
                     st.base_case = false;
                     st.inductive_step = false;
+                } else if let Some(detail) = inferred_induction(step, st, src) {
+                    c.detail = detail;
                 } else {
                     c.status = StepStatus::Gap;
                     c.detail = "induction needs a step labelled `Base case:` and one labelled `Inductive step:`".into();
@@ -1076,7 +1111,99 @@ fn check_step(
             c.detail = format!("a case is weaker: {}", sc.detail);
         }
     }
+    st.overrides.clear();
+    if reason_kind == Some(ReasonKind::Construction) {
+        st.constructed = true;
+    }
+    if let Some(n) = step.number {
+        st.statuses.insert(n, c.status);
+        if c.status.is_computed() {
+            for (l, _) in &maths.claims {
+                for side in [&l.lhs, &l.rhs] {
+                    if let Some(t) = formal_text(side, src) {
+                        st.terms.push((n, t));
+                    }
+                }
+            }
+        }
+    }
     c
+}
+
+/// An induction written without `Base case:` and `Inductive step:` labels ("Repeating,
+/// stage $j$ adds $4^{-j} T$ — by induction on $j$"), read from the steps before it: an
+/// expression in the induction variable must equal, at its first two values, quantities
+/// that two earlier checked steps established, in order (the base case and the first
+/// step). The general step from `j` to `j + 1` is not checked, so the step is structure
+/// (◇) at best, and the detail says so.
+fn inferred_induction(step: &ProofStep, st: &ProofState<'_>, src: &str) -> Option<String> {
+    let reason = step.reason.as_ref()?;
+    let mut words = reason.text.split_whitespace();
+    words.find(|w| *w == "on")?;
+    let var = words.next()?.trim_matches(['$', '.', ',']).to_string();
+    if var.is_empty() {
+        return None;
+    }
+    let me = step.number?;
+    // Expressions in the claim that use the variable.
+    let mut exprs: Vec<String> = Vec::new();
+    for i in &step.claim {
+        let InlineKind::Math(m) = &i.kind else {
+            continue;
+        };
+        for line in &m.ast.lines {
+            if let Statement::Relation(n) = &line.statement {
+                if !matches!(n.ungrouped().kind, NodeKind::Relation { .. })
+                    && notation::names(n, src).contains(&var)
+                {
+                    exprs.extend(formal_text(n, src));
+                }
+            }
+        }
+    }
+    // A step's quantities, when the step was checked by computation.
+    let checked: Vec<&(u32, String)> = st
+        .terms
+        .iter()
+        .filter(|(n, t)| {
+            *n < me
+                && st.statuses.get(n).is_some_and(|s| s.is_computed())
+                && t.trim().parse::<f64>().is_err()
+        })
+        .collect();
+    let matching = |e: &str, at: i64| -> Option<(u32, String)> {
+        checked.iter().find_map(|(n, t)| {
+            let mut names = BTreeSet::new();
+            for x in [e, t.as_str()] {
+                let (node, _) = mpp_syntax::math::parse_expr(x, 0);
+                names.extend(notation::names(&node, x));
+            }
+            names.remove(&var);
+            let mut defs = vec![Def::new(var.clone(), at.to_string())];
+            defs.extend(st.k.defs_for(&names));
+            let line = format!("\\left({e}\\right) \\overset{{?}}{{=}} \\left({t}\\right)");
+            matches!(
+                crate::cas::run_one(&defs, line),
+                crate::cas::LineOut::Verdict(mpp_eval::Verdict::Proved)
+            )
+            .then(|| (*n, t.clone()))
+        })
+    };
+    for e in &exprs {
+        for first in [0i64, 1] {
+            let (Some((b, bt)), Some((s, stx))) = (matching(e, first), matching(e, first + 1))
+            else {
+                continue;
+            };
+            if b < s {
+                return Some(format!(
+                    "induction on ${var}$ read from the steps before: ${var} = {first}$ gives ${bt}$ (step {b}) and ${var} = {}$ gives ${stx}$ (step {s}), both checked; the step from ${var}$ to ${var} + 1$ in general is not checked and is taken as structure",
+                    first + 1
+                ));
+            }
+        }
+    }
+    None
 }
 
 /// Records the inequalities a chain gives (`0 \le S = Q` gives `0 ≤ S` and `0 ≤ Q`): every
@@ -1182,10 +1309,9 @@ fn claims_status(
     let mut proved_by: Vec<String> = Vec::new();
     for (link, text) in &maths.claims {
         let outcome = check_link(link, st, src);
-        if !matches!(
-            outcome,
-            ClaimOutcome::Proved | ClaimOutcome::ProvedBy(_) | ClaimOutcome::Numeric(_)
-        ) {
+        // An identity the CAS proved adds nothing; a fact proved by a rule (an area, a
+        // chord's line, a term of a zero sum) is known from here on.
+        if !matches!(outcome, ClaimOutcome::Proved | ClaimOutcome::Numeric(_)) {
             add_fact(&mut st.k, link, src);
         }
         c.claims.push(ClaimCheck {
@@ -1240,7 +1366,19 @@ fn claims_status(
             "checked numerically: {}",
             numeric_how.clone().unwrap_or_default()
         )),
-        StepStatus::Structure => informal.map(|w| format!("structure only: {w}")),
+        StepStatus::Structure => informal.map(|w| {
+            let computed = c.claims.iter().any(|cc| {
+                matches!(
+                    cc.outcome,
+                    ClaimOutcome::Proved | ClaimOutcome::ProvedBy(_) | ClaimOutcome::Numeric(_)
+                )
+            });
+            if computed {
+                format!("structure only: {w}; the step's other relations are checked")
+            } else {
+                format!("structure only: {w}")
+            }
+        }),
         _ => None,
     });
     if worst == StepStatus::Structure && detail.is_none() {
@@ -1251,6 +1389,9 @@ fn claims_status(
 
 /// Checks one relation: on fields when it talks about fields, otherwise with the CAS.
 fn check_link(link: &Link, st: &ProofState<'_>, src: &str) -> ClaimOutcome {
+    if let Some(o) = st.overrides.get(&(link.span.start, link.span.end)) {
+        return o.clone();
+    }
     if st.fields.mentions(&link.lhs, src) || st.fields.mentions(&link.rhs, src) {
         if link.op != ClaimOp::Eq {
             return ClaimOutcome::Unverified("only equations between fields are checked".into());

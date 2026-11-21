@@ -215,3 +215,55 @@ fn sums_over_indexed_families() {
     assert!(!steps[1].status.is_computed(), "{}", c.report());
     assert_eq!(steps[2].status, StepStatus::Numeric, "{}", c.report());
 }
+
+#[test]
+fn coordinate_geometry_is_checked_and_figures_are_structure() {
+    let setup =
+        "Take the parabola $y = x^2$ and the chord between $x = a$ and $x = b$, with $a < b$.\n\n\
+                 **Theorem 1.** It holds.\n\n**Proof.**\n";
+    let good = format!(
+        "{setup}1. Let $h := b - a$. The chord is $y = (a + b)x - ab$ — by algebra.\n\
+         2. The triangle with vertices on the parabola at $a$, $\\tfrac{{a+b}}{{2}}$ and $b$ has area $T = \\tfrac{{h^3}}{{8}}$ — by the determinant formula.\n∎\n"
+    );
+    assert_eq!(
+        statuses(&good, "Theorem 1"),
+        vec![StepStatus::Symbolic, StepStatus::Symbolic]
+    );
+    let bad = format!(
+        "{setup}1. The chord is $y = (a + b)x + ab$ — by algebra.\n\
+         2. The triangle with vertices on the parabola at $a$, $\\tfrac{{a+b}}{{2}}$ and $b$ has area $T = \\tfrac{{(b-a)^3}}{{6}}$ — by the determinant formula.\n∎\n"
+    );
+    let st = statuses(&bad, "Theorem 1");
+    assert!(st.iter().all(|s| !s.is_computed()), "{st:?}");
+    // An area count needs a construction before it, and is then only structure.
+    let count = "**Theorem 1.** It holds.\n\n**Proof.**\n\
+                 1. Place four copies of the triangle in a square of side $a + b$ — by construction.\n\
+                 2. Counting area two ways: $(a + b)^2 = c^2 + 2ab$, so $a^2 + b^2 = c^2$ — by algebra.\n∎\n";
+    assert_eq!(
+        statuses(count, "Theorem 1"),
+        vec![StepStatus::Structure, StepStatus::Structure]
+    );
+    let no_figure = "**Theorem 1.** It holds.\n\n**Proof.**\n\
+                     1. Counting area two ways: $(a + b)^2 = c^2 + 2ab$ — by algebra.\n∎\n";
+    assert_eq!(statuses(no_figure, "Theorem 1"), vec![StepStatus::Gap]);
+}
+
+#[test]
+fn induction_read_from_earlier_steps_is_structure_at_best() {
+    let src = "**Theorem 1.** It holds.\n\n**Proof.**\n\
+               1. Let $T := 8$. Stage $0$ has area $T = 8$ — by algebra.\n\
+               2. Stage $1$ has area $\\tfrac12 T = 4$ — by algebra.\n\
+               3. Repeating, stage $j$ has area $2^{-j} T$ — by induction on $j$.\n∎\n";
+    let c = check_source(src);
+    let steps = &c.results[0].proofs[0].steps;
+    assert_eq!(steps[2].status, StepStatus::Structure, "{}", c.report());
+    // A pattern the earlier steps do not give stays a gap.
+    let wrong = src.replace("2^{-j} T", "3^{-j} T");
+    let c = check_source(&wrong);
+    assert_eq!(
+        c.results[0].proofs[0].steps[2].status,
+        StepStatus::Gap,
+        "{}",
+        c.report()
+    );
+}
