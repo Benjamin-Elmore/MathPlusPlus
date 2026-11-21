@@ -89,6 +89,11 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
     if op == "beta" {
         return beta(args);
     }
+    // Exact real arguments keep the exact value (`erf(1)`, `J₀(1)`): its digits come
+    // from the high-precision evaluator when asked for, not from a 16-digit float.
+    if exact_real_args(op, args) {
+        return Ok(Expr::apply(op, args.to_vec()));
+    }
     let vals = args
         .iter()
         .map(|a| numeric(a).ok_or_else(|| domain_err(op, format!("{a} is not a real number"))))
@@ -97,6 +102,22 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
     call_real(op, &vals)
         .unwrap_or_else(|| Err(MathError::UnknownFunction(op.into())))
         .map(float)
+}
+
+/// True when every argument is exact and real and the high-precision evaluator has the
+/// function (`lambertw` only on its principal branch).
+fn exact_real_args(op: &str, args: &[Value]) -> bool {
+    let supported = match op {
+        "erf" | "erfc" | "besselj" | "ellipk" | "ellipe" => true,
+        "lambertw" => args.get(1).is_none_or(Expr::is_zero),
+        _ => false,
+    };
+    supported
+        && args
+            .iter()
+            .all(|a| !a.has_float() && a.is_constant() && numeric(a).is_some_and(f64::is_finite))
+        && call_real(op, &args.iter().filter_map(numeric).collect::<Vec<f64>>())
+            .is_some_and(|v| v.is_ok_and(f64::is_finite))
 }
 
 /// Exact values: erf 0, W at 0, e and −1/e, J_n(0), K(0), E(0), E(±1).

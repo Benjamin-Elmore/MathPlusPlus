@@ -510,6 +510,14 @@ impl Expr {
         }
     }
 
+    /// True when an approximate (floating-point) number occurs anywhere.
+    pub fn has_float(&self) -> bool {
+        match self.node() {
+            ExprNode::Num(n) => !n.is_exact(),
+            _ => self.children().iter().any(|c| c.has_float()),
+        }
+    }
+
     /// True when the symbol `name` occurs free.
     pub fn contains_sym(&self, name: &str) -> bool {
         match self.node() {

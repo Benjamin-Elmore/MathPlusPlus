@@ -8,6 +8,7 @@
 
 mod eval;
 pub mod float;
+mod funcs;
 mod special;
 
 use std::collections::HashMap;
@@ -20,6 +21,9 @@ use crate::expr::Expr;
 use eval::Eval;
 pub use float::BigF;
 pub use num_rational::BigRational as Rational;
+
+/// Bits a floating-point input is trusted to (a little under the 53 it holds).
+const FLOAT_BITS: i64 = 46;
 
 /// Most bits tried before giving up.
 const MAX_BITS: u64 = 1 << 14;
@@ -88,7 +92,11 @@ pub enum Approx {
     },
     /// Zero to every digit tried: the value is below `10^below` (relative to the size
     /// of the terms that cancelled).
-    Zero { below: i64 },
+    Zero {
+        below: i64,
+        /// An input was a floating-point number: zero only to its resolution.
+        inexact: bool,
+    },
 }
 
 /// `x` as decimal digits: `sig` significant digits, rounded to nearest.
@@ -164,8 +172,13 @@ pub fn approx(e: &Expr, vars: &HashMap<String, BigRational>, sig: usize) -> Opti
     let mut prev: Option<BigF> = None;
     let mut quiet = 0;
     while p <= MAX_BITS.max(start * 4) {
+        float::tick().ok()?;
         let mut ev = Eval::new(vars, p);
         let v = ev.ev(e).ok()?;
+        if float::stopped() {
+            // The budget ran out mid-way: what came back may be half-computed.
+            return None;
+        }
         // Bits below `2^floor` may be cancellation noise.
         let scale = if ev.scale == i64::MIN { 0 } else { ev.scale };
         let floor = scale - p as i64 + 24;
@@ -175,8 +188,19 @@ pub fn approx(e: &Expr, vars: &HashMap<String, BigRational>, sig: usize) -> Opti
             prev = None;
             if quiet >= 2 && p >= start * 4 {
                 let below = (floor as f64 * std::f64::consts::LOG10_2) as i64;
-                return Some(Approx::Zero { below });
+                return Some(Approx::Zero {
+                    below,
+                    inexact: ev.inexact,
+                });
             }
+        } else if ev.inexact && ev.scale != i64::MIN && v.mag() < ev.scale - FLOAT_BITS {
+            // A floating-point input carries about 16 digits: a value this far below the
+            // terms that cancelled is their rounding noise, zero as far as anyone knows.
+            let below = ((ev.scale - FLOAT_BITS) as f64 * std::f64::consts::LOG10_2) as i64;
+            return Some(Approx::Zero {
+                below,
+                inexact: true,
+            });
         } else {
             quiet = 0;
             if let Some(pv) = &prev {

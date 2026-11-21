@@ -282,9 +282,13 @@ proptest! {
     fn decimal_places_are_correct(x in -1e9f64..1e9, p in 0u32..10) {
         let s = text(&fl(x), &dp(p));
         let frac = s.split_once('.').map_or(0, |(_, f)| f.len());
-        prop_assert_eq!(frac, p as usize, "{}", s);
+        // A float shows at most FLOAT_DIGITS significant digits, so big values get fewer
+        // places than asked for rather than digits that are not known.
+        let lead = if x == 0.0 { 1 } else { x.abs().log10().floor() as i64 + 1 };
+        let want = (p as i64).min((super::FLOAT_DIGITS as i64 - lead).max(0));
+        prop_assert_eq!(frac as i64, want, "{}", s);
         let back: f64 = s.parse().unwrap();
-        prop_assert!((back - x).abs() <= 0.5 * 10f64.powi(-(p as i32)) * 1.000001 + x.abs() * 1e-15, "{s} vs {x}");
+        prop_assert!((back - x).abs() <= 0.5 * 10f64.powi(-(want as i32)) * 1.000001 + x.abs() * 1e-15, "{s} vs {x}");
     }
 
     #[test]

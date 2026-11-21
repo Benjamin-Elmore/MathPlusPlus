@@ -321,11 +321,21 @@ fn shown(
                     | ExprNode::Mul(_)
                     | ExprNode::Pow(..)
                     | ExprNode::Func(..)
+                    | ExprNode::Apply(..)
                     | ExprNode::Const(_)
             )
         {
             if let Some(n) = number_from(e) {
-                if f.style == Style::Decimal || !n.is_real() {
+                // A real value takes its digits from the high-precision evaluator, so a
+                // long format (`%dp 30`) shows only correct digits.
+                let precise = (f.style == Style::Decimal && n.is_real())
+                    .then(|| approximate(e).ok())
+                    .flatten();
+                if let Some(t) = precise {
+                    latex = Some(file_safe(&t));
+                    text = Some(t);
+                    approx = None;
+                } else if f.style == Style::Decimal || !n.is_real() {
                     let (t, l) = format_number(&n, f);
                     text = Some(t);
                     latex = Some(l);

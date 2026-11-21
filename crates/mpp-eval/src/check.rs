@@ -110,7 +110,10 @@ fn is_comparable(e: &Expr) -> bool {
 
 /// Checks whether `lhs = rhs` holds.
 pub fn check(lhs: &Expr, rhs: &Expr) -> Verdict {
-    if lhs == rhs {
+    // A floating-point value (a numeric fallback) is known to about 15 digits, so two
+    // sides that meet only through floats are never "proved" equal.
+    let floats = lhs.has_float() || rhs.has_float();
+    if lhs == rhs && !floats {
         return Verdict::Proved;
     }
     if crate::units_wire::contains_units(lhs) || crate::units_wire::contains_units(rhs) {
@@ -151,7 +154,7 @@ pub fn check(lhs: &Expr, rhs: &Expr) -> Verdict {
         return Verdict::Unknown("only numbers and expressions can be compared".into());
     }
     let diff = (lhs - rhs).simplify();
-    if diff.is_zero() || diff.expand().is_ok_and(|d| d.is_zero()) {
+    if !floats && (diff.is_zero() || diff.expand().is_ok_and(|d| d.is_zero())) {
         return Verdict::Proved;
     }
     // Trigonometric identities: sin²x + cos²x = 1, double angles, tan² + 1 = sec² ….
@@ -325,7 +328,10 @@ fn closed_check(lhs: &Expr, rhs: &Expr) -> Option<Verdict> {
     };
     let top = size(lhs)?.max(size(rhs)?);
     match diff {
-        Approx::Zero { below } => {
+        Approx::Zero { inexact: true, .. } => Some(Verdict::Agrees {
+            digits: FLOAT_DIGITS,
+        }),
+        Approx::Zero { below, .. } => {
             let digits = usize::try_from(top.max(below) - below).unwrap_or(CHECK_DIGITS);
             Some(Verdict::Agrees {
                 digits: digits.max(CHECK_DIGITS),

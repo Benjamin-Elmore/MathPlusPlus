@@ -14,6 +14,10 @@ use num_traits::{One, Signed, ToPrimitive, Zero};
 /// Largest binary exponent a value may reach (beyond it the evaluation gives up).
 const MAX_EXP: i64 = 1 << 52;
 
+/// Largest angle (in bits) reduced modulo π/2: reducing `x` takes π to about
+/// `log₂|x|` more bits, so `sin(2^(10⁶))` or `cos(30000!)` is refused, not attempted.
+pub const REDUCE_BITS: u64 = 1 << 17;
+
 /// `m · 2^e`. Zero is `m = 0`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct BigF {
@@ -30,6 +34,18 @@ pub enum HpError {
     Domain,
     /// A value too large or too small even for this format.
     Range,
+    /// The query's time limit passed or it was cancelled.
+    Stopped,
+}
+
+/// Stops the work once the query's budget (deadline or cancel flag) has run out.
+pub fn tick() -> HpResult<()> {
+    crate::budget::check().map_err(|_| HpError::Stopped)
+}
+
+/// True once the query's budget has run out (the work after it is not to be trusted).
+pub fn stopped() -> bool {
+    crate::budget::peek_tripped().is_some()
 }
 
 pub type HpResult<T> = Result<T, HpError>;
@@ -298,8 +314,15 @@ impl BigF {
                 Ok(BigF::zero())
             };
         }
-        let mag = self.mag() as f64;
-        if (mag.abs() + 1.0) * n.to_f64().unwrap_or(f64::INFINITY).abs() > MAX_EXP as f64 {
+        // log₂ of the result, from a short logarithm of the base (the magnitude alone
+        // would refuse (1 + 10⁻²⁰)^(10²⁰)).
+        let lg = if self.mag().abs() < 1 << 20 {
+            ln(&self.abs(), 64)?.to_f64() / std::f64::consts::LN_2
+        } else {
+            self.mag() as f64
+        };
+        let nf = n.to_f64().unwrap_or(f64::INFINITY).abs();
+        if lg.abs() * nf > MAX_EXP as f64 / 2.0 {
             return Err(HpError::Range);
         }
         let w = p + n.bits() + 16;
@@ -307,6 +330,7 @@ impl BigF {
         let mut acc = BigF::one();
         let mut e = n.abs();
         while !e.is_zero() {
+            tick()?;
             if e.is_odd() {
                 acc = acc.mul(&base, w);
             }
@@ -447,6 +471,11 @@ fn atan_inv(k: u64, w: u64, alternate: bool) -> BigInt {
     let mut sum = BigInt::zero();
     let mut j: u64 = 0;
     while !term.is_zero() {
+        // A huge precision (π for reducing an enormous angle) takes long: stop when the
+        // query's budget runs out (the caller sees `stopped()` and discards the value).
+        if j % 512 == 511 && tick().is_err() {
+            break;
+        }
         let t = &term / BigInt::from(2 * j + 1);
         if alternate && j % 2 == 1 {
             sum -= t;
@@ -594,7 +623,7 @@ pub fn sin_cos(x: &BigF, p: u64) -> HpResult<(BigF, BigF)> {
     if x.is_zero() {
         return Ok((BigF::zero(), BigF::one()));
     }
-    if x.mag() > 1 << 20 {
+    if x.mag() > REDUCE_BITS as i64 {
         return Err(HpError::Range);
     }
     let extra = x.mag().max(0) as u64;

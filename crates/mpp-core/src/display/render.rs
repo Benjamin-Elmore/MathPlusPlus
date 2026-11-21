@@ -67,7 +67,15 @@ pub fn format_number(n: &Number, fmt: &NumberFormat) -> (String, String) {
 pub(super) fn render(n: &Number, fmt: &NumberFormat, default_sig: usize) -> (String, String, Hint) {
     match n {
         Number::Rational(q) => real_rational(q, fmt, default_sig).signed(),
-        Number::Float(x) => real_float(*x, fmt, default_sig).signed(),
+        Number::Float(x) => {
+            let k = if *x == 0.0 || !x.is_finite() {
+                0
+            } else {
+                x.abs().log10().floor() as i64
+            };
+            let fmt = super::capped(fmt, k, super::FLOAT_DIGITS);
+            real_float(*x, &fmt, default_sig).signed()
+        }
         Number::Complex(..) | Number::ComplexFloat(..) => complex(n, fmt, default_sig),
     }
 }
