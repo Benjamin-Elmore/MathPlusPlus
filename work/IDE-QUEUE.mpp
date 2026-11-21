@@ -1,6 +1,13 @@
 # Math++ IDE usability: run state
 
-## Queue "MathPlusPlusQueue-2: IDE usability" (Ben, 2026-11-21): RUNNING (Ben said go on 2026-11-21)
+## Queue "IDEBUGS" (Ben, 2026-11-21; was "MathPlusPlusQueue-2: IDE usability"): PAUSED (Ben paused it on 2026-11-21 to move it to another terminal)
+
+**▶ RESUME HERE (paused 2026-11-21).** Run from `C:\Elmore\MathPP`. Phase A is half done; B–E haven't started.
+- **`fix/ide-bugs`** (main lane, this file lives here): U1 done; U2's main cause fixed (988e77c).
+- **Lane A1** = worktree `C:\Elmore\MathPP-a1`, branch `wip/a1-workspace`. Done: U4 side column (d0703ee), U5 open/tabs/new files (7af3104). **7c05be2 is WIP** for U4b (files-only Explorer + separate side views): its gates (build, test, clippy, fmt) were **not run yet**. Run them, fix, then reword that commit (or add a fix commit). Then U8.
+- **Lane A2** = worktree `C:\Elmore\MathPP-a2`, branch `wip/a2-typing`. **b5996dd is WIP** for the rest of U2 (empty lines get their own caret stop, new `page/blank.rs`; a viewport pin with a `pin_shift` test was next). Gates not run. Then U3, U6, U7, U9, U10, and the video replay test in `tests/replay.rs`.
+- Each lane uses its own `CARGO_TARGET_DIR` (its worktree's `target`). Lane briefs: lane A1 owns `workspace/`, `layout/`, `explorer/`, status bar; lane A2 owns `view.rs` typing, `editor/`, `page/`, `mpp-syntax`.
+- **When both lanes are green:** merge `wip/a1-workspace` and `wip/a2-typing` into `fix/ide-bugs`, run all gates, update the States here, push, open the Phase A PR to `main` (`gh pr create`), and don't merge it. Then remove the two worktrees and start Phase B.
 
 **Goal (Ben, 2026-11-21):** make the IDE easy for people writing maths. **Mathematicians and coders alike** should be able to use it without a serious learning curve. The language and engine are good; this queue is about the **editor**: typing, the cursor, the side column, auto-answers, and above all **a clear outline of what is maths and what is English**.
 
