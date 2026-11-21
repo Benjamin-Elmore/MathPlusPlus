@@ -965,9 +965,16 @@ impl Composer<'_> {
             self.paragraph(h, self.opts_body(), self.size);
             self.gap();
         } else if proof
-            && body
-                .last()
-                .is_some_and(|b| !matches!(b.kind, BlockKind::Paragraph(_)))
+            && body.last().is_some_and(|b| match &b.kind {
+                BlockKind::Paragraph(_) => false,
+                // A closing ∎ written on the line after the last step belongs to
+                // that step and is already shown there.
+                BlockKind::List(l) => l.items.last().is_none_or(|i| {
+                    let ends = crate::pdf::plain(&i.content);
+                    !ends.trim_end().ends_with('∎') && !ends.trim_end().ends_with("\\qed")
+                }),
+                _ => true,
+            })
         {
             let q = word("∎", FontId::Math, self.size, self.theme.text);
             let o = ParaOpts {
@@ -1579,5 +1586,17 @@ mod tests {
         let a4 = crate::PageSize::A4.points();
         let letter = crate::PageSize::Letter.points();
         assert!(a4.1 > letter.1 && a4.0 < letter.0);
+    }
+
+    #[test]
+    fn a_proof_ending_in_a_list_shows_one_end_mark() {
+        let src = "**Theorem 1.** It holds.\n\n**Proof.**\n1. First — by algebra.\n2. Second — by algebra.\n\u{220e}\n";
+        let (pages, _, _) = pages_of(src, &ExportOptions::default());
+        let marks = pages
+            .iter()
+            .flat_map(|p| &p.items)
+            .filter(|i| matches!(i, Primitive::Glyph { ch: '\u{220e}', .. }))
+            .count();
+        assert_eq!(marks, 1);
     }
 }
