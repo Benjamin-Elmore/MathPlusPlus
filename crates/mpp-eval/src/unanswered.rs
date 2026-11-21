@@ -16,14 +16,6 @@ pub(crate) fn flag_unanswered(
     blocks: &mut [BlockResult],
     loose: &mut Vec<Diagnostic>,
 ) {
-    let has_diag = |blocks: &[BlockResult], loose: &[Diagnostic], line: usize| {
-        blocks
-            .iter()
-            .flat_map(|b| b.diagnostics.iter())
-            .chain(loose.iter())
-            .any(|d| lines.line_of(d.span.start) == line)
-    };
-
     // Query lines that were read but came back empty.
     let mut extra: Vec<(usize, Diagnostic)> = Vec::new();
     for (bi, b) in blocks.iter().enumerate() {
@@ -48,14 +40,39 @@ pub(crate) fn flag_unanswered(
         blocks[bi].diagnostics.push(d);
     }
 
-    // `?` marks that no maths line read.
+    // `?` marks that no maths line read. A file of junk has thousands of marks and
+    // problems: the lines with a problem and the spans of the read lines are found
+    // once, not once per mark.
+    let mut diag_lines: std::collections::HashSet<usize> = blocks
+        .iter()
+        .flat_map(|b| b.diagnostics.iter())
+        .chain(loose.iter())
+        .map(|d| lines.line_of(d.span.start))
+        .collect();
+    let mut read: Vec<(usize, usize)> = blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .map(|v| (v.span.start, v.span.end.max(v.span.start + 1)))
+        .collect();
+    read.sort_unstable();
+    // The furthest end of the read spans up to each one.
+    let reach: Vec<usize> = read
+        .iter()
+        .scan(0, |m, &(_, e)| {
+            *m = (*m).max(e);
+            Some(*m)
+        })
+        .collect();
+    let covered = |at: usize| {
+        let upto = read.partition_point(|&(s, _)| s <= at);
+        (0..upto)
+            .rev()
+            .take_while(|&j| reach[j] > at)
+            .any(|j| at < read[j].1)
+    };
     for at in query_marks(src) {
-        let covered = blocks.iter().any(|b| {
-            b.values
-                .iter()
-                .any(|v| v.span.start <= at && at < v.span.end.max(v.span.start + 1))
-        });
-        if covered || has_diag(blocks, loose, lines.line_of(at)) {
+        let line = lines.line_of(at);
+        if covered(at) || diag_lines.contains(&line) {
             continue;
         }
         let span = Span::new(at, at + 1);
@@ -64,6 +81,7 @@ pub(crate) fn flag_unanswered(
             "this `?` is not evaluated: it is not inside maths that Math++ reads",
         )
         .expecting(["the question in `$ … $` or on its own `$$ … $$` line"]);
+        diag_lines.insert(line);
         // Put it in the block it falls in, so the editor shows it in place.
         match blocks
             .iter_mut()

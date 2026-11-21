@@ -17,6 +17,7 @@ use mpp_render::{CaretStop, DisplayList, HitBox, HitKind, Primitive, Theme};
 use mpp_syntax::document::BlockId;
 use mpp_syntax::Span;
 
+pub(crate) use build::eval_view;
 pub(crate) use build::result_line_at;
 pub use build::{build_page, column_width, note_words, scan_inlines, slider_row_height, PageInput};
 pub use flow::{display_name, glyph_for, text_width};

@@ -22,10 +22,46 @@ fn check(src: &str) -> Document {
     for d in &doc.diagnostics {
         assert!(ok(d.span), "diagnostic {d} in {src:?}");
     }
-    for off in [0, src.len() / 2, src.len()] {
-        let _ = block_at(&doc, off);
+    // `block_at` searches by halves: it finds what a walk over the blocks finds.
+    for off in 0..=src.len() {
+        let want = linear_block_at(&doc.blocks, off).map(|b| b.span);
+        assert_eq!(
+            block_at(&doc, off).map(|b| b.span),
+            want,
+            "at {off} in {src:?}"
+        );
     }
+    // A parse whose formulas come from the parser's memo (moved to new offsets) is
+    // the same as a fresh parse: parse the text again behind a prefix and compare.
+    let shifted = format!("Words.\n\n{src}");
+    let again = parse_document(&shifted);
+    let fresh = std::thread::spawn(move || parse_document(&shifted))
+        .join()
+        .expect("thread");
+    assert_eq!(format!("{again:?}"), format!("{fresh:?}"), "in {src:?}");
     doc
+}
+
+/// The innermost block holding `offset`, by walking every block (what `block_at`
+/// did before it searched by halves).
+fn linear_block_at(
+    blocks: &[mpp_syntax::document::Block],
+    offset: usize,
+) -> Option<&mpp_syntax::document::Block> {
+    let hit = blocks
+        .iter()
+        .find(|b| b.span.start <= offset && offset < b.span.end)
+        .or_else(|| {
+            blocks
+                .iter()
+                .find(|b| b.span.start <= offset && offset == b.span.end)
+        })?;
+    if let BlockKind::Theorem(t) = &hit.kind {
+        if let Some(inner) = linear_block_at(&t.body, offset) {
+            return Some(inner);
+        }
+    }
+    Some(hit)
 }
 
 const PIECES: &[&str] = &[

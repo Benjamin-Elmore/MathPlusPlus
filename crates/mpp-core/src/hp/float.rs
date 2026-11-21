@@ -40,7 +40,9 @@ pub enum HpError {
 
 /// Stops the work once the query's budget (deadline or cancel flag) has run out.
 pub fn tick() -> HpResult<()> {
-    crate::budget::check().map_err(|_| HpError::Stopped)
+    // Ticks come every few hundred big-number steps, which can each take long at a
+    // huge precision: read the clock on every one so a deadline is not overshot.
+    crate::budget::check_now().map_err(|_| HpError::Stopped)
 }
 
 /// True once the query's budget has run out (the work after it is not to be trusted).
@@ -448,7 +450,7 @@ thread_local! {
 fn cached(
     cell: &'static std::thread::LocalKey<RefCell<Option<(u64, BigF)>>>,
     p: u64,
-    make: fn(u64) -> BigF,
+    make: fn(u64) -> (BigF, bool),
 ) -> BigF {
     cell.with(|c| {
         if let Some((have, v)) = c.borrow().as_ref() {
@@ -457,14 +459,20 @@ fn cached(
             }
         }
         let want = p.max(256) * 3 / 2;
-        let v = make(want);
-        *c.borrow_mut() = Some((want, v.clone()));
+        let (v, complete) = make(want);
+        // A value cut short by the query's budget is wrong from where its series
+        // stopped: the caller sees `stopped()` and discards it, and it is never kept
+        // for a later query on this thread.
+        if complete {
+            *c.borrow_mut() = Some((want, v.clone()));
+        }
         v.round(p)
     })
 }
 
-/// `Σ (−1)^j / ((2j+1) k^(2j+1))` in fixed point with `w` bits (`atan(1/k)`).
-fn atan_inv(k: u64, w: u64, alternate: bool) -> BigInt {
+/// `Σ (−1)^j / ((2j+1) k^(2j+1))` in fixed point with `w` bits (`atan(1/k)`), with
+/// whether the series was summed in full (false when the query's budget ran out).
+fn atan_inv(k: u64, w: u64, alternate: bool) -> (BigInt, bool) {
     let k = BigInt::from(k);
     let k2 = &k * &k;
     let mut term = (BigInt::one() << w) / &k;
@@ -472,9 +480,9 @@ fn atan_inv(k: u64, w: u64, alternate: bool) -> BigInt {
     let mut j: u64 = 0;
     while !term.is_zero() {
         // A huge precision (π for reducing an enormous angle) takes long: stop when the
-        // query's budget runs out (the caller sees `stopped()` and discards the value).
+        // query's budget runs out.
         if j % 512 == 511 && tick().is_err() {
-            break;
+            return (sum, false);
         }
         let t = &term / BigInt::from(2 * j + 1);
         if alternate && j % 2 == 1 {
@@ -485,20 +493,22 @@ fn atan_inv(k: u64, w: u64, alternate: bool) -> BigInt {
         term /= &k2;
         j += 1;
     }
-    sum
+    (sum, true)
 }
 
-fn make_pi(p: u64) -> BigF {
+fn make_pi(p: u64) -> (BigF, bool) {
     let w = p + 32;
-    let v = atan_inv(5, w, true) * 16 - atan_inv(239, w, true) * 4;
-    BigF::from_parts(v, -(w as i64)).round(p)
+    let (a, a_done) = atan_inv(5, w, true);
+    let (b, b_done) = atan_inv(239, w, true);
+    let v = a * 16 - b * 4;
+    (BigF::from_parts(v, -(w as i64)).round(p), a_done && b_done)
 }
 
-fn make_ln2(p: u64) -> BigF {
+fn make_ln2(p: u64) -> (BigF, bool) {
     // ln 2 = 2 atanh(1/3).
     let w = p + 32;
-    let v = atan_inv(3, w, false) * 2;
-    BigF::from_parts(v, -(w as i64)).round(p)
+    let (a, done) = atan_inv(3, w, false);
+    (BigF::from_parts(a * 2, -(w as i64)).round(p), done)
 }
 
 pub fn pi(p: u64) -> BigF {
@@ -750,5 +760,31 @@ mod tests {
         assert!(close(&BigF::from_i64(2).sqrt(200).unwrap(), 2f64.sqrt()));
         let big = BigF::from_i64(10).powi(&BigInt::from(400), 200).unwrap();
         assert!(close(&ln(&big, 200).unwrap(), 400.0 * 10f64.ln()));
+    }
+
+    /// A π or ln 2 cut short by a stopped query is never kept: a later query on the
+    /// same thread gets the right digits, as a fresh thread does.
+    #[test]
+    fn a_stopped_constant_is_not_kept_for_later_queries() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+        let fresh = std::thread::spawn(|| (pi(13_000), ln2(13_000)))
+            .join()
+            .expect("thread");
+        std::thread::spawn(move || {
+            {
+                // A cancelled budget: the series stop at their first tick.
+                let cancel = Arc::new(AtomicBool::new(true));
+                let _guard = crate::budget::install(crate::budget::Budget::new(cancel, None));
+                let _ = pi(400_000);
+                let _ = ln2(400_000);
+                assert!(stopped());
+            }
+            let _ = crate::budget::take_tripped();
+            assert_eq!(pi(13_000), fresh.0, "π kept from a stopped run");
+            assert_eq!(ln2(13_000), fresh.1, "ln 2 kept from a stopped run");
+        })
+        .join()
+        .expect("thread");
     }
 }

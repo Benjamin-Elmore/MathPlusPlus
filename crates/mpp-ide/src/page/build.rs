@@ -1,7 +1,7 @@
 //! Laying a parsed document out as a typeset page.
 
 use egui::{Pos2, Rect, Vec2};
-use mpp_eval::{BlockResult, Evaluated, LineKind, Value};
+use mpp_eval::{BlockResult, Evaluated, LineKind, Value, Verdict};
 use mpp_render::{
     layout_latex, CaretStop, DisplayList, FontId, HitKind, IntegralLimits, LayoutOptions,
     LineResult, MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
@@ -1429,7 +1429,7 @@ fn layout_display(
     let mut extras = input
         .eval
         .and_then(|ev| ev.block(b.id))
-        .map(|br| extras_for(br, m, input.show))
+        .map(|br| extras_for(br, m, input.show, block_delta(b, br)))
         .unwrap_or_default();
     // A line read as a product of letters it probably did not mean (`sinn(2)`)
     // gets a warning and no answer, never a nonsense one.
@@ -1512,6 +1512,94 @@ fn layout_display(
         y += layout_steps(input, *line, tree, x0, y, w, c);
     }
     y
+}
+
+/// How far a block has moved since the evaluation `br` comes from (an edit above it
+/// that is not evaluated yet).
+fn block_delta(b: &Block, br: &BlockResult) -> isize {
+    b.span.start as isize - br.span.start as isize
+}
+
+/// A fingerprint of everything the page shows from an evaluation (the results,
+/// tables, working, spinners and hints of maths blocks and the findings of helper
+/// sentences), with positions relative to their blocks: a new evaluation with the
+/// same fingerprint lays the page out exactly as before.
+pub(crate) fn eval_view(doc: &Document, eval: Option<&Evaluated>, show: &ShowState) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let Some(ev) = eval else {
+        return h.finish();
+    };
+    doc.walk(&mut |b| {
+        let Some(br) = ev.block(b.id) else {
+            return;
+        };
+        match &b.kind {
+            BlockKind::DisplayMath(_) => {
+                // Everything `extras_for` reads, without laying anything out: lines at
+                // their place in the block, their answers, spinners, hints and working.
+                let shows = |v: &mpp_eval::LineResult| {
+                    v.text.is_some()
+                        || v.latex.is_some()
+                        || v.approx.is_some()
+                        || v.hint.is_some()
+                        || v.pending
+                        || v.verdict.is_some()
+                        || v.steps.is_some()
+                };
+                if !br.values.iter().any(shows) {
+                    return;
+                }
+                b.id.hash(&mut h);
+                let delta = block_delta(b, br);
+                for v in br.values.iter().filter(|v| shows(v)) {
+                    let at = v.span.start.saturating_add_signed(delta);
+                    let end = v.span.end.saturating_add_signed(delta);
+                    (
+                        at.wrapping_sub(b.span.start),
+                        end.wrapping_sub(b.span.start),
+                    )
+                        .hash(&mut h);
+                    format!("{:?}", v.kind).hash(&mut h);
+                    (&v.text, &v.latex, &v.approx, &v.hint).hash(&mut h);
+                    (v.pending, v.auto, v.value.is_none()).hash(&mut h);
+                    v.verdict.as_ref().map(Verdict::passed).hash(&mut h);
+                    matches!(v.value, Some(Value::Relation(_))).hash(&mut h);
+                    matches!(
+                        v.input.as_ref().map(mpp_core::Expr::node),
+                        Some(mpp_core::ExprNode::Relation(..))
+                    )
+                    .hash(&mut h);
+                    if let Some(Value::Table(t)) = &v.value {
+                        format!("{:?}", mpp_core::table::rows(t)).hash(&mut h);
+                    }
+                    let span = Span::new(at, end);
+                    if let Some(f) = show.format_for(span) {
+                        format!("{f:?}").hash(&mut h);
+                    }
+                    if v.steps.is_some() {
+                        format!("{:?}", v.step_tree()).hash(&mut h);
+                    }
+                }
+            }
+            BlockKind::Helper(_) | BlockKind::Analyse(_) | BlockKind::Solve(_) => {
+                b.id.hash(&mut h);
+                for v in &br.values {
+                    v.latex.hash(&mut h);
+                    format!(
+                        "{:?}",
+                        v.value.as_ref().map(|v| matches!(v, Value::Table(_)))
+                    )
+                    .hash(&mut h);
+                    if let Some(Value::Table(t)) = &v.value {
+                        format!("{:?}", mpp_core::table::rows(t)).hash(&mut h);
+                    }
+                }
+            }
+            _ => {}
+        }
+    });
+    h.finish()
 }
 
 /// The right edge of the ink of a display list: boxes, glyphs and rules.
@@ -1640,18 +1728,25 @@ pub(crate) fn result_line_at(br: &BlockResult, offset: usize) -> Option<usize> {
 }
 
 /// The results, tables, steps and spinners of a maths block, from its evaluation.
-fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState) -> Extras {
+///
+/// `br` may come from an evaluation of an older text, in which the block started
+/// `delta` bytes earlier: its lines are matched where the block is now.
+fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState, delta: isize) -> Extras {
     let mut ex = Extras::default();
     for v in &br.values {
+        let span = Span::new(
+            v.span.start.saturating_add_signed(delta),
+            v.span.end.saturating_add_signed(delta),
+        );
         let Some(i) = m
             .ast
             .lines
             .iter()
-            .position(|l| l.span.start <= v.span.start && v.span.end <= l.span.end)
+            .position(|l| l.span.start <= span.start && span.end <= l.span.end)
         else {
             continue;
         };
-        let (text, latex, approx) = match show.format_for(v.span) {
+        let (text, latex, approx) = match show.format_for(span) {
             Some(f) => v.reformat_all(f),
             None => (v.text.clone(), v.latex.clone(), v.approx.clone()),
         };
@@ -1688,7 +1783,10 @@ fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState) -> Extras {
         }
         match &v.kind {
             LineKind::Query { mode, steps } => {
-                if let (QueryMode::Approx, Some(a)) = (mode, &approx) {
+                // An exact answer that only repeats the question (`ζ(3) = ζ(3)`)
+                // gives way to its decimal, as `≈ ?` would show it.
+                let decimal = *mode == QueryMode::Approx || v.shows_decimal_only();
+                if let (true, Some(a)) = (decimal, &approx) {
                     ex.results.push(LineResult {
                         relation: Some(RelOp::Approx),
                         ..LineResult::filled(i, a.clone())
@@ -1705,7 +1803,7 @@ fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState) -> Extras {
                 let wanted = *steps || show.show_steps;
                 if let (true, Some(tree)) = (wanted, v.step_tree()) {
                     if !tree.roots.is_empty() {
-                        ex.steps.push((v.span, tree));
+                        ex.steps.push((span, tree));
                     }
                 }
             }
@@ -2113,6 +2211,44 @@ mod tests {
             .fold(f32::MIN, f32::max);
         assert!(at.x > 20.0, "{at:?}");
         assert_eq!(at.x, heading_end, "{:?}", page.stops);
+    }
+
+    /// The result boxes of the first maths block of `src`, evaluated.
+    fn results_of(src: &str) -> Vec<(String, Option<RelOp>)> {
+        let mut session = mpp_eval::Session::new();
+        let ev = session.update(src).clone();
+        let b = ev
+            .document
+            .blocks
+            .iter()
+            .find(|b| matches!(b.kind, BlockKind::DisplayMath(_)))
+            .expect("maths block");
+        let BlockKind::DisplayMath(m) = &b.kind else {
+            unreachable!()
+        };
+        let br = ev.block(b.id).expect("evaluated");
+        extras_for(br, m, &ShowState::default(), 0)
+            .results
+            .into_iter()
+            .map(|r| match r.value {
+                mpp_render::ResultValue::Latex(l) => (l, r.relation),
+                mpp_render::ResultValue::Node(_) => (String::new(), r.relation),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_unsimplified_special_value_shows_its_decimal_not_itself() {
+        // `ζ(3) = ζ(3)` says nothing: the decimal takes the exact answer's place.
+        let r = results_of("$$ \\zeta(3) = ? $$\n");
+        assert_eq!(r, vec![("1.202056903".to_string(), Some(RelOp::Approx))]);
+        let r = results_of("$$ J_0(1) = ? $$\n");
+        assert_eq!(r, vec![("0.7651976866".to_string(), Some(RelOp::Approx))]);
+        // A real closed form is still the exact answer, with its decimal beside it.
+        let r = results_of("$$ \\zeta(2) = ? $$\n");
+        assert_eq!(r.len(), 1);
+        assert!(r[0].0.starts_with(r"\frac{\pi^{2}}{6}"), "{r:?}");
+        assert_eq!(r[0].1, None);
     }
 
     fn page_for(src: &str) -> Page {

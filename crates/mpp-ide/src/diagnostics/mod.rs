@@ -327,10 +327,20 @@ fn raw_diagnostics(inp: &Inputs<'_>) -> Vec<Diagnostic> {
             }
         }
     }
-    let mut seen = std::collections::HashSet::new();
-    out.retain(|d| seen.insert((d.span, d.message.clone())));
+    // In span order, each message once per span (the first copy kept). Sorting first
+    // puts the copies side by side, so no set of every message is needed.
     out.sort_by_key(|d| (d.span.start, d.span.end));
-    out
+    let mut kept: Vec<Diagnostic> = Vec::with_capacity(out.len());
+    let mut group = 0;
+    for d in out {
+        if kept.last().is_some_and(|l| l.span != d.span) {
+            group = kept.len();
+        }
+        if !kept[group..].iter().any(|k| k.message == d.message) {
+            kept.push(d);
+        }
+    }
+    kept
 }
 
 /// The names the evaluator has values for.
@@ -909,10 +919,10 @@ fn import_problems(doc: &Document, bg: &Background) -> Vec<Problem> {
 pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
     let known = known_names(inp.eval);
     let context = classify_context(&known, inp.background);
-    let mut out: Vec<Problem> =
-        placed::classify_cached(inp.doc, &raw_diagnostics(inp), context, |d| {
-            classify(inp.src, d, &known, inp.background)
-        });
+    let raw = raw_diagnostics(inp);
+    let mut out: Vec<Problem> = placed::classify_cached(inp.doc, &raw, context, |d| {
+        classify(inp.src, d, &known, inp.background)
+    });
     if let (Some(ev), true) = (inp.eval, inp.eval_fresh) {
         out.extend(checks(inp.doc, ev));
     }

@@ -1,6 +1,6 @@
 //! The results of running a document: per block, per statement line.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -219,6 +219,35 @@ impl LineResult {
         }
     }
 
+    /// True when an exact query got no simplification at all (`ζ(3) = ?`, `J₀(1) = ?`):
+    /// the exact text only repeats what was asked, so writing it would show a tautology
+    /// (`ζ(3) = ζ(3)`). The answer is then the decimal, shown with `≈` everywhere: in
+    /// `mpp run`, the editor and every export.
+    pub fn shows_decimal_only(&self) -> bool {
+        if self.verdict.is_some() || self.approx.is_none() {
+            return false;
+        }
+        if !matches!(
+            self.kind,
+            LineKind::Helper
+                | LineKind::Query {
+                    mode: QueryMode::Exact,
+                    ..
+                }
+        ) {
+            return false;
+        }
+        let plain = self.plain.as_ref().or(self.text.as_ref());
+        match (plain, &self.input) {
+            (None, _) => true,
+            // The lowered input is already simplified (`√8` lowers to `2√2`), so an
+            // exact closed form built from numbers, constants and powers is never
+            // "unchanged": `= ?` keeps it.
+            (Some(t), Some(input)) => *t == input.to_string() && !self.is_closed_form(),
+            (Some(_), None) => false,
+        }
+    }
+
     /// The answer as one line of text (`= 2`, `≈ 1.414213562`, `✓ …`).
     pub fn answer(&self) -> Option<String> {
         if let Some(v) = &self.verdict {
@@ -233,6 +262,7 @@ impl LineResult {
                 _,
                 Some(a),
             ) => Some(format!("≈ {a}")),
+            (_, _, Some(a)) if self.shows_decimal_only() => Some(format!("≈ {a}")),
             (_, Some(t), Some(a)) if t != a => Some(format!("= {t} ≈ {a}")),
             (_, Some(t), _) => Some(format!("= {t}")),
             (_, None, Some(a)) => Some(format!("≈ {a}")),
@@ -368,7 +398,8 @@ impl LineIndex {
 /// The result of running a whole document.
 #[derive(Debug, Clone)]
 pub struct Evaluated {
-    pub document: Document,
+    /// The parse of the text (shared with the editor, which parsed the same text).
+    pub document: Arc<Document>,
     /// One result per block, nested blocks included, in document order.
     pub blocks: Vec<BlockResult>,
     /// The blocks that ran in the last run or update (the others were reused).
@@ -381,6 +412,8 @@ pub struct Evaluated {
     pub graph: DepGraph,
     pub(crate) source: String,
     pub(crate) lines: LineIndex,
+    /// Where each block's result is in [`Evaluated::blocks`] (see [`Evaluated::block`]).
+    pub(crate) index: HashMap<BlockId, usize>,
 }
 
 /// True for the evaluator's own hidden keys in the environment (the document seed,
@@ -416,7 +449,7 @@ impl Evaluated {
     /// The result of an empty document.
     pub fn empty() -> Self {
         Evaluated {
-            document: mpp_syntax::document::parse_document(""),
+            document: Arc::new(mpp_syntax::document::parse_document("")),
             blocks: Vec::new(),
             recomputed: Vec::new(),
             diagnostics: Vec::new(),
@@ -424,6 +457,7 @@ impl Evaluated {
             graph: DepGraph::default(),
             source: String::new(),
             lines: LineIndex::default(),
+            index: HashMap::new(),
         }
     }
 
@@ -459,7 +493,23 @@ impl Evaluated {
 
     /// The result of the block `id`.
     pub fn block(&self, id: BlockId) -> Option<&BlockResult> {
-        self.blocks.iter().find(|b| b.id == id)
+        // The page asks for every block of a long file: look it up, and fall back to
+        // a search if the list was changed since the index was made.
+        match self.index.get(&id).and_then(|&i| self.blocks.get(i)) {
+            Some(b) if b.id == id => Some(b),
+            _ => self.blocks.iter().find(|b| b.id == id),
+        }
+    }
+
+    /// Makes the index [`Evaluated::block`] reads.
+    pub(crate) fn index_blocks(&mut self) {
+        self.index = self
+            .blocks
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(i, b)| (b.id, i))
+            .collect();
     }
 
     /// Every diagnostic, block ones included, in source order.

@@ -8,6 +8,7 @@
 mod atoms;
 mod calculus;
 mod expr;
+mod memo;
 mod statement;
 
 pub use statement::split_pmod;
@@ -113,12 +114,20 @@ pub fn parse_math(src: &str, base_offset: usize) -> (MathAst, Vec<Diagnostic>) {
             Diagnostic::error(Span::point(base_offset), message).expecting([r"`\\`".to_string()]);
         return (ast, vec![diag]);
     }
+    if let Some(kept) = memo::lookup(src, base_offset) {
+        return kept;
+    }
     let (tokens, lex_diags) = lex(src, base_offset);
-    on_parse_stack(is_deep(&tokens), move |limit| {
+    let deep = is_deep(&tokens);
+    let (ast, diags) = on_parse_stack(deep, move |limit| {
         let mut parser = Parser::new(src, base_offset, tokens).with_max_depth(limit);
         let ast = parser.parse_ast();
         (ast, parser.finish(lex_diags))
-    })
+    });
+    if !deep {
+        memo::store(src, base_offset, &ast, &diags);
+    }
+    (ast, diags)
 }
 
 /// Parses a single expression or relation chain, such as the `$…$` in a sentence form.

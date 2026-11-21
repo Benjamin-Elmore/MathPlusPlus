@@ -50,7 +50,9 @@ impl PageCache {
 #[derive(Debug)]
 pub struct PageCache {
     key: CacheKey,
-    pub page: Page,
+    pub page: Arc<Page>,
+    /// What the page shows from the evaluation (see [`crate::page::eval_view`]).
+    view: u64,
     pub doc: Arc<Document>,
     pub problems: Vec<Problem>,
     /// Slider rows under each figure, as laid out.
@@ -60,6 +62,16 @@ pub struct PageCache {
 }
 
 static NEXT_DOC_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Frees a large value (the old page, parse or evaluation of a long file) on a thread
+/// of its own: freeing a page with hundreds of thousands of caret stops and thousands
+/// of problems takes milliseconds that a keystroke should not wait for.
+fn drop_later<T: Send + 'static>(value: T) {
+    // Without a thread the value is freed here, as it would have been.
+    let _ = std::thread::Builder::new()
+        .name("mpp-free".into())
+        .spawn(move || drop(value));
+}
 
 /// An open file (or an unsaved new one).
 #[derive(Debug)]
@@ -136,7 +148,7 @@ impl Doc {
             }
         }
         let d = Arc::new(parse_document(self.editor.text()));
-        *memo = Some((rev, d.clone()));
+        drop_later(memo.replace((rev, d.clone())));
         d
     }
 
@@ -161,18 +173,34 @@ impl Doc {
             Some(m) if m.revision == rev => m.targets.iter().map(|(p, _)| p.clone()).collect(),
             _ => crate::explorer::links::targets(self.editor.text(), dir),
         };
+        // After an edit, links whose file was looked up less than a second ago keep
+        // that answer (a file with hundreds of links is not checked on disk again for
+        // every keystroke).
+        let known: std::collections::HashMap<&Path, bool> = memo
+            .as_ref()
+            .filter(|m| m.revision != rev && m.checked.elapsed() < LINK_RECHECK)
+            .map(|m| m.targets.iter().map(|(p, e)| (p.as_path(), *e)).collect())
+            .unwrap_or_default();
         let targets: Arc<Vec<(PathBuf, bool)>> = Arc::new(
             paths
                 .into_iter()
                 .map(|p| {
-                    let exists = p.is_file();
+                    let exists = known
+                        .get(p.as_path())
+                        .copied()
+                        .unwrap_or_else(|| p.is_file());
                     (p, exists)
                 })
                 .collect(),
         );
+        let checked = memo
+            .as_ref()
+            .filter(|_| !known.is_empty())
+            .map_or_else(Instant::now, |m| m.checked);
+        drop(known);
         *memo = Some(LinkMemo {
             revision: rev,
-            checked: Instant::now(),
+            checked,
             targets: targets.clone(),
         });
         targets
@@ -283,8 +311,16 @@ impl Doc {
         let text = self.editor.text().to_string();
         let base = self.base().map(Path::to_path_buf);
         let path = self.path.clone();
+        // The parse the page made of this very text, if there is one.
+        let parsed = self
+            .parsed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .as_ref()
+            .filter(|(rev, _)| *rev == self.editor.revision())
+            .map(|(_, d)| d.clone());
         self.worker
-            .submit_file(&text, base.as_deref(), path.as_deref());
+            .submit_parsed(&text, base.as_deref(), path.as_deref(), parsed);
         self.proof_worker.submit(&text, base.as_deref());
         self.submitted = Some(self.editor.revision());
     }
@@ -324,7 +360,7 @@ impl Doc {
         }
         if let Some(done) = self.worker.poll() {
             self.eval_text = done.text;
-            self.eval = Some(done.eval);
+            drop_later(self.eval.replace(done.eval));
             self.background = Some(done.background);
             self.pending = done.pending;
             self.eval_id += 1;
@@ -477,7 +513,7 @@ impl Doc {
         }
         if let Some(done) = self.worker.wait(Duration::from_secs(30)) {
             self.eval_text = done.text;
-            self.eval = Some(done.eval);
+            drop_later(self.eval.replace(done.eval));
             self.background = Some(done.background);
             self.pending = done.pending;
             self.eval_id += 1;
@@ -486,7 +522,8 @@ impl Doc {
         if let Some(done) = self.proof_worker.wait(Duration::from_secs(60)) {
             self.took_proof(done);
         }
-        self.cache = None;
+        // The page is laid out again for the new evaluation (its key has changed),
+        // reusing the layout when the evaluation shows the same on it.
         self.spare = None;
     }
 
@@ -550,13 +587,26 @@ impl Doc {
             proof: self.proof_id,
         };
         self.last_layout = (width, size, mode);
+        let mut earlier: Option<Arc<PageCache>> = None;
         if self.cache.as_ref().is_some_and(|c| c.key != key) {
             let old = self.cache.take();
             let spare = self.spare.take();
             // A second view of this file asks for its own width: keep the other.
             self.cache = spare.filter(|s| s.key == key);
-            self.spare =
-                old.filter(|o| o.key.revision == key.revision && o.key.eval_id == key.eval_id);
+            // The same page for an older evaluation of the same text: if the new one
+            // shows the same on the page, only its problems are found again.
+            earlier = old.clone().filter(|o| {
+                CacheKey {
+                    eval_id: key.eval_id,
+                    proof: key.proof,
+                    ..o.key
+                } == key
+            });
+            let (keep, gone): (Vec<_>, Vec<_>) = old
+                .into_iter()
+                .partition(|o| o.key.revision == key.revision && o.key.eval_id == key.eval_id);
+            self.spare = keep.into_iter().next();
+            drop_later(gone);
         }
         let editor = &self.editor;
         let eval = self.eval.as_deref();
@@ -570,7 +620,11 @@ impl Doc {
         let proof = self.proof.clone();
         let proof_fresh = self.proof.is_some() && self.proof_text == editor.text();
         let parsed = if self.cache.is_none() {
-            Some(self.parsed())
+            Some(
+                earlier
+                    .as_ref()
+                    .map_or_else(|| self.parsed(), |e| e.doc.clone()),
+            )
         } else {
             None
         };
@@ -597,7 +651,7 @@ impl Doc {
                     extra_refs: &extra_refs,
                     proof: &proof_view,
                 };
-                let page = build_page(&input);
+                let view = crate::page::eval_view(&doc, eval, show);
                 let inputs = diagnostics::Inputs {
                     src,
                     doc: &doc,
@@ -607,10 +661,28 @@ impl Doc {
                     quiet: key.quiet.map(|(a, b)| a..b),
                     proof: &proof_view.steps,
                 };
-                let problems = diagnostics::collect(&inputs, &page);
+                let reuse = earlier
+                    .as_ref()
+                    .filter(|e| e.view == view && e.proof == proof_view);
+                // The problems are gathered on a thread of their own while the page is
+                // laid out (in a long file each takes milliseconds), then placed on it.
+                let (page, found) = std::thread::scope(|scope| {
+                    let gathering = scope.spawn(|| diagnostics::gather(&inputs));
+                    let page = match reuse {
+                        Some(e) => e.page.clone(),
+                        None => Arc::new(build_page(&input)),
+                    };
+                    let found = gathering
+                        .join()
+                        .unwrap_or_else(|_| diagnostics::gather(&inputs));
+                    (page, found)
+                });
+                drop_later(earlier);
+                let problems = diagnostics::place(found, &page, src);
                 Arc::new(PageCache {
                     key,
                     page,
+                    view,
                     doc,
                     problems,
                     rows: show.figure_rows.clone(),

@@ -66,12 +66,17 @@ pub fn block_at(doc: &Document, offset: usize) -> Option<&Block> {
 }
 
 fn find_block(blocks: &[Block], offset: usize) -> Option<&Block> {
-    let hit = blocks
+    // Blocks come in text order and do not overlap, so only the ones from the last
+    // block ending before `offset` up to the last one starting at or before it can
+    // hold it (a file with thousands of problems asks this for every one of them).
+    let upto = blocks.partition_point(|b| b.span.start <= offset);
+    let from = blocks[..upto].partition_point(|b| b.span.end < offset);
+    let near = &blocks[from..upto];
+    let hit = near
         .iter()
         .find(|b| b.span.start <= offset && offset < b.span.end)
         .or_else(|| {
-            blocks
-                .iter()
+            near.iter()
                 .find(|b| b.span.start <= offset && offset == b.span.end)
         })?;
     if let BlockKind::Theorem(t) = &hit.kind {

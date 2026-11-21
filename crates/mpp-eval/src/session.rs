@@ -56,7 +56,7 @@ pub struct Session {
     /// The document has a proof, so its displayed statements are the proof checker's.
     has_proofs: bool,
     number_format: mpp_core::display::NumberFormat,
-    evaluated: Evaluated,
+    evaluated: Arc<Evaluated>,
     /// "Show steps": every `= ?` query records its working, as if written `= ?!`.
     show_steps: bool,
     /// Auto-evaluation (C8): the toggle, the time budget and the answer cache.
@@ -65,6 +65,9 @@ pub struct Session {
     cancel: Arc<AtomicBool>,
     /// Longest a single query (one block) may run; `None` is no limit.
     time_limit: Option<Duration>,
+    /// The run in progress keeps a stop asked for before it began (see
+    /// [`Session::update_keeping_cancel`]).
+    keep_cancel: bool,
 }
 
 /// Stops the run a [`Session`] is busy with, from any thread.
@@ -76,6 +79,18 @@ impl CancelHandle {
     /// run starts afresh (the request only affects work already in progress).
     pub fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
+    }
+
+    /// Forgets a stop asked for earlier, for a caller that runs with
+    /// [`Session::update_keeping_cancel`] and clears the request itself before it takes
+    /// the next job (so a stop asked for in between is never lost).
+    pub fn reset(&self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
+
+    /// True when a stop has been asked for and not reset.
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
     }
 }
 
@@ -118,11 +133,12 @@ impl Session {
             functions: BTreeSet::new(),
             has_proofs: false,
             number_format: mpp_core::display::NumberFormat::default(),
-            evaluated: Evaluated::empty(),
+            evaluated: Arc::new(Evaluated::empty()),
             show_steps: false,
             auto: AutoEval::default(),
             cancel: Arc::new(AtomicBool::new(false)),
             time_limit: None,
+            keep_cancel: false,
         }
     }
 
@@ -290,6 +306,11 @@ impl Session {
         &self.evaluated
     }
 
+    /// The last result, shared without copying it (a long file's result is large).
+    pub fn evaluated_shared(&self) -> Arc<Evaluated> {
+        self.evaluated.clone()
+    }
+
     /// Runs `src` from scratch.
     pub fn run_str(&mut self, src: &str) -> &Evaluated {
         self.cache.clear();
@@ -339,8 +360,29 @@ impl Session {
         self.update_with(src, true)
     }
 
+    /// [`Session::update`], but a stop asked for before the run began stops it too:
+    /// the caller resets the [`CancelHandle`] itself before taking its next job, so a
+    /// stop asked for between taking a job and starting it is not lost.
+    ///
+    /// `parsed`, when given, must be the parse of exactly `src` (the editor has
+    /// usually parsed the text already, and a long file takes milliseconds to parse).
+    pub fn update_keeping_cancel(
+        &mut self,
+        src: &str,
+        parsed: Option<Arc<Document>>,
+    ) -> &Evaluated {
+        self.keep_cancel = true;
+        let doc = parsed.unwrap_or_else(|| Arc::new(parse_document(src)));
+        self.update_doc(src, doc, true);
+        self.keep_cancel = false;
+        &self.evaluated
+    }
+
     fn update_with(&mut self, src: &str, own_stack: bool) -> &Evaluated {
-        let mut doc = parse_document(src);
+        self.update_doc(src, Arc::new(parse_document(src)), own_stack)
+    }
+
+    fn update_doc(&mut self, src: &str, mut doc: Arc<Document>, own_stack: bool) -> &Evaluated {
         flag_invalid_text(&mut doc, src);
         check_references_file(&mut doc, self.importer.as_ref(), self.base_dir.as_deref());
         let lines = LineIndex::new(src);
@@ -387,7 +429,9 @@ impl Session {
         let pass = if own_stack {
             // A cancel asked for before this run began belongs to the run it
             // replaced; one asked for from here on stops this run.
-            self.cancel.store(false, Ordering::Relaxed);
+            if !self.keep_cancel {
+                self.cancel.store(false, Ordering::Relaxed);
+            }
             let budget = mpp_core::budget::Budget::new(self.cancel.clone(), self.time_limit);
             with_large_stack(|| {
                 let _budget = mpp_core::budget::install(budget.clone());
@@ -421,7 +465,9 @@ impl Session {
             graph,
             source: src.to_string(),
             lines,
+            index: HashMap::new(),
         };
+        evaluated.index_blocks();
         crate::numfmt::apply(&mut evaluated, &self.number_format);
         // Keep the lines as shown, so a block reused on the next edit is not formatted
         // again.
@@ -432,7 +478,7 @@ impl Session {
                 }
             }
         }
-        self.evaluated = evaluated;
+        self.evaluated = Arc::new(evaluated);
         &self.evaluated
     }
 }
@@ -583,10 +629,11 @@ fn shift_outcome(outcome: &mut Outcome, delta: isize) {
 /// Reads the file of a `References from [[file]]` block and checks every `[@key]`
 /// against its entries (the parser cannot, since it never reads files). A file that
 /// cannot be read is an error on the block.
-fn check_references_file(doc: &mut Document, importer: &dyn Importer, base: Option<&Path>) {
+fn check_references_file(doc: &mut Arc<Document>, importer: &dyn Importer, base: Option<&Path>) {
     if !doc.has_references_file() {
         return;
     }
+    let doc = Arc::make_mut(doc);
     let mut files = Vec::new();
     doc.walk(&mut |b| {
         if let BlockKind::References(r) = &b.kind {
@@ -615,11 +662,12 @@ fn check_references_file(doc: &mut Document, importer: &dyn Importer, base: Opti
 
 /// Marks each run of U+FFFD, which is what bytes that were not valid UTF-8 become
 /// when a file is read, so the reader sees where the file is damaged.
-fn flag_invalid_text(doc: &mut Document, src: &str) {
+fn flag_invalid_text(doc: &mut Arc<Document>, src: &str) {
     const BAD: char = '\u{FFFD}';
     if !src.contains(BAD) {
         return;
     }
+    let doc = Arc::make_mut(doc);
     let mut runs: Vec<(usize, usize)> = Vec::new();
     for (at, c) in src.char_indices() {
         if c != BAD {
@@ -643,11 +691,14 @@ fn flag_invalid_text(doc: &mut Document, src: &str) {
 /// Puts each parser diagnostic in the innermost block it falls in; returns the rest.
 fn attach_parse_diagnostics(doc: &Document, blocks: &mut [BlockResult]) -> Vec<Diagnostic> {
     let mut loose = Vec::new();
+    // Thousands of problems in a long file: find each block by id at once, not by
+    // walking the list for every problem.
+    let index: HashMap<BlockId, usize> =
+        blocks.iter().enumerate().map(|(i, r)| (r.id, i)).collect();
     for d in &doc.diagnostics {
-        let target =
-            block_at(doc, d.span.start).and_then(|b| blocks.iter_mut().find(|r| r.id == b.id));
+        let target = block_at(doc, d.span.start).and_then(|b| index.get(&b.id).copied());
         match target {
-            Some(r) => r.diagnostics.push(d.clone()),
+            Some(i) => blocks[i].diagnostics.push(d.clone()),
             None => loose.push(d.clone()),
         }
     }

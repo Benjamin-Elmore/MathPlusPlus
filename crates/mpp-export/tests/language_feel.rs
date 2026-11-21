@@ -89,3 +89,26 @@ fn a_references_list_is_a_real_bibliography() {
     assert!(html.contains("id=\"ref-hardy\""), "{html}");
     assert!(html.contains("id=\"ref-knuth\""), "{html}");
 }
+
+/// An exact query whose answer is only the question again (`ζ(3) = ζ(3)`) shows the
+/// decimal instead, with `≈`, in HTML and in LaTeX; a real closed form keeps `=`.
+#[test]
+fn an_unsimplified_special_value_exports_as_its_decimal() {
+    let src = "$$ \\zeta(3) = ? $$\n\n$$ J_0(1) = ? $$\n\n$$ \\zeta(2) = ? $$\n";
+    let opts = ExportOptions::default();
+    let tex = export_src("tautology", src, Format::Tex, &opts);
+    assert!(tex.contains(r"\zeta(3) \approx 1.202056903"), "{tex}");
+    assert!(tex.contains(r"J_0(1) \approx 0.7651976866"), "{tex}");
+    assert!(!tex.contains(r"\zeta\left(3\right)"), "{tex}");
+    assert!(tex.contains(r"\zeta(2) = \frac{\pi^{2}}{6}"), "{tex}");
+    let html = export_src("tautology", src, Format::Html, &opts);
+    assert!(
+        html.contains("≈1.202056903"),
+        "no decimal for ζ(3) in the HTML"
+    );
+    assert!(
+        html.contains("≈0.7651976866"),
+        "no decimal for J₀(1) in the HTML"
+    );
+    assert!(!html.contains("(3)=𝜁(3)"), "ζ(3) = ζ(3) in the HTML");
+}

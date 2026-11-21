@@ -17,6 +17,9 @@ use crate::simplify::{add, mul, pow, simplify};
 
 use super::numeric::adaptive;
 
+/// Most pieces of length π summed for one slowly decaying tail.
+const MAX_TAIL_PIECES: usize = 1_000_000;
+
 /// The value and error estimate of a convergent improper integral, with the reasons it
 /// converges; `None` when convergence is not proven or the value does not settle.
 pub(super) fn convergent(
@@ -313,6 +316,9 @@ fn tail(
         n0 *= 2.0;
     }
     let levels = 9;
+    // The pieces from `c` to `2^8` times as far grow with |c|: past this many, or where
+    // a piece of length π no longer moves a double (|c| above about 10^16), give up.
+    let mut budget = MAX_TAIL_PIECES;
     let mut sums: Vec<f64> = Vec::with_capacity(levels);
     let mut acc = 0.0;
     let mut from = c;
@@ -323,11 +329,15 @@ fn tail(
         let mut x = from;
         while (to - x) * dir > 0.0 {
             crate::budget::check().ok()?;
+            budget = budget.checked_sub(1)?;
             let next = if (to - (x + dir * PI)) * dir > 0.0 {
                 x + dir * PI
             } else {
                 to
             };
+            if next == x {
+                return None;
+            }
             let (lo, hi) = if dir > 0.0 { (x, next) } else { (next, x) };
             let (v, de) = adaptive(&mut |t| f(t), lo, hi, 1e-13, 200).ok()?;
             acc += dir * v;
@@ -396,5 +406,20 @@ mod tests {
         let h = pow(x, Expr::int(-1));
         let pts = [(Expr::int(1), 1.0), (Expr::infinity(), f64::INFINITY)];
         assert!(convergent(&h, "x", &pts).is_none());
+    }
+
+    /// A tail starting where a step of π no longer moves a double ends at once, with
+    /// no budget installed (it looped until the budget stopped it).
+    #[test]
+    fn a_tail_from_very_far_out_gives_up_at_once() {
+        let x = Expr::sym("x");
+        let e = simplify(&mul(vec![
+            func(Func::Sin, vec![x.clone()]),
+            pow(x, Expr::int(-2)),
+        ]));
+        let f = |t: f64| Some(t.sin() / (t * t));
+        let start = std::time::Instant::now();
+        assert!(tail(&f, 1e17, 1.0, "x", &e).is_none());
+        assert!(start.elapsed() < std::time::Duration::from_secs(5));
     }
 }

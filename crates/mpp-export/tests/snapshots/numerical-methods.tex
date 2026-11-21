@@ -41,10 +41,10 @@ Each method shows its answer with an error estimate; \texttt{= ?!} shows every s
   \operatorname{Midpoint\ rule}(x^2, [0, 1], 4) = \frac{21}{64}
 \end{equation*}
 \begin{equation*}
-  \operatorname{Trapezoid\ rule}(\sin x, [0, \pi], 10) = 1.983523538
+  \operatorname{Trapezoid\ rule}(\sin x, [0, \pi], 10) \approx 1.983523538
 \end{equation*}
 \begin{equation*}
-  \operatorname{Simpson's\ rule}(e^{-x^2}, [0, 1], 10) = 0.7468249483
+  \operatorname{Simpson's\ rule}(e^{-x^2}, [0, 1], 10) \approx 0.7468249483
 \end{equation*}
 \begin{equation*}
   \operatorname{Simpson's\ rule}(x^3, [0, 2], 2) = 4
@@ -52,30 +52,30 @@ Each method shows its answer with an error estimate; \texttt{= ?!} shows every s
 \section*{Newton's method}
 
 \begin{equation*}
-  \operatorname{Newton's\ method}(x^2 - 2, 1) = 1.414213562
+  \operatorname{Newton's\ method}(x^2 - 2, 1) \approx 1.414213562
 \end{equation*}
 \begin{equation*}
-  \operatorname{Newton's\ method}(\cos x - x, 1) = 0.7390851332
+  \operatorname{Newton's\ method}(\cos x - x, 1) \approx 0.7390851332
 \end{equation*}
 \section*{Euler's method and RK4}
 
 For $y' = y$ with $y(0) = 1$, step $h = 0.1$ and ten steps, the exact value is $y(1) = e$.
 
 \begin{equation*}
-  \operatorname{Euler's\ method}(y, 0, 1, 0.1, 10) = 2.59374246
+  \operatorname{Euler's\ method}(y, 0, 1, 0.1, 10) \approx 2.59374246
 \end{equation*}
 \begin{equation*}
-  \operatorname{RK4}(y, 0, 1, 0.1, 10) = 2.718279744
+  \operatorname{RK4}(y, 0, 1, 0.1, 10) \approx 2.718279744
 \end{equation*}
 \begin{equation*}
-  \operatorname{RK4}(x + y, 0, 1, 0.1, 10) = 3.436559488
+  \operatorname{RK4}(x + y, 0, 1, 0.1, 10) \approx 3.436559488
 \end{equation*}
 \section*{Taylor error bounds}
 
 The Lagrange bound for the cubic Taylor polynomial of $e^x$ about $0$ at $x = 1$, and the degree needed for $\sin x$ at $x = 0.5$ to be within $10^{-6}$.
 
 \begin{equation*}
-  \operatorname{Taylor\ bound}(e^x, 0, 3, 1) = 0.1132617429
+  \operatorname{Taylor\ bound}(e^x, 0, 3, 1) \approx 0.1132617429
 \end{equation*}
 \begin{equation*}
   \operatorname{Terms\ needed}(\sin x, 0, 0.5, 0.000001) = 7

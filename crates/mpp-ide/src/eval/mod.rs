@@ -13,6 +13,7 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 
 use mpp_eval::{CancelHandle, Evaluated, NumberFormat, Session};
+use mpp_syntax::document::Document;
 
 use crate::diagnostics::background::{self, Background, FileCache};
 
@@ -53,6 +54,8 @@ struct Job {
     base: Option<PathBuf>,
     /// The file being edited (left out of the project index).
     path: Option<PathBuf>,
+    /// The editor's parse of `text`, when it has one (so it is not parsed again).
+    parsed: Option<Arc<Document>>,
 }
 
 /// A finished evaluation.
@@ -98,6 +101,7 @@ impl EvalWorker {
         let (done_tx, rx) = channel::<Done>();
         let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
         let cancel = session.cancel_handle();
+        let stop = session.cancel_handle();
         let indexing = Arc::new(AtomicBool::new(false));
         let indexing_flag = indexing.clone();
         let handle = std::thread::Builder::new()
@@ -114,6 +118,10 @@ impl EvalWorker {
                     return;
                 };
                 'jobs: loop {
+                    // A stop asked for from here on belongs to the run below: the edit
+                    // that asked for it has sent its job first, so it is either taken
+                    // just below or found when the run ends.
+                    stop.reset();
                     while let Ok(newer) = jobs.try_recv() {
                         job = newer;
                     }
@@ -129,13 +137,18 @@ impl EvalWorker {
                         session.set_auto_budget(s.budget);
                         applied = Some(s);
                     }
-                    let eval = session.update(&job.text).clone();
+                    session.update_keeping_cancel(&job.text, job.parsed.clone());
+                    let eval = session.evaluated_shared();
                     if let Ok(newer) = jobs.try_recv() {
                         // Stale (and perhaps stopped half way): never show it.
                         job = newer;
                         continue 'jobs;
                     }
-                    let eval = Arc::new(eval);
+                    if stop.is_cancelled() {
+                        // Stopped for an edit whose job was already taken above: the
+                        // run may be half done, so run it again.
+                        continue 'jobs;
+                    }
                     // The open file's results go out first, with the folder index from
                     // last time; the other files of the folder are indexed afterwards
                     // (names only, never evaluated) and only while no newer edit waits.
@@ -206,7 +219,8 @@ impl EvalWorker {
                             }
                             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
                                 if session.pending_ready() {
-                                    let eval = Arc::new(session.refresh().clone());
+                                    session.refresh();
+                                    let eval = session.evaluated_shared();
                                     let done = Done {
                                         generation: job.generation,
                                         text: job.text.clone(),
@@ -254,6 +268,18 @@ impl EvalWorker {
     /// Asks for the text of the file at `path` to be evaluated; imports resolve
     /// against `base` (its folder, or the folder an unsaved file belongs to).
     pub fn submit_file(&mut self, text: &str, base: Option<&Path>, path: Option<&Path>) {
+        self.submit_parsed(text, base, path, None);
+    }
+
+    /// [`EvalWorker::submit_file`] with the editor's parse of `text` (which must be the
+    /// parse of exactly `text`), so the evaluator does not parse it again.
+    pub fn submit_parsed(
+        &mut self,
+        text: &str,
+        base: Option<&Path>,
+        path: Option<&Path>,
+        parsed: Option<Arc<Document>>,
+    ) {
         self.sent += 1;
         let job = Job {
             settings: self.settings,
@@ -261,15 +287,17 @@ impl EvalWorker {
             text: text.to_string(),
             base: base.map(Path::to_path_buf),
             path: path.map(Path::to_path_buf),
+            parsed,
         };
         if let Some(tx) = &self.tx {
-            // Stop what the evaluator is busy with: this edit replaces it. The stop is
-            // asked for first so it can never hit the run this job starts.
-            if self.received < self.sent - 1 {
-                self.cancel.cancel();
-            }
+            // Stop what the evaluator is busy with: this edit replaces it. The job is
+            // sent first, so a run the stop catches (even one that took this very job)
+            // is followed by a run of this job (the worker checks for both).
+            let busy = self.received < self.sent - 1;
             if tx.send(job).is_err() {
                 self.sent -= 1;
+            } else if busy {
+                self.cancel.cancel();
             }
         }
     }
@@ -307,7 +335,9 @@ impl EvalWorker {
             if left.is_zero() {
                 break;
             }
-            if let Ok(d) = self.rx.recv_timeout(left.min(Duration::from_millis(5))) {
+            // A short poll: the index usually finishes within a millisecond and sends
+            // nothing new, so a long poll would only add its own length.
+            if let Ok(d) = self.rx.recv_timeout(left.min(Duration::from_micros(500))) {
                 self.received = self.received.max(d.generation);
                 latest = Some(d);
             }

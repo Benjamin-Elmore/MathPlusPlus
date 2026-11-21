@@ -245,7 +245,9 @@ fn junk_maths(len: usize) -> String {
 fn a_keystroke_in_a_long_file_of_junk_maths_stays_quick() {
     // 190 KB of junk with 7000 problems: a keystroke took 0.6-0.9 s, re-laying out
     // every paragraph with a link, placing and classifying every problem again and
-    // scanning the whole text for links several times per frame.
+    // scanning the whole text for links several times per frame. Then about 170 ms
+    // (parsing the text twice, laying the page out on both frames, every equation's
+    // fill-in hint drawn each frame, block lookups by search); now about 75 ms.
     let d = scratch("junk");
     let path = d.join("junk.mpp");
     std::fs::write(&path, junk_maths(100_000)).expect("write");
@@ -271,7 +273,7 @@ fn a_keystroke_in_a_long_file_of_junk_maths_stays_quick() {
     }
     times.sort();
     if !cfg!(debug_assertions) {
-        assert!(times[1] < Duration::from_millis(300), "{times:?}");
+        assert!(times[1] < Duration::from_millis(100), "{times:?}");
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -314,4 +316,63 @@ fn problems_placed_from_the_cache_match_a_fresh_placement() {
             assert!((r.min - s.min).length() < 0.01 && (r.max - s.max).length() < 0.01);
         }
     }
+}
+
+/// The text of the page's maths blocks, in order.
+fn maths_text(pc: &mpp_ide::PageCache) -> Vec<String> {
+    pc.page
+        .blocks
+        .iter()
+        .filter(|b| b.tag == mpp_ide::page::BlockTag::Math)
+        .map(|b| b.dl.text())
+        .collect()
+}
+
+#[test]
+fn a_new_evaluation_that_shows_the_same_keeps_the_page_and_one_that_differs_does_not() {
+    let src = "# Notes\n\nSome words here.\n\n$$ 2 + 3 = ? $$\n\nMore words.\n";
+    let mut doc = mpp_ide::Doc::with_text(src, None);
+    let (width, size, mode) = (900.0, 18.0, mpp_ide::theme::Mode::Light);
+    doc.settle();
+    let _ = doc.page(width, size, mode);
+    // Words typed above the equation: the old evaluation's answer stays on it (moved
+    // to where the equation is now), and the new evaluation shows the same answer,
+    // so the page laid out for the keystroke is kept.
+    let at = src.find("words here").expect("words");
+    doc.editor.move_caret(at, false);
+    doc.editor.insert_text("new ");
+    let typed = doc.page(width, size, mode);
+    assert!(
+        maths_text(&typed)[0].contains('5'),
+        "{:?}",
+        maths_text(&typed)
+    );
+    doc.settle();
+    let evaluated = doc.page(width, size, mode);
+    assert!(std::sync::Arc::ptr_eq(&typed.page, &evaluated.page));
+    // A changed answer lays the page out again.
+    let at = doc.editor.text().find("2 + 3").expect("query");
+    doc.editor.move_caret(at, false);
+    doc.editor.insert_text("4");
+    let _ = doc.page(width, size, mode);
+    doc.settle();
+    let changed = doc.page(width, size, mode);
+    assert!(!std::sync::Arc::ptr_eq(&evaluated.page, &changed.page));
+    assert!(
+        maths_text(&changed)[0].contains("45"),
+        "{:?}",
+        maths_text(&changed)
+    );
+    // And the kept page is what a fresh layout of the same text gives.
+    let text = doc.editor.text().to_string();
+    let fresh = std::thread::spawn(move || {
+        let mut d = mpp_ide::Doc::with_text(&text, None);
+        d.settle();
+        let p = d.page(width, size, mode);
+        (maths_text(&p), p.page.chars.clone())
+    })
+    .join()
+    .expect("thread");
+    assert_eq!(maths_text(&changed), fresh.0);
+    assert_eq!(changed.page.chars, fresh.1);
 }

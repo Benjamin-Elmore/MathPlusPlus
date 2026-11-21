@@ -148,9 +148,11 @@ impl<'a> EvalProvider<'a> {
                 LineKind::Query { mode, .. } => {
                     // `latex`, `text` and `approx` are already in the line's display
                     // format (`%sf 4`, `%sci` …), recorded in `number_format`.
-                    let approx = matches!(mode, QueryMode::Approx);
                     // An exact query shows its exact answer only: the decimal the
-                    // editor adds beside it is a preview, and `≈ ?` asks for one.
+                    // editor adds beside it is a preview, and `≈ ?` asks for one. An
+                    // exact answer that only repeats the question (`ζ(3) = ζ(3)`) is
+                    // no answer: the decimal takes its place, with `≈`.
+                    let approx = matches!(mode, QueryMode::Approx) || r.shows_decimal_only();
                     let latex = if approx {
                         r.approx
                             .as_deref()

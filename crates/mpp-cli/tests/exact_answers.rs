@@ -39,3 +39,34 @@ fn unevaluated_calls_still_fall_back_to_a_decimal() {
     );
     assert_eq!(report(r"$$ \zeta(3) = ? $$"), "ζ(3) ≈ 1.202056903");
 }
+
+#[test]
+fn the_one_line_answer_of_an_unsimplified_value_is_its_decimal() {
+    // The editor's report, `mpp calc` and the kept answer all read the one-line answer:
+    // `= ζ(3) ≈ 1.202056903` would repeat the question, so it is the decimal alone.
+    let answer = |src: &str| {
+        let ev = Session::new()
+            .with_importer(Arc::new(NoImports))
+            .run_str(src)
+            .clone();
+        let (_, line) = ev.queries().next().expect("a query");
+        line.answer().expect("an answer")
+    };
+    assert_eq!(answer(r"$$ \zeta(3) = ? $$"), "≈ 1.202056903");
+    assert_eq!(answer(r"$$ J_0(1) = ? $$"), "≈ 0.7651976866");
+    assert_eq!(answer(r"$$ \zeta(2) = ? $$"), "= π²/6 ≈ 1.644934067");
+}
+
+#[test]
+fn an_oscillating_tail_from_far_out_is_not_rounding_noise() {
+    // Doubles near 10^17 are 16 apart, so sampling sin x there gave noise
+    // (≈ -6.6 × 10⁻³²); the true value is cos c/c² + 2 sin c/c³ ≈ -8.86 × 10⁻³⁵.
+    assert_eq!(
+        report(r"$$ \int_{10^{17}}^{\infty} \frac{\sin x}{x^2} dx = ? $$"),
+        "∫_(10¹⁷)^∞ (sin x)/x² dx ≈ -8.855573283 × 10⁻³⁵"
+    );
+    assert_eq!(
+        report(r"$$ \int_{10^{17}}^{\infty} \frac{\cos x}{x^2} dx = ? $$"),
+        "∫_(10¹⁷)^∞ (cos x)/x² dx ≈ 4.645301048 × 10⁻³⁵"
+    );
+}

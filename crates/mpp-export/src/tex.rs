@@ -365,9 +365,12 @@ fn unicode_fallback(c: char, math: bool, o: &mut String) {
     }
 }
 
-/// Puts a result where the `?` of a query is, or a mark after a check.
-fn fill_result(text: &mut String, value: &mpp_render::ResultValue) {
-    let value = match value {
+/// Puts a result where the `?` of a query is, or a mark after a check. A decimal
+/// answer to an exact query (`ζ(3) = ?` has no closed form) turns the `=` in front of
+/// it into `pprox`, as the typeset page shows it.
+fn fill_result(text: &mut String, result: &mpp_render::LineResult) {
+    let approx = result.relation == Some(mpp_syntax::math::RelOp::Approx);
+    let value = match &result.value {
         mpp_render::ResultValue::Latex(l) => texify_math(l),
         mpp_render::ResultValue::Node(_) => String::new(),
     };
@@ -380,6 +383,13 @@ fn fill_result(text: &mut String, value: &mpp_render::ResultValue) {
                 let after = text[q + 1..].to_string();
                 let rest = after.strip_prefix('!').unwrap_or(&after).to_string();
                 text.truncate(q);
+                if approx {
+                    let head = text.trim_end();
+                    if let Some(lhs) = head.strip_suffix('=') {
+                        let lhs = lhs.trim_end().to_string();
+                        *text = format!("{lhs} \\approx ");
+                    }
+                }
                 let _ = write!(text, "{v}{rest}");
             }
         }
@@ -908,7 +918,7 @@ impl Writer<'_> {
             }
             let mut text = texify_math(&text);
             if let Some(r) = results.iter().find(|r| r.line == i) {
-                fill_result(&mut text, &r.value);
+                fill_result(&mut text, r);
             }
             rows.push(text);
         }
@@ -1017,7 +1027,7 @@ impl Writer<'_> {
                 InlineKind::Math(m) => {
                     let mut text = texify_math(self.src(m.raw).trim());
                     if let Some(r) = self.provider.results_for_ast(&m.ast).first() {
-                        fill_result(&mut text, &r.value);
+                        fill_result(&mut text, r);
                     }
                     let _ = write!(out, "${text}$");
                 }
