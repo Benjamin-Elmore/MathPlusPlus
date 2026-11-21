@@ -324,13 +324,33 @@ fn roman_piece(text: &str) -> Option<usize> {
     Some(k)
 }
 
+/// Longest plain unit looked for, in characters.
+const MAX_PLAIN_UNIT: usize = 64;
+
 /// The longest plain unit at the start of `text` that ends at a word boundary and is
 /// not followed by `(` (so `\min(a, b)` and `2 sec(x)` stay functions).
 fn plain(text: &str) -> Option<usize> {
+    // A unit starts with a letter and is short; without these limits a long run such as
+    // `^{2^{2^{…}}}` after a number made every candidate end a full rescan (cubic time).
+    if !text
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_alphabetic() || c == '°')
+    {
+        return None;
+    }
     let run = text
         .char_indices()
+        .take(MAX_PLAIN_UNIT)
         .find(|(_, c)| !is_plain_char(*c))
-        .map_or(text.len(), |(i, _)| i);
+        .map_or_else(
+            || {
+                text.char_indices()
+                    .nth(MAX_PLAIN_UNIT)
+                    .map_or(text.len(), |(i, _)| i)
+            },
+            |(i, _)| i,
+        );
     let mut ends: Vec<usize> = text[..run]
         .char_indices()
         .map(|(i, c)| i + c.len_utf8())

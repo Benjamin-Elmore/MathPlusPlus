@@ -454,20 +454,28 @@ impl<'a> Parser<'a> {
 
     /// Index of the token that closes the bracket opened at `open` (or the end).
     fn matching_close(&self, open: usize) -> usize {
+        self.matching_close_within(open, usize::MAX)
+            .unwrap_or(self.stop)
+    }
+
+    /// Like [`Parser::matching_close`], but gives up (`None`) after `limit` tokens, for
+    /// look-aheads that only care about short groups.
+    fn matching_close_within(&self, open: usize, limit: usize) -> Option<usize> {
         let mut depth = 0usize;
-        for (i, t) in self.toks.iter().enumerate().take(self.stop).skip(open) {
+        let end = self.stop.min(open.saturating_add(limit));
+        for (i, t) in self.toks.iter().enumerate().take(end).skip(open) {
             match t.kind {
                 Tok::LBrace | Tok::Open { .. } | Tok::Begin(_) => depth += 1,
                 Tok::RBrace | Tok::Close { .. } | Tok::End(_) => {
                     depth = depth.saturating_sub(1);
                     if depth == 0 {
-                        return i;
+                        return Some(i);
                     }
                 }
                 _ => {}
             }
         }
-        self.stop
+        (end == self.stop).then_some(self.stop)
     }
 }
 
