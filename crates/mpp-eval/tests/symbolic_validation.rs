@@ -73,6 +73,26 @@ fn range_of_data_and_range_of_a_function() {
 }
 
 #[test]
+fn factor_splits_over_the_rationals() {
+    assert_eq!(
+        answer(r"$$ \operatorname{factor}(x^6 - 1) = ? $$"),
+        "(x - 1)(x + 1)(x² + x + 1)(x² - x + 1)"
+    );
+    assert_eq!(
+        answer(r"$$ \operatorname{factor}(x^5 + x + 1) = ? $$"),
+        "(x² + x + 1)(x³ - x² + 1)"
+    );
+    assert_eq!(
+        answer(r"$$ \operatorname{factor}(x^4 + 4) = ? $$"),
+        "(x² - 2x + 2)(x² + 2x + 2)"
+    );
+    assert_eq!(
+        answer(r"$$ \operatorname{factor}(x^2 y - y^3) = ? $$"),
+        "y(x + y)(x - y)"
+    );
+}
+
+#[test]
 fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
     assert_eq!(
         answer(r"$$ \frac{d}{dx} \int_0^{x} e^{t^2} \, dt = ? $$"),
