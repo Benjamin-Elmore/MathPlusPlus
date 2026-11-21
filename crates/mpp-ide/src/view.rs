@@ -1750,6 +1750,12 @@ fn hover_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, c
                         "from {}",
                         crate::explorer::display_name(std::path::Path::new(f))
                     ));
+                } else {
+                    ui.add_space(2.0);
+                    ui.weak(crate::page::answers::defined_where(
+                        doc.editor.text(),
+                        d.span,
+                    ));
                 }
             });
         });

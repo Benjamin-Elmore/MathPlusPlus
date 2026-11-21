@@ -41,6 +41,10 @@ pub enum Content {
     Answer { latex: String, copy: String },
     /// A definition's value in grey (`= 15`).
     Preview { latex: String, copy: String },
+    /// `x = 5` read as a definition, with the value when it was worked out.
+    Defined { value: Option<(String, String)> },
+    /// `x = 5` with `x` already defined: does it hold?
+    Check { holds: Option<bool>, why: String },
     /// The line's error: a short form for the slot and the whole message.
     Error { short: String, full: String },
 }
@@ -230,6 +234,18 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
                 .map(|(latex, copy)| Content::Answer { latex, copy })
                 .or_else(|| error_in(run.br, span))
                 .unwrap_or(Content::Empty)
+        } else if let Some(v) = vals.iter().find(|v| v.implicit) {
+            Content::Defined {
+                value: v.shows_value.then(|| preview_of(v)).flatten(),
+            }
+        } else if let Some(v) = vals
+            .iter()
+            .find(|v| v.kind == LineKind::Check && matches!(line.statement, Statement::Relation(_)))
+        {
+            Content::Check {
+                holds: v.verdict.as_ref().and_then(mpp_eval::Verdict::passed),
+                why: v.verdict_text().unwrap_or_default(),
+            }
         } else if let Some((latex, copy)) = vals
             .iter()
             .find(|v| v.shows_value && matches!(v.kind, LineKind::Definition { .. }))
@@ -332,6 +348,30 @@ impl Chip {
             tip: None,
         }
     }
+
+    /// Puts `other` after this chip, `gap` apart, on the same baseline.
+    fn then(mut self, other: DisplayList, gap: f32) -> Self {
+        let dx = self.width + gap;
+        let dy = self.height - other.height;
+        let (dy_self, dy_other) = if dy >= 0.0 { (0.0, dy) } else { (-dy, 0.0) };
+        if dy_self > 0.0 {
+            self.items = self
+                .items
+                .iter()
+                .map(|p| super::shift_primitive(p, 0.0, dy_self))
+                .collect();
+        }
+        self.items.extend(
+            other
+                .items
+                .iter()
+                .map(|p| super::shift_primitive(p, dx, dy_other)),
+        );
+        self.width = dx + other.width;
+        self.height = self.height.max(other.height);
+        self.depth = self.depth.max(other.depth);
+        self
+    }
 }
 
 /// The chip of a slot, at most `room` wide.
@@ -357,6 +397,37 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
             let mut c = Chip::from(fitted(latex, size * 0.92, ink(ac.preview), theme, room));
             c.copy = Some(copy.clone());
             c.tip = Some(format!("{latex}\n{hint}"));
+            c
+        }
+        Content::Defined { value } => {
+            let mark = typeset("\\text{defined}", size * 0.7, ink(ac.mark), theme);
+            let tip = "\\text{read as a definition (the name was not defined yet)}";
+            match value {
+                Some((latex, copy)) => {
+                    let room = (room - mark.width - size * 0.4).max(size);
+                    let v = fitted(latex, size * 0.92, ink(ac.preview), theme, room);
+                    let mut c = Chip::from(v).then(mark, size * 0.4);
+                    c.copy = Some(copy.clone());
+                    c.tip = Some(format!("{latex}\n{tip}\n{hint}"));
+                    c
+                }
+                None => {
+                    let mut c = Chip::from(mark);
+                    c.tip = Some(tip.to_string());
+                    c
+                }
+            }
+        }
+        Content::Check { holds, why } => {
+            let (tex, color) = match holds {
+                Some(true) => ("\\checkmark", ac.holds),
+                Some(false) => ("\\times", ac.fails),
+                None => ("?", ac.mark),
+            };
+            let mut c = Chip::from(typeset(tex, size, ink(color), theme));
+            if !why.is_empty() {
+                c.tip = Some(prose_latex(&format!("check: {why}")));
+            }
             c
         }
         Content::Error { short, full } => {
@@ -561,13 +632,14 @@ pub(crate) fn view_hash(doc: &Document, ev: &Evaluated, h: &mut impl std::hash::
             return;
         };
         for v in &br.values {
-            if v.open || v.shows_value {
+            if v.open || v.shows_value || v.implicit {
                 any = true;
                 b.id.hash(h);
                 (
                     v.span.start.wrapping_sub(br.span.start),
                     v.open,
                     v.shows_value,
+                    v.implicit,
                 )
                     .hash(h);
                 (&v.text, &v.latex, &v.approx).hash(h);
@@ -597,6 +669,15 @@ pub fn click(ctx: &egui::Context, doc: &mut crate::doc::Doc, text: &str, insert:
         ctx.copy_text(text.to_string());
     }
     ctx.data_mut(|d| d.insert_temp(egui::Id::unique(LAST_ANSWER), text.to_string()));
+}
+
+/// Where a name was defined, for its hover card: `defined on line 3`.
+pub fn defined_where(src: &str, span: Span) -> String {
+    let line = src
+        .get(..span.start.min(src.len()))
+        .map_or(0, |s| s.matches('\n').count())
+        + 1;
+    format!("defined on line {line} (Ctrl+click to go there)")
 }
 
 #[cfg(test)]
@@ -739,6 +820,20 @@ mod tests {
             tops(&page_with(src, None)),
             tops(&page_with(src, Some(&run(src))))
         );
+    }
+
+    #[test]
+    fn x_equals_5_shows_defined_or_its_check() {
+        let src = "$$ y = 7 $$\n\n$$ x := 5 $$\n\n$$ x = 6 $$\n\n$$ x = 5 $$\n";
+        let got = answers(&page_with(src, Some(&run(src))));
+        let tips: Vec<&str> = got.iter().map(|(_, t)| t.as_str()).collect();
+        assert_eq!(tips.len(), 3, "{tips:?}");
+        assert!(tips[0].contains("definition"), "{tips:?}");
+        assert!(
+            tips[1].contains("check") && tips[1].contains('✗'),
+            "{tips:?}"
+        );
+        assert!(tips[2].contains('✓'), "{tips:?}");
     }
 
     #[test]

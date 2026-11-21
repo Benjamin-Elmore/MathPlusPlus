@@ -1,10 +1,11 @@
-//! Answers in their own slot (U16), driven through the
+//! Answers in their own slot (U16) and definitions both ways (U17), driven through the
 //! real app the way a person uses it: key and text events and pointer clicks, through
 //! `ui()` and its `pump()`, with frames only when the app asks for them.
 
 use std::time::{Duration, Instant};
 
 use egui::{Event, Modifiers, PointerButton, Pos2, Vec2};
+use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use mpp_ide::page::{answers, LinkTarget};
 use mpp_ide::{theme, IdeApp};
@@ -165,4 +166,49 @@ fn a_click_copies_an_answer_and_ctrl_click_inserts_it() {
     click(&mut h, at, Modifiers::COMMAND);
     let doc = h.state().doc().expect("doc");
     assert_eq!(doc.editor.text(), format!("{text}5"));
+}
+
+#[test]
+fn x_equals_5_defines_and_the_count_agrees() {
+    let text = "$$ x = 5 $$\n\n$$ E = 2x + 5 $$\n\n$$ x = 6 $$\n\n";
+    let mut h = harness(app_with(text, text.len()));
+    h.run_steps(3);
+    until_current(&mut h);
+    let got = answers_on(&h);
+    let tips: Vec<&str> = got.iter().map(|a| a.1.as_str()).collect();
+    assert!(tips[0].contains("definition"), "{tips:?}");
+    assert!(
+        tips[1].contains("= 15") && tips[1].contains("definition"),
+        "{tips:?}"
+    );
+    assert!(tips[2].contains('✗'), "{tips:?}");
+    let doc = h.state().doc().expect("doc");
+    let ev = doc.eval.as_deref().expect("evaluated");
+    assert_eq!(mpp_ide::workspace::status::definitions(ev), 2);
+    h.get_by_label("2 definitions");
+}
+
+#[test]
+fn hovering_a_name_says_where_it_was_defined_and_ctrl_click_goes_there() {
+    let text = "Some words.\n\n$$ x := 5 $$\n\n$$ E := 2x + 5 $$\n\nEnd";
+    let mut h = harness(app_with(text, text.len()));
+    h.run_steps(3);
+    until_current(&mut h);
+    // The `x` in `2x`.
+    let at_x = text.rfind("2x").expect("2x") + 1;
+    let rect = {
+        let doc = h.state().doc().expect("doc");
+        let pc = doc.page_cache().expect("page");
+        pc.page
+            .rect_of_span(mpp_syntax::Span::new(at_x, at_x + 1))
+            .expect("the x is on the page")
+    };
+    let at = rect.center() + origin(&h);
+    h.event(Event::PointerMoved(at));
+    h.run_steps(3);
+    h.get_by_label_contains("defined on line 3");
+    click(&mut h, at, Modifiers::COMMAND);
+    h.run_steps(2);
+    let doc = h.state().doc().expect("doc");
+    assert_eq!(doc.editor.caret(), text.find("x :=").expect("x :="));
 }

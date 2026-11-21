@@ -1,4 +1,4 @@
-//! A line ending in `=` asks for its answer (U16).
+//! A line ending in `=` asks for its answer (U16), and `==` is a check (U17).
 
 use mpp_syntax::math::{parse_math, QueryMode, Statement};
 
@@ -38,4 +38,11 @@ fn a_trailing_equals_is_a_question() {
     assert!(diags.is_empty(), "{diags:?}");
     assert!(matches!(ast.lines[0].statement, Statement::Query { .. }));
     assert!(matches!(ast.lines[1].statement, Statement::Relation(_)));
+}
+
+#[test]
+fn double_equals_is_a_check() {
+    let (s, errors) = statement("x == 5");
+    assert_eq!(errors, 0);
+    assert!(matches!(s, Statement::Check { .. }));
 }

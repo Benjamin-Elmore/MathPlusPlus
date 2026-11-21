@@ -78,7 +78,7 @@ def_head      = name [ "(" name { "," name } ")" ]         (* f(x, y) := … *)
               | name "_" integer ;                         (* initial term: a_1 := 1; plain variable v_0 if no recurrence for v *)
 query         = expr ( "=" | "≈" | "\approx" ) "?" [ "!" ]
               | expr "=" ;                                 (* an = that ends the line: the same as = ? *)
-check         = expr ( "\overset{?}{=}" | "≟" | "?=" ) expr ;
+check         = expr ( "\overset{?}{=}" | "≟" | "?=" | "==" ) expr ;
 relation_chain= expr { relation expr } ;
 name_list     = name { "," name } ;                        (* only inside Using … from *)
 clause        = name "=" expr                              (* where-binding *)
@@ -88,6 +88,7 @@ clause        = name "=" expr                              (* where-binding *)
 
 - `:=` makes a changeable variable or a function, `≡` makes a constant. A head with arguments defines a function; a bare name with an expression that mentions other names is a no-argument function that recomputes when they change.
 - `= ?` asks for the exact answer, `≈ ?` for a number, and `= ?!` for the answer with its working (steps). An `=` that ends a line asks too, without the `?` (`1.321321312 + 5 =`, `E := 2x + 5 =`); the editor shows the answer in the line's answer slot.
+- On a display maths line with no clauses, `x = 5` with a single name on the left defines `x` when `x` has no value yet and the right side has one (the way coders and calculators write it); when `x` is already a variable it is a check (✓ or ✗), like `x == 5` and `x \overset{?}{=} 5`. An equation with unknowns on the right (`y = x^2 + 1`), maths inside a sentence and documents with proofs keep the old reading: a statement.
 - A definition can ask for its value straight away: `T_0 := 2\pi\sqrt{L/g} \approx ?`. Several statements that ask can share a line, separated by a space such as `\qquad`: `a \approx ? \qquad b \approx ?`.
 - A differential equation written as a statement with its conditions (`\frac{dN}{dt} = -\lambda N, \quad N(0) = N_0`) defines its unknown function when the conditions determine it and the document goes on to call the function with an argument (`N(10\,000\,\mathrm{yr})`); a name met only inside differential equations stays the unknown of each.
 - Numbers: groups of three digits joined by a thin space are one number (`10\,000`); `5\%` is the number 5/100; `\mathbf 1[A]` is the indicator of the condition $A$ (1 where it holds, 0 elsewhere).

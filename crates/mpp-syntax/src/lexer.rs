@@ -340,6 +340,11 @@ impl<'a> Lexer<'a> {
                 Tok::Rel(RelOp::Ne)
             }
             '!' => Tok::Bang,
+            // `a == b`, as coders write it: a check, the same as `\overset{?}{=}`.
+            '=' if next == Some('=') => {
+                self.bump();
+                Tok::CheckEq
+            }
             '=' if next == Some('>') => {
                 self.bump();
                 Tok::Rel(RelOp::Implies)

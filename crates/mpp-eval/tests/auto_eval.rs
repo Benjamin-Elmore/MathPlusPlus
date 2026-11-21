@@ -350,3 +350,68 @@ fn a_definition_from_other_names_shows_its_value_but_a_plain_number_does_not() {
     let ev = run("$$ F := m a $$");
     assert!(ev.blocks[0].values.iter().all(|l| !l.shows_value));
 }
+
+/// Each line's kind, implicit flag and verdict, for the definitions/checks tests.
+fn kinds(src: &str) -> Vec<String> {
+    let ev = run(src);
+    ev.blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .map(|l| {
+            let kind = match &l.kind {
+                LineKind::Definition { name, .. } => format!("define {name}"),
+                LineKind::Check => format!(
+                    "check {}",
+                    l.verdict
+                        .as_ref()
+                        .and_then(mpp_eval::Verdict::passed)
+                        .map_or("?", |p| if p { "✓" } else { "✗" })
+                ),
+                other => format!("{other:?}"),
+            };
+            if l.implicit {
+                format!("{kind} (implicit)")
+            } else {
+                kind
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn x_equals_5_defines_a_new_name_and_checks_a_known_one() {
+    assert_eq!(
+        kinds("$$ x = 5 $$\n\n$$ x = 5 $$\n\n$$ x = 6 $$\n\n$$ x == 5 $$\n\n$$ x := 7 $$"),
+        [
+            "define x (implicit)",
+            "check ✓",
+            "check ✗",
+            "check ✓",
+            "define x",
+        ]
+    );
+    // A name worked out from defined ones is defined too, and used below.
+    let src = "$$ x := 5 $$\n\n$$ E = 2x + 5 $$\n\n$$ E + 1 = $$";
+    assert_eq!(
+        kinds(src),
+        [
+            "define x",
+            "define E (implicit)",
+            "Query { mode: Exact, steps: false }"
+        ]
+    );
+    let (_, answer) = query(src);
+    assert_eq!(answer, "= 16");
+    // Old meanings stay: an equation with unknowns on the right, a where-clause line,
+    // and an ODE unknown are not definitions.
+    assert_eq!(kinds(r"$$ y = x^2 + 1 $$"), ["Relation"]);
+    assert_eq!(kinds(r"$$ A = \pi r^2, \quad r = 3 $$"), ["Relation"]);
+    assert!(!kinds(r"$$ y' = 2y, \quad y(0) = 1 $$")
+        .iter()
+        .any(|k| k.contains("implicit")));
+    // Inline maths in a sentence never defines.
+    assert_eq!(kinds("The value $v = 3$ is given."), ["Relation"]);
+    // The names count as definitions (the status bar counts these).
+    let ev = run("$$ x := 5 $$\n\n$$ y = 2 $$");
+    assert_eq!(ev.user_names(), ["x", "y"]);
+}

@@ -107,6 +107,9 @@ pub struct LineResult {
     /// (`E := 2x + 5` → 15): the editor shows it in grey after the line. Never set for
     /// a plain number (`x := 5`).
     pub shows_value: bool,
+    /// `x = 5` on a maths line read as a definition, because `x` was not defined yet
+    /// (the editor marks it so the reading is visible).
+    pub implicit: bool,
 }
 
 impl LineResult {
@@ -134,6 +137,7 @@ impl LineResult {
             decimal_input: false,
             open: false,
             shows_value: false,
+            implicit: false,
         }
     }
 
