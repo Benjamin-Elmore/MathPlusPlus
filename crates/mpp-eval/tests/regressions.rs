@@ -696,3 +696,20 @@ $$ \hat\pi - \pi \approx ? $$";
     let v: f64 = approx(src).parse().unwrap_or(f64::NAN);
     assert!((v - (3.1 - std::f64::consts::PI)).abs() < 1e-9, "{v}");
 }
+
+/// `velocity := 3` used to be an error ("expected a name…") and `velocity · 2` the
+/// product of eight letters. Letters side by side on the left of `:=` define that
+/// name, and the same letters later mean it.
+#[test]
+fn a_spelled_out_name_can_be_defined_and_used() {
+    assert_eq!(
+        answer("$$ velocity := 3 $$\n\n$$ velocity \\cdot 2 = ? $$\n"),
+        "6"
+    );
+    assert_eq!(answer("$$ speed := 2 $$\n\n$$ 3 speed^2 = ? $$\n"), "12");
+    // Unknown letters still multiply.
+    assert_eq!(
+        answer("$$ x := 2 $$\n\n$$ y := 5 $$\n\n$$ xy = ? $$\n"),
+        "10"
+    );
+}

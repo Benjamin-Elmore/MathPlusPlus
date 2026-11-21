@@ -35,30 +35,30 @@
   \operatorname{grad}_{(x,y)=(1,2)} f = \left(4, 13\right)
 \end{equation*}
 \begin{equation*}
-  \operatorname{dirderiv}_{(x,y)=(1,2)}(f, (3, 4)) = \frac{64}{5}
+  \operatorname{Directional\ derivative}_{(x,y)=(1,2)}(f, (3, 4)) = \frac{64}{5}
 \end{equation*}
 \section*{Tangent planes and linear approximation}
 
 \begin{equation*}
-  \operatorname{tangent}_{(x,y)=(1,2)} (x^2 + y^2) = z = 2 x + 4 y - 5
+  \operatorname{Tangent\ line}_{(x,y)=(1,2)} (x^2 + y^2) = z = 2 x + 4 y - 5
 \end{equation*}
 \begin{equation*}
-  \operatorname{tangentplane}_{(x,y,z)=(1,2,3)} (x^2 + y^2 + z^2 = 14) = 2 x + 4 y + 6 z - 28 = 0
+  \operatorname{Tangent\ plane}_{(x,y,z)=(1,2,3)} (x^2 + y^2 + z^2 = 14) = 2 x + 4 y + 6 z - 28 = 0
 \end{equation*}
 \begin{equation*}
-  \operatorname{linearisation}_{(x,y)=(3,4)} \sqrt{x^2 + y^2} = L\left(x, y\right) = \frac{3 x}{5} + \frac{4 y}{5}
+  \operatorname{Linearisation}_{(x,y)=(3,4)} \sqrt{x^2 + y^2} = L\left(x, y\right) = \frac{3 x}{5} + \frac{4 y}{5}
 \end{equation*}
 \section*{Extrema}
 
 The second-derivative test classifies each critical point:
 
 \begin{align*}
-  \operatorname{classify} (x^3 + y^3 - 3xy) = \begin{array}{ll} \text{saddle point at (0, 0)} & 0 \\ \text{local minimum at (1, 1)} & -1 \end{array}
+  \operatorname{Second-derivative\ test} (x^3 + y^3 - 3xy) = \begin{array}{ll} \text{saddle point at (0, 0)} & 0 \\ \text{local minimum at (1, 1)} & -1 \end{array}
 \end{align*}
 Lagrange multipliers on the circle $x^2 + y^2 = 1$:
 
 \begin{align*}
-  \operatorname{lagrange}(x y, x^2 + y^2 = 1) = \begin{array}{ll} \text{f(-sqrt(2)/2, sqrt(2)/2)} & -\frac{1}{2} \\ \text{f(sqrt(2)/2, -sqrt(2)/2)} & -\frac{1}{2} \\ \text{f(-sqrt(2)/2, -sqrt(2)/2)} & \frac{1}{2} \\ \text{f(sqrt(2)/2, sqrt(2)/2)} & \frac{1}{2} \\ \text{largest value} & \frac{1}{2} \\ \text{smallest value} & -\frac{1}{2} \end{array}
+  \operatorname{Lagrange\ multipliers}(x y, x^2 + y^2 = 1) = \begin{array}{ll} \text{f(-sqrt(2)/2, sqrt(2)/2)} & -\frac{1}{2} \\ \text{f(sqrt(2)/2, -sqrt(2)/2)} & -\frac{1}{2} \\ \text{f(-sqrt(2)/2, -sqrt(2)/2)} & \frac{1}{2} \\ \text{f(sqrt(2)/2, sqrt(2)/2)} & \frac{1}{2} \\ \text{largest value} & \frac{1}{2} \\ \text{smallest value} & -\frac{1}{2} \end{array}
 \end{align*}
 \section*{Integrals in other coordinates}
 
@@ -74,7 +74,7 @@ The Jacobian ($r$, $r$ and $\rho^2 \sin\phi$) is put in for you.
   \operatorname{spherical}(1, \theta \in [0, 2\pi], \phi \in [0, \pi], \rho \in [0, 1]) = \frac{4 \pi}{3}
 \end{equation*}
 \begin{equation*}
-  \operatorname{changevars}(x + y, (x, y) = (u + v, u - v), u \in [0, 1], v \in [0, 1]) = 2
+  \operatorname{Change\ of\ variables}(x + y, (x, y) = (u + v, u - v), u \in [0, 1], v \in [0, 1]) = 2
 \end{equation*}
 \section*{Vector fields}
 
@@ -88,26 +88,26 @@ The Jacobian ($r$, $r$ and $\rho^2 \sin\phi$) is put in for you.
   \nabla^2 (x^2 + y^2 + z^2) = 6
 \end{equation*}
 \begin{equation*}
-  \operatorname{lineintegral}((-y, x), (\cos t, \sin t), t \in [0, 2\pi]) = 2 \pi
+  \operatorname{Line\ integral}((-y, x), (\cos t, \sin t), t \in [0, 2\pi]) = 2 \pi
 \end{equation*}
 \begin{equation*}
-  \operatorname{flux}((x, y, z), (\sin u \cos v, \sin u \sin v, \cos u), u \in [0, \pi], v \in [0, 2\pi]) = 4 \pi
+  \operatorname{Flux}((x, y, z), (\sin u \cos v, \sin u \sin v, \cos u), u \in [0, \pi], v \in [0, 2\pi]) = 4 \pi
 \end{equation*}
 \section*{The integral theorems, both sides worked out}
 
 \begin{align*}
-  \operatorname{green}((-y, x), x \in [0, 1], y \in [0, 1]) = \begin{array}{ll} \text{\oint  P dx + Q dy} & 2 \\ \text{\iint  (\partial Q/\partial x ? \partial P/\partial y) dA} & 2 \\ \text{the two sides agree} & \text{yes} \end{array}
+  \operatorname{Green's\ theorem}((-y, x), x \in [0, 1], y \in [0, 1]) = \begin{array}{ll} \text{\oint  P dx + Q dy} & 2 \\ \text{\iint  (\partial Q/\partial x ? \partial P/\partial y) dA} & 2 \\ \text{the two sides agree} & \text{yes} \end{array}
 \end{align*}
 \begin{align*}
-  \operatorname{stokes}((-y, x, 0), (\sin u \cos v, \sin u \sin v, \cos u), u \in [0, \pi/2], v \in [0, 2\pi]) = \begin{array}{ll} \text{\oint  F \cdot  dr} & 2 \pi \\ \text{\iint  (\nabla  \times  F) \cdot  dS} & 2 \pi \\ \text{the two sides agree} & \text{yes} \end{array}
+  \operatorname{Stokes'\ theorem}((-y, x, 0), (\sin u \cos v, \sin u \sin v, \cos u), u \in [0, \pi/2], v \in [0, 2\pi]) = \begin{array}{ll} \text{\oint  F \cdot  dr} & 2 \pi \\ \text{\iint  (\nabla  \times  F) \cdot  dS} & 2 \pi \\ \text{the two sides agree} & \text{yes} \end{array}
 \end{align*}
 \begin{align*}
-  \operatorname{divthm}((x, y, z), \rho \in [0, 1], \phi \in [0, \pi], \theta \in [0, 2\pi]) = \begin{array}{ll} \text{\oiint  F \cdot  dS} & 4 \pi \\ \text{\iiint  \nabla  \cdot  F dV} & 4 \pi \\ \text{the two sides agree} & \text{yes} \end{array}
+  \operatorname{Divergence\ theorem}((x, y, z), \rho \in [0, 1], \phi \in [0, \pi], \theta \in [0, 2\pi]) = \begin{array}{ll} \text{\oiint  F \cdot  dS} & 4 \pi \\ \text{\iiint  \nabla  \cdot  F dV} & 4 \pi \\ \text{the two sides agree} & \text{yes} \end{array}
 \end{align*}
 \section*{Implicit differentiation and related rates}
 
 \begin{equation*}
-  \operatorname{implicit}_x (x^2 + y^2 = 25) = \frac{d}{d x}\left(y\right) = -\frac{x}{y}
+  \operatorname{Implicit\ differentiation}_x (x^2 + y^2 = 25) = \frac{d}{d x}\left(y\right) = -\frac{x}{y}
 \end{equation*}
 A ladder of length 5: the foot slides away at 2 m/s when it is 3 m from the wall.
 
@@ -117,14 +117,14 @@ A ladder of length 5: the foot slides away at 2 m/s when it is 3 m from the wall
 \section*{Laplace transforms}
 
 \begin{equation*}
-  \operatorname{laplace} t^2 e^{3t} = \frac{2}{\left(s - 3\right)^{3}}
+  \mathcal{L} t^2 e^{3t} = \frac{2}{\left(s - 3\right)^{3}}
 \end{equation*}
 \begin{equation*}
-  \operatorname{invlaplace} \frac{s + 1}{s^2 + 2s + 5} = e^{-t} \cos\left(2 t\right)
+  \mathcal{L}^{-1} \frac{s + 1}{s^2 + 2s + 5} = e^{-t} \cos\left(2 t\right)
 \end{equation*}
 Solve $y'' - 3y' + 2y = 0$ with $y(0) = 0$ and $y'(0) = 1$ (coefficients from $y$ up):
 
 \begin{equation*}
-  \operatorname{lsolve}((2, -3, 1), 0, (0, 1)) = y\left(t\right) = -e^{t} + e^{2 t}
+  \operatorname{Solve\ by\ Laplace\ transform}((2, -3, 1), 0, (0, 1)) = y\left(t\right) = -e^{t} + e^{2 t}
 \end{equation*}
 \end{document}

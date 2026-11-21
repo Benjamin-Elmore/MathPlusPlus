@@ -164,3 +164,78 @@ $$ R(2) = ? $$
         "{listed:?}"
     );
 }
+
+/// The Insert menu's title block before it is filled in: no `Title:`, `Author:` or
+/// `Date:` keyword is drawn, only grey labels, and a filled title hides the others.
+#[test]
+fn an_empty_title_block_shows_no_keywords() {
+    let path = root().join("examples/title-fixture.mpp");
+    for src in [
+        "Title: \nAuthor: \nDate: \n",
+        "Title: Waves\nAuthor: \nDate: \n",
+    ] {
+        let (doc, ev) = evaluate(src, &path);
+        let text = page_text(src, &doc, &ev);
+        assert!(!text.contains(':'), "{src:?} shows {text:?}");
+    }
+}
+
+/// Transforms and helpers are typeset in textbook notation, never by operator name.
+#[test]
+fn helpers_and_transforms_show_no_operator_names() {
+    let path = root().join("examples/helpers-fixture.mpp");
+    let src = r"$$ \mathcal{L}_{t \to s}\left\{ t^2 \right\} = ? $$
+
+$$ \mathcal{F}^{-1}_{\omega \to x}\left\{ \frac{1}{1 + \omega^2} \right\} $$
+
+$$ \operatorname{taylorbound}(e^x, 0, 3, 1) $$
+
+$$ \operatorname{rk4}(x + y, 0, 1, 0.1, 5) $$
+
+$$ \operatorname{mvt}_{[0, 2]} x^2 = ? $$
+
+$$ \operatorname{series}_{x=0}^{5} \sin x = ? $$
+";
+    let (doc, ev) = evaluate(src, &path);
+    let text = page_text(src, &doc, &ev);
+    for name in ["laplace", "fourier", "taylorbound", "rk4", "mvt"] {
+        assert!(!text.contains(name), "{name} in {text}");
+    }
+    assert!(text.contains('ℒ') && text.contains('ℱ'), "{text}");
+    assert!(text.contains("Taylorseriesof"), "{text}");
+}
+
+/// A helper whose answer is a table points at it with a plain arrow: no empty box is
+/// drawn on a finished page.
+#[test]
+fn a_table_answer_draws_no_empty_boxes() {
+    let path = root().join("examples/curve-sketching.mpp");
+    let src = r"$$ f(x) := x^3 - 3x $$
+
+$$ \operatorname{extrema}_{[-2, 2]} f = ? $$
+";
+    let (doc, ev) = evaluate(src, &path);
+    let page = build_page(&PageInput {
+        show: &mpp_ide::page::ShowState::default(),
+        src,
+        doc: &doc,
+        eval: Some(&ev),
+        theme: Theme::LIGHT,
+        size: 18.0,
+        width: 900.0,
+        integral_limits: IntegralLimits::AboveBelow,
+        slot_labels: &[],
+        extra_refs: &mpp_ide::page::ExtraRefs::default(),
+        proof: &mpp_ide::proof::ProofView::default(),
+    });
+    let text = page_text(src, &doc, &ev);
+    assert!(text.contains('↓'), "{text}");
+    for b in &page.blocks {
+        let outlines =
+            b.dl.items
+                .iter()
+                .filter(|p| matches!(p, mpp_render::Primitive::Outline { .. }))
+                .count();
+        assert_eq!(outlines, 0, "{}", b.dl.text());
+    }
+}

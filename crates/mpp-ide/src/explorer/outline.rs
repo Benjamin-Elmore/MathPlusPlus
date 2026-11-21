@@ -74,7 +74,10 @@ fn push_inlines(inlines: &[Inline], src: &str, out: &mut String) {
                 }
             }
             InlineKind::WikiLink { path, alias } => {
-                text_piece(out, alias.as_deref().unwrap_or(path));
+                let label = alias
+                    .clone()
+                    .unwrap_or_else(|| crate::page::display_name(path));
+                text_piece(out, &label);
             }
             InlineKind::Link { text, .. } => push_inlines(text, src, out),
             InlineKind::Escape(c) => text_piece(out, &c.to_string()),

@@ -67,7 +67,7 @@ impl Paper {
             .blocks
             .iter()
             .filter_map(|b| match &b.kind {
-                BlockKind::Title(t) => Some(t.clone()),
+                BlockKind::Title(t) if !t.is_empty() => Some(t.clone()),
                 _ => None,
             })
             .collect();

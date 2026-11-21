@@ -348,3 +348,44 @@ fn explorer_tabs_and_breadcrumbs_screenshot() {
     save_png(&mut h, "ide-a-explorer-tabs.png");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// After F12 jumps to a definition in another file, Alt+← from the keyboard comes
+/// back and Alt+→ goes there again.
+#[test]
+fn alt_arrows_come_back_from_a_definition() {
+    let d = std::env::temp_dir().join(format!("mpp-wsui-f12nav-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&d);
+    std::fs::create_dir_all(&d).expect("mkdir");
+    std::fs::write(d.join("lib.mpp"), "# Library\n\n$$ g := 9.81 $$\n").expect("w");
+    std::fs::write(
+        d.join("main.mpp"),
+        "Using $g$ from [[lib.mpp]].\n\n$$ g + 1 = ? $$\n",
+    )
+    .expect("w");
+    let mut app = app_in(&d);
+    app.open_file(&d.join("main.mpp"), false).expect("main");
+    let mut h = harness(app);
+    run(&mut h);
+    for i in 0..h.state().docs.len() {
+        h.state_mut().docs[i].settle();
+    }
+    run(&mut h);
+    let off = h
+        .state()
+        .doc()
+        .and_then(|d| d.editor.text().rfind("g + 1"))
+        .expect("g");
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .move_caret(off, false);
+    run(&mut h);
+    press(&mut h, Modifiers::NONE, Key::F12);
+    assert_eq!(active_title(&h), "lib");
+    press(&mut h, Modifiers::ALT, Key::ArrowLeft);
+    assert_eq!(active_title(&h), "main");
+    press(&mut h, Modifiers::ALT, Key::ArrowRight);
+    assert_eq!(active_title(&h), "lib");
+    let _ = std::fs::remove_dir_all(&d);
+}

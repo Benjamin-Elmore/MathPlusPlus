@@ -313,6 +313,9 @@ impl<'a> Lowerer<'a> {
                 if let Some(e) = self.ellipsis_chain(node)? {
                     return Ok(e);
                 }
+                if let Some(e) = self.spelled_names(node)? {
+                    return Ok(e);
+                }
                 let a = self.lower(lhs)?;
                 let b = self.lower(rhs)?;
                 if let Some(m) = matrix_op(*op)
@@ -1322,6 +1325,47 @@ impl<'a> Lowerer<'a> {
             point,
             dir,
         }))
+    }
+
+    /// An implicit product in which adjacent letters spell a name the document
+    /// defines (`velocity · 2` after `velocity := 3`): that name, not `v·e·l·o·c·i·t·y`.
+    /// `None` when no run of letters is a defined name.
+    fn spelled_names(&mut self, node: &Node) -> Result<Option<Expr>, Located> {
+        use mpp_syntax::math::letters::{implicit_factors, letter_runs};
+        if !matches!(
+            node.kind,
+            NodeKind::Binary {
+                op: BinOp::Mul(MulStyle::Implicit),
+                ..
+            }
+        ) {
+            return Ok(None);
+        }
+        let factors = implicit_factors(node);
+        let runs: Vec<_> = letter_runs(&factors)
+            .into_iter()
+            .filter(|r| self.is_local(&r.word) || self.scope.binding(&r.word).is_some())
+            .collect();
+        if runs.is_empty() {
+            return Ok(None);
+        }
+        let mut terms = vec![];
+        let mut i = 0;
+        while i < factors.len() {
+            if let Some(r) = runs.iter().find(|r| r.start == i) {
+                let name = self.name(&Name::simple(r.word.clone()), r.span)?;
+                let term = match &factors[r.end - 1].kind {
+                    NodeKind::Pow { exp, .. } if r.powered => name.pow(self.lower(exp)?),
+                    _ => name,
+                };
+                terms.push(term);
+                i = r.end;
+            } else {
+                terms.push(self.lower(factors[i])?);
+                i += 1;
+            }
+        }
+        Ok(terms.into_iter().reduce(|a, b| a * b))
     }
 
     /// `df` for a user function `f(x, y)`: the total differential `f_x dx + f_y dy`, with

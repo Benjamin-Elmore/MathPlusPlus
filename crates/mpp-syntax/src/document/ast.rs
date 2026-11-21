@@ -500,6 +500,18 @@ pub struct TitleField {
     pub content: Vec<Inline>,
 }
 
+impl TitleField {
+    /// True when nothing is written after the keyword yet (`Author:` alone): the
+    /// paper and the exports leave such a field out.
+    pub fn is_empty(&self) -> bool {
+        self.content.iter().all(|i| match &i.kind {
+            InlineKind::Text(s) => s.trim().is_empty(),
+            InlineKind::SoftBreak => true,
+            _ => false,
+        })
+    }
+}
+
 /// One entry of a `References` block: `[@key] Author | Title | Year | link`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reference {

@@ -156,9 +156,14 @@ pub fn from_message(msg: &str) -> Rich {
     let mut out = Rich::default();
     let mut rest = msg.as_str();
     while let Some(open) = rest.find('`') {
-        out = out.t(&rest[..open]);
+        out = prose(out, &rest[..open]);
         let after = &rest[open + 1..];
         match after.find('`') {
+            // A fragment that is itself a sentence with maths (`Assume $x > 0$.`).
+            Some(close) if after[..close].matches('$').count() >= 2 => {
+                out = prose(out, &after[..close]);
+                rest = &after[close + 1..];
+            }
             Some(close) => {
                 let code = &after[..close];
                 match fragment(code) {
@@ -168,13 +173,144 @@ pub fn from_message(msg: &str) -> Rich {
                 rest = &after[close + 1..];
             }
             None => {
-                out = out.t(after);
+                out = prose(out, after);
                 rest = "";
             }
         }
     }
-    out = out.t(rest);
+    out = prose(out, rest);
     sentence(out)
+}
+
+/// Words with inline maths between dollar signs (`Assume $n \neq -1$.`), the way
+/// the checker and the assumption rules write their messages.
+fn prose(mut out: Rich, text: &str) -> Rich {
+    let mut rest = text;
+    while let Some(open) = rest.find('$') {
+        let after = rest[open..].trim_start_matches('$');
+        let Some(close) = after.find('$') else {
+            break;
+        };
+        out = words(out, &rest[..open]);
+        let maths = after[..close].trim();
+        if !maths.is_empty() && maths != "…" {
+            out.0.push(Seg::Math(maths.to_string()));
+        }
+        rest = after[close..].trim_start_matches('$');
+    }
+    words(out, rest)
+}
+
+/// Plain words, where a word written in text maths (`x^2`, `e^(−iωx)`, `V_C`,
+/// `F{f}`) becomes typeset maths.
+fn words(mut out: Rich, text: &str) -> Rich {
+    for (i, word) in text.split(' ').enumerate() {
+        if i > 0 {
+            out = out.t(" ");
+        }
+        let (lead, core, trail) = trim_word(word);
+        if core.contains(['^', '_', '{', '}', '\\']) {
+            out = out.t(lead);
+            // A word with a command in it is LaTeX already.
+            let latex = if core.contains('\\') {
+                core.to_string()
+            } else {
+                text_maths_latex(core)
+            };
+            out.0.push(Seg::Math(latex));
+            out = out.t(trail);
+        } else {
+            out = out.t(word);
+        }
+    }
+    out
+}
+
+/// Splits sentence punctuation (and brackets that do not belong to the maths) off a
+/// word: `(|aₖ|^(1/k)` → `(`, `|aₖ|^(1/k)`, ``.
+fn trim_word(word: &str) -> (&str, &str, &str) {
+    let mut core = word;
+    let mut lead = 0;
+    let mut trail = 0;
+    loop {
+        let opens = core.matches('(').count();
+        let closes = core.matches(')').count();
+        if let Some(rest) = core.strip_suffix([',', '.', ';', ':', '?', '!']) {
+            core = rest;
+            trail += 1;
+        } else if closes > opens && core.ends_with(')') {
+            core = &core[..core.len() - 1];
+            trail += 1;
+        } else if opens > closes && core.starts_with('(') {
+            core = &core[1..];
+            lead += 1;
+        } else {
+            break;
+        }
+    }
+    (&word[..lead], core, &word[word.len() - trail..])
+}
+
+/// Text maths as LaTeX: `^(…)` and `_(…)` group their contents, a run of letters or
+/// digits after `^` or `_` is the script, braces are literal braces.
+pub(crate) fn text_maths_latex(s: &str) -> String {
+    let cs: Vec<char> = s.chars().collect();
+    let mut o = String::new();
+    let mut i = 0;
+    while i < cs.len() {
+        let c = cs[i];
+        match c {
+            '^' | '_' => {
+                o.push(c);
+                i += 1;
+                if cs.get(i) == Some(&'(') {
+                    let mut depth = 0;
+                    let mut j = i;
+                    while j < cs.len() {
+                        match cs[j] {
+                            '(' => depth += 1,
+                            ')' => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                        j += 1;
+                    }
+                    let inner: String = cs[i + 1..j.min(cs.len())].iter().collect();
+                    o.push('{');
+                    o.push_str(&text_maths_latex(&inner));
+                    o.push('}');
+                    i = (j + 1).min(cs.len());
+                } else {
+                    let mut j = i;
+                    while j < cs.len() && (cs[j].is_alphanumeric() || cs[j] == '−' && j == i) {
+                        j += 1;
+                    }
+                    let run: String = cs[i..j].iter().collect();
+                    o.push('{');
+                    o.push_str(&run);
+                    o.push('}');
+                    i = j;
+                }
+            }
+            '{' => {
+                o.push_str(r"\{");
+                i += 1;
+            }
+            '}' => {
+                o.push_str(r"\}");
+                i += 1;
+            }
+            c => {
+                o.push(c);
+                i += 1;
+            }
+        }
+    }
+    o
 }
 
 /// Starts with a capital letter and ends with a full stop.

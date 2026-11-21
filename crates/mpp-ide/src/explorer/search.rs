@@ -110,6 +110,16 @@ pub fn block_latex(b: &Block, src: &str) -> String {
             inlines_latex(content, src)
         }
         BlockKind::Let(l) => inlines_latex(&l.content, src),
+        // Sentences the page reads as words and maths ("Using $g$ from [[lib]].").
+        BlockKind::Using(_)
+        | BlockKind::Helper(_)
+        | BlockKind::Analyse(_)
+        | BlockKind::Solve(_)
+        | BlockKind::Assume(_)
+        | BlockKind::Data(_)
+        | BlockKind::EmbedImport { .. } => {
+            inlines_latex(&crate::page::scan_inlines(src, b.span), src)
+        }
         BlockKind::DisplayMath(m) => src
             .get(m.raw.start..m.raw.end)
             .map(|s| s.trim().replace('\n', " "))
@@ -143,6 +153,31 @@ fn math_sources<'a>(b: &Block, src: &'a str) -> Vec<&'a str> {
         _ => {}
     }
     out
+}
+
+/// A result's file as the reader sees it: folders and the file name without its
+/// extension, joined by `›` on every system ("physics › waves").
+pub fn file_label(rel: &Path) -> String {
+    let parts: Vec<String> = rel
+        .components()
+        .filter_map(|c| match c {
+            std::path::Component::Normal(s) => Some(s.to_string_lossy().into_owned()),
+            _ => None,
+        })
+        .collect();
+    let n = parts.len();
+    parts
+        .into_iter()
+        .enumerate()
+        .map(|(i, p)| {
+            if i + 1 == n {
+                p.strip_suffix(".mpp").map(str::to_string).unwrap_or(p)
+            } else {
+                p
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" › ")
 }
 
 /// Searches every file for `query` (words or a symbol).
@@ -260,6 +295,25 @@ mod tests {
         assert!(by_char[0].latex.contains("int"));
         assert_eq!(search_files(&paths, &read, "\\int").len(), 1);
         assert!(search_files(&paths, &read, "").is_empty());
+    }
+
+    #[test]
+    fn sentence_hits_are_typeset_words_and_maths() {
+        let (files, read) = fake(&[(
+            "main.mpp",
+            "Using $g$ from [[physics/mechanics.mpp]].\n\n$$ g + 1 = ? $$\n",
+        )]);
+        let hits = search_files(&files, &read, "g");
+        let using = &hits[0].latex;
+        assert!(!using.contains("[[") && !using.contains(".mpp"), "{using}");
+        assert!(
+            using.contains("mechanics") && using.contains(" g "),
+            "{using}"
+        );
+        assert_eq!(
+            file_label(Path::new("physics").join("waves.mpp").as_path()),
+            "physics › waves"
+        );
     }
 
     #[test]

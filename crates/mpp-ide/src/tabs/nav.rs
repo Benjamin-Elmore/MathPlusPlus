@@ -26,7 +26,10 @@ impl NavHistory {
                 return;
             }
             // The same file with the caret nearby replaces the entry.
-            if cur.path == place.path && cur.offset.abs_diff(place.offset) < 3 {
+            // So does a file just opened (caret still at the start) when the jump
+            // then places the caret: F12 into another file is one step back, not two.
+            if cur.path == place.path && (cur.offset.abs_diff(place.offset) < 3 || cur.offset == 0)
+            {
                 self.places[self.at] = place;
                 return;
             }

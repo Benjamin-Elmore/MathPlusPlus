@@ -338,7 +338,9 @@ impl Composer<'_> {
 
     fn run(&mut self) {
         let blocks = self.ev.document.blocks.clone();
-        let has_title = blocks.iter().any(|b| matches!(b.kind, BlockKind::Title(_)));
+        let has_title = blocks
+            .iter()
+            .any(|b| matches!(&b.kind, BlockKind::Title(t) if !t.is_empty()));
         let mut skip_h1 = self.base_level >= 2 && !has_title;
         for b in &blocks {
             if skip_h1 {
@@ -834,7 +836,7 @@ impl Composer<'_> {
             .blocks
             .iter()
             .filter_map(|b| match &b.kind {
-                BlockKind::Title(t) => Some(t.clone()),
+                BlockKind::Title(t) if !t.is_empty() => Some(t.clone()),
                 _ => None,
             })
             .collect();

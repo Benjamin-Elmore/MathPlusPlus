@@ -445,6 +445,10 @@ impl Parser<'_> {
                 return DefHead::Invalid(node);
             }
         }
+        // `velocity := 3`: letters side by side on the left of `:=` name one thing.
+        if let Some(word) = crate::math::letters::spelled_word(&inner) {
+            return DefHead::Name(Node::new(NodeKind::Name(Name::simple(word)), inner.span));
+        }
         let Some(name) = inner.as_name() else {
             self.error(
                 node.span,

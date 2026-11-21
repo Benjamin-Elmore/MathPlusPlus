@@ -18,7 +18,7 @@ use mpp_syntax::Span;
 
 pub(crate) use build::result_line_at;
 pub use build::{build_page, column_width, note_words, scan_inlines, slider_row_height, PageInput};
-pub use flow::{glyph_for, text_width};
+pub use flow::{display_name, glyph_for, text_width};
 pub use paper::{ExtraRefs, PaperInfo};
 
 /// What kind of thing a block is, for the view.

@@ -192,6 +192,23 @@ pub fn quick_fixes(p: &Problem, src: &str, doc: &Document) -> Vec<QuickFix> {
                 });
             }
         }
+        Kind::LetterRun { word } => {
+            let letters: Vec<String> = word.chars().map(String::from).collect();
+            out.push(QuickFix {
+                title: Rich::text("Use the name ").m(format!(r"\mathrm{{{word}}}")),
+                action: FixAction::Replace {
+                    span: p.span,
+                    with: format!(r"\mathrm{{{word}}}"),
+                },
+            });
+            out.push(QuickFix {
+                title: Rich::text("It's the product ").m(letters.join(r" \cdot ")),
+                action: FixAction::Replace {
+                    span: p.span,
+                    with: letters.join(" "),
+                },
+            });
+        }
         Kind::EmptyBox { .. } => out.push(QuickFix {
             title: Rich::text("Go to the empty box"),
             action: FixAction::MoveCaret(p.span.start),

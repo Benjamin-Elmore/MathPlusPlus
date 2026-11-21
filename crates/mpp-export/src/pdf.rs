@@ -137,7 +137,7 @@ pub(crate) fn export(
         .find_map(|b| match &b.kind {
             mpp_syntax::document::BlockKind::Heading { content, .. } => Some(plain(content)),
             mpp_syntax::document::BlockKind::Title(t)
-                if t.kind == mpp_syntax::document::TitleKind::Title =>
+                if t.kind == mpp_syntax::document::TitleKind::Title && !t.is_empty() =>
             {
                 Some(plain(&t.content))
             }
