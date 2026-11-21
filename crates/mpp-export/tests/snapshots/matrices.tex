@@ -1,0 +1,57 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\section*{Matrices}
+
+Write a matrix with \texttt{pmatrix}, then work with it.
+
+\begin{align*}
+  A \coloneqq  \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}
+\end{align*}
+\begin{align*}
+  B \coloneqq  \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix}
+\end{align*}
+The product keeps the order you write it in:
+
+\begin{align*}
+  A B = \begin{pmatrix} 2 & 1 \\ 4 & 3 \end{pmatrix}
+\end{align*}
+\begin{align*}
+  B A = \begin{pmatrix} 3 & 4 \\ 1 & 2 \end{pmatrix}
+\end{align*}
+\begin{align*}
+  A^{-1} = \begin{pmatrix} -2 & 1 \\ \frac{3}{2} & -\frac{1}{2} \end{pmatrix}
+\end{align*}
+\begin{align*}
+  A^T = \begin{pmatrix} 1 & 3 \\ 2 & 4 \end{pmatrix}
+\end{align*}
+\begin{equation*}
+  \det A = -2
+\end{equation*}
+\begin{equation*}
+  \operatorname{rank} A = 2
+\end{equation*}
+A matrix times a vector:
+
+\begin{equation*}
+  A \begin{pmatrix} 1 \\ 1 \end{pmatrix} = \begin{pmatrix} 3 \\ 7 \end{pmatrix}
+\end{equation*}
+\end{document}

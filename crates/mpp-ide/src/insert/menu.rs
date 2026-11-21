@@ -537,7 +537,9 @@ mod tests {
                 "Symbols",
                 "Helpers",
                 "Graphs",
-                "Units"
+                "Units",
+                "Text",
+                "Document"
             ]
         );
         let r = sections("matrix", &[]);

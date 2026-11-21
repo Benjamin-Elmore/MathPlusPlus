@@ -1,0 +1,80 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Piecewise functions, intervals and sets}
+\date{}
+\begin{document}
+\maketitle
+A function made of two pieces that meet smoothly at $x = 1$:
+
+\begin{align*}
+  f(x) \coloneqq  \begin{cases} x^2 & x < 1 \\ 2x - 1 & x \ge 1 \end{cases}
+\end{align*}
+\begin{equation*}
+  f(3) = 5
+\end{equation*}
+The derivative works piece by piece, and the working notes what happens where the pieces meet:
+
+\begin{align*}
+  \frac{d}{dx} f(x) = \begin{cases} 2 x & x < 1 \\ 2 & x \ge 1 \end{cases}
+\end{align*}
+\begin{equation*}
+  \int_0^2 f(x) \, dx = \frac{7}{3}
+\end{equation*}
+\begin{align*}
+  \int f(x) \, dx = \begin{cases} \frac{x^{3}}{3} & x < 1 \\ x^{2} - x + \frac{1}{3} & x \ge 1 \end{cases} + C
+\end{align*}
+A step has a jump, so it is not differentiable there:
+
+\begin{align*}
+  h(x) \coloneqq  \begin{cases} 1 & x < 2 \\ 3 & x \ge 2 \end{cases}
+\end{align*}
+\begin{equation*}
+  \int_0^4 h(x) \, dx = 8
+\end{equation*}
+\section*{Intervals and sets}
+
+\begin{equation*}
+  [0, 1) \cup (2, 3] = \left[0, 1\right) \cup \left(2, 3\right]
+\end{equation*}
+\begin{equation*}
+  [0, 3] \cap (1, 5) = \left(1, 3\right]
+\end{equation*}
+\begin{equation*}
+  \mathbb{R} \setminus [0, 1] = \left(-\infty, 0\right) \cup \left(1, \infty\right)
+\end{equation*}
+\begin{equation*}
+  2 \in [0, 1) \cup (1, 3] = \text{true}
+\end{equation*}
+\begin{equation*}
+  \{x \in \mathbb{R} : x^2 < 4\} = \left(-2, 2\right)
+\end{equation*}
+\begin{equation*}
+  \{n \in \mathbb{Z} : n^2 < 10\} = \left\{-3, -2, -1, 0, 1, 2, 3\right\}
+\end{equation*}
+\section*{Inequalities}
+
+Solve $x^2 - 4 < 0$ for $x$.
+
+Solve $\frac{x - 1}{x + 2} \le 0$ for $x$.
+
+Solve $x^2 \ge 4$ for $x$.
+
+\end{document}

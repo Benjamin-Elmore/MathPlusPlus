@@ -4,7 +4,10 @@ use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use mpp_syntax::document::{block_at, parse_document, Block, BlockId, BlockKind, Document};
+use mpp_syntax::document::{
+    block_at, citation_diagnostics, parse_document, parse_reference_entries, Block, BlockId,
+    BlockKind, Document,
+};
 use mpp_syntax::math::{DefHead, MathAst, Statement};
 use mpp_syntax::Diagnostic;
 
@@ -266,7 +269,8 @@ impl Session {
     }
 
     fn update_with(&mut self, src: &str, own_stack: bool) -> &Evaluated {
-        let doc = parse_document(src);
+        let mut doc = parse_document(src);
+        check_references_file(&mut doc, self.importer.as_ref(), self.base_dir.as_deref());
         let lines = LineIndex::new(src);
         let sequences = sequence_names(&doc);
         if sequences != self.sequences {
@@ -411,6 +415,39 @@ fn shift_outcome(outcome: &mut Outcome, delta: isize) {
             *binding = Arc::new(b);
         }
     }
+}
+
+/// Reads the file of a `References from [[file]]` block and checks every `[@key]`
+/// against its entries (the parser cannot, since it never reads files). A file that
+/// cannot be read is an error on the block.
+fn check_references_file(doc: &mut Document, importer: &dyn Importer, base: Option<&Path>) {
+    if !doc.has_references_file() {
+        return;
+    }
+    let mut files = Vec::new();
+    doc.walk(&mut |b| {
+        if let BlockKind::References(r) = &b.kind {
+            if let Some((path, span)) = &r.from {
+                files.push((path.clone(), *span));
+            }
+        }
+    });
+    let mut entries = Vec::new();
+    let mut extra = Vec::new();
+    for (path, span) in files {
+        match importer.read_data(base, &path) {
+            Ok((_, text)) => entries.extend(parse_reference_entries(&text)),
+            Err(why) => extra.push(Diagnostic::error(
+                span,
+                format!("the references in {path} could not be read: {why}"),
+            )),
+        }
+    }
+    if extra.is_empty() {
+        extra.extend(citation_diagnostics(doc, &entries));
+    }
+    doc.diagnostics.extend(extra);
+    doc.diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
 }
 
 /// Puts each parser diagnostic in the innermost block it falls in; returns the rest.

@@ -54,6 +54,10 @@ pub struct IdeApp {
     pub diag: crate::diagnostics::ui::DiagUi,
     /// The Problems tile's state (Ctrl+Shift+M).
     pub problems: crate::problems::ProblemsView,
+    /// View → Comments: notes shown in the equation view (remembered per user).
+    pub show_comments: bool,
+    /// File → Export…
+    pub export: crate::export::ExportDialog,
 }
 
 impl Default for IdeApp {
@@ -84,6 +88,8 @@ impl IdeApp {
             insert: InsertUi::default(),
             diag: Default::default(),
             problems: Default::default(),
+            show_comments: true,
+            export: Default::default(),
         }
     }
 
@@ -128,6 +134,9 @@ impl IdeApp {
         if let Some(s) = storage.get_string("insert") {
             self.insert.settings = InsertSettings::from_stored(&s);
         }
+        if let Some(s) = storage.get_string("comments") {
+            self.show_comments = s != "0";
+        }
         if let Some(s) = storage.get_string("copy_latex") {
             self.copy_format = if s == "1" {
                 CopyFormat::Latex
@@ -143,6 +152,10 @@ impl IdeApp {
         storage.set_string("theme", self.theme_choice.to_stored().into());
         storage.set_string("size", self.size.to_string());
         storage.set_string("insert", self.insert.settings.to_stored());
+        storage.set_string(
+            "comments",
+            if self.show_comments { "1" } else { "0" }.into(),
+        );
         storage.set_string(
             "copy_latex",
             if self.copy_format == CopyFormat::Latex {
@@ -415,6 +428,11 @@ impl IdeApp {
                     self.save_as();
                     ui.close();
                 }
+                if ui.button("Export\u{2026}").clicked() {
+                    self.export.open = true;
+                    self.export.message = None;
+                    ui.close();
+                }
                 ui.separator();
                 if ui.button("Close tab").clicked() {
                     self.request_close(self.active);
@@ -480,6 +498,7 @@ impl IdeApp {
                 ui.separator();
                 ui.checkbox(&mut self.eval_settings.auto_eval, "Auto-evaluate");
                 ui.checkbox(&mut self.eval_settings.show_steps, "Show steps");
+                ui.checkbox(&mut self.show_comments, "Comments");
                 ui.menu_button("Numbers", |ui| {
                     use mpp_core::display::Style;
                     let style = &mut self.eval_settings.number_format.style;
@@ -500,8 +519,10 @@ impl IdeApp {
     /// Gives every open file the evaluator settings (each re-evaluates on a change).
     pub fn apply_eval_settings(&mut self) {
         let s = self.eval_settings;
+        let notes = self.show_comments;
         for d in &mut self.docs {
             d.set_eval_settings(s);
+            d.set_show_comments(notes);
         }
     }
 
@@ -528,6 +549,9 @@ impl IdeApp {
         self.problems.open = self.has_pane(&crate::layout::Pane::Problems);
 
         self.file_text_window(&ctx);
+        if crate::export::dialog_ui(&ctx, &mut self.export) {
+            self.export_dialog_save();
+        }
         self.overlays(&ctx);
         if self.ws.explorer.poll() {
             self.reload_changed();
@@ -548,6 +572,43 @@ impl IdeApp {
         if let Some(w) = wait {
             ctx.request_repaint_after(w);
         }
+    }
+
+    /// Asks where to save the export, then writes it.
+    fn export_dialog_save(&mut self) {
+        let format = self.export.format;
+        let stem = self
+            .doc()
+            .and_then(|d| d.path.as_deref())
+            .and_then(Path::file_stem)
+            .map_or_else(
+                || "Untitled".to_string(),
+                |s| s.to_string_lossy().to_string(),
+            );
+        let ext = format.extension();
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter(crate::export::format_label(format), &[ext])
+            .set_file_name(format!("{stem}.{ext}"))
+            .save_file()
+        else {
+            return;
+        };
+        let msg = match self.export_to(&path) {
+            Ok(()) => format!("Wrote {}", explorer::display_name(&path)),
+            Err(e) => e,
+        };
+        self.export.message = Some(msg);
+    }
+
+    /// Exports the current file to `path` with the dialog's format and options.
+    pub fn export_to(&mut self, path: &Path) -> Result<(), String> {
+        let format = self.export.format;
+        let options = self.export.options.clone();
+        let Some(doc) = self.docs.get_mut(self.active) else {
+            return Err("No file is open.".into());
+        };
+        let exported = crate::export::export_doc(doc, format, &options)?;
+        crate::export::write_export(path, &exported)
     }
 
     /// Shows or hides the Problems tile (Ctrl+Shift+M).

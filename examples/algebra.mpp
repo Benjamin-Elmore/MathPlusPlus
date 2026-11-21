@@ -1,0 +1,29 @@
+# Algebra
+
+Expanding, factoring and solving work the way you would do them on paper.
+
+## Expand and factor
+
+$$ \operatorname{expand}((x + 1)^3) = ? $$
+
+$$ \operatorname{factor}(x^2 - 5 x + 6) = ? $$
+
+$$ \operatorname{factor}(x^4 - 1) = ? $$
+
+## Solve
+
+The roots of a quadratic:
+
+$$ \operatorname{solve}(x^2 - 5 x + 6 = 0, x) = ? $$
+
+Give a name to a value and use it later:
+
+$$ a := 3 $$
+
+$$ b := 4 $$
+
+$$ \sqrt{a^2 + b^2} = ? $$
+
+$$ \frac{1}{a} + \frac{1}{b} = ? $$
+
+$$ \sqrt{2} \cdot \sqrt{8} = ? $$

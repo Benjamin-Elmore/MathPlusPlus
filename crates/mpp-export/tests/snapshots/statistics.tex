@@ -1,0 +1,111 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Statistics}
+\date{}
+\begin{document}
+\maketitle
+\section*{A table in the document}
+
+A cart rolls down a ramp; its position $x$ is measured every second.
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+$t$ (s) & $x$ (m) \\
+\midrule
+0 & 1 \\
+1 & 3 \\
+2 & 5 \\
+3 & 7 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{equation*}
+  \bar{x} = 4\,\mathrm{m}
+\end{equation*}
+\begin{equation*}
+  \sum_i x_i = 16\,\mathrm{m}
+\end{equation*}
+\begin{equation*}
+  \operatorname{median}(x) = 4\,\mathrm{m}
+\end{equation*}
+\begin{equation*}
+  \operatorname{std}(x) = \frac{2 \sqrt{15}}{3}\,\mathrm{m}
+\end{equation*}
+\begin{equation*}
+  \operatorname{quartiles}(x) = \left(2\,\mathrm{m}, 4\,\mathrm{m}, 6\,\mathrm{m}\right)
+\end{equation*}
+\begin{equation*}
+  \max(x) = 7\,\mathrm{m}
+\end{equation*}
+A straight line fits exactly, so $R^2 = 1$:
+
+\begin{equation*}
+  p(u) \coloneqq  \operatorname{linreg}(t, x)
+\end{equation*}
+\begin{equation*}
+  p(10) = 21
+\end{equation*}
+\section*{Data from a file}
+
+\begin{center}
+\begin{tabular}{rr}
+\toprule
+$h$ (cm) & $m$ (kg) \\
+\midrule
+150 & 50 \\
+160 & 56 \\
+170 & 63 \\
+180 & 70 \\
+190 & 76 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\begin{equation*}
+  \bar{h} = 170\,\mathrm{cm}
+\end{equation*}
+\begin{equation*}
+  \operatorname{var}(m) = 109\,\mathrm{kg^{2}}
+\end{equation*}
+\begin{equation*}
+  \operatorname{pvar}(m) = \frac{436}{5}\,\mathrm{kg^{2}}
+\end{equation*}
+\begin{equation*}
+  \operatorname{corr}(h, m) \approx 0.9995411791
+\end{equation*}
+\begin{equation*}
+  \operatorname{ci}(m, 0.95) \approx \left[50.03664728\,\mathrm{kg}, 75.96335272\,\mathrm{kg}\right]
+\end{equation*}
+\section*{Distributions}
+
+\begin{equation*}
+  \operatorname{normalcdf}(1.96) \approx 0.9750021049
+\end{equation*}
+\begin{equation*}
+  \operatorname{invnorm}(0.975) \approx 1.959963985
+\end{equation*}
+\begin{equation*}
+  \operatorname{binompdf}(10, 0.5, 5) = \frac{63}{256}
+\end{equation*}
+\begin{equation*}
+  \operatorname{tcdf}(2.228, 10) \approx 0.9749941141
+\end{equation*}
+\end{document}

@@ -2,8 +2,45 @@
 
 Math++ is an interpreted maths language written in Rust. A `.mpp` file reads like an academic paper: prose with the maths typeset in it, and nothing that looks like code. The interpreter works out results (algebra, derivatives, integrals, series, limits), draws 2D and 3D graphs, and supports imports between files, with a live IDE that shows the typeset result as you type.
 
+Start with the short user guide, `docs/guide.mpp`, which is itself a Math++ file. The grammar is in `docs/grammar.mpp`.
+
+## Building
+
+You need a recent stable Rust (the 2021 edition or later) and nothing else; every dependency is a Rust crate.
+
+```
+cargo build --release
+```
+
+This builds the command line program, `target/release/mpp` (`mpp.exe` on Windows).
+
 ## Running
 
 ```
-cargo run -p mpp-cli
+mpp run examples/integrals.mpp
 ```
+
+prints each answer, typeset as text: `∫₀¹ x² dx = 1/3`. The commands:
+
+- `mpp run file.mpp [--steps]` prints the answer to every query (and the working of `= ?!` queries with `--steps`). The exit code is non-zero when a line is an error.
+- `mpp check file.mpp ...` reports errors and warnings with the file, the line and the maths they are in, shown as Unicode. The exit code is non-zero when there are errors.
+- `mpp render file.mpp -o page.html` writes a static HTML page with typeset maths (inline SVG), graphs, results and data tables.
+- `mpp export file.mpp --to pdf|tex|html -o out` exports for sharing. Options: `--no-results`, `--steps`, `--comments`, `--dark`, `--page a4|letter`, `--margin MM`. The LaTeX file is standalone (amsmath, theorem environments, a bibliography) and its graphs are saved beside it as PNG files.
+- `mpp calc "\int_0^1 x^2 dx"` is a quick calculator.
+- `mpp ide [file.mpp]` opens the editor (`mathpp-ide`) when it is built and next to `mpp` or on the PATH.
+
+From Rust, `mpp-export` offers the same export as a library (`export_path`, `export_evaluated`), which the editor's File → Export… calls.
+
+## Examples and tests
+
+`examples/` holds worked examples (algebra, derivatives, integrals, series, limits, matrices, differential equations, 2D and 3D graphs, units, statistics, and a multi-file import in `examples/imports/`). Each has an `.expected.txt` with the answers it must give.
+
+```
+cargo test --workspace
+cargo test -p mpp-cli --test examples
+cargo test -p mpp-cli --test pipeline
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+```
+
+`cargo test -p mpp-cli --test pipeline` runs the documents in `work/pipeline-tests/`; those that do not pass yet are listed as known failures with the reason. After an intentional change to an export, rewrite the snapshots with `MPP_BLESS=1 cargo test -p mpp-export --test golden`.

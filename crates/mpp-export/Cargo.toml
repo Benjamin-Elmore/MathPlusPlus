@@ -1,0 +1,19 @@
+[package]
+name = "mpp-export"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Math++ export and rendering: results and graphs for the static page, plus PDF, LaTeX and HTML export"
+
+[dependencies]
+mpp-core = { path = "../mpp-core" }
+mpp-syntax = { path = "../mpp-syntax" }
+mpp-eval = { path = "../mpp-eval" }
+mpp-render = { path = "../mpp-render" }
+mpp-plot = { path = "../mpp-plot" }
+svg2pdf = { version = "0.13", default-features = false, features = ["image", "text"] }
+pdf-writer = "0.12"
+
+[dev-dependencies]
+resvg = "0.45"
+lopdf = { version = "0.34", default-features = false, features = ["nom_parser"] }

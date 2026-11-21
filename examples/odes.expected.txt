@@ -1,0 +1,4 @@
+dsolve(y' = y, y, x) = ? → y = e^x*C
+dsolve(y' = x y, y, x) = ? → y = e^(x^2/2)*C
+dsolve(y' = y, y, x, (0, 1)) = ? → y = e^x
+rk4(x + y, x, y, 0, 1, 1, 100) ≈ ? → 3.436563656

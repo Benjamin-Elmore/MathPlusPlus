@@ -1,0 +1,77 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Graphs in three dimensions}
+\date{}
+\begin{document}
+\maketitle
+Give a function of two variables and a range for each, and you get a surface. Drag to turn it,
+scroll to zoom. The surface is coloured by height and shaded by a light.
+
+\section*{Surfaces}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-3d-fig1.png}
+\caption{A saddle.}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-3d-fig2.png}
+\caption{Ripples spreading from the origin.}
+\end{figure}
+\begin{equation*}
+  f(x, y) \coloneqq  x e^{-x^2 - y^2}
+\end{equation*}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-3d-fig3.png}
+\caption{A function you defined.}
+\end{figure}
+\section*{A slider turns the surface}
+
+\begin{equation*}
+  k \coloneqq  1, \; k \in [0.5, 3]
+\end{equation*}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-3d-fig4.png}
+\caption{Move $k$ to change the number of waves.}
+\end{figure}
+\section*{Curves in space}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-3d-fig5.png}
+\caption{A helix.}
+\end{figure}
+\section*{Parametric surfaces}
+
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-3d-fig6.png}
+\caption{A sphere.}
+\end{figure}
+\begin{figure}[htbp]
+\centering
+\includegraphics[width=0.8\linewidth]{graphs-3d-fig7.png}
+\caption{A torus.}
+\end{figure}
+\end{document}

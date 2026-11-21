@@ -89,3 +89,13 @@ fn statistics_example() {
 fn number_display_example() {
     check("number-display");
 }
+
+#[test]
+fn comments_example() {
+    check("comments");
+}
+
+#[test]
+fn paper_features_example() {
+    check("paper-features");
+}

@@ -71,6 +71,12 @@ pub enum BlockKind {
     },
     Directive(Directive),
     Theorem(Theorem),
+    /// `% note` or `%{ … %}`: shown to the reader, skipped by the interpreter.
+    Comment(Comment),
+    /// `Title:`, `Author:`, `Date:` or `Abstract:` at the top of the file.
+    Title(TitleField),
+    /// `References` with entries, or `References from [[refs.mpp]]`.
+    References(References),
 }
 
 /// A list; items may hold nested lists.
@@ -318,7 +324,11 @@ pub enum DirectiveKind {
     /// A number-display directive such as `%sf 4` or `%block dp 2`; read it with
     /// [`crate::document::display::parse_display_directive`].
     Display,
-    /// Any other `%` line.
+    /// `%cite numbered` or `%cite author-year`: how citations read.
+    Cite(CiteStyle),
+    /// `%number sections`: number the headings, and theorems per section (`Theorem 2.1`).
+    NumberSections,
+    /// Any other `%word` line (reserved for directives).
     Comment,
 }
 
@@ -407,6 +417,8 @@ pub enum InlineKind {
     },
     /// `\$`, `\*`, … : the escaped character.
     Escape(char),
+    /// `[@key]`, `[@a; @b]`: a citation.
+    Cite(Vec<Cite>),
 }
 
 /// `$ … $` inside text.
@@ -415,4 +427,99 @@ pub struct InlineMath {
     pub ast: MathAst,
     /// The text between the `$` delimiters.
     pub raw: Span,
+}
+
+/// A formatted comment: `% text` (one or more lines) or `%{ … %}`. The reader sees
+/// it; the interpreter skips it. Its blocks are parsed like the rest of the file
+/// (prose markup, lists, tables, `$…$` maths) but never evaluated, and nothing
+/// defined inside takes effect.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Comment {
+    pub blocks: Vec<Block>,
+    /// Written `%{ … %}`.
+    pub braces: bool,
+    /// False when a `%{` has no closing `%}`.
+    pub closed: bool,
+}
+
+impl Comment {
+    /// True when the comment holds nothing but display maths: maths commented out.
+    pub fn is_commented_out_maths(&self) -> bool {
+        !self.blocks.is_empty()
+            && self
+                .blocks
+                .iter()
+                .all(|b| matches!(b.kind, BlockKind::DisplayMath(_)))
+    }
+}
+
+/// The line kinds of a title block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TitleKind {
+    Title,
+    Author,
+    Date,
+    Abstract,
+}
+
+impl TitleKind {
+    pub const ALL: &'static [TitleKind] = &[
+        TitleKind::Title,
+        TitleKind::Author,
+        TitleKind::Date,
+        TitleKind::Abstract,
+    ];
+
+    /// The word as written, before the colon.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TitleKind::Title => "Title",
+            TitleKind::Author => "Author",
+            TitleKind::Date => "Date",
+            TitleKind::Abstract => "Abstract",
+        }
+    }
+}
+
+/// `Title: …`, `Author: …`, `Date: …` or `Abstract: …` at the top of a file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TitleField {
+    pub kind: TitleKind,
+    pub content: Vec<Inline>,
+}
+
+/// One entry of a `References` block: `[@key] Author | Title | Year | link`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reference {
+    pub key: String,
+    pub author: String,
+    pub title: String,
+    pub year: Option<String>,
+    pub link: Option<String>,
+    pub span: Span,
+}
+
+/// A `References` block, with the entries written in it or the file they come from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct References {
+    pub entries: Vec<Reference>,
+    /// `References from [[refs.mpp]]`.
+    pub from: Option<(String, Span)>,
+}
+
+/// How citations and the reference list read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CiteStyle {
+    /// `[1]`, numbered in order of first citation (the default).
+    #[default]
+    Numbered,
+    /// `(Knuth 1984)`, listed alphabetically.
+    AuthorYear,
+}
+
+/// One `[@key]` inside a citation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cite {
+    pub key: String,
+    pub span: Span,
 }
