@@ -6,6 +6,7 @@ use egui_tiles::{Container, Linear, LinearDir, Tile, TileId, Tiles, Tree};
 use serde::{Deserialize, Serialize};
 
 use super::docref;
+use crate::settings::SideView;
 
 /// What a tile shows.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -29,6 +30,7 @@ pub enum Pane {
     Variables,
     Steps,
     Library,
+    Tutorial,
 }
 
 impl Pane {
@@ -44,8 +46,38 @@ impl Pane {
     pub fn is_side(&self) -> bool {
         matches!(
             self,
-            Pane::Explorer | Pane::Search | Pane::Outline | Pane::Variables
+            Pane::Explorer
+                | Pane::Search
+                | Pane::Outline
+                | Pane::Variables
+                | Pane::Problems
+                | Pane::Tutorial
         )
+    }
+
+    /// The activity-bar view this panel belongs to, if any.
+    pub fn side_view(&self) -> Option<SideView> {
+        match self {
+            Pane::Explorer => Some(SideView::Explorer),
+            Pane::Search => Some(SideView::Search),
+            Pane::Outline => Some(SideView::Outline),
+            Pane::Variables => Some(SideView::Variables),
+            Pane::Problems => Some(SideView::Problems),
+            Pane::Tutorial => Some(SideView::Tutorial),
+            _ => None,
+        }
+    }
+
+    /// The panel of an activity-bar view.
+    pub fn of_side(view: SideView) -> Pane {
+        match view {
+            SideView::Explorer => Pane::Explorer,
+            SideView::Search => Pane::Search,
+            SideView::Outline => Pane::Outline,
+            SideView::Variables => Pane::Variables,
+            SideView::Problems => Pane::Problems,
+            SideView::Tutorial => Pane::Tutorial,
+        }
     }
 
     /// The name shown in the View menu and on a tab.
@@ -57,20 +89,22 @@ impl Pane {
             Pane::Outline => "Outline",
             Pane::Search => "Search",
             Pane::Problems => "Problems",
-            Pane::Variables => "Variables",
+            Pane::Variables => "Definitions",
             Pane::Steps => "Steps",
             Pane::Library => "Standard library",
+            Pane::Tutorial => "Tutorial",
         }
     }
 }
 
 /// The panels that can be opened and closed from the View menu.
-pub const MENU_PANES: [Pane; 7] = [
+pub const MENU_PANES: [Pane; 8] = [
     Pane::Explorer,
     Pane::Search,
     Pane::Outline,
     Pane::Variables,
     Pane::Problems,
+    Pane::Tutorial,
     Pane::Steps,
     Pane::Library,
 ];
@@ -147,8 +181,11 @@ pub fn build(preset: Preset, docs: &[u64], active: Option<u64>) -> Tree<Pane> {
             binary(&mut tiles, LinearDir::Horizontal, side, mid, 0.24)
         }
         Preset::Review => {
-            let side = group(&mut tiles, vec![Pane::Explorer, Pane::Search]);
-            let bottom = group(&mut tiles, vec![Pane::Problems, Pane::Outline]);
+            let side = group(
+                &mut tiles,
+                vec![Pane::Explorer, Pane::Search, Pane::Outline],
+            );
+            let bottom = group(&mut tiles, vec![Pane::Problems]);
             let mid = binary(&mut tiles, LinearDir::Vertical, editor, bottom, 0.72);
             binary(&mut tiles, LinearDir::Horizontal, side, mid, 0.24)
         }
@@ -205,9 +242,109 @@ pub fn editor_group(tree: &Tree<Pane>, prefer: Option<TileId>) -> Option<TileId>
         })
 }
 
-/// The tab group of the side bar, if there is one.
+/// True for a tab group that holds only side panels (the side column, or a
+/// side panel dragged out on its own). Such a group has no tab strip: the
+/// activity bar picks its panel.
+pub fn is_side_only(tiles: &Tiles<Pane>, group: TileId) -> bool {
+    match tiles.get(group) {
+        Some(Tile::Container(Container::Tabs(t))) => {
+            !t.children.is_empty()
+                && t.children
+                    .iter()
+                    .all(|c| tiles.get_pane(c).is_some_and(Pane::is_side))
+        }
+        _ => false,
+    }
+}
+
+/// The side-only groups of a tree.
+pub fn side_only_groups(tree: &Tree<Pane>) -> Vec<TileId> {
+    tree.tiles
+        .tile_ids()
+        .filter(|id| is_side_only(&tree.tiles, *id))
+        .collect()
+}
+
+/// The side-only group holding `pane`, if the pane is in one.
+pub fn side_group_of(tree: &Tree<Pane>, pane: &Pane) -> Option<TileId> {
+    let g = tree.tiles.parent_of(find(tree, pane)?)?;
+    is_side_only(&tree.tiles, g).then_some(g)
+}
+
+/// The side column: the leftmost group holding only side panels (as last
+/// laid out), else the explorer's side-only group, else any side-only group.
+/// A side panel dragged out among the files makes a group of its own, which
+/// is never the side column unless it is further left.
 pub fn side_group(tree: &Tree<Pane>) -> Option<TileId> {
-    find_by(tree, Pane::is_side).and_then(|id| tree.tiles.parent_of(id))
+    let groups = side_only_groups(tree);
+    // A hidden side-only group is the column Ctrl+B hid (it has no rect).
+    if let Some(g) = groups.iter().find(|g| !tree.tiles.is_visible(**g)) {
+        return Some(*g);
+    }
+    let leftmost = groups
+        .iter()
+        .filter_map(|g| tree.tiles.rect(*g).map(|r| (r.left(), *g)))
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, g)| g);
+    leftmost
+        .or_else(|| side_group_of(tree, &Pane::Explorer))
+        .or_else(|| groups.into_iter().next())
+}
+
+/// The activity-bar view shown in the side column.
+pub fn side_column_view(tree: &Tree<Pane>) -> Option<SideView> {
+    let g = side_group(tree)?;
+    match tree.tiles.get(g) {
+        Some(Tile::Container(Container::Tabs(t))) => t
+            .active
+            .filter(|a| t.children.contains(a))
+            .or_else(|| t.children.first().copied())
+            .and_then(|a| tree.tiles.get_pane(&a))
+            .and_then(Pane::side_view),
+        _ => None,
+    }
+}
+
+/// True when `view`'s panel is in the side column.
+pub fn in_side_column(tree: &Tree<Pane>, view: SideView) -> bool {
+    let col = side_group(tree);
+    col.is_some() && find(tree, &Pane::of_side(view)).and_then(|id| tree.tiles.parent_of(id)) == col
+}
+
+/// Puts the tree in step with the activity bar: the side column is shown or
+/// hidden, and when `view`'s panel is in it, that panel is the one shown. A
+/// panel that was dragged out among the files is left where it is; only a
+/// missing panel is added back, and only when it should be shown.
+pub fn sync_side(tree: &mut Tree<Pane>, view: SideView, visible: bool) {
+    let pane = Pane::of_side(view);
+    let Some(id) = find(tree, &pane) else {
+        if visible {
+            open_pane(tree, pane);
+        } else if let Some(col) = side_group(tree) {
+            tree.tiles.set_visible(col, false);
+        }
+        return;
+    };
+    let Some(col) = side_group(tree) else {
+        return;
+    };
+    if !visible {
+        if tree.tiles.is_visible(col) {
+            tree.tiles.set_visible(col, false);
+        }
+        return;
+    }
+    if tree.tiles.parent_of(id) == Some(col) {
+        let shown = matches!(
+            tree.tiles.get(col),
+            Some(Tile::Container(Container::Tabs(t))) if t.active == Some(id)
+        ) && tree.tiles.is_visible(col);
+        if !shown {
+            activate(tree, id);
+        }
+    } else if !tree.tiles.is_visible(col) {
+        show_tile(tree, col);
+    }
 }
 
 /// Makes a tile, and every group above it, visible.
@@ -297,10 +434,8 @@ pub fn open_pane(tree: &mut Tree<Pane>, pane: Pane) -> TileId {
     let target = if pane.is_side() {
         side_group(tree)
     } else {
-        find_by(tree, |p| {
-            matches!(p, Pane::Problems | Pane::Steps | Pane::Library)
-        })
-        .and_then(|t| tree.tiles.parent_of(t))
+        find_by(tree, |p| matches!(p, Pane::Steps | Pane::Library))
+            .and_then(|t| tree.tiles.parent_of(t))
     };
     match target {
         Some(g) => add_to_group(tree, g, id),

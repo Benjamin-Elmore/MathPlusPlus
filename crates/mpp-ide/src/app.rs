@@ -22,7 +22,8 @@ const NEW: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::N);
 const ZOOM_IN: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Equals);
 const ZOOM_OUT: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Minus);
 const ZOOM_IN_PLUS: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Plus);
-const ZOOM_RESET: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::Num0);
+const ZOOM_RESET: KeyboardShortcut =
+    KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::ALT), Key::Num0);
 /// Shows or hides the Problems tile.
 const PROBLEMS: KeyboardShortcut =
     KeyboardShortcut::new(Modifiers::COMMAND.plus(Modifiers::SHIFT), Key::M);
@@ -60,6 +61,8 @@ pub struct IdeApp {
     pub export: crate::export::ExportDialog,
     /// The proof agent panel, Settings → Proof agent and the Lean alignment view.
     pub proof: crate::proof::ProofUi,
+    /// What the window showed at the end of the last frame (see `screen_state`).
+    last_screen: Option<u64>,
 }
 
 impl Default for IdeApp {
@@ -93,6 +96,7 @@ impl IdeApp {
             show_comments: true,
             export: Default::default(),
             proof: Default::default(),
+            last_screen: None,
         }
     }
 
@@ -218,6 +222,7 @@ impl IdeApp {
     pub fn new_file(&mut self) {
         self.docs.push(Doc::blank());
         self.active = self.docs.len() - 1;
+        self.name_untitled();
     }
 
     /// Saves the current file, asking for a name when it has none.
@@ -556,6 +561,7 @@ impl IdeApp {
     /// Draws the whole window into `ui`.
     pub fn ui(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
+        self.name_untitled();
         self.shortcuts(&ctx);
         self.system_theme = ctx.system_theme();
         self.mode = self.theme_choice.resolve(self.system_theme);
@@ -591,6 +597,15 @@ impl IdeApp {
             self.persist_layout();
         }
 
+        // Whatever this frame changed after the part of the window showing it was
+        // drawn (a file opened from a menu or a panel, a panel switched, a menu
+        // closed) is drawn by the very next frame, without waiting for input.
+        let now = self.screen_state(&ctx);
+        if self.last_screen != Some(now) {
+            self.last_screen = Some(now);
+            ctx.request_repaint();
+        }
+
         let mut wait: Option<std::time::Duration> = None;
         for d in &mut self.docs {
             if let Some(w) = d.pump() {
@@ -599,6 +614,42 @@ impl IdeApp {
         }
         if let Some(w) = wait {
             ctx.request_repaint_after(w);
+        }
+    }
+
+    /// A digest of what the window shows: open files and their names, the
+    /// active file, the side column, the layout, menus and dialogs.
+    fn screen_state(&self, ctx: &Context) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        for d in &self.docs {
+            (d.id, &d.path, d.untitled, d.is_dirty()).hash(&mut h);
+        }
+        self.active.hash(&mut h);
+        (self.ws.side_visible, self.ws.side_view).hash(&mut h);
+        (self.ws.quick.open, self.ws.pending_close, &self.message).hash(&mut h);
+        (self.ws.tiles.focused, self.ws.tiles.maximised).hash(&mut h);
+        if let Some(t) = &self.ws.tiles.tree {
+            t.active_tiles().hash(&mut h);
+        }
+        (egui::Popup::is_any_open(ctx), self.insert.menu.open).hash(&mut h);
+        h.finish()
+    }
+
+    /// Gives every file without a name its own "Untitled-N" (the lowest number
+    /// no open file uses).
+    pub(crate) fn name_untitled(&mut self) {
+        for i in 0..self.docs.len() {
+            if self.docs[i].path.is_none() && self.docs[i].untitled == 0 {
+                let n = (1..)
+                    .find(|n| {
+                        self.docs
+                            .iter()
+                            .all(|d| d.path.is_some() || d.untitled != *n)
+                    })
+                    .unwrap_or(1);
+                self.docs[i].untitled = n;
+            }
         }
     }
 

@@ -90,6 +90,10 @@ pub struct Doc {
     /// A number that stays with this document while it is open (tiles point at it).
     pub id: u64,
     pub path: Option<PathBuf>,
+    /// The N of "Untitled-N" for a file with no name yet (0 until the app numbers it).
+    pub untitled: u32,
+    /// The page takes keyboard focus on its next frame (a file picked in Open files).
+    pub take_focus: bool,
     pub editor: Editor,
     saved: String,
     worker: EvalWorker,
@@ -112,6 +116,13 @@ pub struct Doc {
     pub scroll_to: Option<Span>,
     /// The x the caret keeps while moving up and down.
     pub want_x: Option<f32>,
+    /// Which text the caret belongs with where an offset is on two lines.
+    pub caret_side: crate::page::Side,
+    /// Where the caret's line was drawn last frame (kept still on screen when
+    /// the page is laid out again).
+    pub pin: Option<crate::page::Pin>,
+    /// Where the caret was drawn last frame, in screen coordinates.
+    pub caret_screen: Option<egui::Rect>,
     /// Integral bounds above and below the sign (default) or at its side.
     pub integral_limits: IntegralLimits,
     /// The width, size and mode of the last page laid out (problem lists of
@@ -233,6 +244,8 @@ impl Doc {
         let mut d = Doc {
             id: NEXT_DOC_ID.fetch_add(1, Ordering::Relaxed),
             path,
+            untitled: 0,
+            take_focus: false,
             editor: Editor::new(text),
             saved: text.to_string(),
             worker: EvalWorker::new(),
@@ -249,6 +262,9 @@ impl Doc {
             highlight: None,
             scroll_to: None,
             want_x: None,
+            caret_side: crate::page::Side::Before,
+            pin: None,
+            caret_screen: None,
             integral_limits: IntegralLimits::AboveBelow,
             last_layout: (800.0, crate::layout::BODY_SIZE, Mode::Light),
             show: ShowState::default(),
@@ -272,18 +288,24 @@ impl Doc {
         Doc::with_text("", None)
     }
 
-    /// Reads a file.
+    /// Reads a file. The caret starts at the end of its first line, so typing
+    /// works at once.
     pub fn open(path: &Path) -> std::io::Result<Self> {
         let text = mpp_eval::read_text(path)?;
-        Ok(Doc::with_text(&text, Some(path.to_path_buf())))
+        let mut d = Doc::with_text(&text, Some(path.to_path_buf()));
+        let first_line_end = text.find('\n').unwrap_or(text.len());
+        let end = text[..first_line_end].trim_end_matches('\r').len();
+        d.editor.move_caret(end, false);
+        Ok(d)
     }
 
-    /// The name shown on the tab.
+    /// The name shown on the tab: the file's name, or "Untitled-N".
     pub fn title(&self) -> String {
-        self.path
-            .as_deref()
-            .map(crate::explorer::display_name)
-            .unwrap_or_else(|| "Untitled".into())
+        match (&self.path, self.untitled) {
+            (Some(p), _) => crate::explorer::display_name(p),
+            (None, 0) => "Untitled".into(),
+            (None, n) => format!("Untitled-{n}"),
+        }
     }
 
     /// True when there are changes that are not saved.
@@ -385,10 +407,14 @@ impl Doc {
     /// Picks up finished evaluations and, once typing has paused, asks for a new
     /// one. Returns how long to wait before calling again, if work is pending.
     pub fn pump(&mut self) -> Option<Duration> {
+        // Anything new that arrived is drawn in the very next frame.
+        let mut arrived = false;
         if let Some(done) = self.proof_worker.poll() {
             self.took_proof(done);
+            arrived = true;
         }
         if let Some(done) = self.worker.poll() {
+            arrived = true;
             self.eval_text = done.text;
             drop_later(self.eval.replace(done.eval));
             self.background = Some(done.background);
@@ -415,6 +441,9 @@ impl Doc {
             } else {
                 return Some(wait - since);
             }
+        }
+        if arrived {
+            return Some(Duration::ZERO);
         }
         if self.worker.busy() || self.pending || self.proof_worker.busy() {
             return Some(Duration::from_millis(30));
@@ -562,6 +591,11 @@ impl Doc {
         self.last_edit = Instant::now();
     }
 
+    /// True while the evaluator is working on this file (not while it waits for typing to pause).
+    pub fn running(&self) -> bool {
+        self.worker.evaluating()
+    }
+
     /// True while an evaluation is running or waiting to start.
     pub fn evaluating(&self) -> bool {
         self.worker.evaluating() || self.submitted != Some(self.editor.revision())
@@ -586,6 +620,15 @@ impl Doc {
         // The page is laid out again for the new evaluation (its key has changed),
         // reusing the layout when the evaluation shows the same on it.
         self.spare = None;
+    }
+
+    /// True when the last page drawn shows the newest evaluation, and that
+    /// evaluation is of the text on screen (what a person sees is up to date).
+    pub fn page_is_current(&self) -> bool {
+        self.eval_fresh()
+            && self.cache.as_ref().is_some_and(|c| {
+                c.key.eval_id == self.eval_id && c.key.revision == self.editor.revision()
+            })
     }
 
     /// True when the evaluation is of exactly the text on screen.

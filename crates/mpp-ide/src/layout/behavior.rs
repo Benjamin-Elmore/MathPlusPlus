@@ -13,7 +13,6 @@ use super::tiles::{self, Dir, Pane, Preset};
 use crate::app::IdeApp;
 use crate::diagnostics::Counts;
 use crate::paint::c32;
-use crate::settings::SideView;
 use crate::tabs::breadcrumbs;
 use crate::view::{self, ViewCtx, ViewEvent};
 use crate::workspace::PendingClose;
@@ -50,6 +49,11 @@ pub struct TileState {
     /// The text of the "save layout as" box, while it is open.
     pub naming: Option<String>,
     last_tab_click: Option<(TileId, std::time::Instant)>,
+    /// The tree is out being drawn: changes wait in `deferred` until it is back.
+    drawing: bool,
+    deferred: Vec<Pane>,
+    /// A file picked in Open files: its view gets focus once the tree is back.
+    pub focus_doc: Option<u64>,
 }
 
 impl std::fmt::Debug for TileState {
@@ -80,6 +84,10 @@ struct AppBehavior<'a> {
     counts: Vec<(PathBuf, Counts)>,
     /// The equation view that owns the Insert menu, quick fixes and popups.
     active_view: Option<TileId>,
+    /// Groups holding only side panels: no tab strip, a draggable header instead.
+    side_only: Vec<TileId>,
+    /// The panels of those groups.
+    headed: Vec<TileId>,
 }
 
 impl AppBehavior<'_> {
@@ -104,6 +112,17 @@ impl Behavior<Pane> for AppBehavior<'_> {
             _ => self.side_fill(),
         };
         ui.painter().rect_filled(rect, 0.0, fill);
+        // A side panel in the side column has a header in place of a tab: it
+        // names the panel and is the handle for dragging it among the tiles.
+        let mut drag = false;
+        let headed = self.headed.contains(&tile_id) && pane.side_view().is_some();
+        if let (true, Some(v)) = (headed, pane.side_view()) {
+            let h = side_header(ui, v.label(), &theme);
+            drag = h.drag_started();
+            if *pane == Pane::Explorer {
+                self.app.explorer_buttons(ui, h.rect, &theme);
+            }
+        }
         match pane.clone() {
             Pane::Equation { doc, view } => match self.doc_index(doc) {
                 Some(idx) => {
@@ -128,13 +147,14 @@ impl Behavior<Pane> for AppBehavior<'_> {
                 }
             },
             Pane::Graph { doc, figure } => self.app.graph_tile(ui, doc, figure, &theme),
-            Pane::Explorer => self.app.explorer_view(ui, &theme),
+            Pane::Explorer => self.app.explorer_view(ui, &theme, headed),
             Pane::Search => self.app.search_view(ui, &theme),
             Pane::Outline => self.app.outline_tile(ui, &theme),
             Pane::Variables => self.app.variables_tile(ui, &theme),
             Pane::Problems => self.app.problems_tile(ui, &theme),
             Pane::Steps => self.app.steps_tile(ui, &theme),
             Pane::Library => self.app.library_tile(ui, &theme),
+            Pane::Tutorial => self.app.tutorial_tile(ui, &theme),
         }
         if self.many_tiles && self.focused == Some(tile_id) {
             ui.painter().rect_stroke(
@@ -144,7 +164,15 @@ impl Behavior<Pane> for AppBehavior<'_> {
                 egui::StrokeKind::Inside,
             );
         }
-        UiResponse::None
+        if drag {
+            UiResponse::DragStarted
+        } else {
+            UiResponse::None
+        }
+    }
+
+    fn is_tab_bar_visible(&self, tile_id: TileId, _tabs: &egui_tiles::Tabs) -> bool {
+        !self.side_only.contains(&tile_id)
     }
 
     fn tab_title_for_pane(&mut self, pane: &Pane) -> WidgetText {
@@ -184,8 +212,9 @@ impl Behavior<Pane> for AppBehavior<'_> {
         }
     }
 
-    fn is_tab_closable(&self, _tiles: &Tiles<Pane>, _tile_id: TileId) -> bool {
-        true
+    fn is_tab_closable(&self, tiles: &Tiles<Pane>, tile_id: TileId) -> bool {
+        // Side panels come and go with the activity bar, never with a ×.
+        !tiles.get_pane(&tile_id).is_some_and(Pane::is_side)
     }
 
     fn on_tab_close(&mut self, tiles: &mut Tiles<Pane>, tile_id: TileId) -> bool {
@@ -361,6 +390,11 @@ impl IdeApp {
     /// Loads the project's layouts the first time the tree is needed (and again
     /// when the project changes).
     fn ensure_tree(&mut self) {
+        // While the tree is out being drawn it is not missing: never rebuild it
+        // from disk then (the rebuilt one would be thrown away when it comes back).
+        if self.ws.tiles.drawing {
+            return;
+        }
         let root = self.project_root().map(std::path::Path::to_path_buf);
         let stale = self.ws.tiles.tree.is_some() && self.ws.tiles.loaded_for != root;
         if self.ws.tiles.tree.is_some() && !stale {
@@ -394,25 +428,21 @@ impl IdeApp {
         self.ws.tiles.tree.as_mut().map(f)
     }
 
-    /// Opens a panel, or brings it to the front.
+    /// Opens a panel, or brings it to the front. A side panel becomes the
+    /// activity bar's view.
     pub fn open_pane(&mut self, pane: Pane) {
-        let side = pane.is_side();
-        let view = match pane {
-            Pane::Search => Some(SideView::Search),
-            Pane::Outline => Some(SideView::Outline),
-            Pane::Explorer => Some(SideView::Explorer),
-            _ => None,
-        };
-        self.with_tree(|t| {
-            tiles::open_pane(t, pane);
-        });
-        self.ws.tiles.maximised = None;
-        if side {
+        if let Some(v) = pane.side_view() {
+            self.ws.side_view = v;
             self.ws.side_visible = true;
         }
-        if let Some(v) = view {
-            self.ws.side_view = v;
+        if self.ws.tiles.drawing {
+            self.ws.tiles.deferred.push(pane);
+        } else {
+            self.with_tree(|t| {
+                tiles::open_pane(t, pane);
+            });
         }
+        self.ws.tiles.maximised = None;
     }
 
     /// True when a panel is in the layout.
@@ -427,24 +457,13 @@ impl IdeApp {
         match found {
             Some(id) => {
                 self.with_tree(|t| tiles::close_pane(t, id));
+                // Closing the side column's panel hides the column (otherwise
+                // the activity bar would bring the panel straight back).
+                if pane.side_view() == Some(self.ws.side_view) {
+                    self.ws.side_visible = false;
+                }
             }
             None => self.open_pane(pane),
-        }
-    }
-
-    /// Ctrl+B: hides or shows the group holding the explorer.
-    pub fn toggle_side_tiles(&mut self) {
-        let shown = self
-            .with_tree(|t| {
-                let g = tiles::side_group(t)?;
-                let now = t.tiles.is_visible(g);
-                t.tiles.set_visible(g, !now);
-                Some(!now)
-            })
-            .flatten();
-        match shown {
-            Some(v) => self.ws.side_visible = v,
-            None => self.open_pane(Pane::Explorer),
         }
     }
 
@@ -788,6 +807,19 @@ impl IdeApp {
                 self.ws.tiles.focused = None;
             }
         }
+        // The activity bar's view and Ctrl+B are the truth; the tree follows.
+        tree.simplify(&super::simplification());
+        tiles::sync_side(&mut tree, self.ws.side_view, self.ws.side_visible);
+        let side_only = tiles::side_only_groups(&tree);
+        let headed: Vec<TileId> = tree
+            .tiles
+            .tile_ids()
+            .filter(|id| {
+                tree.tiles
+                    .parent_of(*id)
+                    .is_some_and(|g| side_only.contains(&g))
+            })
+            .collect();
         let maximised = self
             .ws
             .tiles
@@ -827,12 +859,30 @@ impl IdeApp {
             many_tiles: many,
             counts,
             active_view,
+            side_only,
+            headed,
         };
+        b.app.ws.tiles.drawing = true;
+        let view_in_column = tiles::in_side_column(&tree, b.app.ws.side_view);
         match maximised {
             Some(m) => draw_maximised(&mut b, &mut tree, ui, m),
             None => tree.ui(&mut b, ui),
         }
         let (pressed, requests, events, crumb) = (b.pressed, b.requests, b.events, b.crumb);
+        self.ws.tiles.drawing = false;
+        // The shown panel was dragged out of the side column: the activity bar
+        // now lights the panel the column shows instead.
+        if view_in_column
+            && tiles::find(&tree, &Pane::of_side(self.ws.side_view)).is_some()
+            && !tiles::in_side_column(&tree, self.ws.side_view)
+        {
+            if let Some(v) = tiles::side_column_view(&tree) {
+                self.ws.side_view = v;
+            }
+        }
+        for p in std::mem::take(&mut self.ws.tiles.deferred) {
+            tiles::open_pane(&mut tree, p);
+        }
         self.ws.tiles.tree = Some(tree);
         if let Some(t) = pressed {
             self.ws.tiles.focused = Some(t);
@@ -851,20 +901,9 @@ impl IdeApp {
                 }
                 self.ws.tiles.last_active_doc = self.docs.get(i).map(|d| d.id);
             }
-            if let Some(v) =
-                self.ws
-                    .tiles
-                    .tree
-                    .as_ref()
-                    .and_then(|tr| match tiles::pane_of(tr, t) {
-                        Some(Pane::Explorer) => Some(SideView::Explorer),
-                        Some(Pane::Search) => Some(SideView::Search),
-                        Some(Pane::Outline) => Some(SideView::Outline),
-                        _ => None,
-                    })
-            {
-                self.ws.side_view = v;
-            }
+        }
+        if let Some(doc) = self.ws.tiles.focus_doc.take() {
+            self.focus_doc_view(doc);
         }
         for r in requests {
             match r {
@@ -910,16 +949,37 @@ impl IdeApp {
         if let Some(p) = crumb {
             self.reveal_in_explorer(&p);
         }
-        // Keep the activity bar and Ctrl+B in step with the layout.
-        let side = self
-            .ws
-            .tiles
-            .tree
-            .as_ref()
-            .and_then(tiles::side_group)
-            .and_then(|g| self.ws.tiles.tree.as_ref().map(|t| t.tiles.is_visible(g)));
-        if let Some(v) = side {
-            self.ws.side_visible = v;
+        // Anything that changed the activity bar's view while the tree was out
+        // is put in place now, so the next frame draws it.
+        if let Some(t) = self.ws.tiles.tree.as_mut() {
+            tiles::sync_side(t, self.ws.side_view, self.ws.side_visible);
+        }
+    }
+
+    /// Shows the view of `doc` (the focused one when it shows that file),
+    /// focuses its tile and gives its page the keyboard.
+    pub(crate) fn focus_doc_view(&mut self, doc: u64) {
+        let focused = self.ws.tiles.focused;
+        let tile = self
+            .with_tree(|t| {
+                let id = focused
+                    .filter(|f| {
+                        matches!(tiles::pane_of(t, *f), Some(Pane::Equation { doc: d, .. }) if *d == doc)
+                    })
+                    .or_else(|| {
+                        tiles::find_by(t, |p| matches!(p, Pane::Equation { doc: d, .. } if *d == doc))
+                    })?;
+                tiles::activate(t, id);
+                Some(id)
+            })
+            .flatten();
+        if let Some(t) = tile {
+            self.ws.tiles.focused = Some(t);
+            self.ws.tiles.last_active_doc = Some(doc);
+        }
+        if let Some(i) = self.docs.iter().position(|d| d.id == doc) {
+            self.active = i;
+            self.docs[i].take_focus = true;
         }
     }
 
@@ -985,6 +1045,30 @@ fn active_view(
     shown.into_iter().find(|t| {
         matches!(tiles::pane_of(tree, *t), Some(Pane::Equation { doc, .. }) if Some(*doc) == active_doc)
     })
+}
+
+/// Height of a side panel's header.
+pub const SIDE_HEADER: f32 = 30.0;
+
+/// The header of a side panel in the side column: its name in small capitals.
+/// Dragging it moves the panel among the tiles.
+fn side_header(ui: &mut Ui, label: &str, theme: &Theme) -> egui::Response {
+    let (rect, resp) = ui.allocate_exact_size(
+        egui::vec2(ui.available_width(), SIDE_HEADER),
+        egui::Sense::click_and_drag(),
+    );
+    let name = label.to_uppercase();
+    resp.widget_info(|| {
+        egui::WidgetInfo::labeled(egui::Role::Label, true, format!("{label} panel"))
+    });
+    ui.painter().text(
+        egui::pos2(rect.left() + 10.0, rect.center().y),
+        Align2::LEFT_CENTER,
+        name,
+        egui::FontId::proportional(13.5),
+        c32(theme.muted),
+    );
+    resp.on_hover_cursor(egui::CursorIcon::Grab)
 }
 
 fn draw_maximised(b: &mut AppBehavior<'_>, tree: &mut Tree<Pane>, ui: &mut Ui, id: TileId) {

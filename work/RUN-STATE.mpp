@@ -1,5 +1,7 @@
 # Math++ (.mpp): run state
 
+**Next queue (Ben, 2026-11-21):** "IDEBUGS" (IDE usability) is in `work/IDE-QUEUE.mpp`, paused mid phase A; see RESUME HERE there. Queue 1 below is finished; v0.1.0 is released.
+
 ## Queue "MathPlusPlusQueue-1" (Ben, 2026-11-20): RUNNING (Ben said go on 2026-11-20). Progress is in the State column.
 
 **⚠ CHANGED WHILE RUNNING (Ben, 2026-11-20). Read this before starting the next item.** Ben added items **N1–N11** after go, while the queue was already running (M0–M4 done, M5 committed on `feat/engine`, M6 in progress, M8/M9 being built ahead on `wip/core`, `wip/render` locked).

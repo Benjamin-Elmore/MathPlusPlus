@@ -73,6 +73,15 @@ pub fn dot(painter: &Painter, rect: Rect, color: Color32) {
     painter.circle_filled(rect.center(), rect.height().min(rect.width()) * 0.22, color);
 }
 
+/// A small plus at the bottom right of `rect` (the "new" badge).
+pub fn plus(painter: &Painter, rect: Rect, color: Color32) {
+    let c = rect.right_bottom() - Vec2::new(rect.width() * 0.22, rect.height() * 0.22);
+    let s = rect.width() * 0.16;
+    let st = Stroke::new(1.6, color);
+    painter.line_segment([c - Vec2::new(s, 0.0), c + Vec2::new(s, 0.0)], st);
+    painter.line_segment([c - Vec2::new(0.0, s), c + Vec2::new(0.0, s)], st);
+}
+
 /// A cross for close buttons.
 pub fn cross(painter: &Painter, rect: Rect, color: Color32) {
     let c = rect.center();
@@ -108,6 +117,17 @@ pub fn activity_search(painter: &Painter, rect: Rect, color: Color32) {
     );
 }
 
+/// Activity bar: the variables (two sliders).
+pub fn activity_variables(painter: &Painter, rect: Rect, color: Color32) {
+    let r = rect.shrink(rect.width() * 0.26);
+    let st = Stroke::new(1.8, color);
+    for (i, knob) in [0.3_f32, 0.7].iter().enumerate() {
+        let y = r.top() + r.height() * (0.25 + 0.5 * i as f32);
+        painter.line_segment([Pos2::new(r.left(), y), Pos2::new(r.right(), y)], st);
+        painter.circle_filled(Pos2::new(r.left() + r.width() * knob, y), 3.2, color);
+    }
+}
+
 /// Activity bar: an outline (indented lines).
 pub fn activity_outline(painter: &Painter, rect: Rect, color: Color32) {
     let r = rect.shrink(rect.width() * 0.26);
@@ -122,4 +142,40 @@ pub fn activity_outline(painter: &Painter, rect: Rect, color: Color32) {
             st,
         );
     }
+}
+
+/// Activity bar: problems (a warning triangle with a mark).
+pub fn activity_problems(painter: &Painter, rect: Rect, color: Color32) {
+    let r = rect.shrink(rect.width() * 0.27);
+    let st = Stroke::new(1.7, color);
+    let top = Pos2::new(r.center().x, r.top());
+    let (bl, br) = (r.left_bottom(), r.right_bottom());
+    painter.line_segment([top, br], st);
+    painter.line_segment([br, bl], st);
+    painter.line_segment([bl, top], st);
+    let x = r.center().x;
+    painter.line_segment(
+        [
+            Pos2::new(x, r.top() + r.height() * 0.38),
+            Pos2::new(x, r.top() + r.height() * 0.68),
+        ],
+        st,
+    );
+    painter.circle_filled(Pos2::new(x, r.top() + r.height() * 0.84), 1.2, color);
+}
+
+/// Activity bar: the tutorial (an open book).
+pub fn activity_tutorial(painter: &Painter, rect: Rect, color: Color32) {
+    let r = rect.shrink(rect.width() * 0.26);
+    let st = Stroke::new(1.6, color);
+    let mid_top = Pos2::new(r.center().x, r.top() + r.height() * 0.12);
+    let mid_bottom = Pos2::new(r.center().x, r.bottom());
+    for side in [r.left(), r.right()] {
+        let outer_top = Pos2::new(side, r.top());
+        let outer_bottom = Pos2::new(side, r.bottom() - r.height() * 0.12);
+        painter.line_segment([outer_top, mid_top], st);
+        painter.line_segment([outer_top, outer_bottom], st);
+        painter.line_segment([outer_bottom, mid_bottom], st);
+    }
+    painter.line_segment([mid_top, mid_bottom], st);
 }

@@ -272,8 +272,8 @@ fn zoom_keys_scroll_and_reset_persist_between_runs() {
     assert!((again.size - zoomed).abs() < 0.01, "zoom is remembered");
     let mut h2 = harness(again);
     run(&mut h2);
-    press(&mut h2, Modifiers::COMMAND, Key::Num0);
-    assert!((h2.state().size - base).abs() < 0.01, "Ctrl+0 resets");
+    press(&mut h2, Modifiers::COMMAND | Modifiers::ALT, Key::Num0);
+    assert!((h2.state().size - base).abs() < 0.01, "Ctrl+Alt+0 resets");
     let _ = std::fs::remove_dir_all(&data);
 }
 

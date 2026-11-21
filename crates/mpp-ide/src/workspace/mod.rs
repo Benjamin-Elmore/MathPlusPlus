@@ -2,6 +2,7 @@
 //! the app. Everything here is `impl IdeApp` glue over the explorer, tabs and
 //! settings modules, so `app.rs` only calls into it.
 
+pub mod status;
 mod tools;
 mod ui;
 
@@ -40,7 +41,7 @@ pub struct SearchState {
 }
 
 /// A file with edits waiting on the user's answer before it closes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PendingClose(pub usize);
 
 /// Project, navigation and side-bar state.
@@ -60,6 +61,8 @@ pub struct Workspace {
     pub vars: crate::layout::panes::VarEdit,
     pub autosave: crate::autosave::AutosaveState,
     pub pending_close: Option<PendingClose>,
+    /// The status bar's calm numbers.
+    pub status: status::StatusMemo,
     pub outline_cache: Option<(u64, u64, Vec<OutlineItem>)>,
     pub settings_dir: Option<PathBuf>,
     pub settings: Settings,
@@ -83,6 +86,7 @@ impl Default for Workspace {
             vars: Default::default(),
             autosave: Default::default(),
             pending_close: None,
+            status: status::StatusMemo::default(),
             outline_cache: None,
             settings_dir: None,
             settings: s,
@@ -165,7 +169,10 @@ impl IdeApp {
                 self.ws.preview = None;
             }
         }
-        self.note_place();
+        match (known, self.current_place()) {
+            (None, Some(p)) => self.ws.nav.record_opened(p),
+            _ => self.note_place(),
+        }
         self.ws.explorer.reveal(path);
         Ok(i)
     }
@@ -415,6 +422,8 @@ impl IdeApp {
                         self.note_place();
                         self.active = i;
                         self.note_place();
+                        // Its tab comes to the front and its page takes the keyboard.
+                        self.ws.tiles.focus_doc = Some(self.docs[i].id);
                     }
                     Ok(())
                 }
@@ -475,11 +484,7 @@ impl IdeApp {
 
     /// Shows a side-bar view (and the side bar).
     pub fn show_side(&mut self, view: SideView) {
-        self.open_pane(match view {
-            SideView::Explorer => crate::layout::Pane::Explorer,
-            SideView::Search => crate::layout::Pane::Search,
-            SideView::Outline => crate::layout::Pane::Outline,
-        });
+        self.open_pane(crate::layout::Pane::of_side(view));
         self.ws.side_view = view;
         self.ws.side_visible = true;
         if view == SideView::Search {
@@ -487,9 +492,31 @@ impl IdeApp {
         }
     }
 
-    /// Ctrl+B.
+    /// Hides the side column (the activity bar stays).
+    pub fn hide_side(&mut self) {
+        self.ws.side_visible = false;
+        if let Some(t) = self.ws.tiles.tree.as_mut() {
+            crate::layout::tiles::sync_side(t, self.ws.side_view, false);
+        }
+    }
+
+    /// Ctrl+B: hides the side column, or shows it again with its last view.
     pub fn toggle_side(&mut self) {
-        self.toggle_side_tiles();
+        if self.ws.side_visible {
+            self.hide_side();
+        } else {
+            self.show_side(self.ws.side_view);
+        }
+    }
+
+    /// A click on an activity-bar icon: shows that view, or hides the side
+    /// column when the view is already showing (VS Code's behaviour).
+    pub fn activity_click(&mut self, view: SideView) {
+        if self.ws.side_visible && self.ws.side_view == view {
+            self.hide_side();
+        } else {
+            self.show_side(view);
+        }
     }
 
     /// Opens a hit of a search.

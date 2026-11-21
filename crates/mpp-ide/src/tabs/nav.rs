@@ -16,19 +16,24 @@ const LIMIT: usize = 100;
 pub struct NavHistory {
     places: Vec<Place>,
     at: usize,
+    /// The current entry is a file just opened (its caret is where opening put it).
+    fresh: bool,
 }
 
 impl NavHistory {
     /// Notes a place. Anything ahead of the current spot is dropped, as in a browser.
     pub fn record(&mut self, place: Place) {
+        let fresh = std::mem::take(&mut self.fresh);
         if let Some(cur) = self.places.get(self.at) {
             if *cur == place {
+                self.fresh = fresh;
                 return;
             }
             // The same file with the caret nearby replaces the entry.
-            // So does a file just opened (caret still at the start) when the jump
-            // then places the caret: F12 into another file is one step back, not two.
-            if cur.path == place.path && (cur.offset.abs_diff(place.offset) < 3 || cur.offset == 0)
+            // So does a file just opened when the jump then places the caret:
+            // F12 into another file is one step back, not two.
+            if cur.path == place.path
+                && (cur.offset.abs_diff(place.offset) < 3 || cur.offset == 0 || fresh)
             {
                 self.places[self.at] = place;
                 return;
@@ -40,6 +45,13 @@ impl NavHistory {
             self.places.remove(0);
         }
         self.at = self.places.len() - 1;
+    }
+
+    /// Notes the place of a file just opened: the next place noted in the same
+    /// file replaces it.
+    pub fn record_opened(&mut self, place: Place) {
+        self.record(place);
+        self.fresh = true;
     }
 
     /// True when there is somewhere to go back to.
