@@ -301,7 +301,7 @@ impl Page {
     }
 
     /// The stop to draw the caret at for a source offset: the one with the
-    /// greatest offset not past it (the first stop when there is none).
+    /// greatest offset not past it (the nearest one after it when there is none).
     pub fn caret_stop(&self, offset: usize) -> Option<CaretStop> {
         let mut best: Option<&CaretStop> = None;
         let mut after: Option<&CaretStop> = None;
@@ -327,7 +327,9 @@ impl Page {
                 return Some(*a);
             }
         }
-        best.or_else(|| self.stops.first()).copied()
+        // Nothing at or before the caret (a proof that opens the file, a footnote's
+        // empty text): the nearest stop after it, not the start of the page.
+        best.or(after).or_else(|| self.stops.first()).copied()
     }
 
     /// The source offset nearest to a page position.

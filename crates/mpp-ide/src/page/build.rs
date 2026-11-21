@@ -765,7 +765,11 @@ fn layout_block(
                 _ => 1.1,
             };
             let numbered;
-            let content = match cx.paper.and_then(|p| p.heading_number(*level)) {
+            let number = cx
+                .paper
+                .and_then(|p| p.heading_number(*level))
+                .filter(|_| !mpp_syntax::document::heading_has_number(content));
+            let content = match number {
                 Some(n) => {
                     let at = Span::new(b.span.start, b.span.start);
                     let mut v = vec![Inline {
@@ -1024,7 +1028,8 @@ fn layout_block(
                 span: Span::new(b.span.start, b.span.start),
             }];
             inl.extend(content.iter().cloned());
-            flow(
+            let at = c.stops.len();
+            let h = flow(
                 cx,
                 &inl,
                 style(input, FontId::Text, 0.9),
@@ -1032,7 +1037,27 @@ fn layout_block(
                 0.0,
                 w,
                 &mut c,
-            )
+            );
+            // An empty note has no text to stop at: the caret waits after its number,
+            // where the note's words will go.
+            let own = input.src.get(b.span.start..b.span.end).unwrap_or("");
+            if let Some(i) = own.find("]:") {
+                let start = b.span.start + i + 2;
+                let start = start + usize::from(input.src[start..].starts_with(' '));
+                if let Some(last) = c.stops[at..]
+                    .iter()
+                    .copied()
+                    .max_by(|p, q| p.x.total_cmp(&q.x))
+                {
+                    if !c.stops[at..].iter().any(|s| s.offset >= start) {
+                        c.stops.push(CaretStop {
+                            offset: start,
+                            ..last
+                        });
+                    }
+                }
+            }
+            h
         }
         BlockKind::Directive(d) => {
             // Settings of the file, not text to read.
@@ -1505,6 +1530,9 @@ fn layout_display(
         );
     }
     let mut y = dl.total_height() + 2.0 * pad;
+    for note in &extras.notes {
+        y += layout_note(input, note, x0, y, w, c);
+    }
     for rows in &extras.tables {
         y += layout_table(input, rows, x0, y, w, c);
     }
@@ -1512,6 +1540,43 @@ fn layout_display(
         y += layout_steps(input, *line, tree, x0, y, w, c);
     }
     y
+}
+
+/// A note under an equation (why it has no answer) as typeset words and maths,
+/// broken into lines that fit `w`. Returns its height.
+fn layout_note(input: &PageInput<'_>, text: &str, x0: f32, y0: f32, w: f32, c: &mut Canvas) -> f32 {
+    let small = input.size * 0.9;
+    let theme = Theme {
+        text: input.theme.muted,
+        ..input.theme
+    };
+    let fits = |line: &str| snippet(&prose_latex_with(line, true), small, theme).width <= w;
+    let words: Vec<&str> = text.split(' ').filter(|w| !w.is_empty()).collect();
+    let mut lines: Vec<String> = vec![];
+    let mut line = String::new();
+    for word in words {
+        let next = if line.is_empty() {
+            word.to_string()
+        } else {
+            format!("{line} {word}")
+        };
+        if line.is_empty() || fits(&next) {
+            line = next;
+        } else {
+            lines.push(std::mem::take(&mut line));
+            line = word.to_string();
+        }
+    }
+    if !line.is_empty() {
+        lines.push(line);
+    }
+    let mut y = y0;
+    for l in &lines {
+        let dl = snippet(&prose_latex_with(l, true), small, theme);
+        c.merge(&dl, x0, y, false);
+        y += dl.total_height().max(small) + input.size * 0.1;
+    }
+    y - y0 + input.size * 0.2
 }
 
 /// How far a block has moved since the evaluation `br` comes from (an edit above it
@@ -1633,6 +1698,9 @@ struct Extras {
     pending: bool,
     /// What to fill in before there can be an answer ("fill in: upper bound").
     hints: Vec<String>,
+    /// Why there is no answer (a sum that could not be settled): prose under the
+    /// equation, wrapped to the page.
+    notes: Vec<String>,
 }
 
 /// Text that can sit inside `\text{…}` without any markup showing.
@@ -1651,16 +1719,34 @@ fn plain_text(s: &str) -> String {
 /// A step's note ("derivative of sin with u = 3·x") as LaTeX: the words in roman
 /// type, the maths in it typeset. A note that is LaTeX already is kept.
 pub(crate) fn prose_latex(note: &str) -> String {
+    prose_latex_with(note, false)
+}
+
+/// [`prose_latex`]; `strict` keeps a word that has a run of letters (or an
+/// unbalanced bracket) as words, for sentences written by the evaluator.
+pub(crate) fn prose_latex_with(note: &str, strict: bool) -> String {
     if note.contains('\\') {
         return note.to_string();
     }
-    fn is_maths(w: &str) -> bool {
+    let is_maths = |w: &str| -> bool {
         let mut cs = w.chars();
         let single = matches!((cs.next(), cs.next()), (Some(c), None) if c.is_alphabetic());
+        if strict {
+            let letters = w
+                .chars()
+                .collect::<Vec<_>>()
+                .windows(2)
+                .any(|p| p[0].is_alphabetic() && p[1].is_alphabetic());
+            let open = w.chars().filter(|c| "([{".contains(*c)).count();
+            let close = w.chars().filter(|c| ")]}".contains(*c)).count();
+            if letters || open != close {
+                return false;
+            }
+        }
         single
             || w.chars()
-                .any(|c| c.is_ascii_digit() || "^_=+−-*/·×()[]{}<>≤≥≠|′'√∫∑".contains(c))
-    }
+                .any(|c| c.is_ascii_digit() || "^_=+−-*/·×()[]{}<>≤≥≠|′'√∫∑∞".contains(c))
+    };
     fn flush_text(out: &mut String, text: &mut String) {
         if !text.is_empty() {
             // The spaces at the ends stay inside `\text` (maths spacing commands
@@ -1798,6 +1884,11 @@ fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState, delta: isize)
                             r = LineResult::filled(i, format!("{l} \\approx {a}"));
                         }
                     }
+                    // An answer that is an equation of its own (`L(x) = 9x − 26`) follows
+                    // the question with an arrow: `… = L(x) = …` would say "=" twice.
+                    if matches!(v.value, Some(Value::Relation(_))) {
+                        r.relation = Some(RelOp::To);
+                    }
                     ex.results.push(r);
                 }
                 let wanted = *steps || show.show_steps;
@@ -1838,8 +1929,13 @@ fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState, delta: isize)
             _ => {
                 if let (Some(h), None) = (&v.hint, &v.value) {
                     let h = plain_text(h);
-                    if !h.is_empty() && !ex.hints.contains(&h) {
-                        ex.hints.push(h);
+                    let list = if h.starts_with("fill in") {
+                        &mut ex.hints
+                    } else {
+                        &mut ex.notes
+                    };
+                    if !h.is_empty() && !list.contains(&h) {
+                        list.push(h);
                     }
                 }
             }

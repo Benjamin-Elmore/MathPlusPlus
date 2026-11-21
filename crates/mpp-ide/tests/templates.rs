@@ -1927,3 +1927,33 @@ fn helper_templates_read_as_sentences_with_their_options_in_words() {
         .collect();
     assert_eq!(pressed, ["Midpoint"]);
 }
+
+/// With no stop at or before the caret the caret goes to the nearest stop after it,
+/// never back to the start of the page.
+#[test]
+fn the_caret_of_a_new_proof_is_drawn_after_its_heading() {
+    let mut ed = Editor::new("");
+    insert_into_block(&mut ed, "doc.proof");
+    let page = page_of(&ed);
+    let stop = page.caret_stop(ed.caret()).expect("a caret stop");
+    assert!(stop.x > 20.0, "caret drawn at x = {} before Proof.", stop.x);
+
+    let mut ed = Editor::new("Water boils.\n\nNext paragraph.");
+    ed.move_caret(11, false);
+    insert_into_block(&mut ed, "doc.footnote");
+    let page = page_of(&ed);
+    let stop = page.caret_stop(ed.caret()).expect("a caret stop");
+    let note = page
+        .blocks
+        .iter()
+        .find(|b| b.dl.text().starts_with('1'))
+        .expect("the note");
+    // The caret is on the note's own line, not on the line of a block above.
+    assert!(
+        stop.top >= note.top - 2.0 && stop.bottom <= note.top + note.height + 2.0,
+        "caret {:?} vs note at {}..{}",
+        (stop.top, stop.bottom),
+        note.top,
+        note.top + note.height
+    );
+}
