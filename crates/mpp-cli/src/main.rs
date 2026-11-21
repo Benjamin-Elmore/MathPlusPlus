@@ -315,15 +315,27 @@ fn prove_cmd(target: &str, cap: f64, conjecture: Option<String>, yes: bool) -> E
     ExitCode::from(outcome.code())
 }
 
+/// Reads the API key without echoing it. At a terminal the typed characters are not
+/// shown (and never reach the scrollback); when the key is piped in, it is read as a line.
+fn read_key() -> std::io::Result<String> {
+    use std::io::IsTerminal;
+    if std::io::stdin().is_terminal() {
+        rpassword::prompt_password("Paste the API key and press Enter (it is not shown): ")
+    } else {
+        let mut s = String::new();
+        std::io::stdin().read_line(&mut s)?;
+        Ok(s)
+    }
+}
+
 fn key_cmd(action: &KeyAction) -> ExitCode {
     let store = key_store();
     match action {
         KeyAction::Set => {
-            eprint!("Paste the API key and press Enter (it is not shown): ");
-            let mut s = String::new();
-            if std::io::stdin().read_line(&mut s).is_err() || s.trim().is_empty() {
-                return fail("no key was read");
-            }
+            let s = match read_key() {
+                Ok(s) if !s.trim().is_empty() => s,
+                _ => return fail("no key was read"),
+            };
             match store.set(&mpp_proof::agent::ApiKey::new(s.trim())) {
                 Ok(()) => {
                     eprintln!();

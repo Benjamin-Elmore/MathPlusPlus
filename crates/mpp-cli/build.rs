@@ -1,11 +1,13 @@
 //! Windows only: embeds the app icon and version info (taken from Cargo.toml) in the exe,
-//! and gives the main thread a large stack.
+//! and gives the main thread a large stack (other platforms need none; see below).
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    // A large main-thread stack (reserved, not committed): the page layout and the
-    // parser's callers walk maths nested 256 levels deep or 10 000 operators long
-    // on the main thread. Windows gives a program 1 MB unless the linker says more.
+    // A large main-thread stack (reserved, not committed), Windows only: Windows gives a
+    // program 1 MB unless the linker says more, while Linux and macOS give the main
+    // thread 8 MB, which is enough. The parser runs deep input on its own big-stack
+    // thread, and crates/mpp-render/tests/stack.rs lays out the deepest maths the
+    // parser accepts on an 8 MB stack, so the other platforms need no flag.
     let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
     if os == "windows" && env == "msvc" {

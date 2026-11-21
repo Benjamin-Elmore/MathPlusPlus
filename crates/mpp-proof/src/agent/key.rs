@@ -44,7 +44,10 @@ pub trait KeyStore {
 pub const SERVICE: &str = "Math++";
 pub const ACCOUNT: &str = "anthropic-api-key";
 
-/// Windows Credential Manager (macOS Keychain or the Secret Service elsewhere).
+/// Windows Credential Manager, or the macOS Keychain. On other systems there is no
+/// supported secure store, so every call fails with a clear message rather than
+/// pretending to save the key.
+#[cfg_attr(not(any(windows, target_os = "macos")), allow(dead_code))]
 pub struct CredentialStore {
     service: String,
     account: String,
@@ -68,12 +71,14 @@ impl CredentialStore {
         }
     }
 
+    #[cfg(any(windows, target_os = "macos"))]
     fn entry(&self) -> Result<keyring::Entry, String> {
         keyring::Entry::new(&self.service, &self.account)
             .map_err(|e| format!("the credential store is not available: {e}"))
     }
 }
 
+#[cfg(any(windows, target_os = "macos"))]
 impl KeyStore for CredentialStore {
     fn get(&self) -> Result<Option<ApiKey>, String> {
         match self.entry()?.get_password() {
@@ -98,6 +103,26 @@ impl KeyStore for CredentialStore {
         }
     }
 }
+
+#[cfg(not(any(windows, target_os = "macos")))]
+impl KeyStore for CredentialStore {
+    fn get(&self) -> Result<Option<ApiKey>, String> {
+        // No stored key: the agent stays off, as when none has been set.
+        Ok(None)
+    }
+
+    fn set(&self, _key: &ApiKey) -> Result<(), String> {
+        Err(UNSUPPORTED.into())
+    }
+
+    fn delete(&self) -> Result<(), String> {
+        Err(UNSUPPORTED.into())
+    }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+const UNSUPPORTED: &str =
+    "secure key storage is only available on Windows and macOS, so the key was not saved";
 
 /// A store in memory, for tests.
 #[derive(Default)]

@@ -269,6 +269,13 @@ impl Workspace {
             return Err("only .mpp, .txt and .csv files can be read".into());
         }
         let full = self.folder().join(p);
+        // A link inside the folder must not lead out of it.
+        let real = std::fs::canonicalize(&full).map_err(|_| format!("there is no file {rel}"))?;
+        let home = std::fs::canonicalize(self.folder())
+            .map_err(|e| format!("the document's folder could not be read: {e}"))?;
+        if !real.starts_with(&home) {
+            return Err("only files inside the document's folder can be read".into());
+        }
         let meta = std::fs::metadata(&full).map_err(|_| format!("there is no file {rel}"))?;
         if meta.len() > 200_000 {
             return Err("the file is larger than 200 kB".into());
