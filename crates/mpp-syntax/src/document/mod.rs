@@ -484,3 +484,23 @@ pub fn citation_diagnostics(doc: &Document, extra: &[Reference]) -> Vec<Diagnost
     });
     diags
 }
+
+/// True when a heading's own words start with a section number (`1. Intro`,
+/// `2.1 Method`), so `%number sections` must not number it a second time.
+pub fn heading_has_number(content: &[Inline]) -> bool {
+    let Some(Inline {
+        kind: InlineKind::Text(t),
+        ..
+    }) = content.first()
+    else {
+        return false;
+    };
+    let t = t.trim_start();
+    let digits = t
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .count();
+    let (num, rest) = t.split_at(digits);
+    num.starts_with(|c: char| c.is_ascii_digit())
+        && (rest.is_empty() || rest.starts_with(char::is_whitespace))
+}

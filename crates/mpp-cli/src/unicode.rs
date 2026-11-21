@@ -340,11 +340,12 @@ impl Parser {
             let end = close_of(r, '(', ')')?;
             (r[..end].to_string(), 1 + end + 1)
         } else {
-            // A single operand without brackets.
+            // An operand without brackets is the whole term: up to the relation or
+            // separator that ends it (`e^x`, `\sin x`), not its first symbol.
             let start = self.i;
-            self.operand();
-            let raw: String = self.chars[start..self.i].iter().collect();
-            self.i = start;
+            let end = self.term_end(start);
+            let raw: String = self.chars[start..end].iter().collect();
+            let raw = raw.trim_end().to_string();
             let used = raw.len();
             (raw, used)
         };
@@ -353,6 +354,38 @@ impl Parser {
             mpp_syntax::math::display::sentence_text(name, sub.as_deref(), sup.as_deref(), &args)?;
         self.i += rest[..used].chars().count();
         Some(s)
+    }
+
+    /// Where the term that starts at `start` ends: at the first relation, separator or
+    /// closing bracket outside any brackets of its own.
+    fn term_end(&self, start: usize) -> usize {
+        const RELATIONS: [&str; 8] = ["approx", "leq", "geq", "neq", "le", "ge", "ne", "to"];
+        let mut depth = 0i32;
+        let mut j = start;
+        while let Some(&c) = self.chars.get(j) {
+            match c {
+                '(' | '[' | '{' => depth += 1,
+                ')' | ']' | '}' => {
+                    if depth == 0 {
+                        break;
+                    }
+                    depth -= 1;
+                }
+                '=' | '?' | '<' | '>' | '&' | ',' | ';' if depth == 0 => break,
+                '\\' if depth == 0 => {
+                    let word: String = self.chars[j + 1..]
+                        .iter()
+                        .take_while(|c| c.is_ascii_alphabetic())
+                        .collect();
+                    if RELATIONS.contains(&word.as_str()) || self.chars.get(j + 1) == Some(&'\\') {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        j.max(start)
     }
 
     fn matrix_body(&mut self, env: &str) -> String {
@@ -490,6 +523,18 @@ mod tests {
         assert_eq!(to_unicode(r"\frac{x+1}{2}"), "(x+1)/2");
         assert_eq!(to_unicode(r"\sqrt{x+1}"), "√(x+1)");
         assert_eq!(to_unicode(r"\sqrt{2}"), "√2");
+    }
+
+    #[test]
+    fn a_series_label_takes_the_whole_unbracketed_argument() {
+        assert_eq!(
+            to_unicode(r"\operatorname{series}_{x=0}^{4} e^x = ?"),
+            "Taylor series of e^x at x=0, order 4 = ?"
+        );
+        assert_eq!(
+            to_unicode(r"\operatorname{series}_{x=0}^{5} \sin x \approx ?"),
+            "Taylor series of sin x at x=0, order 5 ≈ ?"
+        );
     }
 
     #[test]

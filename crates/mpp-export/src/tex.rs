@@ -609,7 +609,12 @@ impl Writer<'_> {
                 let l = (*level).max(self.base_level) - self.base_level;
                 let cmd =
                     ["section", "subsection", "subsubsection", "paragraph"][usize::from(l).min(3)];
-                let star = if self.number_sections { "" } else { "*" };
+                let star =
+                    if self.number_sections && !mpp_syntax::document::heading_has_number(content) {
+                        ""
+                    } else {
+                        "*"
+                    };
                 let t = self.inlines(content);
                 let _ = writeln!(self.out, "\\{cmd}{star}{{{t}}}\n");
             }
