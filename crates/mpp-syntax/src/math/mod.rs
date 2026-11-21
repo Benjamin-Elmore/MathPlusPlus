@@ -2,6 +2,7 @@
 
 pub mod ast;
 pub mod display;
+pub mod letters;
 mod parser;
 pub mod sexpr;
 pub mod visit;

@@ -318,3 +318,31 @@ fn text_maths_words_in_notes_are_typeset() {
     assert_eq!(maths, ["x^{9}", "1/k^{2}", "|aₖ|^{1/k}"], "{r:?}");
     assert!(r.plain().contains("(|aₖ|"), "{}", r.plain());
 }
+
+/// Letters side by side that spell no defined name get a warning with both quick
+/// fixes; once the name is defined (by those letters on the left of `:=`) they don't.
+#[test]
+fn a_spelled_word_that_is_not_a_name_is_pointed_out() {
+    let src = "$$ speed + 1 = ? $$\n";
+    let (ps, _) = problems_of(src);
+    let p = ps
+        .iter()
+        .find(|p| matches!(&p.kind, Kind::LetterRun { word } if word == "speed"))
+        .expect("a warning on speed");
+    assert_eq!(p.level, Level::Warning);
+    let doc = mpp_syntax::document::parse_document(src);
+    let fixes = fixes::quick_fixes(p, src, &doc);
+    let edits: Vec<String> = fixes
+        .iter()
+        .filter_map(|f| match &f.action {
+            fixes::FixAction::Replace { with, .. } => Some(with.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(edits, [r"\mathrm{speed}", "s p e e d"]);
+    let (ps, _) = problems_of("$$ speed := 3 $$\n\n$$ speed \\cdot 2 = ? $$\n");
+    assert!(
+        !ps.iter().any(|p| matches!(p.kind, Kind::LetterRun { .. })),
+        "{ps:#?}"
+    );
+}

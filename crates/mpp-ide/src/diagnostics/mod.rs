@@ -112,6 +112,9 @@ pub enum Kind {
     },
     /// A definition nothing uses.
     Unused { name: String },
+    /// Letters side by side that spell no defined name (`velocity`): the grammar
+    /// reads them as a product of one-letter names.
+    LetterRun { word: String },
     /// A result that holds only under a condition (`x ≠ 0`), given as LaTeX.
     Assumption { conditions: Vec<String> },
     /// A check that was tested with numbers only, not proved.
@@ -895,11 +898,82 @@ pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
     if let Some(bg) = inp.background {
         out.extend(import_problems(inp.doc, bg));
     }
+    out.extend(letter_runs(inp.doc, &known));
     out.extend(proof_problems(inp.proof));
     if let Some(q) = &inp.quiet {
         out.retain(|p| !(q.start <= p.span.start && p.span.end <= q.end));
     }
     out.sort_by_key(|p| (p.span.start, p.level, p.span.end));
+    out
+}
+
+/// Three or more letters side by side that spell no defined name: the grammar keeps
+/// reading them as a product (`xy` is `x·y`), but a word such as `velocity` was
+/// more likely meant as one name, so it is pointed out with both ways to settle it.
+fn letter_runs(doc: &Document, known: &[String]) -> Vec<Problem> {
+    use mpp_syntax::math::letters::{implicit_factors, letter_runs as runs};
+    use mpp_syntax::math::{visit, DefHead, Node, NodeKind, Statement};
+    fn walk(n: &Node, known: &[String], out: &mut Vec<Problem>) {
+        let factors = implicit_factors(n);
+        if factors.len() > 1 {
+            for r in runs(&factors) {
+                if r.word.len() >= 3 && !known.contains(&r.word) {
+                    let spaced = r.word.chars().map(String::from).collect::<Vec<_>>();
+                    out.push(
+                        Problem::new(
+                            r.span,
+                            Level::Warning,
+                            Kind::LetterRun {
+                                word: r.word.clone(),
+                            },
+                            Rich::text("Read as the product ")
+                                .m(spaced.join(r" \cdot "))
+                                .t(" of single letters. Did you mean the name ")
+                                .m(format!(r"\mathrm{{{}}}", r.word))
+                                .t("?"),
+                        )
+                        .fixing(Rich::text(
+                            "Press Ctrl+. to use it as one name, or to keep the product.",
+                        )),
+                    );
+                }
+            }
+            for f in factors {
+                visit::children(f, &mut |c| walk(c, known, out));
+            }
+        } else {
+            visit::children(n, &mut |c| walk(c, known, out));
+        }
+    }
+    let mut out = vec![];
+    doc.walk(&mut |b| {
+        let BlockKind::DisplayMath(m) = &b.kind else {
+            return;
+        };
+        for line in &m.ast.lines {
+            let mut roots: Vec<&Node> = vec![];
+            match &line.statement {
+                Statement::Definition {
+                    head: DefHead::Function { .. } | DefHead::Name(_),
+                    body,
+                    ..
+                } => roots.push(body),
+                Statement::Query { expr, .. } => roots.push(expr),
+                Statement::Check { lhs, rhs } => {
+                    roots.push(lhs);
+                    roots.push(rhs);
+                }
+                Statement::Relation(n) => roots.push(n),
+                _ => {}
+            }
+            for r in roots {
+                if matches!(r.kind, NodeKind::Error) {
+                    continue;
+                }
+                walk(r, known, &mut out);
+            }
+        }
+    });
     out
 }
 
