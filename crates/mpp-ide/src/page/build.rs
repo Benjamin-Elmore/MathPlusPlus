@@ -3,8 +3,8 @@
 use egui::{Pos2, Rect, Vec2};
 use mpp_eval::{BlockResult, Evaluated, LineKind, Value};
 use mpp_render::{
-    layout_latex, layout_math, CaretStop, DisplayList, FontId, IntegralLimits, LayoutOptions,
-    LineResult, MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
+    layout_latex, layout_math, CaretStop, DisplayList, FontId, HitKind, IntegralLimits,
+    LayoutOptions, LineResult, MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
 };
 use mpp_syntax::document::{
     Align, Block, BlockKind, Comment, DirectiveKind, DisplayMath, Document, Inline, InlineKind,
@@ -1334,8 +1334,23 @@ fn layout_display(
             pad + dl.total_height() / 2.0,
         ));
     }
-    if !extras.hints.is_empty() {
-        let tex = format!("\\text{{{}}}", extras.hints.join("; "));
+    // An empty box already gets the editor's own "fill in" note beside the
+    // equation (with the template's name for the box): one note, not two.
+    let has_slot = dl.hits.iter().any(|h| h.kind == HitKind::Slot);
+    let hints: Vec<&String> = extras
+        .hints
+        .iter()
+        .filter(|h| !(has_slot && h.starts_with("fill in")))
+        .collect();
+    if !hints.is_empty() {
+        let tex = format!(
+            "\\text{{{}}}",
+            hints
+                .iter()
+                .map(|h| h.as_str())
+                .collect::<Vec<_>>()
+                .join("; ")
+        );
         let theme = Theme {
             text: input.theme.placeholder_label,
             ..input.theme

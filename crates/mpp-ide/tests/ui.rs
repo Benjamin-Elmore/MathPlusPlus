@@ -414,3 +414,18 @@ fn autocomplete_offers_the_files_own_multi_letter_names() {
     // No LaTeX command names are shown as labels.
     assert!(!items.iter().any(|i| i.1 == "lor"), "{items:?}");
 }
+
+#[test]
+fn an_empty_box_gets_one_fill_in_note_not_two() {
+    // The editor writes its own "fill in" note beside an equation with an empty
+    // box; the page must not draw the evaluator's note on top of it.
+    let mut app = IdeApp::empty();
+    app.new_file();
+    app.doc_mut()
+        .expect("doc")
+        .editor
+        .set_text("$$ \\int_0^{} x \\, dx $$\n");
+    let mut h = settled(app);
+    let shown = page_text(&mut h);
+    assert!(!shown.contains("fill"), "{shown}");
+}
