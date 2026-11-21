@@ -19,20 +19,25 @@ fn page_rect(b: &PlacedBlock, h: &HitBox) -> Rect {
     )
 }
 
-/// The maths boxes (not results) of every block, with their blocks.
-fn hits(page: &Page) -> impl Iterator<Item = (&PlacedBlock, &HitBox)> {
-    page.blocks.iter().flat_map(|b| {
-        b.dl.hits
-            .iter()
-            .filter(|h| h.kind != HitKind::Result)
-            .map(move |h| (b, h))
-    })
+/// The maths boxes (not results) of the blocks that overlap `near`, with their
+/// blocks. Looking only there keeps placing thousands of problems linear in the page
+/// rather than quadratic.
+fn hits(page: &Page, near: Span) -> impl Iterator<Item = (&PlacedBlock, &HitBox)> {
+    page.blocks
+        .iter()
+        .filter(move |b| b.span.start <= near.end && near.start <= b.span.end)
+        .flat_map(|b| {
+            b.dl.hits
+                .iter()
+                .filter(|h| h.kind != HitKind::Result)
+                .map(move |h| (b, h))
+        })
 }
 
 /// The empty box at a problem's span: a slot that starts inside it (the `}` of
 /// an empty `{}`), or that a zero-width span points at.
 pub fn slot_at(page: &Page, span: Span) -> Option<(Rect, Option<String>)> {
-    hits(page)
+    hits(page, span)
         .filter(|(_, h)| h.kind == HitKind::Slot)
         .filter(|(_, h)| {
             let at = h.span.start;
@@ -49,7 +54,7 @@ pub fn slot_at(page: &Page, span: Span) -> Option<(Rect, Option<String>)> {
 /// The box of the node whose source is exactly `span` (the deepest one when
 /// nested nodes share a span, e.g. `{θ}` and `θ`).
 pub fn node_exact(page: &Page, span: Span) -> Option<Rect> {
-    hits(page)
+    hits(page, span)
         .filter(|(_, h)| h.kind == HitKind::Node && h.span == span)
         .max_by_key(|(_, h)| h.level)
         .map(|(b, h)| page_rect(b, h))
@@ -57,7 +62,7 @@ pub fn node_exact(page: &Page, span: Span) -> Option<Rect> {
 
 /// The smallest node box that covers the whole of `span`.
 pub fn node_covering(page: &Page, span: Span) -> Option<Rect> {
-    hits(page)
+    hits(page, span)
         .filter(|(_, h)| {
             h.kind == HitKind::Node
                 && !h.span.is_empty()
@@ -71,7 +76,7 @@ pub fn node_covering(page: &Page, span: Span) -> Option<Rect> {
 /// The outermost node boxes inside `span` (a box whose parent is also inside is
 /// left out), one rectangle per group of boxes on the same visual line.
 pub fn nodes_inside(page: &Page, span: Span) -> Vec<Rect> {
-    let inside: Vec<(&PlacedBlock, &HitBox)> = hits(page)
+    let inside: Vec<(&PlacedBlock, &HitBox)> = hits(page, span)
         .filter(|(_, h)| !h.span.is_empty() && h.span.start >= span.start && h.span.end <= span.end)
         .collect();
     let outer: Vec<Rect> = inside
@@ -109,7 +114,7 @@ fn merge_lines(mut rects: Vec<Rect>) -> Vec<Rect> {
 /// The opening bracket of the group that starts at `open`: the part of the
 /// group's box to the left of its contents.
 pub fn opener(page: &Page, open: usize) -> Option<Rect> {
-    let (b, group) = hits(page)
+    let (b, group) = hits(page, Span::point(open))
         .filter(|(_, h)| h.kind == HitKind::Node && h.span.start == open && !h.span.is_empty())
         .min_by_key(|(_, h)| h.level)?;
     let first_child = b
@@ -133,15 +138,20 @@ pub fn opener(page: &Page, open: usize) -> Option<Rect> {
 /// from the caret stops at the start and end of each visible character.
 pub fn prose(page: &Page, span: Span) -> Vec<Rect> {
     let mut rects = vec![];
-    for c in page
-        .chars
+    // Characters are sorted by start and stops by offset: search, do not scan.
+    let first = page.chars.partition_point(|c| c.start < span.start);
+    let stops_at = |o: usize| {
+        let i = page.stops.partition_point(|s| s.offset < o);
+        page.stops[i..].iter().take_while(move |s| s.offset == o)
+    };
+    for c in page.chars[first..]
         .iter()
-        .filter(|c| c.start >= span.start && c.end <= span.end)
+        .take_while(|c| c.start <= span.end)
+        .filter(|c| c.end <= span.end)
     {
-        let a = page.stops.iter().find(|s| s.offset == c.start);
-        let b = page.stops.iter().find(|s| {
-            s.offset == c.end && a.is_some_and(|a| (s.top - a.top).abs() < 2.0 && s.x > a.x)
-        });
+        let a = stops_at(c.start).next();
+        let b =
+            stops_at(c.end).find(|s| a.is_some_and(|a| (s.top - a.top).abs() < 2.0 && s.x > a.x));
         if let (Some(a), Some(b)) = (a, b) {
             rects.push(Rect::from_min_max(
                 Pos2::new(a.x, a.top),
@@ -155,10 +165,10 @@ pub fn prose(page: &Page, span: Span) -> Vec<Rect> {
 /// The whole visible line(s) of `span` measured from its caret stops, one
 /// rectangle per visual line (an import line: its words and its link).
 pub fn line_ink(page: &Page, span: Span) -> Vec<Rect> {
-    let rects: Vec<Rect> = page
-        .stops
+    let first = page.stops.partition_point(|s| s.offset < span.start);
+    let rects: Vec<Rect> = page.stops[first..]
         .iter()
-        .filter(|s| span.start <= s.offset && s.offset <= span.end)
+        .take_while(|s| s.offset <= span.end)
         .map(|s| Rect::from_min_max(Pos2::new(s.x, s.top), Pos2::new(s.x, s.bottom)))
         .collect();
     merge_lines(rects)
@@ -223,7 +233,7 @@ fn parse_node(src: &str, span: Span) -> Option<mpp_syntax::math::Node> {
 /// A name inside another name (the `θ` of `x_θ`) is not a name of its own.
 fn named_nodes(page: &Page, src: &str, within: Span) -> Vec<(Span, String, Rect)> {
     let mut all: Vec<(Span, String, Rect, u16)> = vec![];
-    for (b, h) in hits(page) {
+    for (b, h) in hits(page, within) {
         if h.kind != HitKind::Node
             || h.span.is_empty()
             || h.span.start < within.start

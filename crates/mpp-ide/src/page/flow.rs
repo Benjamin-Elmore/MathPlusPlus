@@ -101,6 +101,12 @@ fn push_text_link(
     rise: f32,
     link: Option<Rc<Link>>,
 ) {
+    // A run of prose this long (a pasted megabyte line) is shown only in part: laying
+    // out and painting millions of glyphs froze the window. The rest stays in the file.
+    let (text, hidden) = match text.char_indices().nth(MAX_RUN_CHARS) {
+        Some((cut, _)) => (&text[..cut], text[cut..].chars().count()),
+        None => (text, 0),
+    };
     let n = text.chars().count();
     for (i, (bi, ch)) in text.char_indices().enumerate() {
         let (start, end) = if mapped {
@@ -137,7 +143,22 @@ fn push_text_link(
             link: link.clone(),
         });
     }
+    if hidden > 0 {
+        let note = format!(" … {hidden} more characters not shown");
+        let muted = Style {
+            color: Color {
+                a: style.color.a / 2,
+                ..style.color
+            },
+            ..style
+        };
+        let at = Span::point(span.end);
+        push_text_link(out, &note, muted, at, false, rise, None);
+    }
 }
+
+/// Most characters of one run of prose laid out on the page.
+const MAX_RUN_CHARS: usize = 20_000;
 
 fn bold(font: FontId) -> FontId {
     match font {
@@ -420,6 +441,23 @@ fn flow_atoms(
         if line_has_content && line_w + unit_w > width {
             lines.push(vec![]);
             line_w = 0.0;
+        }
+        if unit_w > width && width > 0.0 {
+            // A word wider than the column is broken between its characters.
+            for (k, atom) in atoms.iter().enumerate().take(j).skip(i) {
+                let w = atom.width();
+                let has = lines.last().is_some_and(|l| !l.is_empty());
+                if has && line_w + w > width {
+                    lines.push(vec![]);
+                    line_w = 0.0;
+                }
+                if let Some(l) = lines.last_mut() {
+                    l.push(k);
+                }
+                line_w += w;
+            }
+            i = j;
+            continue;
         }
         for k in i..j {
             if let Some(l) = lines.last_mut() {

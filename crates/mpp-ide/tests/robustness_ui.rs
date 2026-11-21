@@ -169,3 +169,45 @@ fn reused_layouts_match_a_fresh_layout_after_an_edit_above_them() {
         .all(|(a, b)| a.offset == b.offset && (a.x - b.x).abs() < 0.01));
     assert!((reused.page.height - fresh.2).abs() < 0.01);
 }
+
+#[test]
+fn a_huge_one_line_paragraph_is_laid_out_in_part_and_quickly() {
+    // A 10 MB line froze the window for over a minute; the page now lays out the
+    // first part of a long run and says how much is not shown.
+    let text = "x".repeat(2_000_000);
+    let mut doc = mpp_ide::Doc::with_text(&text, None);
+    let start = Instant::now();
+    let pc = doc.page(900.0, 18.0, mpp_ide::theme::Mode::Light);
+    let took = start.elapsed();
+    let limit = if cfg!(debug_assertions) { 20 } else { 2 };
+    assert!(took < Duration::from_secs(limit), "{took:?}");
+    assert!(pc.page.chars.len() < 50_000, "{}", pc.page.chars.len());
+    // The shown part wraps inside the column instead of running off the page.
+    assert!(pc.page.height > 100.0);
+}
+
+#[test]
+fn a_keystroke_in_a_rejected_deep_nest_stays_quick() {
+    let d = scratch("deep-nest");
+    let path = d.join("paren.mpp");
+    let mut text = String::from("$$ ");
+    text.push_str(&"(".repeat(100_000));
+    text.push_str(&")".repeat(100_000));
+    text.push_str(" $$\n");
+    std::fs::write(&path, &text).expect("write");
+    let mut app = IdeApp::empty();
+    app.open_file(&path, false).expect("open");
+    let mut h = harness(app);
+    h.run_steps(2);
+    h.state_mut().settle();
+    h.run_steps(2);
+    h.event(egui::Event::Text("1".to_string()));
+    let start = Instant::now();
+    h.run_steps(1);
+    h.state_mut().settle();
+    h.run_steps(1);
+    let took = start.elapsed();
+    let limit = if cfg!(debug_assertions) { 5_000 } else { 300 };
+    assert!(took < Duration::from_millis(limit), "{took:?}");
+    let _ = std::fs::remove_dir_all(&d);
+}
