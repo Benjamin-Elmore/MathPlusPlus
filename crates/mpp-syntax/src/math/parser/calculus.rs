@@ -12,6 +12,9 @@ use crate::span::Span;
 impl Parser<'_> {
     /// A big operator or derivative starting at the next token, if there is one.
     pub(super) fn try_calculus(&mut self) -> Option<Node> {
+        if let Some(node) = self.try_call_form() {
+            return Some(node);
+        }
         match self.peek()? {
             Tok::Sym(s) => match s.name {
                 "sum" => Some(self.big_op(BigOpKind::Sum)),
@@ -31,6 +34,108 @@ impl Parser<'_> {
             Tok::Letter('D') if matches!(self.peek_n(1), Some(Tok::Underscore)) => self.try_d_sub(),
             _ => None,
         }
+    }
+
+    /// The coder's call forms (see `crate::forms`): `sum(f, n, 1, 10)`,
+    /// `prod(f, n, 1, 10)`, `int(f, x)` and `int(f, x, 0, 1)`. The bracket must
+    /// touch the sign, the second argument must be a name, and the count must
+    /// fit; anything else is read as before (a sum of a tuple …).
+    fn try_call_form(&mut self) -> Option<Node> {
+        let Some(Tok::Sym(s)) = self.peek() else {
+            return None;
+        };
+        let name = s.name;
+        if !matches!(name, "sum" | "prod" | "int") {
+            return None;
+        }
+        let sign = self.cur_span();
+        let open = self.toks.get(self.pos + 1)?;
+        let touching = open.span.start == sign.end;
+        let paren = matches!(
+            open.kind,
+            Tok::Open {
+                delim: Delim::Paren,
+                sized: false
+            }
+        );
+        if !touching || !paren {
+            return None;
+        }
+        let cp = self.checkpoint();
+        self.bump();
+        let (mut args, _, end) = self.call_args();
+        let counts = if name == "int" { &[2, 4][..] } else { &[4][..] };
+        let clean = self.diags.len() == cp.diags;
+        if !clean || !counts.contains(&args.len()) || !args[1].is_name() {
+            self.restore(cp);
+            return None;
+        }
+        let span = sign.join(end);
+        let (from, to) = if args.len() == 4 {
+            let to = args.pop();
+            (args.pop(), to)
+        } else {
+            (None, None)
+        };
+        let var = name_node(&args[1]);
+        let mut body = args.swap_remove(0);
+        if let Some(letter) = bound_letter(&var) {
+            rebind(&mut body, letter);
+        }
+        let kind = if name == "int" {
+            NodeKind::Integral(Box::new(Integral {
+                kind: IntKind::Single,
+                lower: from,
+                upper: to,
+                body,
+                diffs: vec![var],
+                dot: false,
+                diff_in_numerator: false,
+                form: false,
+            }))
+        } else {
+            NodeKind::BigOp(Box::new(BigOp {
+                op: if name == "sum" {
+                    BigOpKind::Sum
+                } else {
+                    BigOpKind::Prod
+                },
+                index: Some(var),
+                from,
+                to,
+                over: None,
+                body,
+            }))
+        };
+        Some(Node::new(kind, span))
+    }
+
+    /// `diff(f, x)` and `diff(f, x, n)`: the derivative of `f` in `x` (of order `n`).
+    pub(super) fn diff_call(&mut self, start: Span) -> Node {
+        let (mut args, _, end) = self.call_args();
+        let span = start.join(end);
+        let ok = matches!(args.len(), 2 | 3) && args[1].is_name();
+        if !ok {
+            self.error(
+                span,
+                "`diff` takes the function and the variable, as in `diff(f, x)` or `diff(f, x, 2)`",
+                &["`diff(f, x)`"],
+            );
+            return Node::error(span);
+        }
+        let order = if args.len() == 3 { args.pop() } else { None };
+        let var = name_node(&args[1]);
+        let of = args.swap_remove(0);
+        deriv(
+            Derivative {
+                partial: false,
+                order: order.clone(),
+                vars: vec![DerivVar { var, power: order }],
+                of: Some(of),
+                notation: DerivNotation::Operator { frac: true },
+            },
+            span,
+        )
     }
 
     /// `_lower` and `^upper` in either order (LaTeX, plain or Unicode scripts).

@@ -189,7 +189,7 @@ fn snapshots_of_the_insert_menu_templates_and_matrix_picker() {
         text(&mut h, " = ?");
         settle(&mut h);
         assert!(
-            doc_text(&h).contains("\\int_{0}^{1} {x^2} \\, dx = ?"),
+            doc_text(&h).contains("\\int_{0}^{1} {x^{2}} \\, dx = ?"),
             "{}",
             doc_text(&h)
         );

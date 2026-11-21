@@ -66,7 +66,7 @@ fn heading_prefix(line: &str) -> usize {
 impl Editor {
     /// Applies an edit as an undo step of its own, keeping the caret relative to
     /// the text after the range.
-    fn convert(&mut self, range: Range<usize>, with: &str) {
+    pub(super) fn convert(&mut self, range: Range<usize>, with: &str) {
         self.record(EditKind::Other, false);
         let caret = self.caret;
         let end = range.end;

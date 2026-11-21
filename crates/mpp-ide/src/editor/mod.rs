@@ -8,6 +8,9 @@
 //! templates (see [`template`]) in step with the text.
 
 pub mod comment;
+pub mod convert;
+mod exits;
+pub mod forms;
 mod rules;
 pub mod symbols;
 pub mod template;
@@ -193,6 +196,8 @@ pub struct Editor {
     hint: Option<(String, u64)>,
     /// The heading hint was shown already.
     hinted_heading: bool,
+    /// The revision right after `/` made a fraction (so `//` can take it back).
+    auto_frac: Option<u64>,
 }
 
 impl Editor {
@@ -673,7 +678,34 @@ impl Editor {
         let Some(s) = self.session_at(caret) else {
             return false;
         };
+        // An exponent or subscript box has nothing else to visit: Tab leaves it
+        // and goes on in the template around it, if there is one.
+        if s.template == convert::SUP || s.template == convert::SUB {
+            let (id, to) = (s.id, if forward { s.range.end } else { s.range.start });
+            self.move_caret(to, false);
+            if forward {
+                self.left = Some((id, to));
+            }
+            let outer = self
+                .sessions
+                .iter()
+                .filter(|o| o.id != id && o.holds(to))
+                .min_by_key(|o| o.range.len())
+                .map(|o| o.id);
+            if let Some(o) = outer {
+                self.tab_in(o, to, forward);
+            }
+            return true;
+        }
         let id = s.id;
+        self.tab_in(id, caret, forward)
+    }
+
+    /// Tab in template `id` with the caret at `caret` (see [`Editor::tab`]).
+    fn tab_in(&mut self, id: u64, caret: usize, forward: bool) -> bool {
+        let Some(s) = self.session(id) else {
+            return false;
+        };
         let cur = s.box_at(caret).and_then(|i| s.tab_pos(i));
         let start = s.primary.and_then(|i| s.tab_pos(i));
         // Boxes before the starting one that still need filling (an integral's
