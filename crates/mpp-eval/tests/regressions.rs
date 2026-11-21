@@ -215,3 +215,51 @@ fn textbook_forms_of_the_library_operators() {
         "3"
     );
 }
+
+/// The verdict of the first check, as `mpp run` describes it.
+fn verdict(src: &str) -> String {
+    let ev = run(src);
+    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    assert!(errs.is_empty(), "{src}: {errs:?}");
+    let line = ev
+        .blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .find(|l| l.verdict.is_some())
+        .expect("a check");
+    line.verdict
+        .as_ref()
+        .map(|v| v.describe())
+        .unwrap_or_default()
+}
+
+#[test]
+fn checks_of_lists_inequalities_and_units() {
+    // Lists, matrices and sets, entry by entry.
+    assert!(verdict(r"$$ (\sin^2 x + \cos^2 x, 2) \overset{?}{=} (1, 2) $$").starts_with('✓'));
+    assert_eq!(
+        verdict(r"$$ (1, 2) \overset{?}{=} (1, 3) $$"),
+        "✗ (left side 2 in entry 2, right side 3)"
+    );
+    assert!(verdict(r"$$ (1, 2) \overset{?}{=} (1, 2, 3) $$").starts_with('✗'));
+    assert!(verdict(r"$$ \{1, 2\} \overset{?}{=} \{2, 1\} $$").starts_with('✓'));
+    assert!(verdict(r"$$ \{1, 2\} \overset{?}{=} \{1, 3\} $$").starts_with('✗'));
+    assert!(verdict(
+        r"$$ \begin{pmatrix} 1 & x \\ 0 & 1 \end{pmatrix} \overset{?}{=} \begin{pmatrix} 1 & x \\ 0 & 1 \end{pmatrix} $$"
+    )
+    .starts_with('✓'));
+    // Inequalities against true or false: exact for numbers, at random points otherwise.
+    assert!(verdict(r"$$ 3 < 2 \overset{?}{=} \text{false} $$").starts_with('✓'));
+    assert!(verdict(r"$$ \pi > 3 \overset{?}{=} \text{true} $$").starts_with('✓'));
+    assert!(verdict(r"$$ e^x \ge 1 + x \overset{?}{=} \text{true} $$").starts_with('✓'));
+    let v = verdict(r"$$ x^2 \ge x \overset{?}{=} \text{true} $$");
+    assert!(v.starts_with("✗ (at x = "), "{v}");
+    // Values with units, as quantities.
+    assert!(verdict(r"$$ 100\,\mathrm{cm} \overset{?}{=} 1\,\mathrm{m} $$").starts_with('✓'));
+    assert!(verdict(r"$$ 3600\,\mathrm{s} \overset{?}{=} 1\,\mathrm{h} $$").starts_with('✓'));
+    assert_eq!(
+        verdict(r"$$ 1\,\mathrm{km} \overset{?}{=} 999\,\mathrm{m} $$"),
+        "✗ (left side 1 km, right side 999 m)"
+    );
+    assert!(verdict(r"$$ 1\,\mathrm{kg} \overset{?}{=} 1\,\mathrm{m} $$").starts_with('✗'));
+}

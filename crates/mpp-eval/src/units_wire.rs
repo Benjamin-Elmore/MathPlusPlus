@@ -487,7 +487,7 @@ fn check_inside(e: &Expr) -> MathResult<()> {
 }
 
 /// `a op b` for quantities: decided when both sides are known numbers.
-fn relation(op: RelOp, a: &Expr, b: &Expr) -> MathResult<Option<bool>> {
+pub(crate) fn relation(op: RelOp, a: &Expr, b: &Expr) -> MathResult<Option<bool>> {
     let (
         Folded::Known {
             q: x, certain: cx, ..

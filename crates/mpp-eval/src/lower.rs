@@ -260,6 +260,11 @@ impl<'a> Lowerer<'a> {
                 EvalError::Invalid(format!("`{s}` has no value of its own")),
             )),
             K::Dots(_) => Err(fail(span, EvalError::Unsupported("an ellipsis".into()))),
+            // `\text{true}`, `\text{false}`: truth values (the right side of a check of
+            // an inequality).
+            K::Text(t) if matches!(t.trim(), "true" | "false") => {
+                Ok(Expr::new(ExprNode::Bool(t.trim() == "true")))
+            }
             K::Text(t) => Err(fail(
                 span,
                 EvalError::Invalid(format!("the text “{t}” cannot be evaluated")),
