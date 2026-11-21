@@ -1,8 +1,23 @@
 # Math++ IDE usability: run state
 
-## Queue "IDEBUGS" (Ben, 2026-11-21; was "MathPlusPlusQueue-2: IDE usability"): PAUSED (Ben paused it on 2026-11-21 to move it to another terminal)
+## Queue "IDEBUGS" (Ben, 2026-11-21; was "MathPlusPlusQueue-2: IDE usability"): RUNNING (resumed 2026-11-21)
 
-**▶ RESUME HERE (paused 2026-11-21).** Run from `C:\Elmore\MathPP`. Phase A is half done; B–E haven't started.
+**Parallel plan (Ben, 2026-11-21: "reformat it for parallelism").** At most 4 lanes at once. Each lane has a hand-made worktree `C:\Elmore\MathPP-<lane>` and its own `CARGO_TARGET_DIR`. The main session merges and runs the gates.
+| Wave | Lane | Items | Owns | Worktree / branch |
+|---|---|---|---|---|
+| 1 (Phase A) | A1 workspace | U4b gates and fix, U8 | `workspace/`, `layout/`, `explorer/`, status bar | `MathPP-a1` / `wip/a1-workspace` |
+| 1 | A2 caret | U2 rest, U9, U10 | `page/`, focus and arrows in `view.rs` | `MathPP-a2` / `wip/a2-typing` |
+| 1 | A3 input rules | U3, U6, U7 | `editor/`, key-to-edit rules | `MathPP-a3` / `wip/a3-input` |
+| 1 merge | main | merge A1–A3 into `fix/ide-bugs`, gates, PR A | | |
+| 2 (B+C) | B1 page | U11, U12, U13, U14, U15 | `page/`, `doc.rs`, `mpp-syntax/document` | `feat/maths-lines` lane |
+| 2 | B2 eval | U16, U17 | `mpp-eval` | merges into `feat/maths-lines` |
+| 2 | C1 conversion | U18, U19 | `editor/`, `insert/`, `editor/template.rs` | `feat/two-inputs` lane |
+| 2 | C2 editing | U20, U21, U22 | brackets, selection, command list | merges into `feat/two-inputs` |
+| 3 (D) | D1 | U23, U25 | help panel, hovers | `feat/ide-help` |
+| 3 | D2 | U24, U26 | `tutorial/`, theme contrast, AccessKit | `feat/ide-help` |
+| 4 (E) | serial | U27, then U28 | `tests/replay/`, reviews | `fix/ide-validation` |
+
+**Earlier pause notes (2026-11-21).** Run from `C:\Elmore\MathPP`. Phase A is half done; B–E haven't started.
 - **`fix/ide-bugs`** (main lane, this file lives here): U1 done; U2's main cause fixed (988e77c).
 - **Lane A1** = worktree `C:\Elmore\MathPP-a1`, branch `wip/a1-workspace`. Done: U4 side column (d0703ee), U5 open/tabs/new files (7af3104). **7c05be2 is WIP** for U4b (files-only Explorer + separate side views): its gates (build, test, clippy, fmt) were **not run yet**. Run them, fix, then reword that commit (or add a fix commit). Then U8.
 - **Lane A2** = worktree `C:\Elmore\MathPP-a2`, branch `wip/a2-typing`. **b5996dd is WIP** for the rest of U2 (empty lines get their own caret stop, new `page/blank.rs`; a viewport pin with a `pin_shift` test was next). Gates not run. Then U3, U6, U7, U9, U10, and the video replay test in `tests/replay.rs`.
