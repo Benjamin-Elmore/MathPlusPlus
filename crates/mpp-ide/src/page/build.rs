@@ -1405,9 +1405,74 @@ fn plain_text(s: &str) -> String {
         .join(" ")
 }
 
-/// True when a note is maths (it has markup a sentence would not).
-fn looks_like_maths(s: &str) -> bool {
-    s.contains(['\\', '^', '_', '='])
+/// A step's note ("derivative of sin with u = 3·x") as LaTeX: the words in roman
+/// type, the maths in it typeset. A note that is LaTeX already is kept.
+pub(crate) fn prose_latex(note: &str) -> String {
+    if note.contains('\\') {
+        return note.to_string();
+    }
+    fn is_maths(w: &str) -> bool {
+        let mut cs = w.chars();
+        let single = matches!((cs.next(), cs.next()), (Some(c), None) if c.is_alphabetic());
+        single
+            || w.chars()
+                .any(|c| c.is_ascii_digit() || "^_=+−-*/·×()[]{}<>≤≥≠|′'√∫∑".contains(c))
+    }
+    fn flush_text(out: &mut String, text: &mut String) {
+        if !text.is_empty() {
+            // `\text` drops spaces at its ends: they are written as spaces of maths.
+            if text.starts_with(' ') {
+                out.push_str("\\;");
+            }
+            out.push_str(&format!("\\text{{{}}}", plain_text(text)));
+            if text.ends_with(' ') {
+                out.push_str("\\;");
+            }
+            text.clear();
+        }
+    }
+    fn flush_maths(out: &mut String, maths: &mut Vec<String>) {
+        if !maths.is_empty() {
+            out.push(' ');
+            out.push_str(&crate::diagnostics::rich::text_maths_latex(
+                &maths.join(" "),
+            ));
+            out.push(' ');
+            maths.clear();
+        }
+    }
+    let mut out = String::new();
+    let mut text = String::new();
+    let mut maths: Vec<String> = vec![];
+    for w in note.split(' ') {
+        // Punctuation after a formula stays with the words.
+        let (core, punct) = match w.strip_suffix([',', ';', ':']) {
+            Some(c) => (c, &w[c.len()..]),
+            None => (w, ""),
+        };
+        if !core.is_empty() && is_maths(core) {
+            if !text.is_empty() {
+                text.push(' ');
+            }
+            flush_text(&mut out, &mut text);
+            maths.push(core.to_string());
+            if !punct.is_empty() {
+                flush_maths(&mut out, &mut maths);
+                text.push_str(punct);
+            }
+        } else {
+            if !maths.is_empty() {
+                flush_maths(&mut out, &mut maths);
+                text.push(' ');
+            } else if !text.is_empty() {
+                text.push(' ');
+            }
+            text.push_str(w);
+        }
+    }
+    flush_maths(&mut out, &mut maths);
+    flush_text(&mut out, &mut text);
+    out.trim().to_string()
 }
 
 /// The result of the line at `offset` (a result box sits at the end of its line).
@@ -1696,11 +1761,7 @@ fn layout_steps(
             c.merge(&dl, indent, y, false);
             y += dl.total_height().max(small) + size * 0.2;
             if let Some(note) = &n.note {
-                let tex = if looks_like_maths(note) {
-                    note.clone()
-                } else {
-                    format!("\\text{{{}}}", plain_text(note))
-                };
+                let tex = prose_latex(note);
                 let nd = snippet(&tex, small * 0.9, muted);
                 c.merge(&nd, indent + size, y, false);
                 y += nd.total_height().max(small * 0.9) + size * 0.2;
@@ -1842,6 +1903,20 @@ fn collect_math_ranges(src: &str, blocks: &[Block], out: &mut Vec<Span>) {
 mod tests {
     use super::*;
     use mpp_syntax::document::parse_document;
+
+    #[test]
+    fn step_notes_are_words_with_maths_in_them() {
+        let tex = prose_latex("derivative of sin with u = 3·x");
+        assert!(tex.starts_with(r"\text{derivative of sin with}"), "{tex}");
+        assert!(tex.contains("u = 3·x"), "{tex}");
+        let dl = mpp_render::layout_latex(&tex, &mpp_render::LayoutOptions::display(18.0));
+        // The words are upright Latin letters, not maths italics.
+        assert!(dl.text().contains("derivativeofsinwith"), "{}", dl.text());
+        assert_eq!(
+            prose_latex("power rule on u^2 with u = x + 1"),
+            r"\text{power rule on}\; u^{2} \;\text{with}\; u = x + 1"
+        );
+    }
 
     fn page_for(src: &str) -> Page {
         let doc = parse_document(src);
