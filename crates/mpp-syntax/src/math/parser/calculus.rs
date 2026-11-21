@@ -297,7 +297,7 @@ impl Parser<'_> {
             match self.deriv_var() {
                 Some(var) => {
                     let span = d.join(var.span);
-                    diffs.push(Node::new(var.kind, span));
+                    diffs.push(Node::new(var.into_parts().0, span));
                 }
                 None => break,
             }
@@ -760,8 +760,9 @@ impl Parser<'_> {
 
 /// `\frac{dx}{x}` as an integral body: takes the `dx` out, leaving `\frac{1}{x}`.
 fn numerator_differential(body: Node) -> Result<(Node, Node), Node> {
-    let NodeKind::Frac { num, den, style } = body.kind else {
-        return Err(body);
+    let (kind, body_span) = body.into_parts();
+    let NodeKind::Frac { num, den, style } = kind else {
+        return Err(Node::new(kind, body_span));
     };
     let split = match &num.kind {
         NodeKind::Binary {
@@ -774,18 +775,19 @@ fn numerator_differential(body: Node) -> Result<(Node, Node), Node> {
     match split {
         Some((d_span, var)) => {
             let one = Node::new(NodeKind::Number("1".to_string()), d_span);
-            let var = Node::new(var.kind, d_span.join(var.span));
+            let var_span = d_span.join(var.span);
+            let var = Node::new(var.into_parts().0, var_span);
             let frac = Node::new(
                 NodeKind::Frac {
                     num: Box::new(one),
                     den,
                     style,
                 },
-                body.span,
+                body_span,
             );
             Ok((frac, var))
         }
-        None => Err(Node::new(NodeKind::Frac { num, den, style }, body.span)),
+        None => Err(Node::new(NodeKind::Frac { num, den, style }, body_span)),
     }
 }
 

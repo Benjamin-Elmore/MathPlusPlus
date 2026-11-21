@@ -291,7 +291,7 @@ The argument of a keyword is a list inside one `$…$`, separated by commas outs
 
 ## 5. Errors
 
-A maths error is reported at the exact span it comes from, says what was expected ("expected the upper bound after `^`"), and the parser carries on at the next block, so one bad line never stops the rest of the document. Unclosed `$$` closes at the next blank line, with an error. Inside a maths span the parser recovers at the next `,` or line break (`\\`), putting an error placeholder where something was missing, so it always returns a tree. Nesting deeper than about 30 brackets, or more than 256 operators in a row on one line, is reported as an error instead of being followed.
+A maths error is reported at the exact span it comes from, says what was expected ("expected the upper bound after `^`"), and the parser carries on at the next block, so one bad line never stops the rest of the document. Unclosed `$$` closes at the next blank line, with an error. Inside a maths span the parser recovers at the next `,` or line break (`\\`), putting an error placeholder where something was missing, so it always returns a tree. Nesting deeper than 256 brackets, or more than 10 000 operators in a row on one line, is reported as an error instead of being followed; anything up to that is read in full, without running out of stack.
 
 ## 6. Comments and paper features
 

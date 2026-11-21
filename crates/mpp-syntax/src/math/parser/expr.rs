@@ -722,7 +722,8 @@ pub(super) fn pow(base: Node, exp: Node) -> Node {
 
 fn prime(node: Node, count: u8, end: usize) -> Node {
     let span = Span::new(node.span.start, end.max(node.span.end));
-    match node.kind {
+    let (kind, node_span) = node.into_parts();
+    match kind {
         NodeKind::Prime { base, count: c } => Node::new(
             NodeKind::Prime {
                 base,
@@ -732,7 +733,7 @@ fn prime(node: Node, count: u8, end: usize) -> Node {
         ),
         kind => Node::new(
             NodeKind::Prime {
-                base: Box::new(Node::new(kind, node.span)),
+                base: Box::new(Node::new(kind, node_span)),
                 count,
             },
             span,
@@ -742,13 +743,14 @@ fn prime(node: Node, count: u8, end: usize) -> Node {
 
 fn factorial(node: Node, end: usize) -> Node {
     let span = Span::new(node.span.start, end.max(node.span.end));
-    match node.kind {
+    let (kind, node_span) = node.into_parts();
+    match kind {
         NodeKind::Factorial { operand, count: 1 } => {
             Node::new(NodeKind::Factorial { operand, count: 2 }, span)
         }
         kind => Node::new(
             NodeKind::Factorial {
-                operand: Box::new(Node::new(kind, node.span)),
+                operand: Box::new(Node::new(kind, node_span)),
                 count: 1,
             },
             span,
@@ -817,19 +819,21 @@ pub(super) fn make_accent(accent: Accent, arg: Node, span: Span) -> Node {
 
 /// Removes plain round brackets used only for grouping (`x^(n+1)`, `sqrt(x)`).
 pub(super) fn ungroup_paren(node: Node) -> Node {
-    match node.kind {
+    let (kind, node_span) = node.into_parts();
+    match kind {
         NodeKind::Group {
             inner,
             bracket: Bracket::Paren,
             sized: false,
         } => *inner,
-        kind => Node::new(kind, node.span),
+        kind => Node::new(kind, node_span),
     }
 }
 
 /// A round pair `(a, b)` read where a set is expected becomes the open interval.
 pub(crate) fn as_interval(node: Node) -> Node {
-    match node.kind {
+    let (kind, node_span) = node.into_parts();
+    match kind {
         NodeKind::Tuple {
             mut elems,
             bracket: Bracket::Paren,
@@ -846,12 +850,12 @@ pub(crate) fn as_interval(node: Node) -> Node {
                         hi_closed: false,
                         sized,
                     },
-                    node.span,
+                    node_span,
                 ),
-                _ => Node::error(node.span),
+                _ => Node::error(node_span),
             }
         }
-        kind => Node::new(kind, node.span),
+        kind => Node::new(kind, node_span),
     }
 }
 

@@ -245,7 +245,7 @@ impl ProofWorker {
         let (done_tx, rx) = channel::<ProofDone>();
         let spawned = std::thread::Builder::new()
             .name("mpp-proof".into())
-            .stack_size(32 * 1024 * 1024)
+            .stack_size(256 * 1024 * 1024)
             .spawn(move || {
                 while let Ok(mut job) = jobs.recv() {
                     while let Ok(newer) = jobs.try_recv() {

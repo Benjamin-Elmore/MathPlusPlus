@@ -142,7 +142,73 @@ pub struct Node {
     pub span: Span,
 }
 
+impl Drop for Node {
+    /// A long chain (`a + b + … `, up to 10 000 operators) is a tree as deep as the
+    /// chain is long, and dropping it by plain recursion would need stack in
+    /// proportion. The children of the kinds that chain are moved to a list and
+    /// dropped one at a time instead, so dropping any tree takes little stack.
+    fn drop(&mut self) {
+        let mut pending: Vec<Node> = Vec::new();
+        take_children(&mut self.kind, &mut pending);
+        while let Some(mut n) = pending.pop() {
+            take_children(&mut n.kind, &mut pending);
+        }
+    }
+}
+
+/// Moves the children of `kind` that can form deep chains into `out`.
+fn take_children(kind: &mut NodeKind, out: &mut Vec<Node>) {
+    let mut take = |b: &mut Box<Node>| {
+        let span = b.span;
+        out.push(std::mem::replace(
+            &mut **b,
+            Node::new(NodeKind::Error, span),
+        ));
+    };
+    match kind {
+        NodeKind::Binary { lhs, rhs, .. } => {
+            take(lhs);
+            take(rhs);
+        }
+        NodeKind::Frac { num, den, .. } => {
+            take(num);
+            take(den);
+        }
+        NodeKind::Pow { base, exp } => {
+            take(base);
+            take(exp);
+        }
+        NodeKind::Subscript { base, sub } => {
+            take(base);
+            take(sub);
+        }
+        NodeKind::Unary { operand, .. } | NodeKind::Factorial { operand, .. } => take(operand),
+        NodeKind::Prime { base, .. } => take(base),
+        NodeKind::Group { inner, .. }
+        | NodeKind::Fenced { inner, .. }
+        | NodeKind::Styled { inner, .. }
+        | NodeKind::Accented { inner, .. } => take(inner),
+        NodeKind::Call { callee, args, .. } => {
+            take(callee);
+            out.append(args);
+        }
+        NodeKind::Tuple { elems, .. } | NodeKind::Set { elems, .. } => out.append(elems),
+        NodeKind::Relation { first, rest } => {
+            take(first);
+            out.extend(rest.drain(..).map(|(_, n)| n));
+        }
+        _ => {}
+    }
+}
+
 impl Node {
+    /// The node's kind and span, taken apart (a node can't be moved out of field by
+    /// field, because of its [`Drop`]).
+    pub fn into_parts(mut self) -> (NodeKind, Span) {
+        let span = self.span;
+        (std::mem::replace(&mut self.kind, NodeKind::Error), span)
+    }
+
     /// Makes a node.
     pub fn new(kind: NodeKind, span: Span) -> Self {
         Node { kind, span }

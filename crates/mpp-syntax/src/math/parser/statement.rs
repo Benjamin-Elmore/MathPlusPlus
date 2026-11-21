@@ -402,8 +402,9 @@ impl Parser<'_> {
 
     /// `g \equiv 9.81` with a name on the left is a constant definition.
     fn relation_or_const(&mut self, lhs: Node) -> Statement {
-        let NodeKind::Relation { first, rest } = lhs.kind else {
-            return Statement::Relation(lhs);
+        let (kind, lhs_span) = lhs.into_parts();
+        let NodeKind::Relation { first, rest } = kind else {
+            return Statement::Relation(Node::new(kind, lhs_span));
         };
         if rest.len() == 1
             && rest[0].0 == RelOp::Equiv
@@ -422,7 +423,7 @@ impl Parser<'_> {
                 query,
             };
         }
-        Statement::Relation(Node::new(NodeKind::Relation { first, rest }, lhs.span))
+        Statement::Relation(Node::new(NodeKind::Relation { first, rest }, lhs_span))
     }
 
     /// Classifies the left side of a definition.

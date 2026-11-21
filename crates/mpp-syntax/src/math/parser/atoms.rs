@@ -200,9 +200,10 @@ impl Parser<'_> {
         };
         self.bump();
         let inner = self.bracketed(delim, sized, open);
-        let arg = match inner.kind {
+        let (inner_kind, inner_span) = inner.into_parts();
+        let arg = match inner_kind {
             NodeKind::Set { mut elems, .. } if elems.len() == 1 => elems.remove(0),
-            _ => inner,
+            kind => Node::new(kind, inner_span),
         };
         let name = match (letter, inverse) {
             ("L", false) => "laplace",

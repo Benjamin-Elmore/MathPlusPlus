@@ -92,7 +92,7 @@ impl EvalWorker {
         let (done_tx, rx) = channel::<Done>();
         let handle = std::thread::Builder::new()
             .name("mpp-eval".into())
-            .stack_size(16 * 1024 * 1024)
+            .stack_size(256 * 1024 * 1024)
             .spawn(move || {
                 let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
                 let mut base: Option<PathBuf> = None;
