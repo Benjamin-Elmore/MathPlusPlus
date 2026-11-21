@@ -49,6 +49,9 @@ pub struct ShowState {
     pub hide_comments: bool,
     /// Notes folded to one line, by block id (never saved in the file).
     pub folded: Vec<BlockId>,
+    /// The caret is in the title block: its empty fields show grey labels
+    /// ("Author", "Date") to type into; otherwise they take no space.
+    pub editing_title: bool,
 }
 
 impl ShowState {
@@ -420,6 +423,28 @@ impl Page {
             .filter(on_line)
             .max_by(|a, b| cmp_f(a.x, b.x))?;
         Some((first.offset, last.offset))
+    }
+
+    /// `line` (page coordinates) widened to every glyph drawn on the same line by
+    /// the blocks overlapping `span`, including words that have no box of their
+    /// own (a figure line's "Parametric" heading).
+    pub fn line_ink(&self, span: Span, line: Rect) -> Rect {
+        let mut out = line;
+        for b in &self.blocks {
+            if b.span.end < span.start || b.span.start > span.end {
+                continue;
+            }
+            for p in &b.dl.items {
+                if let mpp_render::Primitive::Glyph { x, y, size, .. } = *p {
+                    let y = y + b.top;
+                    if y >= line.top() && y <= line.bottom() + 0.3 * size {
+                        let g = Rect::from_min_max(Pos2::new(x, y - 0.7 * size), Pos2::new(x, y));
+                        out = out.union(g);
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// The page rectangle covered by a source span (union of the boxes inside it),

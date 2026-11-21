@@ -12,7 +12,9 @@ use std::ops::Range;
 
 use crate::editor::{likely_variable, parse_snippet, Editor, Knobs, Snippet};
 use crate::page::Page;
-pub use catalogue::{catalogue, controls, find, Action, BuildCx, Control, Group, Template};
+pub use catalogue::{
+    catalogue, controls, find, mark_current, Action, BuildCx, Control, Group, Template,
+};
 
 /// Settings for inserting maths (View → Insert settings), saved between runs.
 #[derive(Debug, Clone, PartialEq, Eq)]

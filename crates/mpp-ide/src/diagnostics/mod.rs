@@ -28,7 +28,7 @@ use std::path::PathBuf;
 
 use egui::Rect;
 use mpp_eval::{Binding, Evaluated, LineKind, Verdict};
-use mpp_syntax::document::{BlockId, BlockKind, Document};
+use mpp_syntax::document::{BlockId, BlockKind, DisplayMath, Document};
 use mpp_syntax::{Diagnostic, Severity, Span};
 
 use crate::page::Page;
@@ -333,7 +333,7 @@ fn raw_diagnostics(inp: &Inputs<'_>) -> Vec<Diagnostic> {
 }
 
 /// The names the evaluator has values for.
-fn known_names(ev: Option<&Evaluated>) -> Vec<String> {
+pub(crate) fn known_names(ev: Option<&Evaluated>) -> Vec<String> {
     ev.map(|e| {
         e.bindings
             .iter()
@@ -408,7 +408,26 @@ fn expected_of(d: &Diagnostic) -> Option<Rich> {
     if d.expected.is_empty() {
         return None;
     }
-    let joined = d.expected.join(" or ");
+    // Brackets the parser names as code read as words: "a number, a name or a
+    // bracketed expression", never a bare "(".
+    let words: Vec<String> = d
+        .expected
+        .iter()
+        .map(|e| {
+            match e.as_str() {
+                "`(`" | "`[`" => "a bracketed expression",
+                "`{`" => "a group in braces",
+                "`)`" | "`]`" => "a closing bracket",
+                "`}`" => "a closing brace",
+                other => other,
+            }
+            .to_string()
+        })
+        .collect();
+    let joined = match words.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+        _ => words.join(""),
+    };
     let r = from_message(&joined);
     Some(sentence(Rich::text("Expected ").and(lower_first(r))))
 }
@@ -911,25 +930,63 @@ pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
 /// reading them as a product (`xy` is `x·y`), but a word such as `velocity` was
 /// more likely meant as one name, so it is pointed out with both ways to settle it.
 fn letter_runs(doc: &Document, known: &[String]) -> Vec<Problem> {
-    use mpp_syntax::math::letters::{implicit_factors, letter_runs as runs};
+    let mut out = vec![];
+    doc.walk(&mut |b| {
+        let BlockKind::DisplayMath(m) = &b.kind else {
+            return;
+        };
+        for line in &m.ast.lines {
+            line_letter_runs(line, known, &mut out);
+        }
+    });
+    out
+}
+
+/// The lines of a maths block (by index) with a run of letters that spells no
+/// defined name: their answer would be the product of the letters, which is not
+/// what was meant, so the page shows the warning and no answer.
+pub(crate) fn lines_with_letter_runs(m: &DisplayMath, known: &[String]) -> Vec<usize> {
+    let mut lines = vec![];
+    for (i, line) in m.ast.lines.iter().enumerate() {
+        let mut found = vec![];
+        line_letter_runs(line, known, &mut found);
+        if !found.is_empty() {
+            lines.push(i);
+        }
+    }
+    lines
+}
+
+fn line_letter_runs(line: &mpp_syntax::math::Line, known: &[String], out: &mut Vec<Problem>) {
+    use mpp_syntax::math::letters::{implicit_factors, letter_runs as runs, plain_letter};
     use mpp_syntax::math::{visit, DefHead, Node, NodeKind, Statement};
     fn walk(n: &Node, known: &[String], out: &mut Vec<Problem>) {
         let factors = implicit_factors(n);
         if factors.len() > 1 {
             for r in runs(&factors) {
                 if r.word.len() >= 3 && !known.contains(&r.word) {
-                    let spaced = r.word.chars().map(String::from).collect::<Vec<_>>();
+                    // `sinn(2)`: the last letter is the name of a call; it belongs
+                    // to the word the reader typed.
+                    let (mut word, mut span) = (r.word.clone(), r.span);
+                    if let Some(NodeKind::Call { callee, .. }) = factors.get(r.end).map(|f| &f.kind)
+                    {
+                        if let Some(c) = plain_letter(callee) {
+                            if callee.span.start == r.span.end && !r.powered {
+                                word.push(c);
+                                span = span.join(callee.span);
+                            }
+                        }
+                    }
+                    let spaced = word.chars().map(String::from).collect::<Vec<_>>();
                     out.push(
                         Problem::new(
-                            r.span,
+                            span,
                             Level::Warning,
-                            Kind::LetterRun {
-                                word: r.word.clone(),
-                            },
+                            Kind::LetterRun { word: word.clone() },
                             Rich::text("Read as the product ")
                                 .m(spaced.join(r" \cdot "))
                                 .t(" of single letters. Did you mean the name ")
-                                .m(format!(r"\mathrm{{{}}}", r.word))
+                                .m(format!(r"\mathrm{{{word}}}"))
                                 .t("?"),
                         )
                         .fixing(Rich::text(
@@ -945,36 +1002,27 @@ fn letter_runs(doc: &Document, known: &[String]) -> Vec<Problem> {
             visit::children(n, &mut |c| walk(c, known, out));
         }
     }
-    let mut out = vec![];
-    doc.walk(&mut |b| {
-        let BlockKind::DisplayMath(m) = &b.kind else {
-            return;
-        };
-        for line in &m.ast.lines {
-            let mut roots: Vec<&Node> = vec![];
-            match &line.statement {
-                Statement::Definition {
-                    head: DefHead::Function { .. } | DefHead::Name(_),
-                    body,
-                    ..
-                } => roots.push(body),
-                Statement::Query { expr, .. } => roots.push(expr),
-                Statement::Check { lhs, rhs } => {
-                    roots.push(lhs);
-                    roots.push(rhs);
-                }
-                Statement::Relation(n) => roots.push(n),
-                _ => {}
-            }
-            for r in roots {
-                if matches!(r.kind, NodeKind::Error) {
-                    continue;
-                }
-                walk(r, known, &mut out);
-            }
+    let mut roots: Vec<&Node> = vec![];
+    match &line.statement {
+        Statement::Definition {
+            head: DefHead::Function { .. } | DefHead::Name(_),
+            body,
+            ..
+        } => roots.push(body),
+        Statement::Query { expr, .. } => roots.push(expr),
+        Statement::Check { lhs, rhs } => {
+            roots.push(lhs);
+            roots.push(rhs);
         }
-    });
-    out
+        Statement::Relation(n) => roots.push(n),
+        _ => {}
+    }
+    for r in roots {
+        if matches!(r.kind, NodeKind::Error) {
+            continue;
+        }
+        walk(r, known, out);
+    }
 }
 
 /// The proof steps that get a mark: a wrong step is an error, a gap or an external

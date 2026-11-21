@@ -1136,6 +1136,11 @@ fn layout_empty_title_field(
     w: f32,
     c: &mut Canvas,
 ) -> f32 {
+    // Once the caret has left the title block, an empty author or date takes no
+    // space: a finished page shows no words that are not content.
+    if kind != TitleKind::Title && !input.show.editing_title {
+        return 0.0;
+    }
     let size = input.size;
     let scale = match kind {
         TitleKind::Title => 1.75,
@@ -1291,7 +1296,73 @@ fn figure_spec_inlines(src: &str, b: &Block, f: &mpp_syntax::document::Figure) -
         t.truncate(kept);
     }
     inl.retain(|i| !matches!(&i.kind, InlineKind::Text(t) if t.is_empty()));
-    inl
+    figure_keywords_in_words(inl)
+}
+
+/// Shows the figure keywords of a `Figure:` line in words ("riemann mid" →
+/// "midpoint rule,", "taylor" → "Taylor polynomial of degree"), from the shared
+/// display table. The words stand at the keyword's place but cover no source
+/// text: the keyword is the file's structure, not something to type over.
+fn figure_keywords_in_words(inl: Vec<Inline>) -> Vec<Inline> {
+    use mpp_syntax::document::FigureKeyword;
+    use mpp_syntax::math::display::{capitalised, figure_keyword_words};
+    let mut out: Vec<Inline> = vec![];
+    for (n, it) in inl.into_iter().enumerate() {
+        let InlineKind::Text(t) = &it.kind else {
+            out.push(it);
+            continue;
+        };
+        let (t, base) = (t.clone(), it.span.start);
+        let mut plain = 0;
+        let mut i = 0;
+        while i < t.len() {
+            let at_word = t[..i].chars().last().is_none_or(|c| !c.is_alphanumeric());
+            let found = at_word
+                .then(|| {
+                    FigureKeyword::ALL.iter().find(|k| {
+                        let kw = k.as_str();
+                        t[i..].starts_with(kw)
+                            && t[i + kw.len()..]
+                                .chars()
+                                .next()
+                                .is_none_or(|c| !c.is_alphanumeric())
+                    })
+                })
+                .flatten();
+            if let Some(k) = found {
+                if i > plain {
+                    out.push(Inline {
+                        kind: InlineKind::Text(t[plain..i].to_string()),
+                        span: Span::new(base + plain, base + i),
+                    });
+                }
+                let words = figure_keyword_words(*k);
+                let first = n == 0 && t[..i].trim().is_empty();
+                let words = if first {
+                    capitalised(words)
+                } else {
+                    words.to_string()
+                };
+                out.push(Inline {
+                    kind: InlineKind::Text(words),
+                    span: Span::new(base + i, base + i),
+                });
+                i += k.as_str().len();
+                plain = i;
+            } else {
+                i += t[i..].chars().next().map_or(1, char::len_utf8);
+            }
+        }
+        if plain == 0 {
+            out.push(it);
+        } else if plain < t.len() {
+            out.push(Inline {
+                kind: InlineKind::Text(t[plain..].to_string()),
+                span: Span::new(base + plain, base + t.len()),
+            });
+        }
+    }
+    out
 }
 
 fn rrect(x: f32, y: f32, w: f32, h: f32) -> RRect {
@@ -1350,11 +1421,18 @@ fn layout_display(
     c: &mut Canvas,
 ) -> f32 {
     let size = input.size;
-    let extras = input
+    let mut extras = input
         .eval
         .and_then(|ev| ev.block(b.id))
         .map(|br| extras_for(br, m, input.show))
         .unwrap_or_default();
+    // A line read as a product of letters it probably did not mean (`sinn(2)`)
+    // gets a warning and no answer, never a nonsense one.
+    if !extras.results.is_empty() {
+        let known = crate::diagnostics::known_names(input.eval);
+        let bad = crate::diagnostics::lines_with_letter_runs(m, &known);
+        extras.results.retain(|r| !bad.contains(&r.line));
+    }
     let opts = LayoutOptions {
         style: MathStyle::Display,
         font_size: size * 1.1,

@@ -926,12 +926,12 @@ fn cases() -> Vec<Case> {
             "graph.taylor",
             &[
                 ("function", "", R),
-                ("n", "5", R),
+                ("degree", "5", R),
                 ("from", "-10", R),
                 ("to", "10", R),
             ],
             &[r"\sin x", r"5", r"-3", r"3"],
-            r"Figure: ${\sin x}$, taylor $n = {5}$, $x \in [{-3}, {3}]$.",
+            r"Figure: ${\sin x}$, taylor ${5}$, $x \in [{-3}, {3}]$.",
             None,
         ),
         case(
@@ -1835,4 +1835,88 @@ fn insert_into_block(ed: &mut Editor, id: &str) {
     let t = find(id).unwrap_or_else(|| panic!("no template {id}"));
     let page = page_of(ed);
     insert::insert(ed, &page, t, t.knobs, &BuildCx::default());
+}
+
+#[test]
+fn figure_lines_name_their_graphs_in_words() {
+    for (id, want, gone) in [
+        ("graph.riemann", "midpoint rule,", "riemann"),
+        ("graph.trapezoid", "trapezoid rule,", "riemann"),
+        ("graph.taylor", "Taylor polynomial of degree", "taylor"),
+        ("graph.newton", "Newton's method from", "newton"),
+        ("graph.param", "Parametric curve", "parametric"),
+        ("graph.slope", "Slope field of", "slope field"),
+        ("graph.contour", "contour plot", "xx"),
+        ("graph.scatter", "Scatter plot of", "scatter"),
+        ("graph.histogram", "Histogram of", "histogram"),
+        ("graph.boxplot", "Box plot of", "box plot"),
+    ] {
+        let mut ed = Editor::new("");
+        insert_into(&mut ed, id, None);
+        let shown = visible(&ed);
+        let squash = |s: &str| s.replace(" ", "");
+        assert!(shown.contains(&squash(want)), "{id}: {shown:?}");
+        assert!(!shown.contains(&squash(gone)), "{id}: {shown:?}");
+    }
+}
+
+#[test]
+fn the_toolbar_clears_the_words_that_start_a_figure_line() {
+    for id in ["graph.param", "graph.slope"] {
+        let mut ed = Editor::new("");
+        let sid = insert_into(&mut ed, id, None);
+        let s = ed.session(sid).expect("session").clone();
+        let page = page_of(&ed);
+        let span = mpp_syntax::Span::new(s.range.start, s.range.end);
+        let boxes = page.rect_of_span(span).expect("rect");
+        let ink = page.line_ink(span, boxes);
+        // The heading words sit left of the first box and are now included.
+        assert!(
+            ink.left() < boxes.left() - 20.0,
+            "{id}: {ink:?} vs {boxes:?}"
+        );
+        let bounds = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(900.0, 800.0));
+        let width = 110.0;
+        let (at, pivot) = mpp_ide::insert::menu::toolbar_anchor(ink, width, bounds);
+        let left = if pivot == egui::Align2::RIGHT_TOP {
+            at.x - width
+        } else {
+            at.x
+        };
+        let bar = egui::Rect::from_min_size(egui::pos2(left, at.y), egui::vec2(width, 60.0));
+        assert!(
+            !bar.intersects(ink),
+            "{id}: toolbar {bar:?} covers the line {ink:?}"
+        );
+    }
+}
+
+#[test]
+fn helper_templates_read_as_sentences_with_their_options_in_words() {
+    for (id, want) in [
+        ("helper.riemann", "MidpointRiemannsumof"),
+        ("helper.volume", "(methodchosenautomatically)"),
+        ("helper.rk4", "RK4solutionof"),
+        ("helper.newton", "Newton'smethodfor"),
+    ] {
+        let mut ed = Editor::new("");
+        insert_into(&mut ed, id, None);
+        let shown = visible(&ed);
+        assert!(shown.contains(want), "{id}: {shown:?}");
+        for word in [",mid", ",auto", "(□", "riemann"] {
+            assert!(!shown.contains(word), "{id}: {word} in {shown:?}");
+        }
+    }
+    // The rule buttons show which rule is in use.
+    let mut ed = Editor::new("");
+    let sid = insert_into(&mut ed, "helper.riemann", None);
+    let s = ed.session(sid).expect("session").clone();
+    let mut c = mpp_ide::insert::controls(&s.template, s.knobs);
+    mpp_ide::insert::mark_current(&mut c, &s.contents(ed.text()));
+    let pressed: Vec<&str> = c
+        .iter()
+        .filter(|c| c.active)
+        .map(|c| c.label.as_str())
+        .collect();
+    assert_eq!(pressed, ["Midpoint"]);
 }

@@ -46,8 +46,17 @@ fn evaluate(src: &str, path: &Path) -> (Document, Evaluated) {
 
 /// Every glyph on the page, one block per line.
 fn page_text(src: &str, doc: &Document, ev: &Evaluated) -> String {
+    page_text_with(src, doc, ev, &mpp_ide::page::ShowState::default())
+}
+
+fn page_text_with(
+    src: &str,
+    doc: &Document,
+    ev: &Evaluated,
+    show: &mpp_ide::page::ShowState,
+) -> String {
     let page = build_page(&PageInput {
-        show: &mpp_ide::page::ShowState::default(),
+        show,
         src,
         doc,
         eval: Some(ev),
@@ -238,4 +247,22 @@ $$ \operatorname{extrema}_{[-2, 2]} f = ? $$
                 .count();
         assert_eq!(outlines, 0, "{}", b.dl.text());
     }
+}
+
+/// Empty author and date fields show their grey labels only while the caret is in
+/// the title block; a finished page shows nothing for them.
+#[test]
+fn empty_title_fields_hide_once_the_caret_leaves() {
+    let path = root().join("examples/title-fixture.mpp");
+    let src = "Title: Waves\nAuthor: \nDate: \n\nSome prose.\n";
+    let (doc, ev) = evaluate(src, &path);
+    let away = page_text(src, &doc, &ev);
+    assert!(away.contains("Waves"), "{away}");
+    assert!(!away.contains("Author") && !away.contains("Date"), "{away}");
+    let editing = mpp_ide::page::ShowState {
+        editing_title: true,
+        ..Default::default()
+    };
+    let here = page_text_with(src, &doc, &ev, &editing);
+    assert!(here.contains("Author") && here.contains("Date"), "{here}");
 }
