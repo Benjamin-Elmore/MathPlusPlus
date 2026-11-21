@@ -187,7 +187,9 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
         return crate::helpers_b::evaluate(&adapted.to_expr(), ctx);
     }
     if call.name == "dsolve" {
-        return dsolve_route(&call, e, ctx);
+        // Every form (`dsolve(eq, conditions…)`, `dsolve(eq, y, t, …)`, systems) is the
+        // ODE toolkit's, the only differential-equation solver.
+        return crate::helpers_b::evaluate(e, ctx);
     }
     let route = match call.name.as_str() {
         "rk4" | "rk4table" => {
@@ -207,19 +209,6 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     match route {
         Route::Registry => crate::domains_wire::evaluate(&expr, ctx),
         Route::OdeToolkit => crate::helpers_b::evaluate(&expr, ctx),
-    }
-}
-
-/// `dsolve` in either form. `dsolve(eq, y, t, …)` goes to the ODE toolkit too, which
-/// reads `y(0) = 0` or `(0, 0)` as the start, gives `y = …` when it can and keeps the
-/// variable as named; the registry's solver is its fallback.
-fn dsolve_route(call: &Call, e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
-    if !registry_dsolve(call) {
-        return crate::helpers_b::evaluate(e, ctx);
-    }
-    match crate::helpers_b::evaluate(e, ctx) {
-        Some(Ok(v)) => Some(Ok(v)),
-        _ => crate::domains_wire::evaluate(e, ctx),
     }
 }
 

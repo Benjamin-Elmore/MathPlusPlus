@@ -221,7 +221,7 @@ mod tests {
     #[test]
     fn registry_dispatches_by_name() {
         let r = Registry::standard();
-        for op in ["det", "solve", "dsolve", "union", "powmod", "mean", "binom"] {
+        for op in ["det", "solve", "rk4", "union", "powmod", "mean", "binom"] {
             assert!(r.handles(op), "{op} is not registered");
         }
         assert_eq!(r.domain_of("det"), Some("linear algebra"));
