@@ -1,6 +1,6 @@
 //! Numerical solutions as functions in documents: a differential equation (or system)
 //! with no closed form, whose initial conditions are all given at one point, defines
-//! its unknowns as `ivp(…)` expressions (see [`mpp_core::tools_b::ode::ivp`]). This
+//! its unknowns as `ivp(…)` expressions (see [`mpp_core::ode::ivp`]). This
 //! module evaluates them at a number, keeping each problem's accepted steps so later
 //! evaluations start from the nearest one, and builds them from a parsed equation or
 //! system.
@@ -8,8 +8,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use mpp_core::tools_b::ode::ivp::{component, Ivp, IVP, VAR};
-use mpp_core::tools_b::ode::{parse, Condition};
+use mpp_core::ode::ivp::{component, Ivp, IVP, VAR};
+use mpp_core::ode::{parse, Condition};
 use mpp_core::{EmptyEnv, Expr, ExprNode, MathError, MathResult};
 
 use crate::holders::Ctx;

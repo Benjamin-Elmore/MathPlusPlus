@@ -126,11 +126,11 @@ impl LineResult {
 
     /// The working as a foldable tree (top-level steps with their sub-steps), ending at
     /// the answer; `None` when no steps were recorded.
-    pub fn step_tree(&self) -> Option<mpp_core::tools::StepTree> {
+    pub fn step_tree(&self) -> Option<mpp_core::step_tree::StepTree> {
         let steps = self.steps.as_ref()?;
         let tree = match (&self.input, &self.value) {
-            (Some(q), Some(v)) => mpp_core::tools::StepTree::for_answer(steps, q, &v.expr()),
-            _ => mpp_core::tools::StepTree::from_steps(steps),
+            (Some(q), Some(v)) => mpp_core::step_tree::StepTree::for_answer(steps, q, &v.expr()),
+            _ => mpp_core::step_tree::StepTree::from_steps(steps),
         };
         Some(tree)
     }
@@ -151,9 +151,9 @@ impl LineResult {
         let unicode = match v {
             Value::Function { params, body } => (*t == format!("({}) ↦ {body}", params.join(", ")))
                 .then(|| format!("({}) ↦ {}", params.join(", "), body.to_text())),
-            Value::Table(table) => mpp_core::tools::table::rows(table)
-                .filter(|rows| *t == mpp_core::tools::table::to_text(rows))
-                .map(|rows| mpp_core::tools::table::to_unicode(&rows)),
+            Value::Table(table) => mpp_core::table::rows(table)
+                .filter(|rows| *t == mpp_core::table::to_text(rows))
+                .map(|rows| mpp_core::table::to_unicode(&rows)),
             other => {
                 let e = other.expr();
                 (*t == e.to_string()).then(|| e.to_text())
@@ -185,9 +185,9 @@ impl LineResult {
                 self.text = Some(format!("({}) ↦ {body}", params.join(", ")));
             }
             Value::Table(t) => {
-                let rows = mpp_core::tools::table::rows(t).unwrap_or_default();
-                self.latex = Some(mpp_core::tools::table::to_latex(&rows));
-                self.text = Some(mpp_core::tools::table::to_text(&rows));
+                let rows = mpp_core::table::rows(t).unwrap_or_default();
+                self.latex = Some(mpp_core::table::to_latex(&rows));
+                self.text = Some(mpp_core::table::to_text(&rows));
             }
             other => {
                 let e = other.expr();

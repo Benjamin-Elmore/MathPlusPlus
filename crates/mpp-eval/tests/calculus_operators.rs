@@ -1,4 +1,4 @@
-//! The second set of calculus tools through whole documents: differential equations,
+//! The calculus operators through whole documents: differential equations,
 //! special functions and the operator forms' error messages.
 
 use std::sync::Arc;

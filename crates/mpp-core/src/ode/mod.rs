@@ -13,7 +13,7 @@
 
 pub mod first_order;
 pub mod ivp;
-pub mod laplace;
+pub mod laplace_method;
 pub mod linear;
 pub mod linsys;
 pub mod numeric;
@@ -34,6 +34,7 @@ use crate::expr::Expr;
 use crate::simplify::{add, mul, simplify};
 use crate::steps::Steps;
 
+use crate::transforms::laplace;
 pub use numeric::{solve_numeric, NumericSolution};
 pub use parse::{is_differential_equation, parse, Ode};
 pub use verify::Verified;
@@ -234,7 +235,7 @@ pub fn solve_parsed(
     };
     if wants.as_deref() == Some("laplace") || has_steps {
         let mut local = Steps::new();
-        let r = laplace::solve_ivp(ode, conditions, &mut local);
+        let r = laplace_method::solve_ivp(ode, conditions, &mut local);
         candidates.push(with_steps(r, local));
     }
     if wants.as_deref() == Some("series") || wants.as_deref() == Some("frobenius") {
@@ -635,7 +636,7 @@ fn solve_constants(equations: &[Expr], consts: &[String]) -> Option<Vec<Expr>> {
 
 /// Simplifies, and expands when that is shorter.
 pub(crate) fn tidy(e: &Expr) -> Expr {
-    let s = crate::tools_b::util::pythagorean_tidy(&simplify(e));
+    let s = crate::calc_support::pythagorean_tidy(&simplify(e));
     match crate::expand::expand(&s) {
         Ok(x) => {
             let x = simplify(&x);

@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use mpp_core::tools::table;
+use mpp_core::table;
 use mpp_eval::{Evaluated, LineKind, LineResult, NoImports, Session, Value};
 use mpp_syntax::Severity;
 

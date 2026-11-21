@@ -1751,7 +1751,7 @@ impl Run<'_, '_> {
         let call = match call.node() {
             ExprNode::Apply(name, args) if &**name == "dsolve" => {
                 let mut args = args.clone();
-                args.push(Expr::sym(crate::helpers_b::FUNCTION_MARKER));
+                args.push(Expr::sym(crate::helpers::FUNCTION_MARKER));
                 Expr::apply(name, args)
             }
             _ => call,

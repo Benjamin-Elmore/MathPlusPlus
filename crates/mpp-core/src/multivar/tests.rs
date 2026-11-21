@@ -1,7 +1,7 @@
 //! Textbook multivariable and vector calculus problems with known answers.
 
 use super::*;
-use crate::tools::testkit::p;
+use crate::testkit::p;
 
 fn s(e: &Expr) -> String {
     e.to_string()
@@ -261,50 +261,4 @@ fn stokes_and_divergence_theorems() {
     let c = check_divergence_theorem(&ps(&["x", "y", "z"]), &["x", "y", "z"], &ball).unwrap();
     assert!(c.agree, "{c:?}");
     assert!(close(&c.interior, 4.0 * std::f64::consts::PI));
-}
-
-#[test]
-fn laplace_table_shift_and_inverse() {
-    assert_eq!(
-        s(&laplace(&p("t^2*exp(3*t)"), "t", "s").unwrap()),
-        "2/(s - 3)^3"
-    );
-    assert_eq!(
-        s(&laplace(&p("sin(2*t)"), "t", "s").unwrap()),
-        "2/(s^2 + 4)"
-    );
-    assert_eq!(s(&laplace(&p("5"), "t", "s").unwrap()), "5/s");
-    let shifted = laplace(&p("exp(-t)*cos(2*t)"), "t", "s").unwrap();
-    assert_eq!(
-        s(&inverse_laplace(&shifted, "s", "t").unwrap()),
-        s(&p("exp(-t)*cos(2*t)"))
-    );
-    assert_eq!(
-        s(&inverse_laplace(&p("1/(s^2 + 1)"), "s", "t").unwrap()),
-        "sin(t)"
-    );
-    assert_eq!(
-        s(&inverse_laplace(&p("1/(s*(s + 1))"), "s", "t").unwrap()),
-        s(&p("1 - exp(-t)"))
-    );
-    assert_eq!(
-        s(&inverse_laplace(&p("1/(s - 2)^2"), "s", "t").unwrap()),
-        s(&p("t*exp(2*t)"))
-    );
-    assert!(inverse_laplace(&p("s^2/(s + 1)"), "s", "t").is_err());
-    assert!(laplace(&p("ln(t)"), "t", "s").is_err());
-}
-
-#[test]
-fn laplace_solves_odes() {
-    // y'' + y = 0, y(0) = 1, y'(0) = 0.
-    let (_, y) = laplace_ode(&ps(&["1", "0", "1"]), &p("0"), &ps(&["1", "0"]), "t", "s").unwrap();
-    assert_eq!(s(&y), "cos(t)");
-    // y'' − 3y' + 2y = 0, y(0) = 0, y'(0) = 1.
-    let (_, y) = laplace_ode(&ps(&["2", "-3", "1"]), &p("0"), &ps(&["0", "1"]), "t", "s").unwrap();
-    assert_eq!(s(&y), s(&p("exp(2*t) - exp(t)")));
-    // y' + y = 1, y(0) = 0.
-    let (_, y) = laplace_ode(&ps(&["1", "1"]), &p("1"), &ps(&["0"]), "t", "s").unwrap();
-    assert_eq!(s(&y), s(&p("1 - exp(-t)")));
-    assert!(laplace_ode(&ps(&["1", "1"]), &p("0"), &[], "t", "s").is_err());
 }

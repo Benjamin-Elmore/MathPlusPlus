@@ -1462,7 +1462,7 @@ struct Extras {
     /// Tables of helper results (label, value LaTeX), shown under the equation.
     tables: Vec<Vec<(String, String)>>,
     /// Worked steps, by line span.
-    steps: Vec<(Span, mpp_core::tools::StepTree)>,
+    steps: Vec<(Span, mpp_core::step_tree::StepTree)>,
     /// Some answer is still being worked out.
     pending: bool,
     /// What to fill in before there can be an answer ("fill in: upper bound").
@@ -1586,7 +1586,7 @@ fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState) -> Extras {
             continue;
         }
         if let Some(Value::Table(t)) = &v.value {
-            if let Some(rows) = mpp_core::tools::table::rows(t) {
+            if let Some(rows) = mpp_core::table::rows(t) {
                 ex.tables.push(
                     rows.iter()
                         .map(|(label, e)| (label.clone(), e.to_latex()))
@@ -1747,7 +1747,7 @@ fn layout_table(
 fn layout_steps(
     input: &PageInput<'_>,
     line: Span,
-    tree: &mpp_core::tools::StepTree,
+    tree: &mpp_core::step_tree::StepTree,
     x0: f32,
     y0: f32,
     w: f32,
@@ -1813,7 +1813,7 @@ fn layout_steps(
     });
     y += row_h + size * 0.2;
     if expanded {
-        let mut stack: Vec<(usize, &mpp_core::tools::StepNode)> =
+        let mut stack: Vec<(usize, &mpp_core::step_tree::StepNode)> =
             tree.roots.iter().rev().map(|n| (0, n)).collect();
         while let Some((depth, n)) = stack.pop() {
             let indent = left + depth as f32 * size * 1.2;
@@ -1869,7 +1869,7 @@ fn layout_sentence_results(
     };
     for v in &br.values {
         if let Some(Value::Table(t)) = &v.value {
-            if let Some(rows) = mpp_core::tools::table::rows(t) {
+            if let Some(rows) = mpp_core::table::rows(t) {
                 let rows: Vec<(String, String)> = rows
                     .iter()
                     .map(|(label, e)| (label.clone(), e.to_latex()))

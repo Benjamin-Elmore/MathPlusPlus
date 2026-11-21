@@ -1,5 +1,5 @@
 //! The multivariable and vector calculus helpers as holders, answered by
-//! [`mpp_core::tools::multivar`].
+//! [`mpp_core::multivar`].
 //!
 //! Points are written as a subscript `(x, y) = (1, 2)`; integration ranges as
 //! `r \in [0, 2]` items, outermost first, either as arguments or in the subscript:
@@ -22,14 +22,14 @@
 //!   `\operatorname{lsolve}((a_0, a_1, a_2), g, (y_0, y_1))` for `a₂y″ + a₁y′ + a₀y = g(t)`.
 
 use mpp_core::calc::{line_integral, line_integral_scalar};
-use mpp_core::tools::multivar::{
+use mpp_core::multivar::{
     self as mv, change_of_variables, check_divergence_theorem, check_greens_theorem,
-    check_stokes_theorem, components, flux_integral, implicit_derivative, integrate_in,
-    inverse_laplace, lagrange, laplace, laplace_ode, linear_approximation, related_rates,
-    second_derivative_test, solve_rates, surface_integral, tangent_plane, tuple, Coordinates,
-    Patch, Solid, TheoremCheck,
+    check_stokes_theorem, components, flux_integral, implicit_derivative, integrate_in, lagrange,
+    linear_approximation, related_rates, second_derivative_test, solve_rates, surface_integral,
+    tangent_plane, tuple, Coordinates, Patch, Solid, TheoremCheck,
 };
-use mpp_core::tools::table;
+use mpp_core::table;
+use mpp_core::transforms::laplace as lt;
 use mpp_core::{Expr, ExprNode, MathError, MathResult, Name, RelOp};
 
 use crate::holders::Ctx;
@@ -426,13 +426,14 @@ fn run(op: &str, sub: &Expr, items: &[Expr], ctx: &Ctx<'_>) -> MathResult<Expr> 
             Ok(Expr::equation(lhs, d))
         }
         "rates" => rates(sub, items),
-        "laplace" => laplace(first(op, items)?, "t", "s"),
-        "invlaplace" => inverse_laplace(first(op, items)?, "s", "t"),
+        "laplace" => lt::transform(first(op, items)?, "t", "s"),
+        "invlaplace" => lt::inverse(first(op, items)?, "s", "t"),
         "lsolve" => {
             let [coeffs, g, init] = items else {
                 return Err(arity(op, "3", items.len()));
             };
-            let (big_y, y) = laplace_ode(&components(coeffs), g, &components(init), "t", "s")?;
+            let (big_y, y) =
+                lt::solve_coefficients(&components(coeffs), g, &components(init), "t", "s")?;
             ctx.log(
                 "Laplace transform of the equation",
                 &Expr::apply("lsolve", items.to_vec()),

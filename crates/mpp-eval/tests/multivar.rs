@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use mpp_core::tools::table;
+use mpp_core::table;
 use mpp_eval::{Evaluated, LineResult, NoImports, Session, Value};
 
 fn run(src: &str) -> Evaluated {

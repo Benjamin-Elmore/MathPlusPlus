@@ -14,7 +14,7 @@ use crate::steps::Steps;
 
 use super::parse::Ode;
 use super::Condition;
-use crate::tools_b::util::value;
+use crate::calc_support::value;
 
 /// Most accepted steps.
 pub const MAX_STEPS: usize = 200_000;
@@ -268,8 +268,8 @@ fn shooting(
 }
 
 // Dormand–Prince 5(4) tableau.
-const C: [f64; 7] = [0.0, 0.2, 0.3, 0.8, 8.0 / 9.0, 1.0, 1.0];
-const A: [[f64; 6]; 7] = [
+pub(crate) const C: [f64; 7] = [0.0, 0.2, 0.3, 0.8, 8.0 / 9.0, 1.0, 1.0];
+pub(crate) const A: [[f64; 6]; 7] = [
     [0.0; 6],
     [0.2, 0.0, 0.0, 0.0, 0.0, 0.0],
     [3.0 / 40.0, 9.0 / 40.0, 0.0, 0.0, 0.0, 0.0],
@@ -299,7 +299,7 @@ const A: [[f64; 6]; 7] = [
         11.0 / 84.0,
     ],
 ];
-const B5: [f64; 7] = [
+pub(crate) const B5: [f64; 7] = [
     35.0 / 384.0,
     0.0,
     500.0 / 1113.0,
@@ -308,7 +308,7 @@ const B5: [f64; 7] = [
     11.0 / 84.0,
     0.0,
 ];
-const B4: [f64; 7] = [
+pub(crate) const B4: [f64; 7] = [
     5179.0 / 57600.0,
     0.0,
     7571.0 / 16695.0,
@@ -518,7 +518,7 @@ fn ros2_step(sys: &System, x: f64, y: &[f64], h: f64) -> Option<(Vec<f64>, Vec<f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools_b::ode::parse::parse;
+    use crate::ode::parse::parse;
 
     fn ode(src: Expr) -> Ode {
         parse(&src, Some("y"), Some("x")).unwrap()

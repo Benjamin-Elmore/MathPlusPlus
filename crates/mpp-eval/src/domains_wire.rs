@@ -263,9 +263,9 @@ const ODE_OPS: &[&str] = &["dsolve", "rk4", "rk4table"];
 /// derivatives of a constant before the solver sees them: each first derivative of a
 /// bare name becomes the name `y′`, which the solver reads as the derivative.
 pub fn protect_ode_args(op: &str, args: &mut [Expr]) {
-    // Only the registry's form names the unknown and the variable; the ODE toolkit's form
-    // (`dsolve(y' = y, y(0) = 1)`, systems) reads the derivatives themselves.
-    if !ODE_OPS.contains(&op) || !crate::dispatch::is_registry_ode_form(op, args) {
+    // Only the form that names the unknown and the variable needs this; the other forms
+    // (`dsolve(y' = y, y(0) = 1)`, systems) read the derivatives themselves.
+    if !ODE_OPS.contains(&op) || !crate::dispatch::is_named_ode_form(op, args) {
         return;
     }
     if let Some(eq) = args.first_mut() {

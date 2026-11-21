@@ -1,18 +1,17 @@
-//! One front door for operator names that more than one toolkit answers, and for the
-//! names the IDE's Insert menu writes.
+//! One front door for the operator names whose argument forms are answered by different
+//! parts of Math++, and for the names the IDE's Insert menu writes.
 //!
-//! Several evaluators grew operators with the same name: `dsolve` and `rk4` exist in the
-//! domain registry (`dsolve(eq, y, x, (x₀, y₀))`, `rk4(f, x, y, x₀, y₀, x₁, n)`) and in the
-//! ODE toolkit (`dsolve(eq, conditions…)`, `rk4(f, x₀, y₀, h, n)`); `laplace` exists in the
-//! multivariable helpers and in the ODE toolkit. Registration order used to decide which
-//! one answered, so the form the other expected failed with a wrong-arity error. This
-//! holder is asked first: it reads the arguments' shape and sends the call to the
-//! evaluator whose form it is.
+//! [`FORMS`] is the single table of those operators: each row names the operators, the
+//! argument form it accepts (as a user would write it) and who answers that form. The
+//! first row whose form matches the call answers it; a row that answers [`Answer::Pass`]
+//! leaves the call to the holders after this one (the algebraic `solve`, for example).
+//! Every maths engine exists once (one `dsolve`, one RK4 stepper, one Laplace transform);
+//! the table only decides which front end reads the arguments.
 //!
-//! It also maps the helper names of the Insert menu (`linearise`, `converges`,
-//! `directional`, `linearapprox`, `gauss`, `relatedrates`) onto the evaluators' own names,
-//! and turns the menu's separate "from" and "to" boxes (`\operatorname{area}_{0}^{1}`) into
-//! the interval the toolkits read.
+//! The helper names of the Insert menu (`linearise`, `converges`, `directional`,
+//! `linearapprox`, `gauss`, `relatedrates`) are renamed by [`ALIASES`] onto the
+//! evaluators' own names, and the menu's separate "from" and "to" boxes
+//! (`\operatorname{area}_{0}^{1}`) become the interval the integral applications read.
 
 use mpp_core::{Expr, ExprNode, MathError, MathResult, Name, RelOp};
 
@@ -94,26 +93,41 @@ impl Call {
     }
 }
 
-/// Which evaluator a shared name goes to.
-enum Route {
+/// Who answers a form in [`FORMS`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Answer {
+    /// The domain registry's operators (`crate::domains_wire`).
     Registry,
-    OdeToolkit,
+    /// The numerical methods and the differential-equations toolkit (`crate::helpers::evaluate_operators`);
+    /// a starting value written `y(x₀) = y₀` becomes the pair `(x₀, y₀)` first.
+    Toolkit,
+    /// The multivariable helpers (`crate::helpers`), once a bare point below the name has
+    /// been given its variables.
+    Multivar,
+    /// The integral applications (`crate::helpers::evaluate_operators`), once separate "from" and "to"
+    /// boxes have become one interval.
+    FromTo,
+    /// The Laplace and Fourier transforms ([`transform`]).
+    Transform,
+    /// Not routed here: the holders after this one answer.
+    Pass,
 }
 
-/// Insert-menu helper names and the evaluator names they stand for.
-const ALIASES: &[(&str, &str)] = &[
-    ("converges", "tests"),
-    ("convergence", "tests"),
-    ("directional", "dirderiv"),
-    ("linearapprox", "linapprox"),
-    ("gauss", "divthm"),
-    ("divergencetheorem", "divthm"),
-    ("relatedrates", "rates"),
-    ("inflections", "inflection"),
-    ("eig", "eigenvals"),
-    ("eigenvalues", "eigenvals"),
-    ("eigenvectors", "eigenvects"),
-];
+/// One accepted argument form of one or more operators.
+struct Form {
+    /// The operator names the row covers.
+    ops: &'static [&'static str],
+    /// The form, as written in a document.
+    accepts: &'static str,
+    /// True when a call has this form.
+    when: fn(&Call) -> bool,
+    /// Who answers it.
+    answer: Answer,
+}
+
+fn any(_: &Call) -> bool {
+    true
+}
 
 /// Helpers whose Insert-menu template has a "from" box below the name and a "to" box
 /// above it; the toolkit reads them as one interval argument.
@@ -131,95 +145,134 @@ const FROM_TO: &[&str] = &[
     "simpson",
 ];
 
-/// The evaluator names this module routes, after aliases.
-fn routed(name: &str) -> bool {
-    matches!(
-        name,
-        "dsolve"
-            | "rk4"
-            | "rk4table"
-            | "laplace"
-            | "invlaplace"
-            | "fourier"
-            | "invfourier"
-            | "euler"
-            | "tangentplane"
-            | "solve"
-    ) || ALIASES.iter().any(|(a, _)| *a == name)
-        || FROM_TO.contains(&name)
+/// Every operator routed here, the argument forms it accepts and who answers each; the
+/// first matching row wins.
+const FORMS: &[Form] = &[
+    Form {
+        ops: &["dsolve"],
+        accepts: "dsolve(eq, conditions…), dsolve(eq, y, t, conditions…), dsolve((eq₁, eq₂, …), conditions…)",
+        when: any,
+        answer: Answer::Toolkit,
+    },
+    Form {
+        ops: &["solve"],
+        accepts: "solve_{y(x)}(y'' + y = 0), solve(differential equation or system, …)",
+        when: first_is_differential_equation,
+        answer: Answer::Toolkit,
+    },
+    Form {
+        ops: &["solve"],
+        accepts: "solve(equation, …) of any other kind: the algebraic solver",
+        when: any,
+        answer: Answer::Pass,
+    },
+    Form {
+        ops: &["rk4"],
+        accepts: "rk4(f, x, y, x₀, y₀, x₁[, n]): y(x₁) after n steps (100 by default)",
+        when: named_rk4,
+        answer: Answer::Registry,
+    },
+    Form {
+        ops: &["rk4", "euler"],
+        accepts: "rk4(f or y' = f, x₀, y₀ or (x₀, y₀) or y(x₀) = y₀, h, n), and the same for euler",
+        when: any,
+        answer: Answer::Toolkit,
+    },
+    Form {
+        ops: &["rk4table"],
+        accepts: "rk4table(f, x, y, x₀, y₀, x₁[, n]): every point",
+        when: any,
+        answer: Answer::Registry,
+    },
+    Form {
+        ops: &["laplace", "invlaplace", "fourier", "invfourier"],
+        accepts: r"laplace(f), \mathcal L_{t \to s}\{f\}, \mathcal L^{-1}\{F\}, and the Fourier forms",
+        when: any,
+        answer: Answer::Transform,
+    },
+    Form {
+        ops: &["tangentplane"],
+        accepts: "tangentplane_{(1, 2)} f: a bare point below the name",
+        when: bare_point_below,
+        answer: Answer::Multivar,
+    },
+    Form {
+        ops: &["tangentplane"],
+        accepts: "tangentplane_{(x, y) = (1, 2)} f and the other forms of the helpers",
+        when: any,
+        answer: Answer::Pass,
+    },
+    Form {
+        ops: FROM_TO,
+        accepts: "area_{a}^{b}(f, g), volume_{a}^{b}(…), …: \"from\" and \"to\" boxes, or an interval argument",
+        when: any,
+        answer: Answer::FromTo,
+    },
+];
+
+/// Insert-menu helper names and the evaluator names they stand for.
+const ALIASES: &[(&str, &str)] = &[
+    ("converges", "tests"),
+    ("convergence", "tests"),
+    ("directional", "dirderiv"),
+    ("linearapprox", "linapprox"),
+    ("gauss", "divthm"),
+    ("divergencetheorem", "divthm"),
+    ("relatedrates", "rates"),
+    ("inflections", "inflection"),
+    ("eig", "eigenvals"),
+    ("eigenvalues", "eigenvals"),
+    ("eigenvectors", "eigenvects"),
+];
+
+/// The argument forms `op` accepts here, in the order they are tried (empty for an
+/// operator this module does not route).
+pub fn accepted_forms(op: &str) -> Vec<&'static str> {
+    FORMS
+        .iter()
+        .filter(|f| f.ops.contains(&op))
+        .map(|f| f.accepts)
+        .collect()
 }
 
-/// Asked before every other holder: routes shared operator names by argument shape.
+/// The row of [`FORMS`] that answers `call`.
+fn form_of(call: &Call) -> Option<&'static Form> {
+    FORMS
+        .iter()
+        .find(|f| f.ops.contains(&call.name.as_str()) && (f.when)(call))
+}
+
+fn first_is_differential_equation(call: &Call) -> bool {
+    call.args
+        .first()
+        .is_some_and(crate::helpers::is_differential_equation_or_system)
+}
+
+fn bare_point_below(call: &Call) -> bool {
+    !is_empty(&call.sub) && !is_relation(&call.sub)
+}
+
+/// Asked before every other holder: answers the operators of [`FORMS`] and [`ALIASES`].
 pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     if let Some(v) = step_or_delta(e) {
         return Some(Ok(v));
     }
     let call = Call::read(e)?;
-    if !routed(&call.name) {
-        return None;
-    }
     if let Some((_, to)) = ALIASES.iter().find(|(a, _)| *a == call.name) {
         let renamed = adapt_alias(&call.renamed(to));
         return Some(crate::holders::evaluate_holder(&renamed.to_expr(), ctx));
     }
-    if call.name == "solve" {
-        // `\operatorname{solve}_{y(x)} (y'' + y = 0)` is the ODE toolkit's; any other
-        // `solve` is the algebraic solver's.
-        let ode = call
-            .args
-            .first()
-            .is_some_and(crate::helpers_b::is_differential_equation_or_system);
-        return if ode {
-            crate::helpers_b::evaluate(e, ctx)
-        } else {
-            None
-        };
-    }
-    if call.name == "tangentplane" {
-        // `tangentplane_{(1, 2)} f`: the menu writes the point without its variables.
-        if is_empty(&call.sub) || is_relation(&call.sub) {
-            return None;
+    match form_of(&call)?.answer {
+        Answer::Registry => {
+            crate::domains_wire::evaluate(&adapt_initial_condition(&call).to_expr(), ctx)
         }
-        return crate::helpers::evaluate(&adapt_alias(&call).to_expr(), ctx);
-    }
-    if FROM_TO.contains(&call.name.as_str()) {
-        let adapted = from_to(&call)?;
-        return crate::helpers_b::evaluate(&adapted.to_expr(), ctx);
-    }
-    if call.name == "dsolve" {
-        return dsolve_route(&call, e, ctx);
-    }
-    let route = match call.name.as_str() {
-        "rk4" | "rk4table" => {
-            if registry_rk4(&call) || call.name == "rk4table" {
-                Route::Registry
-            } else {
-                Route::OdeToolkit
-            }
+        Answer::Toolkit => {
+            crate::helpers::evaluate_operators(&adapt_initial_condition(&call).to_expr(), ctx)
         }
-        "euler" => Route::OdeToolkit,
-        "laplace" | "invlaplace" | "fourier" | "invfourier" => {
-            return Some(transform(&call, e, ctx));
-        }
-        _ => return None,
-    };
-    let expr = adapt_initial_condition(&call).to_expr();
-    match route {
-        Route::Registry => crate::domains_wire::evaluate(&expr, ctx),
-        Route::OdeToolkit => crate::helpers_b::evaluate(&expr, ctx),
-    }
-}
-
-/// `dsolve` in either form. `dsolve(eq, y, t, …)` goes to the ODE toolkit too, which
-/// reads `y(0) = 0` or `(0, 0)` as the start, gives `y = …` when it can and keeps the
-/// variable as named; the registry's solver is its fallback.
-fn dsolve_route(call: &Call, e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
-    if !registry_dsolve(call) {
-        return crate::helpers_b::evaluate(e, ctx);
-    }
-    match crate::helpers_b::evaluate(e, ctx) {
-        Some(Ok(v)) => Some(Ok(v)),
-        _ => crate::domains_wire::evaluate(e, ctx),
+        Answer::Multivar => crate::helpers::evaluate(&adapt_alias(&call).to_expr(), ctx),
+        Answer::FromTo => crate::helpers::evaluate_operators(&from_to(&call)?.to_expr(), ctx),
+        Answer::Transform => Some(transform(&call, ctx)),
+        Answer::Pass => None,
     }
 }
 
@@ -275,9 +328,9 @@ fn transform_vars(call: &Call) -> (String, String) {
 
 /// `\mathcal L\{f\}`, `\mathcal L^{-1}\{F\}`, `\mathcal F\{f\}`, `\mathcal F^{-1}\{F\}` and the
 /// operator forms `laplace`, `invlaplace`, `fourier`, `invfourier`.
-fn transform(call: &Call, e: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
-    use mpp_core::tools_b::fourier;
-    use mpp_core::tools_b::ode::laplace as lt;
+fn transform(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
+    use mpp_core::transforms::fourier;
+    use mpp_core::transforms::laplace as lt;
     let [f] = call.args.as_slice() else {
         return Err(MathError::WrongArity {
             function: call.name.clone(),
@@ -310,25 +363,7 @@ fn transform(call: &Call, e: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
             ctx.log(rule, f, &v, Some(note));
             Ok(v)
         }
-        // The multivariable helpers have their own Laplace table; it answers when this
-        // one has no entry.
-        Err(err @ (MathError::Unsupported(_) | MathError::NoClosedForm(_)))
-            if call.name.contains("laplace") && from.as_str() == default_from(&call.name) =>
-        {
-            match crate::helpers::evaluate(e, ctx) {
-                Some(Ok(v)) => Ok(v),
-                _ => Err(err),
-            }
-        }
         Err(err) => Err(err),
-    }
-}
-
-fn default_from(name: &str) -> &'static str {
-    if name == "laplace" {
-        "t"
-    } else {
-        "s"
     }
 }
 
@@ -360,9 +395,9 @@ fn step_or_delta(e: &Expr) -> Option<Expr> {
     })
 }
 
-/// True when `op(args…)` (without scripts) is the domain registry's form of an ODE
-/// operator: `dsolve(eq, y, x[, (x₀, y₀)])`, `rk4(f, x, y, x₀, y₀, x₁[, n])` or `rk4table`.
-pub fn is_registry_ode_form(op: &str, args: &[Expr]) -> bool {
+/// True when `op(args…)` (without scripts) names the unknown and the variable after the
+/// equation: `dsolve(eq, y, x[, (x₀, y₀)])`, `rk4(f, x, y, x₀, y₀, x₁[, n])` or `rk4table`.
+pub fn is_named_ode_form(op: &str, args: &[Expr]) -> bool {
     let call = Call {
         name: op.to_string(),
         sub: empty(),
@@ -371,8 +406,8 @@ pub fn is_registry_ode_form(op: &str, args: &[Expr]) -> bool {
         scripted: false,
     };
     match op {
-        "dsolve" => registry_dsolve(&call),
-        "rk4" => registry_rk4(&call),
+        "dsolve" => named_dsolve(&call),
+        "rk4" => named_rk4(&call),
         "rk4table" => true,
         _ => false,
     }
@@ -380,7 +415,7 @@ pub fn is_registry_ode_form(op: &str, args: &[Expr]) -> bool {
 
 /// `dsolve(eq, y, x)` / `dsolve(eq, y, x, (x₀, y₀))`: the unknown and the variable are
 /// bare names in the second and third places.
-fn registry_dsolve(call: &Call) -> bool {
+fn named_dsolve(call: &Call) -> bool {
     !call.has_scripts()
         && (3..=4).contains(&call.args.len())
         && call.args[1].as_sym().is_some()
@@ -388,7 +423,7 @@ fn registry_dsolve(call: &Call) -> bool {
 }
 
 /// `rk4(f, x, y, x₀, y₀, x₁[, n])`: names in the second and third places.
-fn registry_rk4(call: &Call) -> bool {
+fn named_rk4(call: &Call) -> bool {
     !call.has_scripts()
         && (6..=7).contains(&call.args.len())
         && call.args[1].as_sym().is_some()
@@ -554,17 +589,57 @@ mod tests {
     }
 
     #[test]
-    fn registry_shapes() {
+    fn named_shapes() {
         let y = Expr::sym("y");
         let x = Expr::sym("x");
         let eq = Expr::equation(Expr::sym("y′"), y.clone());
         let c = Call::read(&op("dsolve", vec![eq.clone(), y.clone(), x.clone()])).unwrap();
-        assert!(registry_dsolve(&c));
+        assert!(named_dsolve(&c));
         let c = Call::read(&op("dsolve", vec![eq.clone()])).unwrap();
-        assert!(!registry_dsolve(&c));
+        assert!(!named_dsolve(&c));
         let pair = Expr::new(ExprNode::Tuple(vec![Expr::zero(), Expr::one()]));
         let c = Call::read(&op("dsolve", vec![eq, pair])).unwrap();
-        assert!(!registry_dsolve(&c));
+        assert!(!named_dsolve(&c));
+    }
+
+    #[test]
+    fn every_routed_operator_documents_its_forms() {
+        for form in FORMS {
+            assert!(
+                form.ops.iter().any(|op| form.accepts.contains(op)) || form.ops == FROM_TO,
+                "{:?}: {}",
+                form.ops,
+                form.accepts
+            );
+        }
+        assert_eq!(accepted_forms("rk4").len(), 2);
+        assert!(accepted_forms("det").is_empty());
+        // The two rk4 forms go to different front ends, by the names in places 2 and 3.
+        let named = Call::read(&op(
+            "rk4",
+            vec![
+                Expr::sym("y"),
+                Expr::sym("x"),
+                Expr::sym("y"),
+                Expr::zero(),
+                Expr::one(),
+                Expr::one(),
+            ],
+        ))
+        .unwrap();
+        assert_eq!(form_of(&named).unwrap().answer, Answer::Registry);
+        let stepped = Call::read(&op(
+            "rk4",
+            vec![
+                Expr::sym("y"),
+                Expr::zero(),
+                Expr::one(),
+                Expr::float(0.1),
+                Expr::int(10),
+            ],
+        ))
+        .unwrap();
+        assert_eq!(form_of(&stepped).unwrap().answer, Answer::Toolkit);
     }
 
     #[test]

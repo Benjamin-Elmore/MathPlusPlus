@@ -18,7 +18,7 @@ use crate::expr::Expr;
 use crate::simplify::{add, mul, pow, simplify};
 use crate::steps::Steps;
 
-use super::util::{
+use crate::calc_support::{
     at, fresh, integral_holder, integrate_abs, pythagorean_tidy, sub, value, zeros_inside,
 };
 

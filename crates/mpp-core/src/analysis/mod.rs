@@ -26,7 +26,7 @@ use crate::error::{MathError, MathResult};
 use crate::expr::{Expr, ExprNode, LimitDir};
 use crate::simplify::simplify;
 use crate::steps::Steps;
-use crate::tools::table;
+use crate::table;
 
 use points::{
     cmp_values, eval, inside, is_exact, num, open, point, push_unique, range_of, same_value,

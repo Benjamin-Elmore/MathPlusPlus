@@ -1,14 +1,13 @@
 //! Multivariable and vector calculus helpers: partial derivatives and the tools built on
 //! them ([`differential`]), integrals in other coordinates, over surfaces and the
-//! integral theorems ([`integrals`]), the vector operators ([`vector`]) and Laplace
-//! transforms for linear ODEs ([`laplace`]).
+//! integral theorems ([`integrals`]) and the vector operators ([`vector`]). Laplace
+//! transforms live with the differential equations (`transforms::laplace`).
 //!
 //! Vectors and points are tuples of expressions; a vector field is a list of components
 //! in the order of its variables.
 
 pub mod differential;
 pub mod integrals;
-pub mod laplace;
 pub mod vector;
 
 pub use differential::{
@@ -20,7 +19,6 @@ pub use integrals::{
     change_of_variables, check_divergence_theorem, check_greens_theorem, check_stokes_theorem,
     flux_integral, integrate_in, surface_integral, Coordinates, Patch, Region, Solid, TheoremCheck,
 };
-pub use laplace::{inverse_laplace, laplace, laplace_ode};
 pub use vector::{curl, divergence, laplacian};
 
 use crate::domains::util;

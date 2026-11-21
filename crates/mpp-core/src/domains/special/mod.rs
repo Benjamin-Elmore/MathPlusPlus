@@ -391,8 +391,8 @@ pub fn call_complex(name: &str, args: &[Complex64]) -> Option<MathResult<Complex
 /// as distributions.
 pub fn partial(name: &str, args: &[Expr], index: usize) -> Option<Expr> {
     // A numerical solution: its derivative is the right-hand side at the solution.
-    if name == crate::tools_b::ode::ivp::IVP && index == 4 {
-        let (sys, k, t) = crate::tools_b::ode::ivp::Ivp::read(args)?;
+    if name == crate::ode::ivp::IVP && index == 4 {
+        let (sys, k, t) = crate::ode::ivp::Ivp::read(args)?;
         return Some(sys.derivative(k, &t));
     }
     let u = args.first()?.clone();

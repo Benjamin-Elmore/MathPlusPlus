@@ -17,7 +17,7 @@ use crate::number::format_f64;
 use crate::simplify::{add, mul, simplify};
 use crate::steps::Steps;
 
-use super::util::{at, integral_holder, max_abs, value};
+use crate::calc_support::{at, integral_holder, max_abs, value};
 
 /// Most subintervals a quadrature rule may use.
 pub const MAX_SUBINTERVALS: usize = 1_000_000;
@@ -291,8 +291,9 @@ pub struct Iterate {
     pub next: f64,
 }
 
-/// Newton's method for `f = 0` from `x0`, stopping when a step is below `tol` (relative to
-/// `max(1, |x|)`) and `|f|` is small. Returns the root and every iteration.
+/// Newton's method for `f = 0` from `x0` with the exact derivative, stopping when a step is
+/// below `tol` (relative to `max(1, |x|)`) and `|f|` is small. Returns the root and every
+/// iteration.
 pub fn newton(
     f: &Expr,
     var: &str,
@@ -301,16 +302,8 @@ pub fn newton(
     mut steps: Option<&mut Steps>,
 ) -> MathResult<(f64, Vec<Iterate>)> {
     if !x0.is_finite() {
-        return Err(MathError::Domain {
-            function: "Newton's method".into(),
-            detail: "the starting point must be a finite number".into(),
-        });
+        return Err(not_finite_start());
     }
-    let tol = if tol.is_finite() && tol > 0.0 {
-        tol
-    } else {
-        1e-12
-    };
     let df = diff(f, var, 1, None)?;
     Steps::record(
         &mut steps,
@@ -322,14 +315,73 @@ pub fn newton(
             format_f64(x0, 10)
         )),
     );
+    newton_iterate(
+        |x| {
+            at(f, var, x)
+                .ok_or_else(|| MathError::Undefined(format!("f at {var} = {}", format_f64(x, 10))))
+        },
+        |x| {
+            at(&df, var, x)
+                .ok_or_else(|| MathError::Undefined(format!("f′ at {var} = {}", format_f64(x, 10))))
+        },
+        x0,
+        tol,
+        |it| {
+            Steps::record(
+                &mut steps,
+                format!("iteration {}", it.n + 1),
+                &Expr::float(it.x),
+                &Expr::float(it.next),
+                Some(format!(
+                    "x{} = {} − ({})/({}) = {}",
+                    subscript(it.n + 1),
+                    format_f64(it.x, 12),
+                    format_f64(it.fx, 8),
+                    format_f64(it.dfx, 8),
+                    format_f64(it.next, 12)
+                )),
+            );
+        },
+    )
+}
+
+fn not_finite_start() -> MathError {
+    MathError::Domain {
+        function: "Newton's method".into(),
+        detail: "the starting point must be a finite number".into(),
+    }
+}
+
+/// The Newton iteration itself, the one every Newton answer in Math++ comes from:
+/// `xₙ₊₁ = xₙ − f(xₙ)/f′(xₙ)` from `x0`, with `f` and `f′` given as functions (the exact
+/// derivative for [`newton`], a central difference where the solver polishes roots). Stops
+/// when a step is below `tol` (relative to `max(1, |x|)`; a non-positive `tol` means
+/// `10⁻¹²`) and `|f|` is small; `each` sees every iteration.
+pub fn newton_iterate(
+    f: impl Fn(f64) -> MathResult<f64>,
+    df: impl Fn(f64) -> MathResult<f64>,
+    x0: f64,
+    tol: f64,
+    mut each: impl FnMut(&Iterate),
+) -> MathResult<(f64, Vec<Iterate>)> {
+    if !x0.is_finite() {
+        return Err(not_finite_start());
+    }
+    let tol = if tol.is_finite() && tol > 0.0 {
+        tol
+    } else {
+        1e-12
+    };
     let mut x = x0;
     let mut table = Vec::new();
     for n in 0..MAX_NEWTON {
-        let fx = at(f, var, x)
-            .ok_or_else(|| MathError::Undefined(format!("f at {var} = {}", format_f64(x, 10))))?;
-        let dfx = at(&df, var, x)
-            .ok_or_else(|| MathError::Undefined(format!("f′ at {var} = {}", format_f64(x, 10))))?;
+        let fx = f(x)?;
+        let dfx = df(x)?;
         if dfx == 0.0 {
+            if fx == 0.0 {
+                // Standing on a root where the tangent is flat (a double root).
+                return Ok((x, table));
+            }
             return Err(MathError::Domain {
                 function: "Newton's method".into(),
                 detail: format!(
@@ -345,31 +397,19 @@ pub fn newton(
                 detail: "the iterates blew up; try another starting point".into(),
             });
         }
-        table.push(Iterate {
+        let it = Iterate {
             n,
             x,
             fx,
             dfx,
             next,
-        });
-        Steps::record(
-            &mut steps,
-            format!("iteration {}", n + 1),
-            &Expr::float(x),
-            &Expr::float(next),
-            Some(format!(
-                "x{} = {} − ({})/({}) = {}",
-                subscript(n + 1),
-                format_f64(x, 12),
-                format_f64(fx, 8),
-                format_f64(dfx, 8),
-                format_f64(next, 12)
-            )),
-        );
+        };
+        each(&it);
+        table.push(it);
         let small_step = (next - x).abs() <= tol * x.abs().max(1.0);
         x = next;
         if small_step {
-            let fx = at(f, var, x).unwrap_or(f64::INFINITY);
+            let fx = f(x).unwrap_or(f64::INFINITY);
             let scale = table.iter().map(|it| it.fx.abs()).fold(1.0, f64::max);
             if fx.abs() <= 1e-8 * scale {
                 return Ok((x, table));
@@ -522,15 +562,7 @@ pub fn rk4(
     mut steps: Option<&mut Steps>,
 ) -> MathResult<OdeTable> {
     check_ode_args(rhs, x, y, h, n)?;
-    let mut rows = vec![(x0, y0)];
-    let (mut xv, mut yv) = (x0, y0);
-    for i in 0..n {
-        crate::budget::check()?;
-        let k1 = rhs_at(rhs, x, y, xv, yv)?;
-        let k2 = rhs_at(rhs, x, y, xv + h / 2.0, yv + h * k1 / 2.0)?;
-        let k3 = rhs_at(rhs, x, y, xv + h / 2.0, yv + h * k2 / 2.0)?;
-        let k4 = rhs_at(rhs, x, y, xv + h, yv + h * k3)?;
-        let next = yv + h / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+    let each = |i: usize, yv: f64, [k1, k2, k3, k4]: [f64; 4], next: f64| {
         if i < 20 {
             Steps::record(
                 &mut steps,
@@ -549,20 +581,57 @@ pub fn rk4(
                 )),
             );
         }
-        xv = x0 + h * (i + 1) as f64;
-        yv = next;
-        if !yv.is_finite() {
-            return Err(MathError::Domain {
-                function: "RK4".into(),
-                detail: "the solution blew up; try a smaller step".into(),
-            });
-        }
-        rows.push((xv, yv));
-    }
+    };
+    let rows = rk4_march(
+        |xv, yv| rhs_at(rhs, x, y, xv, yv),
+        x0,
+        y0,
+        h,
+        n,
+        each,
+        |_| MathError::Domain {
+            function: "RK4".into(),
+            detail: "the solution blew up; try a smaller step".into(),
+        },
+    )?;
     Ok(OdeTable {
         method: "classical Runge–Kutta (RK4)",
         rows,
     })
+}
+
+/// The classical fourth-order Runge–Kutta method for `y′ = slope(x, y)` from `(x0, y0)`,
+/// `n` steps of size `h`: every RK4 answer in Math++ comes from here. Returns every point,
+/// the initial one included. `each(i, yᵢ, [k₁, k₂, k₃, k₄], yᵢ₊₁)` sees each step (for the
+/// working); `blew_up(x)` is the error when the solution stops being finite at `x`.
+pub fn rk4_march(
+    slope: impl Fn(f64, f64) -> MathResult<f64>,
+    x0: f64,
+    y0: f64,
+    h: f64,
+    n: usize,
+    mut each: impl FnMut(usize, f64, [f64; 4], f64),
+    blew_up: impl Fn(f64) -> MathError,
+) -> MathResult<Vec<(f64, f64)>> {
+    let mut rows = Vec::with_capacity(n + 1);
+    rows.push((x0, y0));
+    let (mut xv, mut yv) = (x0, y0);
+    for i in 0..n {
+        crate::budget::check()?;
+        let k1 = slope(xv, yv)?;
+        let k2 = slope(xv + h / 2.0, yv + h * k1 / 2.0)?;
+        let k3 = slope(xv + h / 2.0, yv + h * k2 / 2.0)?;
+        let k4 = slope(xv + h, yv + h * k3)?;
+        let next = yv + h / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+        each(i, yv, [k1, k2, k3, k4], next);
+        xv = x0 + h * (i + 1) as f64;
+        yv = next;
+        if !yv.is_finite() {
+            return Err(blew_up(xv));
+        }
+        rows.push((xv, yv));
+    }
+    Ok(rows)
 }
 
 /// A Taylor polynomial with its Lagrange error bound.

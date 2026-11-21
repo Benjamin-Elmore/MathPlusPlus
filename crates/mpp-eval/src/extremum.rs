@@ -3,7 +3,7 @@
 //! golden-section refinement around the best sample). The expression may use
 //! numerical solutions of differential equations (see [`crate::ivp_wire`]).
 
-use mpp_core::tools_b::ode::ivp::{Ivp, IVP};
+use mpp_core::ode::ivp::{Ivp, IVP};
 use mpp_core::{EmptyEnv, Expr, ExprNode, MathError, MathResult, Name};
 
 use crate::holders::Ctx;

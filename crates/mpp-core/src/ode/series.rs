@@ -15,7 +15,7 @@ use crate::steps::Steps;
 
 use super::parse::Ode;
 use super::{linsys, tidy, Candidate, Condition, Form};
-use crate::tools_b::util::value;
+use crate::calc_support::value;
 
 /// Terms computed (the series is exact below `x^TERMS`).
 pub const TERMS: u32 = 8;

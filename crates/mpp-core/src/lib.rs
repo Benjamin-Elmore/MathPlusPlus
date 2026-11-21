@@ -1,10 +1,22 @@
 //! Math++ core: exact numbers, the expression tree, simplification, polynomials and
 //! elementary functions. Calculus, solving and the `Domain` registry build on this crate.
+//!
+//! The textbook calculus tools each live in one module named for their subject:
+//! [`analysis`] (curve sketching), [`applications`] (areas, volumes, work …),
+//! [`convergence`] (named series tests, intervals of convergence), [`numerics`]
+//! (quadrature, Newton, Euler and RK4 with error estimates), [`ode`] (the
+//! differential-equations solver), [`multivar`] (multivariable and vector calculus),
+//! [`transforms`] (Laplace and Fourier), [`step_tree`] ("show the working") and
+//! [`table`] (labelled tables as values).
 
 #![forbid(unsafe_code)]
 
+pub mod analysis;
+pub mod applications;
 pub mod budget;
 pub mod calc;
+pub(crate) mod calc_support;
+pub mod convergence;
 pub mod display;
 pub mod domains;
 pub mod error;
@@ -15,14 +27,20 @@ pub mod factor;
 pub mod family;
 pub mod functions;
 pub mod hp;
+pub mod multivar;
 pub mod number;
+pub mod numerics;
+pub mod ode;
 pub mod poly;
 pub mod printer;
 pub mod simplify;
+pub mod step_tree;
 pub mod steps;
 pub mod subs;
-pub mod tools;
-pub mod tools_b;
+pub mod table;
+#[cfg(test)]
+pub(crate) mod testkit;
+pub mod transforms;
 pub mod trig;
 pub mod units;
 
