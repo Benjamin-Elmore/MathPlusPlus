@@ -93,6 +93,9 @@ impl Editor {
     /// (the character is already in the text, or wrapped round the selection).
     pub fn type_bracket(&mut self, ch: char) -> bool {
         let is_open = closer_for(ch).is_some();
+        if is_open && self.selection().is_some() {
+            return self.wrap_selection(ch);
+        }
         // A closer: fills the ghost the caret is at.
         if matches!(ch, ')' | ']' | '}' | '|') {
             if let Some(i) = self

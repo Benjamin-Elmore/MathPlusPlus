@@ -140,3 +140,113 @@ fn prose_gets_no_ghost() {
     assert_eq!(text(&h), "see (a");
     assert!(editor(&h).ghost_at_caret().is_none());
 }
+
+// ---- U21: selection ----
+
+#[test]
+fn shift_arrows_grow_one_structure_at_a_time() {
+    let mut h = open("$$ (a + b)^2 + c $$", 3);
+    key(&mut h, Modifiers::SHIFT, Key::ArrowRight);
+    assert_eq!(editor(&h).selected_text(), Some("(a + b)"));
+    key(&mut h, Modifiers::SHIFT, Key::ArrowRight);
+    assert_eq!(editor(&h).selected_text(), Some("(a + b)^2"));
+    key(&mut h, Modifiers::SHIFT, Key::ArrowLeft);
+    assert_eq!(editor(&h).selected_text(), Some("(a + b)"));
+}
+
+#[test]
+fn shift_arrows_never_jump_to_the_whole_formula() {
+    let mut h = open("$$ x = a + b $$", 7);
+    key(&mut h, Modifiers::SHIFT, Key::ArrowRight);
+    assert_eq!(editor(&h).selected_text(), Some("a"));
+}
+
+#[test]
+fn alt_shift_up_grows_by_levels() {
+    let mut h = open("$$ y = (a + 2b) + c $$", 3 + 9);
+    let mods = Modifiers::SHIFT | Modifiers::ALT;
+    let mut seen = vec![];
+    for _ in 0..5 {
+        key(&mut h, mods, Key::ArrowUp);
+        seen.push(editor(&h).selected_text().unwrap_or("").to_string());
+    }
+    assert_eq!(
+        seen,
+        [
+            "2b",
+            "a + 2b",
+            "(a + 2b)",
+            "(a + 2b) + c",
+            "y = (a + 2b) + c"
+        ]
+    );
+}
+
+#[test]
+fn typing_replaces_the_selection_and_an_opener_wraps_it() {
+    let mut h = open("$$ a + b $$", 3);
+    key(&mut h, Modifiers::SHIFT, Key::ArrowRight);
+    type_text(&mut h, "(");
+    assert_eq!(text(&h), "$$ (a) + b $$");
+    assert_eq!(editor(&h).selected_text(), Some("a"));
+    type_text(&mut h, "z");
+    assert_eq!(text(&h), "$$ (z) + b $$");
+}
+
+fn click_at(h: &mut H, pos: egui::Pos2, times: usize) {
+    h.event(Event::PointerMoved(pos));
+    for _ in 0..times {
+        for pressed in [true, false] {
+            h.event(Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Modifiers::NONE,
+            });
+            h.step();
+        }
+    }
+    h.step();
+}
+
+/// The screen position of the caret stop at `offset` (the caret goes there to
+/// find out, then back to the start).
+fn pos_of(h: &mut H, offset: usize) -> egui::Pos2 {
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .move_caret(offset, false);
+    h.step();
+    h.step();
+    let at = h
+        .state()
+        .doc()
+        .and_then(|d| d.caret_screen)
+        .expect("the caret is drawn")
+        .center();
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .move_caret(0, false);
+    h.step();
+    at
+}
+
+#[test]
+fn double_click_selects_a_name_or_number_and_triple_click_the_line() {
+    let src = "$$ x := alpha1 + 12.5 $$";
+    let mut h = open(src, 0);
+    let at = pos_of(&mut h, 10);
+    click_at(&mut h, at, 2);
+    let sel = editor(&h).selected_text().map(str::to_string);
+    assert!(
+        matches!(sel.as_deref(), Some("alpha1") | Some("α1")),
+        "double-click picked {sel:?}"
+    );
+    let mut h = open(src, 0);
+    let at = pos_of(&mut h, 10);
+    click_at(&mut h, at, 3);
+    assert_eq!(editor(&h).selected_text(), Some("x := alpha1 + 12.5"));
+}

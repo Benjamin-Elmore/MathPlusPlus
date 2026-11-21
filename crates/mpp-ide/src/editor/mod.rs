@@ -10,6 +10,7 @@
 pub mod brackets;
 pub mod comment;
 mod rules;
+pub mod select;
 pub mod symbols;
 pub mod template;
 

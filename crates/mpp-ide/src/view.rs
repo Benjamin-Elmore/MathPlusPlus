@@ -281,6 +281,17 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 }
             } else {
                 moved = handle_pointer(ui, &resp, doc, &pc0, origin, &mut events);
+                if resp.double_clicked() || resp.triple_clicked() {
+                    if let Some(p) = resp.interact_pointer_pos() {
+                        let at = p - origin.to_vec2();
+                        moved |= crate::editor::select::multi_click(
+                            &mut doc.editor,
+                            &pc0.page,
+                            at,
+                            resp.triple_clicked(),
+                        );
+                    }
+                }
                 if moved {
                     cx.diag.peek = None;
                 }
@@ -1569,10 +1580,20 @@ fn key_pressed(
                 doc.editor
                     .move_caret(if fwd { sel.end } else { sel.start }, false);
                 doc.caret_side = if fwd { Side::Before } else { Side::After };
+            } else if shift
+                && in_math
+                && crate::editor::select::shift_arrow(&mut doc.editor, page, fwd)
+            {
+                doc.caret_side = if fwd { Side::Before } else { Side::After };
             } else if let Some((t, side)) = page.step_on(caret, doc.caret_side, fwd) {
                 doc.editor.move_caret(t, shift);
                 doc.caret_side = side;
             }
+            true
+        }
+        Key::ArrowUp if mods.alt && shift && in_math => {
+            crate::editor::select::grow_selection(&mut doc.editor, page);
+            doc.want_x = None;
             true
         }
         Key::ArrowUp | Key::ArrowDown => {
