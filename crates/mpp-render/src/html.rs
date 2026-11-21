@@ -59,6 +59,11 @@ pub trait ResultProvider {
     fn display_errors(&self, _block: &Block) -> Vec<String> {
         vec![]
     }
+
+    /// The answer of a `Solve …` sentence, as LaTeX (`x = 2 \;\text{or}\; x = 3`).
+    fn sentence_result(&self, _block: &Block) -> Option<String> {
+        None
+    }
 }
 
 /// One step of the working of a `= ?!` query.
@@ -323,7 +328,19 @@ impl Renderer<'_> {
                 if let Some(u) = &sv.unknowns {
                     let _ = write!(s, " for {}", self.node_list(u));
                 }
-                let _ = writeln!(out, "<p class=\"helper\">{s}.</p>");
+                if self.in_comment {
+                    let _ = writeln!(out, "<p class=\"helper\">{s}.</p>");
+                } else {
+                    if let Some(latex) = self.results.sentence_result(b) {
+                        let text = self.math_opts(MathStyle::Text);
+                        let answer = self.svg(&layout_latex(&latex, &text), "m");
+                        let _ = write!(s, ": {answer}");
+                    }
+                    let _ = writeln!(out, "<p class=\"helper\">{s}.</p>");
+                    for e in self.results.display_errors(b) {
+                        let _ = writeln!(out, "<p class=\"eq-error\">✗ {}</p>", esc(&e));
+                    }
+                }
             }
             BlockKind::FootnoteDef { .. } if self.in_comment => {}
             BlockKind::FootnoteDef { name, content } => {
@@ -581,7 +598,18 @@ impl Renderer<'_> {
             .filter(|n| list.ordered && *n != 1)
             .map(|n| format!(" start=\"{n}\""))
             .unwrap_or_default();
-        let _ = writeln!(out, "<{tag}{start}>");
+        // A list of references reads `[1] …` with no bullet in front, like a bibliography.
+        let refs = !list.items.is_empty()
+            && list
+                .items
+                .iter()
+                .all(|i| mpp_syntax::document::list_item_reference(i).is_some());
+        let (tag, class) = if refs {
+            ("ol", " class=\"refs\"")
+        } else {
+            (tag, "")
+        };
+        let _ = writeln!(out, "<{tag}{class}{start}>");
         for item in &list.items {
             // An entry of a reference list is the target of its citations.
             let id = mpp_syntax::document::list_item_reference(item)

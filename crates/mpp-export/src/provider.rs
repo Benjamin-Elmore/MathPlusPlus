@@ -244,6 +244,17 @@ impl ResultProvider for EvalProvider<'_> {
             .map(|d| d.message.clone())
             .collect()
     }
+
+    fn sentence_result(&self, block: &Block) -> Option<String> {
+        if !self.results {
+            return None;
+        }
+        let br = self.ev.block(block.id)?;
+        br.values
+            .iter()
+            .filter(|v| matches!(v.kind, LineKind::Query { .. }) && !v.auto && !v.pending)
+            .find_map(|v| v.latex.clone())
+    }
 }
 
 /// A numerical answer as typeset maths. The `≈` text of a line is plain Unicode

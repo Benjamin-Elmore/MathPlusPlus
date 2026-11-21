@@ -34,6 +34,7 @@ pub(crate) fn export(
         base_level: 1,
         title_done: false,
         in_comment: false,
+        open_enum: None,
     };
     w.scan();
     w.document();
@@ -58,7 +59,20 @@ struct Writer<'a> {
     base_level: u8,
     title_done: bool,
     in_comment: bool,
+    /// The numbered list written last: where its `\end{enumerate}` is in `out` and
+    /// its last number. The next item (`4.` after `3.` and its display) continues
+    /// that list instead of starting again at 1.
+    open_enum: Option<(usize, u32)>,
 }
+
+/// The `\end` that closes a numbered list.
+const END_ENUM: &str = "\\end{enumerate}\n";
+
+/// Commands Math++ accepts that LaTeX, amsmath and amssymb do not define.
+const EXTRA_COMMANDS: &str = "\\providecommand{\\degree}{\\ensuremath{^\\circ}}\n\
+\\providecommand{\\xmark}{\\ensuremath{\\times}}\n\
+\\providecommand{\\omicron}{o}\n\
+\\providecommand{\\oiint}{\\mathop{\\oint\\mkern-12mu\\oint}}\n";
 
 fn slug(s: &str) -> String {
     let t: String = s
@@ -292,6 +306,14 @@ fn unicode_fallback(c: char, math: bool, o: &mut String) {
     } else if c.is_ascii() {
         o.push(c);
         return;
+    } else if c.is_alphabetic() && ('\u{c0}'..='\u{17f}').contains(&c) {
+        // Accented Latin letters (L'Hôpital) are read by inputenc's utf8.
+        if math {
+            let _ = write!(o, "\\text{{{c}}}");
+        } else {
+            o.push(c);
+        }
+        return;
     } else {
         o.push('?');
         return;
@@ -408,6 +430,7 @@ impl Writer<'_> {
             "\\usepackage{graphicx,booktabs,xcolor}\n\\usepackage[hidelinks]{hyperref}\n",
         );
         head.push_str("\\usepackage[margin=25mm]{geometry}\n");
+        head.push_str(EXTRA_COMMANDS);
         if self.opts.dark {
             head.push_str("\\pagecolor[HTML]{1b1c1e}\\color[HTML]{e6e6e3}\n");
         }
@@ -498,6 +521,39 @@ impl Writer<'_> {
     }
 
     fn block(&mut self, b: &Block) {
+        // What belongs to the numbered item above it (`3. … $$ … $$`): its display or
+        // its sentence, which the parser reads as blocks of their own. They go inside
+        // the item, and the list stays open for the next number.
+        let inside_item = matches!(
+            b.kind,
+            BlockKind::DisplayMath(_)
+                | BlockKind::Directive(_)
+                | BlockKind::Helper(_)
+                | BlockKind::Analyse(_)
+                | BlockKind::Solve(_)
+                | BlockKind::Assume(_)
+        );
+        let reopened = match self.open_enum {
+            Some((at, last)) if inside_item && self.out.get(at..) == Some(END_ENUM) => {
+                self.out.truncate(at);
+                Some(last)
+            }
+            _ => {
+                if !matches!(b.kind, BlockKind::List(_)) {
+                    self.open_enum = None;
+                }
+                None
+            }
+        };
+        self.block_body(b);
+        if let Some(last) = reopened {
+            let at = self.out.len();
+            self.out.push_str(END_ENUM);
+            self.open_enum = Some((at, last));
+        }
+    }
+
+    fn block_body(&mut self, b: &Block) {
         match &b.kind {
             BlockKind::Heading { level, content } => {
                 let l = (*level).max(self.base_level) - self.base_level;
@@ -548,7 +604,16 @@ impl Writer<'_> {
             | BlockKind::Solve(_)
             | BlockKind::Assume(_) => {
                 let t = self.source_prose(&self.src(b.span));
-                let _ = writeln!(self.out, "{t}\n");
+                match self.provider.sentence_result(b) {
+                    Some(answer) => {
+                        let t = t.trim_end().trim_end_matches('.');
+                        let _ = writeln!(self.out, "{t}: ${}$.\n", texify_math(&answer));
+                    }
+                    None => {
+                        let _ = writeln!(self.out, "{t}\n");
+                    }
+                }
+                self.errors(b);
             }
             BlockKind::FootnoteDef { .. } | BlockKind::Directive(_) => {}
             BlockKind::Comment(c) => self.comment(c),
@@ -577,6 +642,7 @@ impl Writer<'_> {
                     self.blocks(&t.body);
                 }
                 let _ = writeln!(self.out, "\\end{{{env}}}");
+                self.open_enum = None;
             }
         }
     }
@@ -720,16 +786,52 @@ impl Writer<'_> {
     }
 
     fn list(&mut self, l: &List) {
+        if !l.ordered {
+            self.open_enum = None;
+            self.list_body(l);
+            return;
+        }
+        let first = l.items.first().and_then(|i| i.number).unwrap_or(1);
+        match self.open_enum.take() {
+            // `4.` right after `3.` and its display: the same list goes on, and what
+            // came between stays inside item 3.
+            Some((at, last))
+                if first == last.saturating_add(1) && self.out.get(at..) == Some(END_ENUM) =>
+            {
+                self.out.replace_range(at..at + END_ENUM.len(), "");
+            }
+            _ => {
+                self.out.push_str("\\begin{enumerate}\n");
+                if first != 1 {
+                    let _ = writeln!(self.out, "\\setcounter{{enumi}}{{{}}}", first - 1);
+                }
+            }
+        }
+        self.items(l);
+        let count = u32::try_from(l.items.len()).unwrap_or(u32::MAX);
+        // LaTeX numbers the items one after another, whatever numbers were typed.
+        let last = first.saturating_add(count.saturating_sub(1));
+        let at = self.out.len();
+        self.out.push_str(END_ENUM);
+        self.open_enum = Some((at, last));
+    }
+
+    /// A list inside an item, or a bulleted list: written whole.
+    fn list_body(&mut self, l: &List) {
         let env = if l.ordered { "enumerate" } else { "itemize" };
         let _ = writeln!(self.out, "\\begin{{{env}}}");
+        self.items(l);
+        let _ = writeln!(self.out, "\\end{{{env}}}");
+    }
+
+    fn items(&mut self, l: &List) {
         for item in &l.items {
             let t = self.inlines(&item.content);
             let _ = writeln!(self.out, "\\item {t}");
             for c in &item.children {
-                self.list(c);
+                self.list_body(c);
             }
         }
-        let _ = writeln!(self.out, "\\end{{{env}}}");
     }
 
     fn table(&mut self, t: &Table) {
@@ -796,8 +898,23 @@ impl Writer<'_> {
             let _ = writeln!(self.out, "  {r}{extra}{sep}");
         }
         let _ = writeln!(self.out, "\\end{{{env}{star}}}");
+        self.errors(b);
         if self.opts.include_steps && !self.in_comment {
             self.steps(b);
+        }
+    }
+
+    /// Why the block's questions got no answer, under it (as the HTML page shows it).
+    fn errors(&mut self, b: &Block) {
+        if self.in_comment {
+            return;
+        }
+        for e in self.provider.display_errors(b) {
+            let _ = writeln!(
+                self.out,
+                "{{\\small\\color{{red!60!black}}$\\times$ {}}}\n",
+                escape_text(&e)
+            );
         }
     }
 
