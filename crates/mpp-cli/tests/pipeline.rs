@@ -45,9 +45,9 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
         "area-counting premise; prose figure",
     ),
     ("historic/fermat-little.mpp", "\\overset{?}{\\equiv} checks"),
-    ("labs/01-projectile-drag.mpp", "`T ≈ ?` has no definition: T is introduced only by the prose \"lands when $y(T) = 0$ with $T > 0$\" (prose relations define nothing; for Ben: `T := \\operatorname{solve}_t(y(t) = 0, t > 0)` would say it in maths); and the drag system ẍ = −kẋ, ÿ = −g − kẏ has unit-carrying coefficients, which the ODE solver does not take yet, so x and y are not defined"),
+    ("labs/01-projectile-drag.mpp", "needs Ben: `T ≈ ?` has no definition, since T is introduced only by the prose \"lands when $y(T) = 0$ with $T > 0$\" (prose relations define nothing), so `R := x(T)` has no number either. Written in maths, `T := \\operatorname{solve}_t(y(t) = 0, t > 0)` gives T ≈ 2.757 s and R ≈ 34.07 m; R₀, T₀ and the drag solution x(t), y(t) (with units) are computed"),
     ("labs/02-pendulum.mpp", "`T ≈ ?` has no definition: T is \"the time between successive maxima of θ(t)\" in prose only (for Ben: there is no maths construct for it); the nonlinear pendulum also needs a numerical solution defined from the statement. T₀ ≈ 2.006 s and T_exact ≈ 2.041 s are computed"),
-    ("labs/03-damped-spring.mpp", "`\\text{ for all } t \\ge 0` quantified checks are not supported, and the ODE m ẍ + c ẋ + k x = 0 with unit-carrying m, c, k is not solved yet, so x and E(t) have no value; ζ ≈ 0.0632 and T_d ≈ 0.9954 s are computed"),
+    ("labs/03-damped-spring.mpp", "needs Ben: T_d = 2π/√39.84 s = 0.99545172… s, which rounds to 0.9955, not the expected 0.9954 (0.9954 is the value cut off after four decimals); everything else passes, including the ODE solution with units and the check dE/dt ≤ 0 for all t ≥ 0"),
     ("labs/06-reaction-kinetics.mpp", "needs design (for Ben): a definition whose head is an expression (`\\frac{k(T_2)}{k(T_1)} := …` with where-clauses), bracket names `[A]_0` and the function `[A](t)`, and a fit of `ln k = ln A − (E_a/R)(1/T)` where E_a is already defined, with `E_{a,fit}` read as its fitted value"),
     ("labs/07-boyles-law.mpp", "for Ben: the least-squares slope of the table is 99.30 J (within the stated 0.5 of 99.2), so the recovered amount is n_fit = 0.04006 mol, which rounds to 0.0401, not the expected 0.0400; and `R^2 ≈ ?` is the square of the gas constant R defined above, not the fit's coefficient of determination (the fit line reports R² ≈ 0.999985 itself)"),
     ("labs/09-predator-prey.mpp", "`\\max_{t \\in [0, 50]} |V(t) − V(0)|` writes V with one argument for V(x(t), y(t)), and the nonlinear system needs a numerical (RK45) solution defined from the statement; the equilibrium (4, 11/4) and the chain rule for dV/dt are computed"),
@@ -177,10 +177,12 @@ fn line<'a>(s: &'a Session, fragment: &str) -> Option<&'a LineResult> {
                 .is_some_and(|t| t.trim_start().starts_with(fragment))
         })
         .collect();
-    // The same maths may appear in prose too; the line with an answer is the one meant.
+    // The same maths may appear in prose too; the line with an answer is the one meant,
+    // and of `R_0 := … \approx ?` (a definition and its query) the query.
     matching
         .iter()
-        .find(|l| l.answer().is_some())
+        .find(|l| matches!(l.kind, LineKind::Query { .. }) && l.answer().is_some())
+        .or_else(|| matching.iter().find(|l| l.answer().is_some()))
         .or(matching.first())
         .copied()
 }

@@ -221,7 +221,10 @@ pub fn solve(
                 Some("sign changes bracketed, then bisection and Newton steps".into()),
             );
             Solutions::Finite {
-                values: roots.into_iter().map(Expr::float).collect(),
+                values: roots
+                    .into_iter()
+                    .map(|r| exact_root_near(&f, var, r).unwrap_or_else(|| Expr::float(r)))
+                    .collect(),
                 exact: false,
             }
         }
@@ -234,6 +237,26 @@ pub fn solve(
         ctx.note(format!("{param} is any integer"));
     }
     Ok(found)
+}
+
+/// A numerical root that is an integer or a fraction with a small denominator, when
+/// substituting it makes `f` exactly zero (`t = 0` of `y(t) = 0` for a projectile), so
+/// conditions such as `t > 0` can be decided at it.
+fn exact_root_near(f: &Expr, var: &str, r: f64) -> Option<Expr> {
+    if !r.is_finite() || r.abs() > 1e9 {
+        return None;
+    }
+    for den in 1..=12_i64 {
+        let num = (r * den as f64).round();
+        if (num / den as f64 - r).abs() > 1e-9 * r.abs().max(1.0) {
+            continue;
+        }
+        let q = Expr::rational(num as i64, den);
+        if is_zero(&f.subs(var, &q).simplify()) {
+            return Some(q);
+        }
+    }
+    None
 }
 
 /// Keeps the real solutions inside `r`, listing periodic families there.

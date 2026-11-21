@@ -322,3 +322,24 @@ $$ x(1) = ? $$";
         "no value may be given"
     );
 }
+
+#[test]
+fn solving_with_units_keeps_the_conditions() {
+    // The landing time of a projectile with drag: y(t) = 0 at t = 0 and once later; the
+    // condition t > 0 must keep only the later root (t = 0 is found exactly).
+    let src = r"Let $g \equiv 9.81\,\mathrm{m/s^2}$, $v_0 := 20\,\mathrm{m/s}$ and $k := 0.1\,\mathrm{s^{-1}}$.
+
+$$ \ddot y = -g - k\dot y, \quad y(0) = 0,\ \dot y(0) = v_0 $$
+
+$$ T := \operatorname{solve}_t (y(t) = 0, t > 0) \approx ? $$";
+    let ev = run(src);
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+    let shown: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.approx.clone().unwrap_or_default())
+        .collect();
+    let t: f64 = shown[0].trim_end_matches(" s").parse().unwrap_or(f64::NAN);
+    // y(T) = (v₀ + g/k)(1 − e^{−kT})/k − (g/k) T = 0.
+    let y = |t: f64| (20.0 + 98.1) * (1.0 - (-0.1 * t).exp()) / 0.1 - 98.1 * t;
+    assert!(y(t).abs() < 1e-6 && t > 1.0, "{shown:?}");
+}
