@@ -98,13 +98,13 @@ impl Call {
 enum Answer {
     /// The domain registry's operators (`crate::domains_wire`).
     Registry,
-    /// The numerical methods and the differential-equations toolkit (`crate::helpers_b`);
+    /// The numerical methods and the differential-equations toolkit (`crate::helpers::evaluate_operators`);
     /// a starting value written `y(x₀) = y₀` becomes the pair `(x₀, y₀)` first.
     Toolkit,
     /// The multivariable helpers (`crate::helpers`), once a bare point below the name has
     /// been given its variables.
     Multivar,
-    /// The integral applications (`crate::helpers_b`), once separate "from" and "to"
+    /// The integral applications (`crate::helpers::evaluate_operators`), once separate "from" and "to"
     /// boxes have become one interval.
     FromTo,
     /// The Laplace and Fourier transforms ([`transform`]).
@@ -245,7 +245,7 @@ fn form_of(call: &Call) -> Option<&'static Form> {
 fn first_is_differential_equation(call: &Call) -> bool {
     call.args
         .first()
-        .is_some_and(crate::helpers_b::is_differential_equation_or_system)
+        .is_some_and(crate::helpers::is_differential_equation_or_system)
 }
 
 fn bare_point_below(call: &Call) -> bool {
@@ -267,10 +267,10 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
             crate::domains_wire::evaluate(&adapt_initial_condition(&call).to_expr(), ctx)
         }
         Answer::Toolkit => {
-            crate::helpers_b::evaluate(&adapt_initial_condition(&call).to_expr(), ctx)
+            crate::helpers::evaluate_operators(&adapt_initial_condition(&call).to_expr(), ctx)
         }
         Answer::Multivar => crate::helpers::evaluate(&adapt_alias(&call).to_expr(), ctx),
-        Answer::FromTo => crate::helpers_b::evaluate(&from_to(&call)?.to_expr(), ctx),
+        Answer::FromTo => crate::helpers::evaluate_operators(&from_to(&call)?.to_expr(), ctx),
         Answer::Transform => Some(transform(&call, ctx)),
         Answer::Pass => None,
     }
