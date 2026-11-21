@@ -2,7 +2,9 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 
 use mpp_syntax::document::{
     block_at, citation_diagnostics, parse_document, parse_reference_entries, Block, BlockId,
@@ -20,6 +22,10 @@ use crate::import::Importer;
 use crate::names::node_key;
 use crate::result::{shift_span, BlockResult, Evaluated, LineIndex};
 use crate::value::{same_binding, Env};
+
+/// The longest one query may run in the command line and the calculator before it
+/// stops with "stopped after N s".
+pub const DEFAULT_TIME_LIMIT: Duration = Duration::from_secs(60);
 
 /// A block's last outcome, kept so an unchanged block can be reused.
 #[derive(Debug, Clone)]
@@ -54,6 +60,22 @@ pub struct Session {
     show_steps: bool,
     /// Auto-evaluation (C8): the toggle, the time budget and the answer cache.
     auto: AutoEval,
+    /// Set (from another thread) to stop the run in progress; cleared when a run starts.
+    cancel: Arc<AtomicBool>,
+    /// Longest a single query (one block) may run; `None` is no limit.
+    time_limit: Option<Duration>,
+}
+
+/// Stops the run a [`Session`] is busy with, from any thread.
+#[derive(Clone, Debug)]
+pub struct CancelHandle(Arc<AtomicBool>);
+
+impl CancelHandle {
+    /// Asks the running calculation to stop at its next check. The session's next
+    /// run starts afresh (the request only affects work already in progress).
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
 }
 
 impl std::fmt::Debug for Session {
@@ -63,6 +85,12 @@ impl std::fmt::Debug for Session {
             .field("base_dir", &self.base_dir)
             .field("cached_blocks", &self.cache.len())
             .finish()
+    }
+}
+
+impl Drop for Session {
+    fn drop(&mut self) {
+        self.auto.cache.cancel_all();
     }
 }
 
@@ -91,7 +119,26 @@ impl Session {
             evaluated: Evaluated::empty(),
             show_steps: false,
             auto: AutoEval::default(),
+            cancel: Arc::new(AtomicBool::new(false)),
+            time_limit: None,
         }
+    }
+
+    /// A handle that stops the run in progress (for example when the user types).
+    /// Call it *before* handing the session the newer text.
+    pub fn cancel_handle(&self) -> CancelHandle {
+        CancelHandle(self.cancel.clone())
+    }
+
+    /// Limits how long one query (one block) may run; a longer one stops with
+    /// "stopped after N s". `None` (the default) is no limit.
+    pub fn set_time_limit(&mut self, limit: Option<Duration>) {
+        self.time_limit = limit;
+    }
+
+    /// The per-query time limit.
+    pub fn time_limit(&self) -> Option<Duration> {
+        self.time_limit
     }
 
     /// Turns the "Show steps" option on or off: when on, every `= ?` query records its
@@ -314,11 +361,26 @@ impl Session {
             has_proofs: self.has_proofs,
         };
 
+        let text_changed = own_stack && src != self.evaluated.source;
+        if own_stack {
+            self.auto.cache.begin_pass();
+        }
         let pass = if own_stack {
-            with_large_stack(|| run_blocks(&doc, &self.cache, &inputs))
+            // A cancel asked for before this run began belongs to the run it
+            // replaced; one asked for from here on stops this run.
+            self.cancel.store(false, Ordering::Relaxed);
+            let budget = mpp_core::budget::Budget::new(self.cancel.clone(), self.time_limit);
+            with_large_stack(|| {
+                let _budget = mpp_core::budget::install(budget.clone());
+                run_blocks(&doc, &self.cache, &inputs, true)
+            })
         } else {
-            run_blocks(&doc, &self.cache, &inputs)
+            run_blocks(&doc, &self.cache, &inputs, false)
         };
+        if text_changed {
+            // Slow answers for text that is gone are not worth finishing.
+            self.auto.cache.sweep();
+        }
         let Pass {
             env,
             cache,
@@ -355,7 +417,12 @@ struct Pass {
 }
 
 /// Runs every block of `doc` in order, reusing cached outcomes where possible.
-fn run_blocks(doc: &Document, old: &HashMap<BlockId, Cached>, inputs: &Inputs<'_>) -> Pass {
+fn run_blocks(
+    doc: &Document,
+    old: &HashMap<BlockId, Cached>,
+    inputs: &Inputs<'_>,
+    top: bool,
+) -> Pass {
     let mut flat: Vec<&Block> = Vec::new();
     doc.walk(&mut |b| flat.push(b));
     let scopes = proof_scopes(doc);
@@ -393,7 +460,18 @@ fn run_blocks(doc: &Document, old: &HashMap<BlockId, Cached>, inputs: &Inputs<'_
             }
             None => {
                 recomputed.push(block.id);
-                run_block(block, &mut env, inputs)
+                if top {
+                    // One time limit per query, not per document.
+                    mpp_core::budget::restart();
+                }
+                let mut outcome = run_block(block, &mut env, inputs);
+                if top
+                    && mpp_core::budget::take_tripped() == Some(mpp_core::budget::Trip::Cancelled)
+                {
+                    // A stopped block says nothing about its text: run it again next time.
+                    outcome.volatile = true;
+                }
+                outcome
             }
         };
         blocks.push(outcome.result.clone());

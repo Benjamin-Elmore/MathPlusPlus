@@ -58,6 +58,7 @@ pub(crate) fn kahan_range(t: &Expr, k: &str, lo: &BigInt, hi: &BigInt) -> MathRe
     let mut acc = Kahan::default();
     let mut n = lo;
     while n <= hi {
+        crate::budget::check()?;
         acc.add(term_f64(t, k, n).ok_or_else(|| bad_term(k, n))?);
         n += 1.0;
     }
@@ -92,6 +93,7 @@ fn direct(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
     let mut small = 0;
     let mut n = a;
     for _ in 0..MAX_DIRECT {
+        crate::budget::check()?;
         let Some(v) = term_f64(t, k, n) else {
             // Overflowing factorials far out: fine once the terms are already negligible.
             if small > 0 {
@@ -150,6 +152,7 @@ fn alternating(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
     let mut partial = Vec::with_capacity(WYNN_TERMS);
     let mut acc = Kahan::default();
     for i in 0..WYNN_TERMS {
+        crate::budget::check()?;
         let n = a + i as f64;
         acc.add(term_f64(t, k, n).ok_or_else(|| bad_term(k, n))?);
         partial.push(acc.value());
@@ -173,6 +176,7 @@ fn euler_maclaurin(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
     let mut acc = Kahan::default();
     let mut n = a;
     while n < n_head {
+        crate::budget::check()?;
         acc.add(term_f64(t, k, n).ok_or_else(|| bad_term(k, n))?);
         n += 1.0;
     }
@@ -194,6 +198,7 @@ fn brute(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
     let mut acc = Kahan::default();
     let mut n = a;
     for _ in 0..BRUTE_TERMS {
+        crate::budget::check()?;
         acc.add(term_f64(t, k, n).ok_or_else(|| bad_term(k, n))?);
         n += 1.0;
     }

@@ -6,6 +6,7 @@ use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
 
+use crate::budget;
 use crate::domains::util::{expect_args, int_arg};
 use crate::domains::{Ctx, Domain, Value};
 use crate::error::{MathError, MathResult};
@@ -16,7 +17,7 @@ pub const MAX_BITS: u64 = 512;
 /// Trial division bound before Pollard's rho.
 const TRIAL_LIMIT: u32 = 10_000;
 /// Iterations Pollard's rho may spend on one factor.
-const RHO_LIMIT: u64 = 2_000_000;
+const RHO_LIMIT: u64 = 600_000;
 /// Miller–Rabin bases; deterministic below 3.3·10²⁴.
 const BASES: [u32; 13] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41];
 
@@ -192,27 +193,31 @@ pub fn next_prime(n: &BigInt) -> MathResult<BigInt> {
 }
 
 /// Pollard's rho (Brent's cycle detection) for a non-trivial factor of composite `n`.
-fn rho(n: &BigInt) -> Option<BigInt> {
+fn rho(n: &BigInt) -> MathResult<Option<BigInt>> {
     let one = BigInt::one();
+    // One step budget for every starting constant together.
+    let mut steps = 0u64;
     for c in 1u32..20 {
         let c = BigInt::from(c);
         let f = |x: &BigInt| (x * x + &c) % n;
         let (mut x, mut y, mut g) = (BigInt::from(2), BigInt::from(2), one.clone());
-        let mut steps = 0u64;
         while g.is_one() {
             x = f(&x);
             y = f(&f(&y));
             g = (&x - &y).abs().gcd(n);
             steps += 1;
+            if steps.is_multiple_of(256) {
+                budget::check()?;
+            }
             if steps > RHO_LIMIT {
-                return None;
+                return Ok(None);
             }
         }
         if &g != n {
-            return Some(g);
+            return Ok(Some(g));
         }
     }
-    None
+    Ok(None)
 }
 
 /// Prime factorisation `[(p, e)]` of `|n|`, primes ascending.
@@ -224,6 +229,7 @@ pub fn factorint(n: &BigInt) -> MathResult<Vec<(BigInt, u32)>> {
         return Err(MathError::Undefined("the factorisation of 0".into()));
     }
     for p in small_primes() {
+        budget::check()?;
         let pb = BigInt::from(p);
         if &pb * &pb > n {
             break;
@@ -247,7 +253,7 @@ pub fn factorint(n: &BigInt) -> MathResult<Vec<(BigInt, u32)>> {
             big.push(m);
             continue;
         }
-        let f = rho(&m).ok_or_else(|| {
+        let f = rho(&m)?.ok_or_else(|| {
             MathError::TooLarge(format!("factoring {m} (no factor found in time)"))
         })?;
         stack.push(&m / &f);

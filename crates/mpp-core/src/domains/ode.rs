@@ -354,6 +354,7 @@ pub fn rk4(
     let (mut xv, mut yv) = (x0, y0);
     out.push((xv, yv));
     for i in 0..steps {
+        crate::budget::check()?;
         let k1 = eval(xv, yv)?;
         let k2 = eval(xv + h / 2.0, yv + h * k1 / 2.0)?;
         let k3 = eval(xv + h / 2.0, yv + h * k2 / 2.0)?;
@@ -408,6 +409,7 @@ pub fn rk4_system(
     let mut out = Vec::with_capacity(steps + 1);
     out.push((tv, yv.clone()));
     for i in 0..steps {
+        crate::budget::check()?;
         let k1 = eval(tv, &yv)?;
         let k2 = eval(tv + h / 2.0, &axpy(&yv, &k1, h / 2.0))?;
         let k3 = eval(tv + h / 2.0, &axpy(&yv, &k2, h / 2.0))?;

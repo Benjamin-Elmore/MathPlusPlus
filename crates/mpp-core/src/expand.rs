@@ -42,6 +42,7 @@ pub fn expand(e: &Expr) -> MathResult<Expr> {
 }
 
 fn expand_node(e: &Expr) -> MathResult<Expr> {
+    crate::budget::check()?;
     match e.node() {
         ExprNode::Add(v) => Ok(add(v.iter().map(expand_node).collect::<MathResult<_>>()?)),
         ExprNode::Mul(v) => {

@@ -69,6 +69,7 @@ pub fn integrate(
     let (first, err) = kronrod(f, a, b)?;
     let mut parts = vec![(a, b, first, err)];
     loop {
+        crate::budget::check()?;
         let total: f64 = parts.iter().map(|p| p.2).sum();
         let error: f64 = parts.iter().map(|p| p.3).sum();
         if !total.is_finite() {

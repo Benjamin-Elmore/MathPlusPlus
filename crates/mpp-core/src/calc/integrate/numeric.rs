@@ -96,6 +96,7 @@ pub(crate) fn adaptive(
     let mut bad: Vec<(f64, f64)> = Vec::new();
     let mut evaluated = 0usize;
     while let Some((l, r)) = pending.pop() {
+        crate::budget::check()?;
         evaluated += 1;
         if evaluated > 4 * max_intervals {
             break;
@@ -128,6 +129,7 @@ pub(crate) fn adaptive(
         )));
     }
     loop {
+        crate::budget::check()?;
         let total: f64 = panels.iter().map(|p| p.value).sum();
         let err: f64 = panels.iter().map(|p| p.err).sum();
         if !total.is_finite() {

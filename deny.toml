@@ -1,4 +1,4 @@
-# Licence policy for Math++ (checked with `cargo deny check licenses`).
+# Dependency policy for Math++ (checked with `cargo deny check`: licences and advisories).
 # Only permissive licences are allowed. Anything else must be listed for review.
 
 [graph]
@@ -15,7 +15,6 @@ allow = [
     "ISC",
     "Zlib",
     "Unicode-3.0",
-    "Unicode-DFS-2016",
     "OFL-1.1",
     "CC0-1.0",
     "BSL-1.0",
@@ -32,3 +31,10 @@ ignore = true
 [[licenses.exceptions]]
 name = "epaint_default_fonts"
 allow = ["Ubuntu-font-1.0"]
+
+[advisories]
+# NEEDS BEN: both advisories below are accepted on purpose, with the reasons given.
+ignore = [
+    { id = "RUSTSEC-2026-0187", reason = "lopdf stack overflow; lopdf is a dev-dependency used only by the PDF export tests to read back files Math++ wrote itself, so no untrusted PDF is ever parsed and it is not in any shipped binary." },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained but has no known vulnerability. mpp-render reads the OpenType MATH and GSUB tables of the two bundled fonts with it; the maintained alternative (skrifa/read-fonts) has a different API for those tables, so moving is a separate piece of work. It only ever reads font files that ship inside Math++." },
+]

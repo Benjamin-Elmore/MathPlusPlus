@@ -9,11 +9,18 @@
 //! the session's time budget keeps running on a worker thread; its line is `pending`
 //! (the IDE shows a spinner) and the block is re-run by [`crate::Session::refresh`] once
 //! the answer is in the cache, so a slow integral never holds up the other blocks.
+//!
+//! Slow jobs run on a small pool of worker threads ([`POOL_SIZE`]) fed from a bounded
+//! queue that serves the newest job first; a job whose line was edited away is dropped
+//! from the queue or stopped through its cancel flag, and no job runs past
+//! [`WORKER_LIMIT`]. Typing a slow expression one character at a time therefore never
+//! piles up threads.
 
 use std::collections::hash_map::DefaultHasher;
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
-use std::sync::{mpsc, Arc, Condvar, Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::{Duration, Instant};
 
 use mpp_core::domains::Assumptions;
@@ -28,6 +35,18 @@ const MAX_CACHED: usize = 4096;
 
 /// Stack for a worker: evaluation recurses (the same size as the session's own).
 const WORKER_STACK: usize = 256 << 20;
+
+/// Most worker threads running slow jobs at once.
+const POOL_SIZE: usize = 2;
+
+/// Most jobs waiting for a worker; beyond this the oldest waiting job is dropped.
+const MAX_QUEUE: usize = 8;
+
+/// The longest any one background job may run before it is stopped.
+const WORKER_LIMIT: Duration = Duration::from_secs(120);
+
+/// How long an idle worker waits for work before its thread ends.
+const WORKER_IDLE: Duration = Duration::from_secs(5);
 
 /// The auto-evaluation settings and cache of a session.
 #[derive(Debug, Clone)]
@@ -63,9 +82,22 @@ pub(crate) struct AutoOutcome {
 #[derive(Debug, Default)]
 pub(crate) struct AutoCache {
     done: Mutex<HashMap<u64, AutoOutcome>>,
-    running: Mutex<HashSet<u64>>,
-    /// Signalled whenever a running job finishes.
+    /// Jobs queued or running, with the flag that stops each.
+    running: Mutex<HashMap<u64, Arc<AtomicBool>>>,
+    /// Signalled whenever a queued or running job finishes or is dropped.
     finished: Condvar,
+    /// Jobs waiting for a worker (newest at the back) and the live worker count.
+    queue: Mutex<Pool>,
+    /// Signalled when a job is queued.
+    work: Condvar,
+    /// The jobs the current pass asked for.
+    touched: Mutex<HashSet<u64>>,
+}
+
+#[derive(Debug, Default)]
+struct Pool {
+    waiting: VecDeque<(u64, Job)>,
+    workers: usize,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -89,9 +121,48 @@ impl AutoCache {
         done.insert(key, outcome);
     }
 
-    /// True while some job is still running.
+    /// True while some job is still queued or running.
     pub fn has_running(&self) -> bool {
         !lock(&self.running).is_empty()
+    }
+
+    /// A new pass over the document begins: forget which jobs were asked for.
+    pub fn begin_pass(&self) {
+        lock(&self.touched).clear();
+    }
+
+    /// The pass is over and the text changed: queued jobs nobody asked for any more
+    /// are dropped and running ones are told to stop.
+    pub fn sweep(&self) {
+        let touched = lock(&self.touched).clone();
+        let mut pool = lock(&self.queue);
+        let mut running = lock(&self.running);
+        let queued: HashSet<u64> = pool.waiting.iter().map(|(k, _)| *k).collect();
+        pool.waiting.retain(|(k, _)| touched.contains(k));
+        running.retain(|k, flag| {
+            if touched.contains(k) {
+                return true;
+            }
+            if queued.contains(k) {
+                // Never started: gone now.
+                return false;
+            }
+            // On a worker: stopped, and it removes itself when it ends.
+            flag.store(true, Ordering::Relaxed);
+            true
+        });
+        drop(running);
+        drop(pool);
+        self.finished.notify_all();
+    }
+
+    /// Stops every job (the session is going away).
+    pub fn cancel_all(&self) {
+        lock(&self.queue).waiting.clear();
+        for flag in lock(&self.running).values() {
+            flag.store(true, Ordering::Relaxed);
+        }
+        self.finished.notify_all();
     }
 
     /// Waits until no job is running or `timeout` passes; true when none is running.
@@ -126,6 +197,12 @@ pub(crate) struct Job {
     pub assumptions: Arc<Assumptions>,
 }
 
+impl std::fmt::Debug for Job {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Job").field("expr", &self.expr).finish()
+    }
+}
+
 impl Job {
     /// The cache key: the expression, the mode and the facts in force.
     pub fn key(&self) -> u64 {
@@ -136,7 +213,9 @@ impl Job {
         h.finish()
     }
 
-    fn compute(&self) -> AutoOutcome {
+    /// Works the job out on this thread; the flag is false when it was stopped on
+    /// request, so the answer says nothing about the maths and is not kept.
+    fn compute(&self) -> (AutoOutcome, bool) {
         let ctx = Ctx::new(&self.holders)
             .numeric(self.numeric)
             .with_assumptions(self.assumptions.clone());
@@ -144,12 +223,16 @@ impl Job {
             let mut r = Resolver::new(&NoNames, &ctx, BTreeMap::new());
             r.run(&self.expr)
         };
+        let keep = mpp_core::budget::peek_tripped() != Some(mpp_core::budget::Trip::Cancelled);
         let Collected { notes, shown, .. } = ctx.finish();
-        AutoOutcome {
-            value: value.map_err(|e| e.to_string()),
-            notes,
-            shown,
-        }
+        (
+            AutoOutcome {
+                value: value.map_err(|e| e.to_string()),
+                notes,
+                shown,
+            },
+            keep,
+        )
     }
 }
 
@@ -163,53 +246,104 @@ impl Lookup for NoNames {
 }
 
 /// The answer to `job`: from the cache, computed now, or `None` while it is still
-/// running after `deadline` (then it finishes on a worker thread and lands in the
-/// cache).
+/// waiting or running after `deadline` (then a pool worker finishes it and it lands
+/// in the cache).
 pub(crate) fn answer(auto: &AutoEval, job: Job, deadline: Option<Instant>) -> Option<AutoOutcome> {
     let key = job.key();
+    lock(&auto.cache.touched).insert(key);
     if let Some(done) = auto.cache.get(key) {
         return Some(done);
     }
     let Some(deadline) = deadline else {
-        let out = job.compute();
-        auto.cache.put(key, out.clone());
-        return Some(out);
+        return Some(compute_here(auto, key, &job));
     };
-    if lock(&auto.cache.running).contains(&key) {
-        return wait_for(auto, key, deadline);
-    }
-    lock(&auto.cache.running).insert(key);
-    let (tx, rx) = mpsc::channel();
-    let cache = auto.cache.clone();
-    let worker = {
-        let job = job.clone();
-        std::thread::Builder::new()
-            .name("mpp-auto".into())
-            .stack_size(WORKER_STACK)
-            .spawn(move || {
-                let out = job.compute();
-                cache.put(key, out.clone());
-                lock(&cache.running).remove(&key);
-                cache.finished.notify_all();
-                // The block may have moved on; then nobody is listening.
-                let _ = tx.send(out);
-            })
-    };
-    if worker.is_err() {
+    if !lock(&auto.cache.running).contains_key(&key) && !submit(&auto.cache, key, job.clone()) {
         // No thread could be started: work it out here.
-        lock(&auto.cache.running).remove(&key);
-        let out = job.compute();
-        auto.cache.put(key, out.clone());
-        return Some(out);
+        return Some(compute_here(auto, key, &job));
     }
-    let left = deadline.saturating_duration_since(Instant::now());
-    rx.recv_timeout(left).ok()
+    wait_for(auto, key, deadline)
 }
 
-/// Waits for a job another block started.
+fn compute_here(auto: &AutoEval, key: u64, job: &Job) -> AutoOutcome {
+    let (out, keep) = job.compute();
+    if keep {
+        auto.cache.put(key, out.clone());
+    }
+    out
+}
+
+/// Queues `job` for the pool, newest first; false when no worker could be started.
+fn submit(cache: &Arc<AutoCache>, key: u64, job: Job) -> bool {
+    let mut pool = lock(&cache.queue);
+    lock(&cache.running).insert(key, Arc::new(AtomicBool::new(false)));
+    pool.waiting.push_back((key, job));
+    while pool.waiting.len() > MAX_QUEUE {
+        // The oldest waiting job is the least likely to still be on screen.
+        if let Some((old, _)) = pool.waiting.pop_front() {
+            lock(&cache.running).remove(&old);
+        }
+    }
+    if pool.workers < POOL_SIZE {
+        let worker_cache = cache.clone();
+        let spawned = std::thread::Builder::new()
+            .name("mpp-auto".into())
+            .stack_size(WORKER_STACK)
+            .spawn(move || worker(&worker_cache));
+        if spawned.is_ok() {
+            pool.workers += 1;
+        } else if pool.workers == 0 {
+            pool.waiting.retain(|(k, _)| *k != key);
+            lock(&cache.running).remove(&key);
+            return false;
+        }
+    }
+    drop(pool);
+    cache.work.notify_one();
+    true
+}
+
+/// One pool worker: takes the newest waiting job until it has been idle a while.
+fn worker(cache: &Arc<AutoCache>) {
+    loop {
+        let next = {
+            let mut pool = lock(&cache.queue);
+            loop {
+                if let Some(item) = pool.waiting.pop_back() {
+                    break Some(item);
+                }
+                let (guard, timeout) = match cache.work.wait_timeout(pool, WORKER_IDLE) {
+                    Ok(r) => r,
+                    Err(p) => p.into_inner(),
+                };
+                pool = guard;
+                if timeout.timed_out() && pool.waiting.is_empty() {
+                    pool.workers = pool.workers.saturating_sub(1);
+                    break None;
+                }
+            }
+        };
+        let Some((key, job)) = next else {
+            return;
+        };
+        let flag = lock(&cache.running).get(&key).cloned();
+        if let Some(flag) = flag {
+            let budget = mpp_core::budget::Budget::new(flag, Some(WORKER_LIMIT));
+            let _guard = mpp_core::budget::install(budget);
+            let (out, keep) = job.compute();
+            if keep {
+                cache.put(key, out);
+            }
+        }
+        lock(&cache.running).remove(&key);
+        cache.finished.notify_all();
+    }
+}
+
+/// Waits for a queued or running job until `deadline`; `None` when it is still
+/// going (or was dropped, which leaves its line pending to be asked for again).
 fn wait_for(auto: &AutoEval, key: u64, deadline: Instant) -> Option<AutoOutcome> {
     let mut running = lock(&auto.cache.running);
-    while running.contains(&key) {
+    while running.contains_key(&key) {
         let now = Instant::now();
         if now >= deadline {
             return None;
@@ -262,5 +396,36 @@ mod tests {
         if let Some(out) = got {
             assert_eq!(out.value, Ok(Expr::int(42)));
         }
+    }
+
+    #[test]
+    fn many_slow_jobs_never_start_more_than_the_pool() {
+        let auto = AutoEval::default();
+        for n in 0..40 {
+            let e = Expr::int(n) + Expr::int(1000);
+            let _ = answer(&auto, job(e), Some(Instant::now()));
+            let pool = lock(&auto.cache.queue);
+            assert!(pool.workers <= POOL_SIZE, "{} workers", pool.workers);
+            assert!(pool.waiting.len() <= MAX_QUEUE);
+        }
+        assert!(auto.cache.wait(Duration::from_secs(60)));
+    }
+
+    #[test]
+    fn a_sweep_drops_jobs_nobody_asked_for() {
+        let auto = AutoEval::default();
+        auto.cache.begin_pass();
+        {
+            // Queue a job by hand without starting a worker.
+            let mut pool = lock(&auto.cache.queue);
+            let j = job(Expr::int(9));
+            let key = j.key();
+            pool.waiting.push_back((key, j));
+            lock(&auto.cache.running).insert(key, Arc::new(AtomicBool::new(false)));
+        }
+        assert!(auto.cache.has_running());
+        auto.cache.sweep();
+        assert!(!auto.cache.has_running());
+        assert!(lock(&auto.cache.queue).waiting.is_empty());
     }
 }

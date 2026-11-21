@@ -232,6 +232,7 @@ fn dopri(sys: &Ivp, t0: f64, y0: &[f64], t_end: f64) -> MathResult<Vec<(f64, Vec
     let mut accepted = 0usize;
     let mut tmp = vec![0.0; n];
     while (t_end - t) * dir > 1e-15 * span.max(t.abs()).max(1.0) {
+        crate::budget::check()?;
         if accepted > MAX_STEPS {
             return Err(MathError::TooLarge(
                 "the number of steps for this solution".into(),

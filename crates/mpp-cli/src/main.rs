@@ -3,7 +3,7 @@ use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
 use mpp_cli::{
-    calc_line, check_report, proof_report, prove, run_file, run_lines, run_report_with,
+    calc_line, check_report, proof_report, prove, run_file_with_limit, run_lines, run_report_with,
     split_target, ProveArgs, ProveIo,
 };
 use mpp_export::{export_path, load, render_page, ExportOptions, Format, PageSize};
@@ -27,11 +27,17 @@ enum Command {
         /// Show the working of `= ?!` queries under their answers
         #[arg(long)]
         steps: bool,
+        /// Stop a query that runs longer than this many seconds (0 = no limit)
+        #[arg(long, value_name = "SECONDS", default_value_t = 60)]
+        time_limit: u64,
     },
     /// Check files for errors (exit code 1 when there are any)
     Check {
         #[arg(required = true)]
         files: Vec<PathBuf>,
+        /// Stop a query that runs longer than this many seconds (0 = no limit)
+        #[arg(long, value_name = "SECONDS", default_value_t = 60)]
+        time_limit: u64,
     },
     /// Write a static HTML page with typeset maths, graphs and results
     Render {
@@ -125,8 +131,12 @@ enum Paper {
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match cli.command {
-        Command::Run { file, steps } => run(&file, steps),
-        Command::Check { files } => check(&files),
+        Command::Run {
+            file,
+            steps,
+            time_limit,
+        } => run(&file, steps, limit(time_limit)),
+        Command::Check { files, time_limit } => check(&files, limit(time_limit)),
         Command::Render { file, output } => render(&file, output),
         Command::Export {
             file,
@@ -171,8 +181,13 @@ fn fail(msg: impl std::fmt::Display) -> ExitCode {
     ExitCode::FAILURE
 }
 
-fn run(file: &Path, steps: bool) -> ExitCode {
-    match run_file(file) {
+/// The `--time-limit` option as a duration (0 means none).
+fn limit(seconds: u64) -> Option<std::time::Duration> {
+    (seconds > 0).then(|| std::time::Duration::from_secs(seconds))
+}
+
+fn run(file: &Path, steps: bool, limit: Option<std::time::Duration>) -> ExitCode {
+    match run_file_with_limit(file, limit) {
         Ok(ev) => {
             print!("{}", run_report_with(&ev, steps));
             if run_lines(&ev).iter().any(|l| l.error) {
@@ -185,10 +200,10 @@ fn run(file: &Path, steps: bool) -> ExitCode {
     }
 }
 
-fn check(files: &[PathBuf]) -> ExitCode {
+fn check(files: &[PathBuf], limit: Option<std::time::Duration>) -> ExitCode {
     let mut bad = false;
     for file in files {
-        match run_file(file) {
+        match run_file_with_limit(file, limit) {
             Ok(ev) => {
                 let name = file.display().to_string();
                 let report = check_report(&name, &ev);

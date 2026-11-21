@@ -170,6 +170,7 @@ pub fn series(
     let mut working = want + 2;
     let mut last = None;
     for _ in 0..=RETRIES {
+        crate::budget::check()?;
         let mut b = Builder::new(var, &at, working, log.is_some());
         let s = b.build(&e)?;
         if s.prec >= want {
@@ -282,6 +283,7 @@ impl<'a> Builder<'a> {
     }
 
     fn build(&mut self, e: &Expr) -> MathResult<Ps> {
+        crate::budget::check()?;
         self.depth += 1;
         if self.depth > MAX_DEPTH {
             return Err(MathError::TooLarge("this series expansion".into()));

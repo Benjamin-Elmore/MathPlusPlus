@@ -471,6 +471,7 @@ pub fn euler(
     let mut rows = vec![(x0, y0)];
     let (mut xv, mut yv) = (x0, y0);
     for i in 0..n {
+        crate::budget::check()?;
         let slope = rhs_at(rhs, x, y, xv, yv)?;
         let next = yv + h * slope;
         if i < 20 {
@@ -524,6 +525,7 @@ pub fn rk4(
     let mut rows = vec![(x0, y0)];
     let (mut xv, mut yv) = (x0, y0);
     for i in 0..n {
+        crate::budget::check()?;
         let k1 = rhs_at(rhs, x, y, xv, yv)?;
         let k2 = rhs_at(rhs, x, y, xv + h / 2.0, yv + h * k1 / 2.0)?;
         let k3 = rhs_at(rhs, x, y, xv + h / 2.0, yv + h * k2 / 2.0)?;

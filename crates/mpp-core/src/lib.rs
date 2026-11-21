@@ -3,6 +3,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod budget;
 pub mod calc;
 pub mod display;
 pub mod domains;

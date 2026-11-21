@@ -43,6 +43,10 @@ pub enum MathError {
     Dimension(String),
     /// Assumptions that can't all hold ("x > 0 and x < 0 can't both hold").
     Contradiction(String),
+    /// The calculation was stopped on request (for example by a newer edit).
+    Cancelled,
+    /// The calculation ran past its time limit (milliseconds).
+    TimedOut(u64),
 }
 
 impl fmt::Display for MathError {
@@ -77,6 +81,16 @@ impl fmt::Display for MathError {
             MathError::Undetermined(what) => write!(f, "could not determine {what}"),
             MathError::Dimension(message) => write!(f, "{message}"),
             MathError::Contradiction(message) => write!(f, "{message}"),
+            MathError::Cancelled => write!(f, "stopped"),
+            MathError::TimedOut(ms) => write!(
+                f,
+                "stopped after {} s (the calculation took too long)",
+                if ms % 1000 == 0 {
+                    format!("{}", ms / 1000)
+                } else {
+                    format!("{:.1}", *ms as f64 / 1000.0)
+                }
+            ),
         }
     }
 }

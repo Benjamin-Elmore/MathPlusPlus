@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use mpp_eval::{Evaluated, NumberFormat, Session};
+use mpp_eval::{CancelHandle, Evaluated, NumberFormat, Session};
 
 use crate::diagnostics::background::{self, Background, FileCache};
 
@@ -69,6 +69,8 @@ pub struct Done {
 /// One evaluator thread with its own [`Session`] (so edits re-run only changed blocks).
 pub struct EvalWorker {
     tx: Option<Sender<Job>>,
+    /// Stops the evaluation in progress when a newer edit arrives.
+    cancel: CancelHandle,
     rx: Receiver<Done>,
     handle: Option<JoinHandle<()>>,
     sent: u64,
@@ -90,11 +92,12 @@ impl EvalWorker {
     pub fn new() -> Self {
         let (tx, jobs) = channel::<Job>();
         let (done_tx, rx) = channel::<Done>();
+        let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
+        let cancel = session.cancel_handle();
         let handle = std::thread::Builder::new()
             .name("mpp-eval".into())
             .stack_size(256 * 1024 * 1024)
             .spawn(move || {
-                let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
                 let mut base: Option<PathBuf> = None;
                 let mut files = FileCache::default();
                 let mut applied: Option<EvalSettings> = None;
@@ -117,7 +120,13 @@ impl EvalWorker {
                         session.set_auto_budget(s.budget);
                         applied = Some(s);
                     }
-                    let eval = Arc::new(session.update(&job.text).clone());
+                    let eval = session.update(&job.text).clone();
+                    if let Ok(newer) = jobs.try_recv() {
+                        // Stale (and perhaps stopped half way): never show it.
+                        job = newer;
+                        continue 'jobs;
+                    }
+                    let eval = Arc::new(eval);
                     let extras = Arc::new(background::compute(
                         &eval,
                         job.base.as_deref(),
@@ -169,6 +178,7 @@ impl EvalWorker {
             .ok();
         EvalWorker {
             tx: Some(tx),
+            cancel,
             rx,
             handle,
             sent: 0,
@@ -199,6 +209,11 @@ impl EvalWorker {
             path: path.map(Path::to_path_buf),
         };
         if let Some(tx) = &self.tx {
+            // Stop what the evaluator is busy with: this edit replaces it. The stop is
+            // asked for first so it can never hit the run this job starts.
+            if self.received < self.sent - 1 {
+                self.cancel.cancel();
+            }
             if tx.send(job).is_err() {
                 self.sent -= 1;
             }

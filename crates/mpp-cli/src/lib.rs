@@ -215,9 +215,20 @@ fn format_diagnostic(file: &str, ev: &Evaluated, d: &Diagnostic) -> String {
     s
 }
 
-/// Reads and runs a file.
+/// Reads and runs a file; each query may take up to
+/// [`mpp_eval::DEFAULT_TIME_LIMIT`].
 pub fn run_file(path: &Path) -> Result<Evaluated, String> {
+    run_file_with_limit(path, Some(mpp_eval::DEFAULT_TIME_LIMIT))
+}
+
+/// Reads and runs a file; a query that runs longer than `limit` stops with
+/// "stopped after N s". `None` is no limit.
+pub fn run_file_with_limit(
+    path: &Path,
+    limit: Option<std::time::Duration>,
+) -> Result<Evaluated, String> {
     let mut session = Session::new();
+    session.set_time_limit(limit);
     session
         .run_file(path)
         .cloned()

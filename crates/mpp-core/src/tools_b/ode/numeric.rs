@@ -270,6 +270,7 @@ fn integrate(
     };
     sys.eval(x, &y, &mut k[0]).ok_or_else(blow_up)?;
     while (x_end - x) * dir > 1e-14 * span.max(1.0) {
+        crate::budget::check()?;
         if accepted > MAX_STEPS {
             return Err(MathError::TooLarge(
                 "the number of steps for this solution".into(),

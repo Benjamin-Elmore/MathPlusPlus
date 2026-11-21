@@ -44,6 +44,7 @@ pub fn calc_line(input: &str) -> Result<String, CalcError> {
     }
     let src = format!("$$ {maths} $$\n");
     let mut session = Session::new().with_importer(Arc::new(NoImports));
+    session.set_time_limit(Some(crate::session::DEFAULT_TIME_LIMIT));
     let ev = session.run_str(&src);
     if let Some(d) = ev
         .blocks
