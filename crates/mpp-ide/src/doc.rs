@@ -285,6 +285,13 @@ impl Doc {
         }
     }
 
+    /// View → Comments: show the notes, or hide them all (they take no space).
+    pub fn set_show_comments(&mut self, show: bool) {
+        if self.show.hide_comments == show {
+            self.show_mut().hide_comments = !show;
+        }
+    }
+
     /// The evaluator's settings.
     pub fn eval_settings(&self) -> EvalSettings {
         self.eval_settings
@@ -424,11 +431,13 @@ impl Doc {
         let limits = self.integral_limits;
         let background = self.background.clone();
         let show = &self.show;
+        let base = self.path.as_deref().and_then(Path::parent);
         self.cache
             .get_or_insert_with(|| {
                 let src = editor.text();
                 let doc = parse_document(src);
                 let labels = editor.slot_labels();
+                let extra_refs = crate::page::ExtraRefs::read(&doc, base);
                 let input = PageInput {
                     src,
                     doc: &doc,
@@ -439,6 +448,7 @@ impl Doc {
                     integral_limits: limits,
                     slot_labels: &labels,
                     show,
+                    extra_refs: &extra_refs,
                 };
                 let page = build_page(&input);
                 let inputs = diagnostics::Inputs {

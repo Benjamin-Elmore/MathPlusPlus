@@ -12,7 +12,7 @@ use mpp_render::Theme;
 use super::PendingClose;
 use crate::app::IdeApp;
 use crate::defs;
-use crate::explorer::outline::{outline, OutlineItem, OutlineKind};
+use crate::explorer::outline::{OutlineItem, OutlineKind};
 use crate::explorer::panel::{section_header, text_galley};
 use crate::explorer::{self, icons, quick_open, ExplorerCtx, OpenFile};
 use crate::paint::c32;
@@ -230,7 +230,11 @@ impl IdeApp {
         let Some(d) = self.docs.get(self.active) else {
             return vec![];
         };
-        let key = (d.id, d.editor.revision() * 2 + u64::from(d.eval_fresh()));
+        let notes = self.show_comments;
+        let key = (
+            d.id,
+            (d.editor.revision() * 2 + u64::from(d.eval_fresh())) * 2 + u64::from(notes),
+        );
         if let Some((id, k, items)) = &self.ws.outline_cache {
             if (*id, *k) == key {
                 return items.clone();
@@ -238,7 +242,7 @@ impl IdeApp {
         }
         let src = d.editor.text();
         let parsed = mpp_syntax::document::parse_document(src);
-        let items = outline(&parsed, src, d.eval.as_deref());
+        let items = crate::explorer::outline::outline_with(&parsed, src, d.eval.as_deref(), notes);
         self.ws.outline_cache = Some((key.0, key.1, items.clone()));
         items
     }
@@ -252,6 +256,7 @@ impl IdeApp {
         for it in &items {
             let level = match it.kind {
                 OutlineKind::Heading(l) => usize::from(l.saturating_sub(1)),
+                OutlineKind::Title | OutlineKind::References => 0,
                 _ => 2,
             };
             ui.horizontal(|ui| {
@@ -262,6 +267,9 @@ impl IdeApp {
                     OutlineKind::Heading(_) => c32(theme.text),
                     OutlineKind::Definition => c32(theme.link),
                     OutlineKind::Figure => c32(theme.warning),
+                    OutlineKind::Title | OutlineKind::References => c32(theme.text),
+                    OutlineKind::Theorem => c32(theme.result),
+                    OutlineKind::Note => c32(theme.note_accent),
                 };
                 match it.kind {
                     OutlineKind::Heading(_) => {
@@ -273,6 +281,18 @@ impl IdeApp {
                     OutlineKind::Definition => {
                         p.circle_filled(r.center(), 3.0, c);
                     }
+                    OutlineKind::Title => {
+                        p.line_segment(
+                            [r.left_center(), r.right_center()],
+                            egui::Stroke::new(3.0, c),
+                        );
+                    }
+                    OutlineKind::Theorem | OutlineKind::References => {
+                        p.circle_stroke(r.center(), 3.5, egui::Stroke::new(1.3, c));
+                    }
+                    OutlineKind::Note => {
+                        p.rect_filled(r.shrink(2.0), 1.0, c);
+                    }
                     OutlineKind::Figure => {
                         p.rect_stroke(
                             r.shrink(1.5),
@@ -283,7 +303,7 @@ impl IdeApp {
                     }
                 }
                 let size = match it.kind {
-                    OutlineKind::Heading(1) => 18.0,
+                    OutlineKind::Heading(1) | OutlineKind::Title => 18.0,
                     _ => 16.0,
                 };
                 let resp = typeset::show(ui, &it.latex, size, *theme);

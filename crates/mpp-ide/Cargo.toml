@@ -19,6 +19,7 @@ mpp-eval = { path = "../mpp-eval" }
 mpp-render = { path = "../mpp-render" }
 mpp-plot = { path = "../mpp-plot" }
 mpp-syntax = { path = "../mpp-syntax" }
+mpp-export = { path = "../mpp-export" }
 eframe = { version = "0.37", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }
 egui = "0.37"
 lyon_tessellation = "1"

@@ -23,6 +23,7 @@ fn page_with(ed: &Editor, limits: IntegralLimits) -> Page {
         width: 900.0,
         integral_limits: limits,
         slot_labels: &labels,
+        extra_refs: &mpp_ide::page::ExtraRefs::default(),
     })
 }
 
@@ -1096,7 +1097,7 @@ fn every_template_matches_the_slot_table() {
     // Every template with boxes in the catalogue has a row (helpers outside the
     // table are checked by the generic test below).
     for t in catalogue() {
-        if t.is_symbol() || t.id.starts_with("helper.") {
+        if t.is_symbol() || t.is_text() || t.id.starts_with("helper.") {
             continue;
         }
         assert!(

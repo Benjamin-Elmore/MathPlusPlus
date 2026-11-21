@@ -2008,6 +2008,7 @@ dependencies = [
  "lyon_tessellation",
  "mpp-core",
  "mpp-eval",
+ "mpp-export",
  "mpp-plot",
  "mpp-render",
  "mpp-syntax",

@@ -8,6 +8,7 @@
 
 mod build;
 mod flow;
+pub mod paper;
 
 use egui::{Pos2, Rect, Vec2};
 use mpp_eval::NumberFormat;
@@ -16,8 +17,9 @@ use mpp_syntax::document::BlockId;
 use mpp_syntax::Span;
 
 pub(crate) use build::result_line_at;
-pub use build::{build_page, column_width, scan_inlines, slider_row_height, PageInput};
+pub use build::{build_page, column_width, note_words, scan_inlines, slider_row_height, PageInput};
 pub use flow::{glyph_for, text_width};
+pub use paper::{ExtraRefs, PaperInfo};
 
 /// What kind of thing a block is, for the view.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -42,6 +44,10 @@ pub struct ShowState {
     pub expanded: Vec<Span>,
     /// Show the working of every query that has it, not only `= ?!` lines.
     pub show_steps: bool,
+    /// View → Comments switched off: notes take no space at all.
+    pub hide_comments: bool,
+    /// Notes folded to one line, by block id (never saved in the file).
+    pub folded: Vec<BlockId>,
 }
 
 impl ShowState {
@@ -73,6 +79,20 @@ impl ShowState {
         }
     }
 
+    /// True when the note with this id is folded to one line.
+    pub fn is_folded(&self, id: BlockId) -> bool {
+        self.folded.contains(&id)
+    }
+
+    /// Folds or unfolds one note.
+    pub fn toggle_fold(&mut self, id: BlockId) {
+        if let Some(i) = self.folded.iter().position(|b| *b == id) {
+            self.folded.remove(i);
+        } else {
+            self.folded.push(id);
+        }
+    }
+
     /// Slider rows under a figure.
     pub fn rows_for(&self, id: BlockId) -> usize {
         self.figure_rows
@@ -89,6 +109,33 @@ pub struct StepToggle {
     pub rect: Rect,
     /// The span of the line whose working it folds.
     pub line: Span,
+}
+
+/// What a click on a link does.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LinkTarget {
+    /// Scroll to and highlight this part of the file (an equation, a reference
+    /// entry, a footnote).
+    Jump(Span),
+    /// Fold or unfold a note.
+    Fold(BlockId),
+}
+
+/// A clickable part of the page, with what hovering it shows.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Link {
+    pub target: LinkTarget,
+    /// Typeset (LaTeX) text of the hover card: the footnote, the reference entry,
+    /// the full text of a folded note.
+    pub tip: Option<String>,
+}
+
+/// A link and the rectangle it covers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PageLink {
+    /// Page coordinates (block-local while a block is being laid out).
+    pub rect: Rect,
+    pub link: Link,
 }
 
 /// One laid-out block.
@@ -121,6 +168,8 @@ pub struct Page {
     pub step_toggles: Vec<StepToggle>,
     /// Where a spinner turns while an answer is being worked out (page coordinates).
     pub spinners: Vec<Pos2>,
+    /// Citations, footnote marks, equation references and note folds.
+    pub links: Vec<PageLink>,
 }
 
 /// Drawing primitives and boxes being collected for one block.
@@ -135,6 +184,8 @@ pub struct Canvas {
     pub toggles: Vec<StepToggle>,
     /// Spinners for answers still being worked out (block-local).
     pub spinners: Vec<Pos2>,
+    /// Links (block-local).
+    pub links: Vec<PageLink>,
 }
 
 impl Canvas {
@@ -405,6 +456,11 @@ impl Page {
             ));
         }
         out
+    }
+
+    /// The link under a page position.
+    pub fn link_at(&self, p: Pos2) -> Option<&PageLink> {
+        self.links.iter().find(|l| l.rect.expand(1.0).contains(p))
     }
 
     /// The innermost node box under a page position, with the block it is in.

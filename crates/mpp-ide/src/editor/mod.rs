@@ -7,6 +7,7 @@
 //! to the text goes through one splice, which keeps the boxes of inserted
 //! templates (see [`template`]) in step with the text.
 
+pub mod comment;
 pub mod symbols;
 pub mod template;
 

@@ -23,10 +23,14 @@ pub enum Group {
     Helpers,
     Graphs,
     Units,
+    /// Notes for the reader (formatted comments).
+    Text,
+    /// The paper features: title block, theorem-like blocks, references.
+    Document,
 }
 
 impl Group {
-    pub const ALL: [Group; 9] = [
+    pub const ALL: [Group; 11] = [
         Group::Calculus,
         Group::Sums,
         Group::Algebra,
@@ -36,6 +40,8 @@ impl Group {
         Group::Helpers,
         Group::Graphs,
         Group::Units,
+        Group::Text,
+        Group::Document,
     ];
 
     /// The heading shown in the menu.
@@ -50,6 +56,8 @@ impl Group {
             Group::Helpers => "Helpers",
             Group::Graphs => "Graphs",
             Group::Units => "Units",
+            Group::Text => "Text",
+            Group::Document => "Document",
         }
     }
 }
@@ -81,6 +89,9 @@ pub enum Body {
     Symbol(&'static str),
     /// A `Figure:` line (a block of its own) built from its knobs.
     Figure(fn(Knobs, &BuildCx) -> String),
+    /// A block of prose put in as it is, in a new block (a note, a theorem).
+    /// `⟨⟩` marks where the caret goes; without it the caret goes to the end.
+    Block(&'static str),
 }
 
 /// One item of the Insert menu.
@@ -106,8 +117,13 @@ impl Template {
     pub fn snippet_source(&self, knobs: Knobs, cx: &BuildCx) -> String {
         match self.body {
             Body::Math(f) | Body::Figure(f) => f(knobs, cx),
-            Body::Symbol(s) => s.to_string(),
+            Body::Symbol(s) | Body::Block(s) => s.to_string(),
         }
+    }
+
+    /// True for a prose block (Text and Document groups).
+    pub fn is_text(&self) -> bool {
+        matches!(self.body, Body::Block(_))
     }
 
     /// True for a `Figure:` line.
@@ -1760,6 +1776,108 @@ fn build_catalogue() -> Vec<Template> {
             k(),
         ),
     ]);
+    // ----- Text and Document: notes and the paper features -----
+    let text_items: [(&str, Group, &str, &str, &str, &'static str); 11] = [
+        (
+            "text.comment",
+            Group::Text,
+            "Comment",
+            r"\text{note}",
+            "comment note remark aside % hidden",
+            "% ",
+        ),
+        (
+            "doc.title",
+            Group::Document,
+            "Title block",
+            r"\text{Title}",
+            "title author date heading paper",
+            "Title: ⟨⟩\nAuthor: \nDate: ",
+        ),
+        (
+            "doc.abstract",
+            Group::Document,
+            "Abstract",
+            r"\text{Abstract}",
+            "abstract summary paper",
+            "Abstract: ",
+        ),
+        (
+            "doc.theorem",
+            Group::Document,
+            "Theorem",
+            r"\text{Theorem}",
+            "theorem statement",
+            "**Theorem.** ",
+        ),
+        (
+            "doc.lemma",
+            Group::Document,
+            "Lemma",
+            r"\text{Lemma}",
+            "lemma",
+            "**Lemma.** ",
+        ),
+        (
+            "doc.definition",
+            Group::Document,
+            "Definition",
+            r"\text{Definition}",
+            "definition define",
+            "**Definition.** ",
+        ),
+        (
+            "doc.example",
+            Group::Document,
+            "Example",
+            r"\text{Example}",
+            "example worked",
+            "**Example.** ",
+        ),
+        (
+            "doc.proof",
+            Group::Document,
+            "Proof",
+            r"\text{Proof}",
+            "proof qed",
+            "**Proof.** ⟨⟩ ∎",
+        ),
+        (
+            "doc.remark",
+            Group::Document,
+            "Remark",
+            r"\text{Remark}",
+            "remark note",
+            "**Remark.** ",
+        ),
+        (
+            "doc.references",
+            Group::Document,
+            "Reference list",
+            r"\text{References}",
+            "references bibliography citation cite",
+            "References\n[@⟨⟩key] Author | Title | Year",
+        ),
+        (
+            "doc.footnote",
+            Group::Document,
+            "Footnote",
+            r"\text{Footnote}",
+            "footnote note",
+            "[^1]: ",
+        ),
+    ];
+    for (id, group, name, icon, words, body) in text_items {
+        v.push(item(
+            id,
+            &[group],
+            name,
+            icon,
+            words,
+            Body::Block(body),
+            k(),
+        ));
+    }
     // ----- Units: a quantity's unit after its number, and conversions -----
     for (id, name, latex, words) in UNITS {
         v.push(item(
@@ -2256,7 +2374,7 @@ mod tests {
         for t in catalogue() {
             let src = t.snippet_source(t.knobs, &cx);
             assert!(!src.is_empty(), "{} builds nothing", t.id);
-            if t.is_symbol() {
+            if t.is_symbol() || t.is_text() {
                 continue;
             }
             let s = parse_snippet(&src).unwrap_or_else(|e| panic!("{}: {e:?}", t.id));

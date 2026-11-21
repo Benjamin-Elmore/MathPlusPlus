@@ -7,14 +7,17 @@ use mpp_render::{
     LineResult, MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
 };
 use mpp_syntax::document::{
-    Align, Block, BlockKind, DisplayMath, Document, Inline, InlineKind, InlineMath, List,
-    TheoremKind,
+    Align, Block, BlockKind, Comment, DirectiveKind, DisplayMath, Document, Inline, InlineKind,
+    InlineMath, List, References, TheoremKind, TitleField, TitleKind,
 };
 use mpp_syntax::math::{parse_math, QueryMode, RelOp};
 use mpp_syntax::Span;
 
-use super::flow::{display_name, flow, flow_text, glyph_for, text_width, Cx, Style};
-use super::{BlockTag, Canvas, Page, PlacedBlock, ShowState, StepToggle};
+use super::flow::{display_name, flow, flow_center, flow_text, glyph_for, text_width, Cx, Style};
+use super::paper::{entry_text, italic_body, ExtraRefs, PaperInfo};
+use super::{
+    BlockTag, Canvas, Link, LinkTarget, Page, PageLink, PlacedBlock, ShowState, StepToggle,
+};
 
 /// Everything the page builder reads.
 pub struct PageInput<'a> {
@@ -31,8 +34,11 @@ pub struct PageInput<'a> {
     pub integral_limits: IntegralLimits,
     /// Labels for the empty boxes of templates being edited, by offset.
     pub slot_labels: &'a [(usize, String)],
-    /// The view's own display choices (formats, unfolded steps, figure sliders).
+    /// The view's own display choices (formats, unfolded steps, figure sliders,
+    /// notes shown and folded).
     pub show: &'a ShowState,
+    /// Entries of the document's `References from [[file]]` files.
+    pub extra_refs: &'a ExtraRefs,
 }
 
 /// The column width for a window width: about 70 em, never wider than the window.
@@ -43,10 +49,12 @@ pub fn column_width(avail: f32, size: f32) -> f32 {
 /// Lays the document out.
 pub fn build_page(input: &PageInput<'_>) -> Page {
     let col = column_width(input.width, input.size);
+    let paper = PaperInfo::scan(input.doc, input.src, input.extra_refs);
     let cx = Cx {
         src: input.src,
         theme: input.theme,
         slot_labels: input.slot_labels,
+        paper: Some(&paper),
     };
     let mut page = Page {
         width: col,
@@ -137,34 +145,12 @@ fn place_block(
     page: &mut Page,
 ) {
     if let BlockKind::Theorem(t) = &b.kind {
-        let label = match t.kind {
-            TheoremKind::Proof => "Proof.".to_string(),
-            k => format!("{}.", k.as_str()),
-        };
-        let mut c = Canvas::default();
-        let style = Style {
-            font: FontId::TextBold,
-            size: input.size,
-            color: input.theme.text,
-        };
-        let inl = [Inline {
-            kind: InlineKind::Text(label),
-            span: Span::new(b.span.start, b.span.start),
-        }];
-        let h = flow(cx, &inl, style, x0, 0.0, w, &mut c);
-        push_block(page, b, *y, h, c, BlockTag::Prose, input);
-        *y += h + gap * 0.3;
-        for inner in &t.body {
-            place_block(
-                input,
-                cx,
-                inner,
-                x0 + input.size * 1.2,
-                w - input.size * 1.2,
-                y,
-                gap,
-                page,
-            );
+        place_theorem(input, cx, b, t, x0, w, y, gap, page);
+        return;
+    }
+    if let BlockKind::Comment(c) = &b.kind {
+        if !input.show.hide_comments {
+            place_comment(input, cx, b, c, x0, w, y, gap, page);
         }
         return;
     }
@@ -173,6 +159,407 @@ fn place_block(
     };
     push_block(page, b, *y, h, canvas, tag, input);
     *y += h + gap;
+}
+
+/// A theorem-like block: a bold run-in label (`Theorem 2.1.`) before the first
+/// paragraph, an italic body for theorems, lemmas, corollaries and propositions,
+/// and a ∎ at the end of a proof that does not write one.
+#[allow(clippy::too_many_arguments)]
+fn place_theorem(
+    input: &PageInput<'_>,
+    cx: &Cx<'_>,
+    b: &Block,
+    t: &mpp_syntax::document::Theorem,
+    x0: f32,
+    w: f32,
+    y: &mut f32,
+    gap: f32,
+    page: &mut Page,
+) {
+    let label = match cx.paper {
+        Some(p) => p.theorem_label(t.kind),
+        None => format!("{}.", t.kind.as_str()),
+    };
+    let body_font = if italic_body(t.kind) {
+        FontId::TextItalic
+    } else {
+        FontId::Text
+    };
+    let qed = t.kind == TheoremKind::Proof && !t.closed;
+    let at = |o: usize| Span::new(o, o);
+    let label_inline = |o: usize| Inline {
+        kind: InlineKind::Strong(vec![Inline {
+            kind: InlineKind::Text(format!("{label} ")),
+            span: at(o),
+        }]),
+        span: at(o),
+    };
+    let n = t.body.len();
+    for (i, inner) in t.body.iter().enumerate() {
+        let last = i + 1 == n;
+        if let BlockKind::Paragraph(content) = &inner.kind {
+            let mut inl = Vec::with_capacity(content.len() + 2);
+            if i == 0 {
+                inl.push(label_inline(inner.span.start));
+            }
+            inl.extend(content.iter().cloned());
+            if last && qed {
+                inl.push(Inline {
+                    kind: InlineKind::Text("\u{2003}\u{220e}".into()),
+                    span: at(inner.span.end),
+                });
+            }
+            let mut c = Canvas::default();
+            let h = flow(cx, &inl, style(input, body_font, 1.0), x0, 0.0, w, &mut c);
+            push_block(page, inner, *y, h, c, BlockTag::Prose, input);
+            *y += h + gap;
+            continue;
+        }
+        if i == 0 {
+            let mut c = Canvas::default();
+            let inl = [label_inline(b.span.start)];
+            let h = flow(
+                cx,
+                &inl,
+                style(input, FontId::Text, 1.0),
+                x0,
+                0.0,
+                w,
+                &mut c,
+            );
+            push_block(page, b, *y, h, c, BlockTag::Prose, input);
+            *y += h + gap * 0.3;
+        }
+        place_block(input, cx, inner, x0, w, y, gap, page);
+        if last && qed {
+            let mut c = Canvas::default();
+            let inl = [Inline {
+                kind: InlineKind::Text("\u{220e}".into()),
+                span: at(b.span.end),
+            }];
+            let h = flow(
+                cx,
+                &inl,
+                style(input, FontId::Text, 1.0),
+                x0 + w - input.size,
+                0.0,
+                w,
+                &mut c,
+            );
+            push_block(page, b, *y, h, c, BlockTag::Prose, input);
+            *y += h + gap;
+        }
+    }
+    if n == 0 {
+        let mut c = Canvas::default();
+        let inl = [label_inline(b.span.start)];
+        let h = flow(
+            cx,
+            &inl,
+            style(input, FontId::Text, 1.0),
+            x0,
+            0.0,
+            w,
+            &mut c,
+        );
+        push_block(page, b, *y, h, c, BlockTag::Prose, input);
+        *y += h + gap;
+    }
+}
+
+impl Canvas {
+    /// The ✎ marker of a note, drawn as a filled pencil in a `size` square at
+    /// `(x, y)` (the fonts have no pencil glyph).
+    fn extend_pencil(&mut self, x: f32, y: f32, size: f32, color: mpp_render::Color) {
+        use mpp_render::PathCmd::{Close, LineTo, MoveTo};
+        let p = |u: f32, v: f32| (x + u * size, y + v * size);
+        // A body slanting up to the right, then its point at the bottom left.
+        let body = [p(0.30, 0.86), p(0.14, 0.70), p(0.72, 0.12), p(0.88, 0.28)];
+        let tip = [p(0.14, 0.70), p(0.30, 0.86), p(0.04, 0.96)];
+        for shape in [&body[..], &tip[..]] {
+            let mut cmds = vec![MoveTo(shape[0].0, shape[0].1)];
+            cmds.extend(shape[1..].iter().map(|&(a, b)| LineTo(a, b)));
+            cmds.push(Close);
+            self.items.push(Primitive::Path {
+                cmds,
+                color,
+                stroke: None,
+            });
+        }
+    }
+}
+
+/// A glyph primitive for one character (the note fold chevron).
+fn glyph_at(
+    ch: char,
+    font: FontId,
+    x: f32,
+    y: f32,
+    size: f32,
+    color: mpp_render::Color,
+) -> Option<Primitive> {
+    let (font, glyph, _) = glyph_for(font, ch)?;
+    Some(Primitive::Glyph {
+        font,
+        glyph,
+        ch,
+        x,
+        y,
+        size,
+        color,
+    })
+}
+
+/// A formatted comment as a note: a soft tinted box with a ✎ marker and a bar
+/// down its edge, its blocks in smaller grey text (maths greyed, never given
+/// results). Folded, it is one line: the marker, the first words and an ellipsis;
+/// hovering shows the whole note.
+#[allow(clippy::too_many_arguments)]
+fn place_comment(
+    input: &PageInput<'_>,
+    cx: &Cx<'_>,
+    b: &Block,
+    c: &Comment,
+    x0: f32,
+    w: f32,
+    y: &mut f32,
+    gap: f32,
+    page: &mut Page,
+) {
+    let size = input.size;
+    let theme = input.theme;
+    let pad = size * 0.4;
+    let indent = size * 1.9;
+    let small = 0.88;
+    let top = *y;
+    let index = page.blocks.len();
+    let folded = input.show.is_folded(b.id);
+    let mut bg = Canvas::default();
+    let inner_h = if folded {
+        let first = note_words(c, input.src, 60);
+        let st = Style {
+            font: FontId::TextItalic,
+            size: size * small,
+            color: theme.muted,
+        };
+        let h = flow_text(
+            &format!("{first} \u{2026}"),
+            Span::new(b.span.start, b.span.end),
+            false,
+            st,
+            x0 + indent,
+            pad,
+            &mut bg,
+        );
+        h.max(size)
+    } else {
+        let muted = Theme {
+            text: theme.muted,
+            ..theme
+        };
+        let inner = PageInput {
+            eval: None,
+            theme: muted,
+            size: size * small,
+            ..*input
+        };
+        let inner_cx = Cx {
+            src: cx.src,
+            theme: muted,
+            slot_labels: cx.slot_labels,
+            paper: cx.paper,
+        };
+        let prev = cx.paper.map(|p| p.set_in_comment(true));
+        let inner_gap = gap * 0.6;
+        let mut iy = top + pad;
+        for blk in &c.blocks {
+            place_block(
+                &inner,
+                &inner_cx,
+                blk,
+                x0 + indent,
+                w - indent - size * 1.6,
+                &mut iy,
+                inner_gap,
+                page,
+            );
+        }
+        if let (Some(p), Some(prev)) = (cx.paper, prev) {
+            p.set_in_comment(prev);
+        }
+        if page.blocks.len() == index {
+            // An empty note still has a line to type on.
+            bg.stops.push(CaretStop {
+                x: x0 + indent,
+                top: pad,
+                bottom: pad + size,
+                offset: b.span.end,
+            });
+            size
+        } else {
+            (iy - inner_gap - top - pad).max(size)
+        }
+    };
+    let h = inner_h + 2.0 * pad;
+    let text_items = bg.items.len();
+    bg.items.push(Primitive::Rule {
+        rect: rrect(x0, 0.0, w, h),
+        color: theme.note_background,
+    });
+    bg.items.push(Primitive::Rule {
+        rect: rrect(x0, 0.0, 3.0, h),
+        color: theme.note_accent,
+    });
+    let mark = size * 0.95;
+    bg.extend_pencil(
+        x0 + size * 0.45,
+        pad + mark * 0.1,
+        mark * 0.8,
+        theme.note_accent,
+    );
+    let chevron = if folded { '\u{25b6}' } else { '\u{25bc}' };
+    let cx_right = x0 + w - size * 1.2;
+    bg.items.extend(glyph_at(
+        chevron,
+        FontId::Text,
+        cx_right,
+        pad + mark * 0.7,
+        mark * 0.55,
+        theme.note_accent,
+    ));
+    // Items drawn before the note's blocks: the box goes first in the list.
+    let mut items = std::mem::take(&mut bg.items);
+    let decorations = items.len() - text_items;
+    items.rotate_right(decorations);
+    bg.items = items;
+    let tip = folded.then(|| comment_latex(c, input.src));
+    let fold_rect = if folded {
+        Rect::from_min_size(Pos2::new(x0, 0.0), Vec2::new(w, h))
+    } else {
+        Rect::from_min_size(
+            Pos2::new(cx_right - size * 0.3, 0.0),
+            Vec2::new(size * 1.5, size * 1.6),
+        )
+    };
+    bg.links.push(PageLink {
+        rect: fold_rect,
+        link: Link {
+            target: LinkTarget::Fold(b.id),
+            tip,
+        },
+    });
+    let dl = DisplayList {
+        width: page.width,
+        height: h,
+        depth: 0.0,
+        baseline: h,
+        font_size: size,
+        items: bg.items.clone(),
+        hits: vec![],
+    };
+    let shift = Vec2::new(0.0, top);
+    for s in &bg.stops {
+        page.stops.push(CaretStop {
+            top: s.top + top,
+            bottom: s.bottom + top,
+            ..*s
+        });
+    }
+    page.links.extend(bg.links.iter().map(|l| PageLink {
+        rect: l.rect.translate(shift),
+        link: l.link.clone(),
+    }));
+    page.blocks.insert(
+        index,
+        PlacedBlock {
+            id: b.id,
+            span: b.span,
+            top,
+            height: h,
+            dl,
+            tag: BlockTag::Prose,
+        },
+    );
+    *y = top + h + gap;
+}
+
+/// The first words of a note, as plain reading text (maths shown as written
+/// between the dollars would be file text, so it is left out).
+pub fn note_words(c: &Comment, src: &str, max: usize) -> String {
+    let mut words = String::new();
+    for blk in &c.blocks {
+        let inl = match &blk.kind {
+            BlockKind::Paragraph(i) | BlockKind::Heading { content: i, .. } => i.clone(),
+            BlockKind::DisplayMath(_) => {
+                words.push_str(" (maths)");
+                continue;
+            }
+            _ => scan_inlines(src, blk.span),
+        };
+        for i in &inl {
+            plain_into(&i.kind, src, &mut words);
+        }
+        if words.chars().count() >= max {
+            break;
+        }
+        words.push(' ');
+    }
+    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut cut: String = words.chars().take(max).collect();
+    if cut.is_empty() {
+        cut = "Note".into();
+    }
+    cut
+}
+
+fn plain_into(kind: &InlineKind, src: &str, out: &mut String) {
+    match kind {
+        InlineKind::Text(t) | InlineKind::Code(t) => out.push_str(t),
+        InlineKind::SoftBreak => out.push(' '),
+        InlineKind::Emphasis(v) | InlineKind::Strong(v) | InlineKind::Link { text: v, .. } => {
+            for i in v {
+                plain_into(&i.kind, src, out);
+            }
+        }
+        // A single letter or number reads the same as text; other maths would
+        // show its file text, so it becomes an ellipsis.
+        InlineKind::Math(m) => match src.get(m.raw.start..m.raw.end).map(str::trim) {
+            Some(t) if !t.is_empty() && t.chars().all(|c| c.is_alphanumeric() || c == '.') => {
+                out.push_str(t)
+            }
+            _ => out.push('\u{2026}'),
+        },
+        InlineKind::WikiLink { path, alias } => out.push_str(alias.as_deref().unwrap_or(path)),
+        InlineKind::Escape(c) => out.push(*c),
+        _ => {}
+    }
+}
+
+/// The whole note typeset for its hover card.
+fn comment_latex(c: &Comment, src: &str) -> String {
+    let mut parts = vec![];
+    for blk in &c.blocks {
+        match &blk.kind {
+            BlockKind::Paragraph(i) | BlockKind::Heading { content: i, .. } => {
+                parts.push(crate::explorer::outline::inlines_latex(i, src));
+            }
+            BlockKind::DisplayMath(m) => {
+                if let Some(raw) = src.get(m.raw.start..m.raw.end) {
+                    parts.push(raw.trim().to_string());
+                }
+            }
+            BlockKind::List(l) => {
+                for item in &l.items {
+                    parts.push(format!(
+                        "\\text{{\u{2022} }} {}",
+                        crate::explorer::outline::inlines_latex(&item.content, src)
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+    parts.join("\n")
 }
 
 fn push_block(
@@ -193,6 +580,10 @@ fn push_block(
         }));
     page.spinners
         .extend(canvas.spinners.iter().map(|p| *p + shift));
+    page.links.extend(canvas.links.iter().map(|l| PageLink {
+        rect: l.rect.translate(shift),
+        link: l.link.clone(),
+    }));
     for s in &canvas.stops {
         page.stops.push(CaretStop {
             x: s.x,
@@ -246,6 +637,20 @@ fn layout_block(
                 3 => 1.25,
                 _ => 1.1,
             };
+            let numbered;
+            let content = match cx.paper.and_then(|p| p.heading_number(*level)) {
+                Some(n) => {
+                    let at = Span::new(b.span.start, b.span.start);
+                    let mut v = vec![Inline {
+                        kind: InlineKind::Text(format!("{n}\u{2003}")),
+                        span: at,
+                    }];
+                    v.extend(content.iter().cloned());
+                    numbered = v;
+                    &numbered
+                }
+                None => content,
+            };
             flow(
                 cx,
                 content,
@@ -256,16 +661,9 @@ fn layout_block(
                 &mut c,
             )
         }
-        BlockKind::Title(t) => flow(
-            cx,
-            &t.content,
-            style(input, FontId::TextBold, 1.2),
-            x0,
-            0.0,
-            w,
-            &mut c,
-        ),
-        BlockKind::Comment(_) | BlockKind::References(_) => return None,
+        BlockKind::Title(t) => layout_title(input, cx, t, x0, w, &mut c),
+        BlockKind::References(r) => layout_references(input, cx, b, r, x0, w, &mut c)?,
+        BlockKind::Comment(_) => return None,
         BlockKind::Paragraph(content) => flow(
             cx,
             content,
@@ -490,8 +888,12 @@ fn layout_block(
             flow(cx, &inl, st, x0, 0.0, w, &mut c)
         }
         BlockKind::FootnoteDef { name, content } => {
+            let label = cx
+                .paper
+                .and_then(|p| p.notes.get(name))
+                .map_or_else(|| name.clone(), |n| n.number.to_string());
             let mut inl = vec![Inline {
-                kind: InlineKind::Text(format!("{name}. ")),
+                kind: InlineKind::Text(format!("{label}. ")),
                 span: Span::new(b.span.start, b.span.start),
             }];
             inl.extend(content.iter().cloned());
@@ -506,7 +908,11 @@ fn layout_block(
             )
         }
         BlockKind::Directive(d) => {
-            if matches!(d.kind, mpp_syntax::document::DirectiveKind::NoEval) {
+            // Settings of the file, not text to read.
+            if matches!(
+                d.kind,
+                DirectiveKind::NoEval | DirectiveKind::NumberSections | DirectiveKind::Cite(_)
+            ) {
                 return None;
             }
             let inl = [Inline {
@@ -520,6 +926,163 @@ fn layout_block(
         BlockKind::Theorem(_) => return None,
     };
     Some((c, h, tag))
+}
+
+/// One line of the title block: the title centred and large, authors and the
+/// date centred, the abstract narrower under a bold centred "Abstract".
+fn layout_title(
+    input: &PageInput<'_>,
+    cx: &Cx<'_>,
+    t: &TitleField,
+    x0: f32,
+    w: f32,
+    c: &mut Canvas,
+) -> f32 {
+    let size = input.size;
+    match t.kind {
+        TitleKind::Title => {
+            size * 0.3
+                + flow_center(
+                    cx,
+                    &t.content,
+                    style(input, FontId::TextBold, 1.75),
+                    x0,
+                    size * 0.3,
+                    w,
+                    c,
+                )
+        }
+        TitleKind::Author => flow_center(
+            cx,
+            &t.content,
+            style(input, FontId::Text, 1.1),
+            x0,
+            0.0,
+            w,
+            c,
+        ),
+        TitleKind::Date => {
+            let mut st = style(input, FontId::Text, 1.0);
+            st.color = input.theme.muted;
+            flow_center(cx, &t.content, st, x0, 0.0, w, c)
+        }
+        TitleKind::Abstract => {
+            let head = [Inline {
+                kind: InlineKind::Text("Abstract".into()),
+                span: Span::new(0, 0),
+            }];
+            let mut hc = Canvas::default();
+            let h1 = flow_center(
+                cx,
+                &head,
+                style(input, FontId::TextBold, 0.95),
+                x0,
+                size * 0.4,
+                w,
+                &mut hc,
+            );
+            // The heading is generated: its glyphs are drawn, but it has no caret stops.
+            c.items.extend(hc.items);
+            let inset = (w * 0.08).min(size * 3.0);
+            let h2 = flow(
+                cx,
+                &t.content,
+                style(input, FontId::Text, 0.95),
+                x0 + inset,
+                size * 0.4 + h1,
+                w - 2.0 * inset,
+                c,
+            );
+            size * 0.4 + h1 + h2 + size * 0.4
+        }
+    }
+}
+
+/// The reference list, drawn at the first `References` block: a "References"
+/// heading, then each entry (numbered `[n]` with a hanging indent, or by author
+/// and year). Entries written in this file keep a caret stop at their start, so a
+/// click on a citation can jump to them.
+fn layout_references(
+    input: &PageInput<'_>,
+    cx: &Cx<'_>,
+    b: &Block,
+    r: &References,
+    x0: f32,
+    w: f32,
+    c: &mut Canvas,
+) -> Option<f32> {
+    let paper = cx.paper?;
+    let size = input.size;
+    let first = paper.ref_block == Some(b.span) && !paper.in_comment();
+    if !first {
+        return None;
+    }
+    let at = Span::new(b.span.start, b.span.start);
+    let head = [Inline {
+        kind: InlineKind::Text("References".into()),
+        span: at,
+    }];
+    let mut y = flow(
+        cx,
+        &head,
+        style(input, FontId::TextBold, 1.5),
+        x0,
+        0.0,
+        w,
+        c,
+    );
+    y += size * 0.3;
+    let mut note = style(input, FontId::TextItalic, 0.95);
+    note.color = input.theme.muted;
+    for path in &paper.missing_files {
+        let text = format!("The references in {} are not loaded.", display_name(path));
+        y += flow_text(&text, at, false, note, x0, y, c);
+    }
+    let list = paper.listing();
+    let numbered = list.iter().any(|(n, _)| n.is_some());
+    let hang = if numbered { size * 2.2 } else { size * 1.5 };
+    for (n, entry) in list {
+        let in_file = r.entries.iter().any(|e| e.span == entry.span)
+            || b.span.start <= entry.span.start && entry.span.end <= b.span.end;
+        let span = if in_file { entry.span } else { at };
+        let (head, title, tail) = entry_text(entry);
+        let base = style(input, FontId::Text, 0.95);
+        let (x, width) = match n {
+            Some(k) => {
+                let label = format!("[{k}]");
+                flow_text(
+                    &label,
+                    Span::new(span.start, span.start),
+                    false,
+                    base,
+                    x0,
+                    y,
+                    c,
+                );
+                (x0 + hang, w - hang)
+            }
+            None => (x0, w),
+        };
+        let inl = [
+            Inline {
+                kind: InlineKind::Text(head),
+                span: Span::new(span.start, span.start),
+            },
+            Inline {
+                kind: InlineKind::Emphasis(vec![Inline {
+                    kind: InlineKind::Text(title),
+                    span: Span::new(span.start, span.start),
+                }]),
+                span: Span::new(span.start, span.start),
+            },
+            Inline {
+                kind: InlineKind::Text(tail),
+                span: Span::new(span.end, span.end),
+            },
+        ];
+        y += flow(cx, &inl, base, x, y, width, c) + size * 0.25;
+    }
+    Some(y)
 }
 
 /// The maths of a `Figure:` line without the `Figure:` keyword and the final
@@ -1164,6 +1727,7 @@ mod tests {
             integral_limits: IntegralLimits::AboveBelow,
             slot_labels: &[],
             show: &ShowState::default(),
+            extra_refs: &ExtraRefs::default(),
         })
     }
 

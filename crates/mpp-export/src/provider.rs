@@ -55,6 +55,17 @@ impl<'a> EvalProvider<'a> {
         self.figures.get(&id)
     }
 
+    /// Redraws a graph at slider values set in the editor.
+    pub fn set_slider_values(
+        &mut self,
+        id: BlockId,
+        values: &std::collections::BTreeMap<String, f64>,
+    ) {
+        if let Some(fig) = self.figures.get_mut(&id) {
+            fig.rebuild(values);
+        }
+    }
+
     /// The graph's SVG at a size.
     pub fn figure_svg_sized(&self, id: BlockId, w: f32, h: f32) -> Option<String> {
         let fig = self.figures.get(&id)?;

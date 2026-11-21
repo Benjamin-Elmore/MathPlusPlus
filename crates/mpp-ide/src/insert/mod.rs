@@ -161,6 +161,10 @@ pub fn insert(
         }
         return None;
     }
+    if let catalogue::Body::Block(body) = t.body {
+        insert_block(editor, page, &t.id, body, caret);
+        return None;
+    }
     let mut snippet = snippet_for(t, knobs, cx)?;
     if t.is_figure() {
         let (range, before, after) = figure_place(editor.text(), caret, page);
@@ -179,6 +183,25 @@ pub fn insert(
     }
     let (range, before, after) = display_place(editor.text(), caret);
     Some(editor.insert_template(range, &before, &snippet, &after, &t.id, knobs))
+}
+
+/// Puts a prose block (a note, a theorem, the title block) in a block of its own
+/// after the caret's block, with the caret where `⟨⟩` marks (or at its end). The
+/// title block goes at the top of the file.
+fn insert_block(editor: &mut Editor, page: &Page, id: &str, body: &str, caret: usize) {
+    let (cut, rest) = body.split_once("⟨⟩").unwrap_or((body, ""));
+    let text = format!("{cut}{rest}");
+    let (at, before, after) = if id == "doc.title" {
+        (0..0, String::new(), "\n\n".to_string())
+    } else {
+        figure_place(editor.text(), caret, page)
+    };
+    let start = at.start;
+    editor.replace_node(
+        mpp_syntax::Span::new(at.start, at.end),
+        &format!("{before}{text}{after}"),
+    );
+    editor.move_caret(start + before.len() + cut.len(), false);
 }
 
 /// A space around a template that would otherwise touch a letter (`2\int`).

@@ -7,7 +7,10 @@ use mpp_syntax::document::{Inline, InlineKind};
 use mpp_syntax::math::MathAst;
 use mpp_syntax::Span;
 
-use super::Canvas;
+use std::rc::Rc;
+
+use super::paper::PaperInfo;
+use super::{Canvas, Link, LinkTarget, PageLink};
 
 /// Font, size and colour of a run of text.
 #[derive(Debug, Clone, Copy)]
@@ -23,6 +26,8 @@ pub struct Cx<'a> {
     pub theme: Theme,
     /// Labels for the empty boxes of templates being edited, by offset.
     pub slot_labels: &'a [(usize, String)],
+    /// Citations, footnotes and equation labels of the document.
+    pub paper: Option<&'a PaperInfo>,
 }
 
 #[derive(Debug)]
@@ -36,6 +41,9 @@ enum Atom {
         adv: f32,
         start: Option<usize>,
         end: Option<usize>,
+        /// Raised above the baseline (a footnote mark).
+        rise: f32,
+        link: Option<Rc<Link>>,
     },
     Space {
         adv: f32,
@@ -78,6 +86,23 @@ pub fn text_width(font: FontId, s: &str) -> f32 {
 }
 
 fn push_text(out: &mut Vec<Atom>, text: &str, style: Style, span: Span, mapped: bool) {
+    push_text_link(out, text, style, span, mapped, 0.0, None);
+}
+
+/// Unmapped text that is a link (a citation number, a footnote mark).
+fn push_link(out: &mut Vec<Atom>, text: &str, style: Style, span: Span, rise: f32, link: Link) {
+    push_text_link(out, text, style, span, false, rise, Some(Rc::new(link)));
+}
+
+fn push_text_link(
+    out: &mut Vec<Atom>,
+    text: &str,
+    style: Style,
+    span: Span,
+    mapped: bool,
+    rise: f32,
+    link: Option<Rc<Link>>,
+) {
     let n = text.chars().count();
     for (i, (bi, ch)) in text.char_indices().enumerate() {
         let (start, end) = if mapped {
@@ -110,6 +135,8 @@ fn push_text(out: &mut Vec<Atom>, text: &str, style: Style, span: Span, mapped: 
             adv: adv * style.size,
             start,
             end,
+            rise,
+            link: link.clone(),
         });
     }
 }
@@ -185,16 +212,22 @@ fn collect(cx: &Cx<'_>, inlines: &[Inline], style: Style, out: &mut Vec<Atom>) {
                     color: cx.theme.link,
                     ..style
                 };
-                push_text(out, name, s, inl.span, false);
+                match cx.paper.and_then(|p| p.notes.get(name)) {
+                    Some(n) => push_link(
+                        out,
+                        &n.number.to_string(),
+                        s,
+                        inl.span,
+                        style.size * 0.35,
+                        Link {
+                            target: LinkTarget::Jump(n.span),
+                            tip: Some(n.tip.clone()),
+                        },
+                    ),
+                    None => push_text_link(out, name, s, inl.span, false, style.size * 0.35, None),
+                }
             }
-            InlineKind::Cite(cites) => {
-                let keys: Vec<&str> = cites.iter().map(|c| c.key.as_str()).collect();
-                let s = Style {
-                    color: cx.theme.link,
-                    ..style
-                };
-                push_text(out, &format!("[{}]", keys.join("; ")), s, inl.span, false);
-            }
+            InlineKind::Cite(cites) => cite_atoms(cx, cites, style, inl.span, out),
             InlineKind::EqRef { number, label } => {
                 let t = match number {
                     Some(n) => format!("({n})"),
@@ -204,13 +237,80 @@ fn collect(cx: &Cx<'_>, inlines: &[Inline], style: Style, out: &mut Vec<Atom>) {
                     color: cx.theme.link,
                     ..style
                 };
-                push_text(out, &t, s, inl.span, false);
+                match cx.paper.and_then(|p| p.equations.get(label)) {
+                    Some(span) => push_link(
+                        out,
+                        &t,
+                        s,
+                        inl.span,
+                        0.0,
+                        Link {
+                            target: LinkTarget::Jump(*span),
+                            tip: None,
+                        },
+                    ),
+                    None => push_text(out, &t, s, inl.span, false),
+                }
             }
             InlineKind::Escape(c) => {
                 push_text(out, &c.to_string(), style, inl.span, false);
             }
         }
     }
+}
+
+/// `[1, 3]` or `(Knuth 1984; Lee 2020)`, each part a link to its entry with the
+/// entry as its hover card; a key nobody defined is a red `?`.
+fn cite_atoms(
+    cx: &Cx<'_>,
+    cites: &[mpp_syntax::document::Cite],
+    style: Style,
+    span: Span,
+    out: &mut Vec<Atom>,
+) {
+    let Some(paper) = cx.paper.filter(|p| !p.in_comment()) else {
+        let keys: Vec<String> = cites.iter().map(|c| format!("@{}", c.key)).collect();
+        let s = Style {
+            color: cx.theme.muted,
+            ..style
+        };
+        push_text(out, &format!("[{}]", keys.join("; ")), s, span, false);
+        return;
+    };
+    let (open, sep, close) = paper.brackets();
+    let plain = Style {
+        color: style.color,
+        ..style
+    };
+    push_text(out, open, plain, Span::new(span.start, span.start), false);
+    for (i, c) in cites.iter().enumerate() {
+        if i > 0 {
+            push_text(
+                out,
+                sep,
+                plain,
+                Span::new(c.span.start, c.span.start),
+                false,
+            );
+        }
+        match paper.cite(&c.key) {
+            Some((label, link)) => {
+                let s = Style {
+                    color: cx.theme.link,
+                    ..style
+                };
+                push_link(out, &label, s, c.span, 0.0, link);
+            }
+            None => {
+                let s = Style {
+                    color: cx.theme.error,
+                    ..style
+                };
+                push_text(out, "?", s, c.span, false);
+            }
+        }
+    }
+    push_text(out, close, plain, Span::new(span.end, span.end), false);
 }
 
 /// A file name without folders or extension, for display.
@@ -249,7 +349,22 @@ pub fn flow(
 ) -> f32 {
     let mut atoms = vec![];
     collect(cx, inlines, style, &mut atoms);
-    flow_atoms(&atoms, style, x0, y, width, canvas)
+    flow_atoms(&atoms, style, x0, y, width, false, canvas)
+}
+
+/// Like [`flow`], with every line centred in `width` (the title block).
+pub fn flow_center(
+    cx: &Cx<'_>,
+    inlines: &[Inline],
+    style: Style,
+    x0: f32,
+    y: f32,
+    width: f32,
+    canvas: &mut Canvas,
+) -> f32 {
+    let mut atoms = vec![];
+    collect(cx, inlines, style, &mut atoms);
+    flow_atoms(&atoms, style, x0, y, width, true, canvas)
 }
 
 /// Lays out one plain string with a source mapping (used for verbatim lines).
@@ -264,7 +379,7 @@ pub fn flow_text(
 ) -> f32 {
     let mut atoms = vec![];
     push_text(&mut atoms, text, style, span, mapped);
-    flow_atoms(&atoms, style, x0, y, f32::MAX / 4.0, canvas)
+    flow_atoms(&atoms, style, x0, y, f32::MAX / 4.0, false, canvas)
 }
 
 fn flow_atoms(
@@ -273,6 +388,7 @@ fn flow_atoms(
     x0: f32,
     y: f32,
     width: f32,
+    center: bool,
     canvas: &mut Canvas,
 ) -> f32 {
     // Break into lines at spaces.
@@ -331,6 +447,15 @@ fn flow_atoms(
         let line_h = (asc + desc).max(size * 1.5);
         let baseline = cy + (line_h - asc - desc) / 2.0 + asc;
         let mut x = x0;
+        if center {
+            let content: f32 = line
+                .iter()
+                .rposition(|&k| !matches!(atoms[k], Atom::Space { .. }))
+                .map_or(0.0, |last| {
+                    line[..=last].iter().map(|&k| atoms[k].width()).sum()
+                });
+            x += ((width - content) / 2.0).max(0.0);
+        }
         let last_line = li + 1 == n_lines;
         for (pos, &k) in line.iter().enumerate() {
             let top = baseline - size * 0.82;
@@ -345,6 +470,8 @@ fn flow_atoms(
                     adv,
                     start,
                     end,
+                    rise,
+                    link,
                 } => {
                     if let (Some(a), Some(b)) = (start, end) {
                         canvas.chars.push(Span::new(*a, *b));
@@ -354,10 +481,13 @@ fn flow_atoms(
                         glyph: *glyph,
                         ch: *ch,
                         x,
-                        y: baseline,
+                        y: baseline - rise,
                         size: *s,
                         color: *color,
                     });
+                    if let Some(link) = link {
+                        add_link(canvas, link, x, top - rise, x + adv, bottom - rise);
+                    }
                     if let Some(o) = start {
                         canvas.stops.push(CaretStop {
                             x,
@@ -422,6 +552,22 @@ fn flow_atoms(
     total
 }
 
+/// Adds a glyph's box to the links, joining it to the previous box of the same link.
+fn add_link(canvas: &mut Canvas, link: &Link, x0: f32, y0: f32, x1: f32, y1: f32) {
+    let r = egui::Rect::from_min_max(egui::pos2(x0, y0), egui::pos2(x1, y1));
+    if let Some(last) = canvas.links.last_mut() {
+        let joins = (last.rect.max.x - x0).abs() < 1.0 && (last.rect.min.y - y0).abs() < 1.0;
+        if joins && last.link == *link {
+            last.rect = last.rect.union(r);
+            return;
+        }
+    }
+    canvas.links.push(PageLink {
+        rect: r,
+        link: link.clone(),
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,6 +585,7 @@ mod tests {
             src,
             theme: Theme::LIGHT,
             slot_labels: &[],
+            paper: None,
         };
         let style = Style {
             font: FontId::Text,
@@ -478,6 +625,7 @@ mod tests {
             src: &src,
             theme: Theme::LIGHT,
             slot_labels: &[],
+            paper: None,
         };
         let style = Style {
             font: FontId::Text,

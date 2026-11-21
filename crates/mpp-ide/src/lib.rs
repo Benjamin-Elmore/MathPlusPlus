@@ -15,6 +15,7 @@ mod doc;
 pub mod editor;
 pub mod eval;
 pub mod explorer;
+pub mod export;
 pub mod figure;
 pub mod files;
 pub mod history;

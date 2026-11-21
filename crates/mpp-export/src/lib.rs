@@ -11,11 +11,13 @@ mod pdf;
 mod provider;
 mod tex;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use mpp_eval::{Evaluated, FileImporter, Importer, Session};
 use mpp_render::{HtmlOptions, Theme};
+use mpp_syntax::document::BlockId;
 
 pub use pdf::{pdf_pages_svg, PageSize};
 pub use provider::EvalProvider;
@@ -64,6 +66,9 @@ pub struct ExportOptions {
     pub page: PageSize,
     /// Margin of a PDF in millimetres.
     pub margin_mm: f32,
+    /// Slider values set in the editor, by figure: graphs are drawn at them
+    /// (empty: the values written in the file).
+    pub slider_values: Vec<(BlockId, BTreeMap<String, f64>)>,
 }
 
 impl Default for ExportOptions {
@@ -75,6 +80,7 @@ impl Default for ExportOptions {
             dark: false,
             page: PageSize::A4,
             margin_mm: 25.0,
+            slider_values: Vec::new(),
         }
     }
 }
@@ -146,13 +152,16 @@ pub fn export_evaluated(
     format: Format,
     opts: &ExportOptions,
 ) -> Result<Exported, ExportError> {
-    let provider = EvalProvider::new(
+    let mut provider = EvalProvider::new(
         &loaded.evaluated,
         loaded.importer.clone(),
         loaded.base_dir.clone(),
         opts.dark,
         opts.include_results,
     );
+    for (id, values) in &opts.slider_values {
+        provider.set_slider_values(*id, values);
+    }
     match format {
         Format::Html => Ok(Exported {
             main: html_page(&loaded.evaluated, &provider, opts).into_bytes(),

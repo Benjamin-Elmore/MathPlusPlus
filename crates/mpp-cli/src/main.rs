@@ -107,6 +107,7 @@ fn main() -> ExitCode {
                     Paper::Letter => PageSize::Letter,
                 },
                 margin_mm: margin,
+                slider_values: Vec::new(),
             };
             export(&file, &to, output, &opts)
         }

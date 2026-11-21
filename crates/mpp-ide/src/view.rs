@@ -151,6 +151,47 @@ fn verdict_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme,
         });
 }
 
+/// Follows a click on a link: jumps to an equation, a reference entry or a
+/// footnote, or folds a note.
+pub fn follow_link(doc: &mut Doc, target: &crate::page::LinkTarget) {
+    match target {
+        crate::page::LinkTarget::Jump(span) => {
+            doc.editor.move_caret(span.start, false);
+            doc.highlight = Some(*span);
+            doc.scroll_to = Some(*span);
+            doc.want_x = None;
+        }
+        crate::page::LinkTarget::Fold(id) => doc.show_mut().toggle_fold(*id),
+    }
+}
+
+/// The card over a link: a footnote's note, a citation's entry, a folded note.
+fn link_card(ui: &Ui, pc: &PageCache, origin: Pos2, theme: &Theme, size: f32) {
+    let Some(pos) = ui.input(|i| i.pointer.hover_pos()) else {
+        return;
+    };
+    let Some(tip) = pc
+        .page
+        .link_at(pos - origin.to_vec2())
+        .and_then(|l| l.link.tip.clone())
+    else {
+        return;
+    };
+    let theme = *theme;
+    egui::Area::new(egui::Id::unique("mpp-link-card"))
+        .order(egui::Order::Tooltip)
+        .fixed_pos(pos + Vec2::new(12.0, 16.0))
+        .show(ui.ctx(), |ui| {
+            card_frame(ui).show(ui, |ui| {
+                ui.set_max_width(size * 26.0);
+                // A note's paragraphs come one per line.
+                for line in tip.lines() {
+                    typeset::show(ui, line, size * 0.85, theme);
+                }
+            });
+        });
+}
+
 /// Draws the page and handles input. Returns the requests for the app.
 pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> {
     let mut events = vec![];
@@ -207,8 +248,24 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 .then(|| resp.interact_pointer_pos().or_else(|| resp.hover_pos()))
                 .flatten()
                 .and_then(|p| toggle_at(&pc0, origin, p));
+            let link_click = ui
+                .input(|i| i.pointer.primary_pressed())
+                .then(|| resp.interact_pointer_pos().or_else(|| resp.hover_pos()))
+                .flatten()
+                .and_then(|p| pc0.page.link_at(p - origin.to_vec2()))
+                .map(|l| l.link.target.clone());
             if let Some(line) = step_click {
                 doc.show_mut().toggle_steps(line);
+            } else if let Some(target) = link_click {
+                // A pass that egui runs again (after a layout change) sees the same
+                // press: follow it once per frame, or a fold would undo itself.
+                let frame = ui.ctx().cumulative_frame_nr();
+                let key = egui::Id::unique("mpp-link-frame");
+                if ui.data(|d| d.get_temp::<u64>(key)) != Some(frame) {
+                    ui.data_mut(|d| d.insert_temp(key, frame));
+                    follow_link(doc, &target);
+                }
+                moved = true;
             } else if bulb_clicked {
                 if let Some((r, span)) = bulb {
                     open_fix_menu(doc, &pc0, cx, span, r.right_bottom());
@@ -262,7 +319,10 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             if resp.hovered() {
                 let over_bulb = bulb_target(doc, &pc, origin)
                     .is_some_and(|(r, _)| resp.hover_pos().is_some_and(|p| r.contains(p)));
-                ui.ctx().set_cursor_icon(if over_bulb {
+                let over_link = resp
+                    .hover_pos()
+                    .is_some_and(|p| pc.page.link_at(p - origin.to_vec2()).is_some());
+                ui.ctx().set_cursor_icon(if over_bulb || over_link {
                     CursorIcon::PointingHand
                 } else {
                     CursorIcon::Text
@@ -270,6 +330,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 if !cx.diag.menu_open() {
                     hover_card(ui, doc, &pc, origin, &theme, cx);
                     verdict_card(ui, doc, &pc, origin, &theme, cx.size);
+                    link_card(ui, &pc, origin, &theme, cx.size);
                 }
             }
             if cx.active {
@@ -1079,6 +1140,7 @@ fn key_pressed(
                 return true;
             }
             Key::Enter => return doc.keep_result_at(caret),
+            Key::Slash => return toggle_comment(doc),
             _ => return false,
         }
     }
@@ -1112,6 +1174,9 @@ fn key_pressed(
         }
         Key::Enter => {
             if accept_completion(doc, cx) {
+                return true;
+            }
+            if note_enter(doc) {
                 return true;
             }
             doc.editor.insert_text("\n");
@@ -1192,6 +1257,44 @@ fn key_pressed(
 }
 
 /// Tab outside a tracked template: the next (or previous) empty box on the page.
+/// Ctrl+/: comments the current block (or the selected blocks) out, or takes
+/// the comment markers off a note.
+pub fn toggle_comment(doc: &mut Doc) -> bool {
+    let caret = doc.editor.caret();
+    let sel = doc.editor.selection();
+    let Some((range, new)) = crate::editor::comment::toggle(doc.editor.text(), caret, sel) else {
+        return false;
+    };
+    doc.editor
+        .replace_node(mpp_syntax::Span::new(range.start, range.end), &new);
+    doc.touched();
+    doc.want_x = None;
+    true
+}
+
+/// Enter at the end of a `% ` note line: a line with words continues the note on
+/// a new `% ` line; an empty note line ends the note (its marker goes, leaving a
+/// blank line).
+fn note_enter(doc: &mut Doc) -> bool {
+    let text = doc.editor.text();
+    let caret = doc.editor.caret();
+    let start = text[..caret].rfind('\n').map_or(0, |i| i + 1);
+    let end = text[caret..].find('\n').map_or(text.len(), |i| caret + i);
+    let line = &text[start..end];
+    if !(line == "%" || line.starts_with("% ")) || caret != end {
+        return false;
+    }
+    if line.trim_end() == "%" {
+        doc.editor
+            .replace_node(mpp_syntax::Span::new(start, end), "");
+        doc.editor.insert_text("\n");
+    } else {
+        doc.editor.insert_text("\n% ");
+    }
+    doc.touched();
+    true
+}
+
 fn tab_to_slot(doc: &mut Doc, page: &crate::page::Page, forward: bool) {
     let caret = doc.editor.caret();
     let mut slots: Vec<usize> = page
