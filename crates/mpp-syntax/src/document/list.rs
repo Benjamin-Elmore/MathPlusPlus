@@ -42,8 +42,8 @@ pub(crate) fn marker(text: &str, line_start: usize) -> Option<Marker> {
     if !(after.is_empty() || after.starts_with([' ', '\t'])) {
         return None;
     }
-    if after.is_empty() && !ordered {
-        // A lone `-`, `*` or `+` is not a list.
+    if after.is_empty() {
+        // A lone `-`, `*`, `+` or `1.` is not a list (a number being typed is not one).
         return None;
     }
     let gap = after.len() - after.trim_start_matches([' ', '\t']).len();
