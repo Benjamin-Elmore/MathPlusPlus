@@ -297,6 +297,16 @@ fn numeric_definite_integrals() {
     let (v, _) = numeric_integrate(&exp(-x()), "x", 0.0, f64::INFINITY, 1e-10).unwrap();
     assert!((v - 1.0).abs() < 1e-9);
     assert!(numeric_integrate(&x().recip(), "x", 0.0, 1.0, 1e-10).is_err());
+    // An integrand that lives at the scale 10⁷ is found there, to all its digits:
+    // ∫_0^∞ dx/(x + 10⁷)² = 10⁻⁷ and ∫_{−∞}^{−10⁷} dx/x² = 10⁻⁷.
+    let far = (x() + n(10_000_000)).pow(n(-2));
+    let (v, err) = numeric_integrate(&far, "x", 0.0, f64::INFINITY, 1e-10).unwrap();
+    assert!((v - 1e-7).abs() < 1e-17 && err < 1e-16, "{v} ± {err}");
+    let (v, err) = numeric_integrate(&x().pow(n(-2)), "x", f64::NEG_INFINITY, -1e7, 1e-10).unwrap();
+    assert!((v - 1e-7).abs() < 1e-17 && err < 1e-16, "{v} ± {err}");
+    // ∫_2^∞ dx/ln x diverges: it is never summed up to where doubles end.
+    let inv_ln = Expr::call("ln", vec![x()]).unwrap().recip();
+    assert!(numeric_integrate(&inv_ln, "x", 2.0, f64::INFINITY, 1e-10).is_err());
     assert!(matches!(
         numeric_integrate(&(x() * y()), "x", 0.0, 1.0, 1e-10),
         Err(MathError::UnboundVariable(_))

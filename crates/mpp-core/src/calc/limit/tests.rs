@@ -222,3 +222,27 @@ fn slow_logarithmic_limits_at_infinity() {
     // ln(ln x) still grows without bound.
     assert_eq!(lim(&f("ln", ln_x), &inf(), LimitDir::Both).unwrap(), inf());
 }
+
+#[test]
+fn logarithms_whose_difference_has_a_limit() {
+    // ln|x| − ln(x² + 1)/2 − arctan(x)/x, the antiderivative of arctan(x)/x², tends to 0:
+    // combined, the logarithm is ln(|x|/√(x² + 1)) → ln 1.
+    let big_f =
+        f("ln", f("abs", x())) - f("ln", x().pow(n(2)) + n(1)) / n(2) - f("atan", x()) / x();
+    assert_eq!(lim(&big_f, &inf(), LimitDir::Both), Ok(n(0)));
+    let e = f("ln", n(2) * x() + n(1)) - f("ln", x());
+    assert_eq!(lim(&e, &inf(), LimitDir::Both), Ok(f("ln", n(2))));
+}
+
+#[test]
+fn a_bounded_factor_times_something_that_vanishes_vanishes() {
+    let exp = |e: Expr| f("exp", e);
+    // x eˣ cos x and x (eˣ sin x + eˣ cos x) → 0 as x → −∞ (they were said not to exist,
+    // which made ∫_{−∞}^0 x eˣ cos x dx "diverge").
+    let e = x() * exp(x()) * f("cos", x());
+    assert_eq!(lim(&e, &ninf(), LimitDir::Both), Ok(n(0)));
+    let e = x() * (exp(x()) * f("sin", x()) + exp(x()) * f("cos", x()));
+    assert_eq!(lim(&e, &ninf(), LimitDir::Both), Ok(n(0)));
+    // x sin x still has no limit.
+    assert!(lim(&(x() * f("sin", x())), &inf(), LimitDir::Both).is_err());
+}

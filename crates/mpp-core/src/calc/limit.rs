@@ -708,6 +708,10 @@ impl<'s> Ctx<'s> {
             self.record("multiply by the conjugate", e, &shown, None);
             return self.lim_quotient(&top, &bottom);
         }
+        if let Some(joined) = join_logs(ts, &|g| self.approach_sign(g)) {
+            self.record("combine the logarithms", e, &joined, None);
+            return self.lim(&joined);
+        }
         let (n, d) = together(ts);
         if !d.is_one() {
             let shown = Expr::new(ExprNode::Mul(vec![
@@ -728,6 +732,30 @@ impl<'s> Ctx<'s> {
         }
     }
 
+    /// 0 when the numerator `n` has bounded factors without a limit (`cos x`) and the
+    /// rest of `n/d` tends to 0: `x cos x / eˣ → 0` as `x → ∞`.
+    fn bounded_times_vanishing(&mut self, n: &Expr, d: &Expr) -> Option<Lv> {
+        let ExprNode::Mul(fs) = n.node() else {
+            return None;
+        };
+        let mut rest = Vec::new();
+        let mut any_bounded = false;
+        for f in fs.iter() {
+            if matches!(self.lim(f), Ok(Lv::Bounded)) {
+                any_bounded = true;
+            } else {
+                rest.push(f.clone());
+            }
+        }
+        if !any_bounded {
+            return None;
+        }
+        match self.lim_quotient(&mul(rest), d) {
+            Ok(Lv::Fin(v)) if is_zero_value(&v) => Some(Lv::Fin(Expr::zero())),
+            _ => None,
+        }
+    }
+
     fn lim_product(&mut self, factors: &[Expr]) -> MathResult<Lv> {
         let mut values = Vec::with_capacity(factors.len());
         for f in factors {
@@ -738,6 +766,39 @@ impl<'s> Ctx<'s> {
             .collect();
         let any_inf = values.iter().any(|v| matches!(v, Lv::PosInf | Lv::NegInf));
         let any_bounded = values.iter().any(|v| matches!(v, Lv::Bounded));
+        if any_bounded && !zero_idx.is_empty() && any_inf {
+            // A bounded factor times something that tends to 0 tends to 0 (x eˣ cos x as
+            // x → −∞): settle the 0·∞ of the other factors first.
+            let rest: Vec<Expr> = factors
+                .iter()
+                .zip(&values)
+                .filter(|(_, v)| !matches!(v, Lv::Bounded))
+                .map(|(f, _)| f.clone())
+                .collect();
+            if let Ok(Lv::Fin(v)) = self.lim_product(&rest) {
+                if is_zero_value(&v) {
+                    return Ok(Lv::Fin(Expr::zero()));
+                }
+            }
+        }
+        if !zero_idx.is_empty()
+            && any_inf
+            && zero_idx
+                .iter()
+                .any(|i| matches!(factors[*i].node(), ExprNode::Add(_)))
+        {
+            // 0·∞ where the vanishing factor is a sum: term by term may settle it
+            // (x (eˣ sin x + eˣ cos x) as x → −∞, whose quotient form has no limit).
+            let product = mul(factors.to_vec());
+            if let Ok(spread) = expand(&product) {
+                if matches!(spread.node(), ExprNode::Add(_)) {
+                    if let Ok(Lv::Fin(v)) = self.lim(&spread) {
+                        self.record("multiply out", &product, &spread, None);
+                        return Ok(Lv::Fin(v));
+                    }
+                }
+            }
+        }
         if !zero_idx.is_empty() && any_inf {
             // 0·∞: move one side into a denominator.
             let zeros = mul(zero_idx.iter().map(|i| factors[*i].clone()).collect());
@@ -787,6 +848,9 @@ impl<'s> Ctx<'s> {
     }
 
     fn lim_quotient(&mut self, n: &Expr, d: &Expr) -> MathResult<Lv> {
+        if let Some(zero) = self.bounded_times_vanishing(n, d) {
+            return Ok(zero);
+        }
         let ln = self.lim(n)?;
         let ld = self.lim(d)?;
         let inf = |v: &Lv| matches!(v, Lv::PosInf | Lv::NegInf);
@@ -1219,6 +1283,50 @@ fn at_infinity(f: Func, positive: bool) -> MathResult<Lv> {
 }
 
 /// The largest positive rate `λ` among the exponentials `e^{λx + …}` inside `e`.
+/// `q₁ ln g₁ + q₂ ln g₂ + … = ln(g₁^q₁ g₂^q₂ …)` for rational `qᵢ`, with the other terms
+/// kept: `ln|x| − ln(x² + 1)/2 = ln(|x| (x² + 1)^(−1/2))`, whose argument has a limit.
+/// The logarithms of an ∞ − ∞ form have positive arguments near the point (or are not
+/// real there), so the rule holds. `ln|g|` becomes `ln(±g)` when `sign` tells the sign of
+/// `g` near the point. The result is left unsimplified, which would split the logarithm
+/// again.
+fn join_logs(ts: &[Expr], sign: &dyn Fn(&Expr) -> Option<Ordering>) -> Option<Expr> {
+    let mut parts = Vec::new();
+    let mut rest = Vec::new();
+    for t in ts {
+        let (c, body) = split_coeff(t);
+        match (c.as_rational(), body.node()) {
+            (Some(q), ExprNode::Func(Func::Ln, args)) if args.len() == 1 => {
+                let mut g = args[0].clone();
+                if let ExprNode::Func(Func::Abs, inner) = g.node() {
+                    match inner.first().and_then(|h| sign(h).map(|s| (h, s))) {
+                        Some((h, Ordering::Greater)) => g = h.clone(),
+                        Some((h, Ordering::Less)) => g = mul(vec![Expr::int(-1), h.clone()]),
+                        _ => {}
+                    }
+                }
+                parts.push(if c.is_one() {
+                    g
+                } else {
+                    Expr::new(ExprNode::Pow(g, Expr::ratio(q.clone())))
+                });
+            }
+            _ => rest.push(t.clone()),
+        }
+    }
+    if parts.len() < 2 {
+        return None;
+    }
+    let joined = Expr::new(ExprNode::Func(
+        Func::Ln,
+        vec![Expr::new(ExprNode::Mul(parts))],
+    ));
+    if rest.is_empty() {
+        return Some(joined);
+    }
+    rest.push(joined);
+    Some(Expr::new(ExprNode::Add(rest)))
+}
+
 fn collect_exp_rates(e: &Expr, var: &str, best: &mut Option<(Expr, f64)>) {
     if let ExprNode::Pow(b, x) = e.node() {
         if matches!(b.node(), ExprNode::Const(Constant::E)) {
