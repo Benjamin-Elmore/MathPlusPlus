@@ -505,3 +505,21 @@ fn fit_sentences_against_a_table() {
     let errs = errors(r"Fit $y = a x$ to the table.");
     assert!(errs.iter().any(|e| e.contains("data columns")), "{errs:?}");
 }
+
+#[test]
+fn definitions_after_a_comma_and_numbers_that_are_not_numbers() {
+    let src = concat!(
+        r"$$ n_a := 2 \cdot 3, \qquad n_b(v) := 4 v $$",
+        "\n\n",
+        r"$$ n_a + n_b(1) = ? $$",
+    );
+    assert_eq!(approx_all(src), vec!["= 10"]);
+    // A piecewise value whose case cannot be decided is not a number, so `≈ ?`
+    // reports it instead of showing the piecewise expression as the answer.
+    let errs = errors(concat!(
+        r"$$ f(v) := \begin{cases} 1 & v < w \ 2 & v \ge w \end{cases} $$",
+        "\n\n",
+        r"$$ f(3\,\mathrm{mL}) \approx ? $$"
+    ));
+    assert!(!errs.is_empty());
+}

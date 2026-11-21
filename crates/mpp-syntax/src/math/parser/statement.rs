@@ -173,6 +173,12 @@ impl Parser<'_> {
                 if self.at_line_end() {
                     break;
                 }
+                // `n_a := c_a V_a, \qquad n_b(V_b) := c_b V_b`: after a definition, a
+                // further definition is a statement of its own.
+                if matches!(statement, Statement::Definition { .. }) && self.definition_ahead() {
+                    self.continues = true;
+                    break;
+                }
                 clauses.push(self.parse_clause());
                 continue;
             }
@@ -303,6 +309,15 @@ impl Parser<'_> {
             }
             _ => self.relation_or_const(lhs),
         }
+    }
+
+    /// True when a definition (`head :=` or `head ≡`) starts here; reads nothing.
+    fn definition_ahead(&mut self) -> bool {
+        let cp = self.checkpoint();
+        let _ = self.parse_expr();
+        let found = self.at(|t| matches!(t, Tok::Assign));
+        self.restore(cp);
+        found
     }
 
     /// `≈ ?` or `= ?` after a definition: show the value just defined.

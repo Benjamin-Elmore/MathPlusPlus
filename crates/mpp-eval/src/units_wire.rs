@@ -724,6 +724,30 @@ fn approx_of(q: &Quantity) -> Option<String> {
 
 /// The decimal value of a quantity, unit included (`≈ ?` with units).
 pub fn approximate(e: &Expr) -> MathResult<Option<String>> {
+    // An interval of quantities (a confidence interval): each end.
+    if let ExprNode::Interval {
+        lo,
+        hi,
+        lo_closed,
+        hi_closed,
+    } = e.node()
+    {
+        let end = |x: &Expr| -> MathResult<Option<String>> {
+            if contains_units(x) {
+                approximate(x)
+            } else {
+                Ok(crate::numeric::approximate(x).ok())
+            }
+        };
+        let (Some(a), Some(b)) = (end(lo)?, end(hi)?) else {
+            return Ok(None);
+        };
+        return Ok(Some(format!(
+            "{}{a}, {b}{}",
+            if *lo_closed { "[" } else { "(" },
+            if *hi_closed { "]" } else { ")" }
+        )));
+    }
     // A set or list of quantities (the roots of an equation with units): each entry.
     if let ExprNode::Set(items) | ExprNode::Tuple(items) = e.node() {
         if !items.iter().any(contains_units) {
