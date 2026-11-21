@@ -84,6 +84,27 @@ pub fn owner_alive(data: &Path, owner: &str) -> bool {
     }
 }
 
+/// Removes the lock files of windows that are gone (a crash with nothing unsaved
+/// leaves its lock behind, and no copy ever names it). `own` is kept.
+pub fn sweep_stale_locks(data: &Path, own: &str) {
+    let Ok(rd) = std::fs::read_dir(recovery_dir(data)) else {
+        return;
+    };
+    for e in rd.filter_map(Result::ok) {
+        let path = e.path();
+        if path.extension().is_none_or(|x| x != "lock") {
+            continue;
+        }
+        let Some(owner) = path.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
+            continue;
+        };
+        if owner != own {
+            // Deletes the file when nobody holds its lock.
+            owner_alive(data, &owner);
+        }
+    }
+}
+
 fn fnv(s: &str) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     for b in s.bytes() {
@@ -208,6 +229,22 @@ mod tests {
         assert_eq!(load_all(&dir).len(), 1);
         remove(&dir, "/p/a.mpp", "w1");
         assert!(load_all(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn lock_files_of_windows_that_are_gone_are_removed_at_start_up() {
+        let dir = std::env::temp_dir().join(format!("mpp-locks-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let live = hold_lock(&dir, "live").expect("lock");
+        let mine = hold_lock(&dir, "mine").expect("lock");
+        // A window that crashed: its lock file is there but nobody holds it.
+        std::fs::write(lock_file(&dir, "crashed"), "").expect("write");
+        sweep_stale_locks(&dir, "mine");
+        assert!(!lock_file(&dir, "crashed").exists());
+        assert!(lock_file(&dir, "live").exists());
+        assert!(lock_file(&dir, "mine").exists());
+        drop((live, mine));
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
