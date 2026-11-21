@@ -7,7 +7,7 @@ Five independent reviewers (Opus) checked the finished product on branch `fix/va
 
 Every Blocker and Major from all five reviewers is fixed, and the reviewer who raised each one confirmed it on the final build. What remains open is Minor or a matter of taste, listed below. Final build: `fix/validation` after the last merge. Gates on that build:
 
-- `cargo test --workspace`: 1678 passed, 0 failed.
+- `cargo test --workspace`: 1680 passed, 0 failed (three full runs, no crashes).
 - `cargo clippy --workspace --all-targets -- -D warnings`: clean.
 - `cargo fmt --all --check`: clean.
 - No tracked `.md` files.
@@ -45,7 +45,7 @@ Every Blocker and Major from all five reviewers is fixed, and the reviewer who r
    - Major, a regression from round 3: the parse cache grew without limit. Fixed in `fix/memo`; it is now capped at 32 MB per thread.
 
    The same round fixed several false-pass checks in `fix/checks`. Two examples: `⌊x⌋+⌊-x⌋ =? -1` used to get ✓, and `2^{10} = 1000` went unflagged. The checker now tests special points first, never passes a piecewise identity by sampling, and has a proof by cases. Reviewer 1 tried 26 false identities after the fix, and none got through.
-5. **Final re-check 2:** every reviewer confirmed its items. Small items were fixed in `fix/minors` and `fix/typo-names`.
+5. **Final re-check 2:** every reviewer confirmed its items. Small items were fixed in `fix/minors` and `fix/typo-names`. Mistyped function names such as `sinn(2)` now warn in `mpp check` as well as in the IDE. The IDE screenshot tests now take turns on the GPU, because two of them rendering at once crashed about one run in three.
 
 ## Open (Minor)
 
