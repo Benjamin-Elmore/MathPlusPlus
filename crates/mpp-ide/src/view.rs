@@ -1078,6 +1078,9 @@ fn paint_page(
             }
         }
     }
+    if focused {
+        crate::editor::brackets::paint(painter, page, origin, &doc.editor, cx.size, cx.mode);
+    }
     let clip = painter.clip_rect();
     for b in &page.blocks {
         let top = origin.y + b.top;
@@ -1232,6 +1235,9 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     let in_math = pc.page.in_math(doc.editor.caret());
     for ch in text.chars().filter(|c| !c.is_control()) {
         let s = ch.to_string();
+        if in_math && doc.editor.type_bracket(ch) {
+            continue;
+        }
         if !in_math {
             doc.editor.before_type(ch);
         }
@@ -1520,6 +1526,11 @@ fn key_pressed(
                 doc.touched();
                 *cx.completion = None;
                 doc.want_x = None;
+                return true;
+            }
+            if !fwd && in_math && doc.editor.backspace_pair() {
+                doc.touched();
+                *cx.completion = None;
                 return true;
             }
             if !fwd && in_math && doc.editor.backspace_in_template() {

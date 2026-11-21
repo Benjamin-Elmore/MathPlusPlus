@@ -7,6 +7,7 @@
 //! to the text goes through one splice, which keeps the boxes of inserted
 //! templates (see [`template`]) in step with the text.
 
+pub mod brackets;
 pub mod comment;
 mod rules;
 pub mod symbols;
@@ -193,6 +194,8 @@ pub struct Editor {
     hint: Option<(String, u64)>,
     /// The heading hint was shown already.
     hinted_heading: bool,
+    /// Closing brackets shown but not written (see [`brackets`]).
+    ghosts: Vec<brackets::Ghost>,
 }
 
 impl Editor {
@@ -241,6 +244,7 @@ impl Editor {
         self.undo.clear();
         self.redo.clear();
         self.sessions.clear();
+        self.ghosts.clear();
         self.last_kind = None;
         self.word_done = false;
         self.when = None;
@@ -291,6 +295,7 @@ impl Editor {
         self.caret = move_point(self.caret, &edit, n);
         self.anchor = self.anchor.map(|a| move_point(a, &edit, n));
         self.sessions.retain_mut(|s| adjust_session(s, &edit, n));
+        self.shift_ghosts(&edit, n);
     }
 
     /// Moves the caret to `offset`, extending the selection when `extend`.
@@ -304,6 +309,7 @@ impl Editor {
         self.caret = o;
         self.last_kind = None;
         self.left = None;
+        self.prune_ghosts();
     }
 
     /// Selects a range.
@@ -479,6 +485,7 @@ impl Editor {
         };
         self.caret = s.caret.min(self.text.len());
         self.anchor = None;
+        self.ghosts.clear();
         self.last_kind = None;
         self.word_done = false;
         self.revision += 1;
