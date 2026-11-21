@@ -897,6 +897,9 @@ impl fmt::Display for Number {
                     "i".to_string()
                 } else if mag.is_integer() {
                     format!("{}*i", mag.numer())
+                } else if mag.numer().is_one() {
+                    // `i/2`, not `1*i/2`.
+                    format!("i/{}", mag.denom())
                 } else {
                     format!("{}*i/{}", mag.numer(), mag.denom())
                 };

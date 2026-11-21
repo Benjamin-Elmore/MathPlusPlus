@@ -204,6 +204,17 @@ const B4: [f64; 7] = [
     1.0 / 40.0,
 ];
 
+/// The error for an equation that cannot be evaluated at its initial condition.
+pub(crate) fn not_at_start(t0: f64) -> MathError {
+    MathError::Domain {
+        function: "a numerical solution".into(),
+        detail: format!(
+            "the equation has no finite value at the initial condition (at {})",
+            crate::number::format_f64(t0, 6)
+        ),
+    }
+}
+
 fn dopri(sys: &Ivp, t0: f64, y0: &[f64], t_end: f64) -> MathResult<Vec<(f64, Vec<f64>)>> {
     let n = y0.len();
     let mut out = vec![(t0, y0.to_vec())];
@@ -219,7 +230,8 @@ fn dopri(sys: &Ivp, t0: f64, y0: &[f64], t_end: f64) -> MathResult<Vec<(f64, Vec
     let mut t = t0;
     let mut y = y0.to_vec();
     let mut k: Vec<Vec<f64>> = vec![vec![0.0; n]; 7];
-    sys.eval(t, &y, &mut k[0]).ok_or_else(blow_up)?;
+    // Failing at the starting point is not a blow-up: the equation has no value there.
+    sys.eval(t, &y, &mut k[0]).ok_or_else(|| not_at_start(t0))?;
     // A first step from the size of the derivative (Hairer's estimate, simplified).
     let d0 = y.iter().map(|v| v * v).sum::<f64>().sqrt();
     let d1 = k[0].iter().map(|v| v * v).sum::<f64>().sqrt();

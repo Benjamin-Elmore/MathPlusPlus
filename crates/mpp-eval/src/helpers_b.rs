@@ -352,15 +352,24 @@ fn area(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
         _ => return Err(missing("area", "one or two curves")),
     };
     let bounds = p.intervals.first().cloned();
-    let v = logged(ctx, |s| {
-        tools_b::area_between(
-            &f,
-            g.as_ref(),
-            &var,
-            bounds.as_ref().map(|(a, b)| (a, b)),
-            s,
-        )
-    })?;
+    let run = |g: Option<&Expr>| {
+        logged(ctx, |s| {
+            tools_b::area_between(&f, g, &var, bounds.as_ref().map(|(a, b)| (a, b)), s)
+        })
+    };
+    let v = match run(g.as_ref()) {
+        // `area(x^3, x)` with no interval: when `x` as the variable leaves no enclosed
+        // region, it is the second curve `y = x` (they cross at −1, 0 and 1).
+        Err(MathError::Domain { .. })
+            if g.is_none() && bounds.is_none() && p.names.first() == Some(&var) =>
+        {
+            let curve = Expr::sym(&var);
+            let v = run(Some(&curve))?;
+            ctx.note(format!("{var} is read as the curve y = {var}"));
+            v
+        }
+        other => other?,
+    };
     note_numeric(ctx, &v, "this area");
     Ok(v)
 }

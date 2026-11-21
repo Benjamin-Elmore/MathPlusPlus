@@ -139,11 +139,28 @@ impl<'a> Resolver<'a> {
             ExprNode::Piecewise { cases, otherwise } => self.piecewise(cases, otherwise.as_ref()),
             ExprNode::Derivative { expr, vars } => {
                 let names: Vec<Name> = vars.iter().map(|(n, _)| n.clone()).collect();
-                let body = self.with_mask(&names, |r| r.resolve(expr))?;
-                self.holder(Expr::new(ExprNode::Derivative {
-                    expr: body,
-                    vars: vars.clone(),
-                }))
+                let d = match self.leibniz(e, expr, vars)? {
+                    Some(d) => d,
+                    None => {
+                        let body = self.with_mask(&names, |r| r.resolve(expr))?;
+                        self.holder(Expr::new(ExprNode::Derivative {
+                            expr: body,
+                            vars: vars.clone(),
+                        }))?
+                    }
+                };
+                // `d/dx x^3 = ?, x = 2`: a where-clause value of the variable goes in
+                // after differentiating (unless an outer binder owns the name).
+                let pairs: Vec<(&str, Expr)> = names
+                    .iter()
+                    .filter(|n| !self.is_masked(n))
+                    .filter_map(|n| self.locals.get(&**n).map(|v| (&**n, v.clone())))
+                    .collect();
+                if pairs.is_empty() || has_derivative(&d) {
+                    Ok(d)
+                } else {
+                    Ok(d.subs_all(&pairs).simplify())
+                }
             }
             ExprNode::Integral { .. } => {
                 let parts = self.integral_parts(e)?;
@@ -185,6 +202,13 @@ impl<'a> Resolver<'a> {
                     dir: *dir,
                 }))
             }
+            ExprNode::Add(_) if self.limit_with_free_terms(e).is_some() => {
+                let joined = self.limit_with_free_terms(e).unwrap_or_else(|| e.clone());
+                self.ctx.note(
+                    "the terms after the limit use its variable, so they are taken inside the limit",
+                );
+                self.resolve(&joined)
+            }
             _ => {
                 let mut failure = None;
                 let node = e.map_children(&mut |c| match self.resolve(c) {
@@ -200,6 +224,112 @@ impl<'a> Resolver<'a> {
                 }
             }
         }
+    }
+
+    /// `lim_{x→∞} √(x²+x) − x` reads as `(lim √(x²+x)) − x`, leaving `x` free outside
+    /// the limit: a sum with a limit over `x` and other terms in a free `x` (one with no
+    /// value) means the limit of the whole sum.
+    fn limit_with_free_terms(&self, e: &Expr) -> Option<Expr> {
+        let ExprNode::Add(ts) = e.node() else {
+            return None;
+        };
+        let (i, var) = ts.iter().enumerate().find_map(|(i, t)| match t.node() {
+            ExprNode::Limit { var, .. } => Some((i, var.clone())),
+            _ => None,
+        })?;
+        if self.is_masked(&var)
+            || self.locals.contains_key(&*var)
+            || self.scope.lookup(&var).is_some()
+        {
+            return None;
+        }
+        let (inside, outside): (Vec<&Expr>, Vec<&Expr>) = ts
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| *k != i)
+            .map(|(_, t)| t)
+            .partition(|t| t.free_symbols().iter().any(|s| **s == *var));
+        if inside.is_empty() {
+            return None;
+        }
+        let ExprNode::Limit {
+            expr,
+            var,
+            point,
+            dir,
+        } = ts[i].node()
+        else {
+            return None;
+        };
+        let mut body = vec![expr.clone()];
+        body.extend(inside.into_iter().cloned());
+        let limit = Expr::new(ExprNode::Limit {
+            expr: mpp_core::add(body),
+            var: var.clone(),
+            point: point.clone(),
+            dir: *dir,
+        });
+        let mut all: Vec<Expr> = outside.into_iter().cloned().collect();
+        if all.is_empty() {
+            return Some(limit);
+        }
+        all.push(limit);
+        Some(Expr::new(ExprNode::Add(all)))
+    }
+
+    /// `d/dx ∫_{a(x)}^{b(x)} f(x, t) dt = f(x, b) b′ − f(x, a) a′ + ∫_a^b ∂f/∂x dt`
+    /// (the fundamental theorem of calculus with the Leibniz rule), so the integral itself
+    /// never has to be found: `d/dx ∫_0^x e^{t^2} dt = e^{x^2}`. `None` when `expr` is not
+    /// a definite integral whose bounds or integrand depend on the variable.
+    fn leibniz(&mut self, whole: &Expr, expr: &Expr, vars: &[(Name, u32)]) -> Result<Option<Expr>> {
+        let [(x, n)] = vars else {
+            return Ok(None);
+        };
+        let ExprNode::Integral {
+            expr: f,
+            var: t,
+            bounds: Some((lo, hi)),
+        } = expr.node()
+        else {
+            return Ok(None);
+        };
+        if t == x || matches!(f.node(), ExprNode::Integral { .. }) {
+            return Ok(None);
+        }
+        let xs = std::slice::from_ref(x);
+        let lo = self.with_mask(xs, |r| r.resolve(lo))?.simplify();
+        let hi = self.with_mask(xs, |r| r.resolve(hi))?.simplify();
+        let f = self
+            .with_mask(&[x.clone(), t.clone()], |r| r.resolve(f))?
+            .simplify();
+        if !lo.contains_sym(x) && !hi.contains_sym(x) {
+            return Ok(None);
+        }
+        let d = |e: &Expr| mpp_core::calc::diff(e, x, 1, None).map_err(EvalError::Math);
+        let mut terms = vec![f.subs(t, &hi) * d(&hi)?, -(f.subs(t, &lo) * d(&lo)?)];
+        if f.contains_sym(x) {
+            // With no closed form the integral stays as written (`x e^{x²} + ∫_0^x e^{t²} dt`).
+            let rest = Expr::new(ExprNode::Integral {
+                expr: d(&f)?,
+                var: t.clone(),
+                bounds: Some((lo, hi)),
+            });
+            terms.push(self.holder(rest.clone()).unwrap_or(rest));
+        }
+        let mut out = mpp_core::add(terms).simplify();
+        self.ctx.log(
+            "fundamental theorem of calculus (Leibniz rule)",
+            whole,
+            &out,
+            None,
+        );
+        if *n > 1 {
+            out = self.holder(Expr::new(ExprNode::Derivative {
+                expr: out,
+                vars: vec![(x.clone(), n - 1)],
+            }))?;
+        }
+        Ok(Some(out))
     }
 
     /// Resolves the parts of an integral without evaluating it. A nested integral
@@ -837,6 +967,11 @@ fn replace_members(e: &Expr, f: &mut impl FnMut(&Expr) -> Option<Expr>) -> Expr 
         return e.clone();
     }
     Expr::new(e.map_children(&mut |c| replace_members(c, f)))
+}
+
+/// True when `e` still holds an unevaluated derivative somewhere.
+fn has_derivative(e: &Expr) -> bool {
+    matches!(e.node(), ExprNode::Derivative { .. }) || e.children().into_iter().any(has_derivative)
 }
 
 #[cfg(test)]

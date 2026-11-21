@@ -145,7 +145,10 @@ pub fn second_derivative_test(f: &Expr, x: &str, y: &str) -> MathResult<Vec<Clas
     let d = simplify(&(fxx.clone() * fyy - fxy.pow(2)));
     let vars = [x.to_string(), y.to_string()];
     let mut ctx = crate::domains::Ctx::new();
-    let sol = solve_system(&[fx, fy], &vars, &mut ctx)?;
+    // `e^{…}` is never zero: dividing it out leaves the equations the critical points
+    // really satisfy (for `x y e^{-(x²+y²)/2}`, polynomials with exact roots).
+    let (gx, gy) = (without_exponentials(&fx), without_exponentials(&fy));
+    let sol = solve_system(&[gx.clone(), gy.clone()], &vars, &mut ctx)?;
     if !sol.free.is_empty() {
         return Err(MathError::Unsupported(
             "the second-derivative test when the critical points form a curve".into(),
@@ -161,6 +164,15 @@ pub fn second_derivative_test(f: &Expr, x: &str, y: &str) -> MathResult<Vec<Clas
         let Some(point) = point else { continue };
         if point.iter().any(|p| util::numeric(p).is_none()) {
             continue; // complex
+        }
+        // Keep only points that really make the gradient zero (a numeric solver can
+        // stop where the function is merely flat).
+        let on_gradient = [&gx, &gy].iter().all(|g| {
+            let v = subs_all(g, &names, &point);
+            v.is_zero() || util::numeric(&v).is_some_and(|z| z.abs() < 1e-9)
+        });
+        if !on_gradient {
+            continue;
         }
         let dv = subs_all(&d, &names, &point);
         let fxxv = subs_all(&fxx, &names, &point);
@@ -196,6 +208,48 @@ pub fn second_derivative_test(f: &Expr, x: &str, y: &str) -> MathResult<Vec<Clas
         key(p).partial_cmp(&key(q)).unwrap_or(Ordering::Equal)
     });
     Ok(out)
+}
+
+/// `e` with its factors `e^{g}` divided out (they are never zero, so the zeros stay the
+/// same): `y e^{u} − x² y e^{u}` gives `y − x² y`.
+fn without_exponentials(e: &Expr) -> Expr {
+    fn is_exp(t: &Expr) -> bool {
+        matches!(t.node(), ExprNode::Pow(b, _) if matches!(b.node(), ExprNode::Const(crate::expr::Constant::E)))
+    }
+    fn exp_factor(t: &Expr) -> Option<Expr> {
+        match t.node() {
+            _ if is_exp(t) => Some(t.clone()),
+            ExprNode::Mul(fs) => fs.iter().find(|f| is_exp(f)).cloned(),
+            _ => None,
+        }
+    }
+    let mut e = simplify(e);
+    if is_exp(&e) {
+        return Expr::one();
+    }
+    if let ExprNode::Mul(fs) = e.node() {
+        return simplify(&mul(fs.iter().map(without_exponentials).collect()));
+    }
+    for _ in 0..4 {
+        let found = match e.node() {
+            ExprNode::Add(ts) => ts.iter().find_map(exp_factor),
+            _ => exp_factor(&e),
+        };
+        let Some(factor) = found else { break };
+        let divided = match e.node() {
+            ExprNode::Add(ts) => add(ts
+                .iter()
+                .map(|t| simplify(&(t.clone() / factor.clone())))
+                .collect()),
+            _ => simplify(&(e.clone() / factor.clone())),
+        };
+        let divided = simplify(&divided);
+        if divided == e {
+            break;
+        }
+        e = divided;
+    }
+    e
 }
 
 /// A candidate point from Lagrange multipliers with the value of `f` there.
@@ -307,7 +361,21 @@ fn candidates(f: &Expr, vars: &[&str], assignments: &[Vec<(String, Expr)>]) -> V
             point,
         });
     }
-    out.sort_by(|p, q| util::compare(&p.value, &q.value).unwrap_or(Ordering::Equal));
+    // Equal values in the order of their points, so the listing does not depend on the
+    // order the solver found them in.
+    out.sort_by(|p, q| {
+        util::compare(&p.value, &q.value)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                let key = |c: &LagrangePoint| {
+                    c.point
+                        .iter()
+                        .map(|e| util::numeric(e).unwrap_or(f64::NAN))
+                        .collect::<Vec<_>>()
+                };
+                key(p).partial_cmp(&key(q)).unwrap_or(Ordering::Equal)
+            })
+    });
     out
 }
 

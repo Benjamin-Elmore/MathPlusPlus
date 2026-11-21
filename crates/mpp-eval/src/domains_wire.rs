@@ -533,6 +533,9 @@ fn set_builder(args: &[Expr]) -> MathResult<Expr> {
     let x = var
         .as_sym()
         .ok_or_else(|| MathError::Unsupported(format!("a set-builder over {var}")))?;
+    if let Some(found) = equation_in_window(x, domain, cond) {
+        return found;
+    }
     let set = solve_inequality(cond, x)?;
     match domain.as_sym() {
         Some("ℤ" | "Z" | "ℕ" | "N") => {
@@ -573,6 +576,71 @@ fn set_builder(args: &[Expr]) -> MathResult<Expr> {
             Ok(set.intersection(&within)?.to_expr())
         }
     }
+}
+
+/// `{x ∈ ℝ : sin x = 0, 0 ≤ x ≤ 7}`: an equation whose solutions are kept inside the
+/// bounded interval that the other conditions (and the domain) give, so a periodic
+/// family becomes a finite list (`{0, π, 2π}`). `None` when the condition is not one
+/// equation with bounds.
+fn equation_in_window(x: &str, domain: &Expr, cond: &Expr) -> Option<MathResult<Expr>> {
+    use mpp_core::domains::intervals::solve_inequality;
+    use mpp_core::domains::solve::{solve, Range, Solutions};
+    use mpp_core::domains::RealSet;
+    fn conjuncts(e: &Expr, out: &mut Vec<Expr>) {
+        match e.node() {
+            ExprNode::Logic(mpp_core::LogicOp::And, parts) => {
+                parts.iter().for_each(|p| conjuncts(p, out));
+            }
+            _ => out.push(e.clone()),
+        }
+    }
+    let mut parts = Vec::new();
+    conjuncts(cond, &mut parts);
+    let (equations, bounds): (Vec<Expr>, Vec<Expr>) = parts
+        .into_iter()
+        .partition(|p| matches!(p.node(), ExprNode::Relation(mpp_core::RelOp::Eq, ..)));
+    let [equation] = equations.as_slice() else {
+        return None;
+    };
+    if matches!(domain.as_sym(), Some("ℤ" | "Z" | "ℕ" | "N")) {
+        return None;
+    }
+    let run = || -> MathResult<Expr> {
+        let mut within = if is_empty_tuple(domain) || matches!(domain.as_sym(), Some("ℝ" | "R")) {
+            RealSet::reals()
+        } else {
+            RealSet::from_expr(&as_real_set(domain))?
+        };
+        for b in &bounds {
+            within = within.intersection(&solve_inequality(b, x)?)?;
+        }
+        let range = match within.pieces() {
+            [p] if !p.lo.is_infinite() && !p.hi.is_infinite() => Some(Range {
+                lo: p.lo.clone(),
+                hi: p.hi.clone(),
+                lo_closed: p.lo_closed,
+                hi_closed: p.hi_closed,
+            }),
+            _ => None,
+        };
+        let mut ctx = mpp_core::domains::Ctx::new();
+        match solve(equation, x, range.as_ref(), &mut ctx)? {
+            Solutions::Finite { values, .. } => {
+                let mut kept = Vec::new();
+                for v in values {
+                    if within.contains(&v)? {
+                        kept.push(v);
+                    }
+                }
+                Ok(Expr::new(ExprNode::Set(kept)))
+            }
+            Solutions::All => Ok(within.to_expr()),
+            Solutions::Periodic { .. } => Err(MathError::Unsupported(
+                "listing infinitely many solutions (give bounds, as in 0 ≤ x ≤ 7)".into(),
+            )),
+        }
+    };
+    Some(run())
 }
 
 /// `A^c` and `A^\complement` for a set.

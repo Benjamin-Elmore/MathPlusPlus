@@ -82,6 +82,19 @@ pub(crate) fn adaptive(
     tol: f64,
     max_intervals: usize,
 ) -> MathResult<(f64, f64)> {
+    adaptive_at(f, a, b, tol, max_intervals, &|t| t)
+}
+
+/// [`adaptive`], with `place` turning a point of `[a, b]` into the point of the
+/// original variable that a message names (for an integral mapped onto `[0, 1]`).
+fn adaptive_at(
+    f: &mut dyn FnMut(f64) -> Option<f64>,
+    a: f64,
+    b: f64,
+    tol: f64,
+    max_intervals: usize,
+    place: &dyn Fn(f64) -> f64,
+) -> MathResult<(f64, f64)> {
     if a == b {
         return Ok((0.0, 0.0));
     }
@@ -125,7 +138,7 @@ pub(crate) fn adaptive(
     if let Some((l, r)) = bad.first() {
         return Err(MathError::Undetermined(format!(
             "whether the integral converges: the integrand is not finite near {}",
-            crate::number::format_f64(0.5 * (l + r), 6)
+            crate::number::format_f64(place(0.5 * (l + r)), 6)
         )));
     }
     loop {
@@ -177,7 +190,7 @@ pub(crate) fn adaptive(
             _ => {
                 return Err(MathError::Undetermined(format!(
                     "whether the integral converges: the integrand is not finite near {}",
-                    crate::number::format_f64(m, 6)
+                    crate::number::format_f64(place(m), 6)
                 )))
             }
         }
@@ -227,7 +240,9 @@ pub(crate) fn quad(
                     }
                     finite(f(x)).map(|y| y * dx)
                 };
-                adaptive(&mut g, 0.0, 1.0, tol, max_intervals)
+                adaptive_at(&mut g, 0.0, 1.0, tol, max_intervals, &|t| {
+                    a + w * t * t * (3.0 - 2.0 * t)
+                })
             } else {
                 adaptive(&mut |x| finite(f(x)), a, b, tol, max_intervals)
             }
@@ -240,7 +255,7 @@ pub(crate) fn quad(
                 let y = finite(f(x))?;
                 Some(if y == 0.0 { 0.0 } else { y / (s * s) })
             };
-            adaptive(&mut g, 0.0, 1.0, tol, max_intervals)
+            adaptive_at(&mut g, 0.0, 1.0, tol, max_intervals, &|t| a + t / (1.0 - t))
         }
         (false, true) => {
             // x = b − t/(1 − t)
@@ -250,7 +265,7 @@ pub(crate) fn quad(
                 let y = finite(f(x))?;
                 Some(if y == 0.0 { 0.0 } else { y / (s * s) })
             };
-            adaptive(&mut g, 0.0, 1.0, tol, max_intervals)
+            adaptive_at(&mut g, 0.0, 1.0, tol, max_intervals, &|t| b - t / (1.0 - t))
         }
         (false, false) => {
             // x = t/(1 − t²)
@@ -264,7 +279,9 @@ pub(crate) fn quad(
                     y * (1.0 + t * t) / (s * s)
                 })
             };
-            adaptive(&mut g, -1.0, 1.0, tol, max_intervals)
+            adaptive_at(&mut g, -1.0, 1.0, tol, max_intervals, &|t| {
+                t / (1.0 - t * t)
+            })
         }
     }
 }
@@ -280,10 +297,47 @@ pub fn numeric_integrate(f: &Expr, var: &str, a: f64, b: f64, tol: f64) -> MathR
     if let Some(other) = f.free_symbols().iter().find(|s| &***s != var) {
         return Err(MathError::UnboundVariable(other.to_string()));
     }
-    let mut env: BTreeMap<String, f64> = BTreeMap::new();
-    let mut g = |x: f64| {
-        env.insert(var.to_string(), x);
-        f.eval_f64(&env).ok()
-    };
+    let mut g = sampler(f, var, a, b);
     quad(&mut g, a, b, tol, MAX_INTERVALS)
+}
+
+/// The integrand of `∫_a^b f d(var)` as a function of one `f64`, `None` where it is not
+/// finite.
+///
+/// Far out on an infinite range `x/(e^x − 1)` can no longer be evaluated (e^x overflows)
+/// although it has long been negligible: past the point where it is already below 1e-100
+/// and then fails, a failed evaluation counts as 0.
+pub(crate) fn sampler<'a>(
+    f: &'a Expr,
+    var: &'a str,
+    a: f64,
+    b: f64,
+) -> impl FnMut(f64) -> Option<f64> + 'a {
+    let at = move |x: f64| {
+        let env: BTreeMap<String, f64> = [(var.to_string(), x)].into_iter().collect();
+        f.eval_f64(&env).ok().filter(|v| v.is_finite())
+    };
+    let negligible_past = |from: f64, dir: f64| {
+        let mut last_small = None;
+        for k in 0..1100 {
+            let x = from + dir * 2f64.powi(k);
+            match at(x) {
+                Some(v) if v.abs() < 1e-100 => last_small = Some(x),
+                Some(_) => last_small = None,
+                None => return last_small,
+            }
+        }
+        None
+    };
+    let up = (b == f64::INFINITY && a.is_finite())
+        .then(|| negligible_past(a.max(0.0), 1.0))
+        .flatten();
+    let down = (a == f64::NEG_INFINITY && b.is_finite())
+        .then(|| negligible_past(b.min(0.0), -1.0))
+        .flatten();
+    move |x: f64| match at(x) {
+        Some(v) => Some(v),
+        None if up.is_some_and(|c| x > c) || down.is_some_and(|c| x < c) => Some(0.0),
+        None => None,
+    }
 }

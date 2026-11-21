@@ -114,8 +114,14 @@ pub fn area_between(
     bounds: Option<(&Expr, &Expr)>,
     mut steps: Option<&mut Steps>,
 ) -> MathResult<Expr> {
+    let against_axis = g.is_none();
     let g = g.cloned().unwrap_or_else(Expr::zero);
     let h = sub(f, &g);
+    let what = if against_axis {
+        "the curve meets the axis"
+    } else {
+        "the curves cross"
+    };
     let (a, b) = match bounds {
         Some((a, b)) => (a.clone(), b.clone()),
         None => {
@@ -123,13 +129,13 @@ pub fn area_between(
             let (Some(first), Some(last)) = (crossings.first(), crossings.last()) else {
                 return Err(MathError::Domain {
                     function: "area".into(),
-                    detail: "the curves cross fewer than twice, so give an interval".into(),
+                    detail: format!("{what} nowhere, so give an interval"),
                 });
             };
             if crossings.len() < 2 {
                 return Err(MathError::Domain {
                     function: "area".into(),
-                    detail: "the curves cross only once, so give an interval".into(),
+                    detail: format!("{what} only once (at {var} = {first}), so give an interval"),
                 });
             }
             let listed: Vec<String> = crossings.iter().map(|c| c.to_string()).collect();

@@ -168,6 +168,11 @@ impl<'a> Lowerer<'a> {
     /// ODE solver reads as a condition, or `y` / `dy/dx` itself when `a` is the variable.
     fn unknown_fn_call(&mut self, key: &str, primes: u8, arg: &Node) -> LowerResult {
         let a = self.lower(arg)?;
+        // `y (1 - y)` in `y' = y (1 - y)`: a bracket that mentions `y` itself is not a
+        // point to evaluate `y` at, but a factor.
+        if primes == 0 && a.contains_sym(key) {
+            return Ok(Expr::sym(key) * a);
+        }
         if let Some(v) = a.as_sym() {
             if !self.scope.binding(v).is_some_and(|b| b.params().is_none()) {
                 let y = Expr::sym(key);
@@ -1502,6 +1507,15 @@ impl<'a> Lowerer<'a> {
             .collect::<Result<Vec<_>, _>>()?;
         crate::domains_wire::protect_ode_args(&op.name, &mut args);
         if op.sub.is_none() && op.sup.is_none() {
+            // `\operatorname{arcsec}(x)`, `\operatorname{arccosh}(x)`: the core's own
+            // function (so it can be differentiated and evaluated), not an unknown call.
+            let builtin =
+                Func::from_name(&op.name).is_some() || EXTRA_BUILTINS.contains(&op.name.as_str());
+            if builtin && self.scope.binding(&op.name).is_none() && !self.is_local(&op.name) {
+                if let Ok(e) = Expr::call(&op.name, args.clone()) {
+                    return Ok(e);
+                }
+            }
             return Ok(Expr::apply(&op.name, args));
         }
         let empty = || Expr::new(ExprNode::Tuple(Vec::new()));

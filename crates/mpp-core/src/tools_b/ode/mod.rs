@@ -263,10 +263,10 @@ pub fn solve_parsed(
             candidates.push(with_steps(c, local));
         }
     }
-    // A linear first-order equation has a complete explicit solution (the integrating
-    // factor), so it is tried before an implicit one g(x, y) = 0: RC V′ + V = V₀ is
-    // solved for V even though it is also separable.
-    if ode.order == 1 && ode.is_linear() {
+    // An explicit solution y = … is tried before an implicit one g(x, y) = 0: a linear
+    // equation has one from the integrating factor (RC V′ + V = V₀ is solved for V even
+    // though it is also separable), and the logistic y′ = y(1 − y) one from Bernoulli.
+    if ode.order == 1 {
         candidates
             .sort_by_key(|c| u8::from(matches!(c, Ok(c) if matches!(c.form, Form::Implicit(_)))));
     }

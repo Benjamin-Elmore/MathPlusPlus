@@ -7,7 +7,7 @@ use crate::printer::display_order;
 use crate::simplify::{add, mul, pow, simplify};
 use crate::steps::Steps;
 
-use super::{holder, parts, radical, rational, subst, table, trig};
+use super::{change, holder, parts, radical, rational, subst, table, trig};
 
 /// Deepest nesting of techniques inside one another.
 const MAX_DEPTH: usize = 28;
@@ -123,7 +123,7 @@ impl Integrator {
             return Some(result);
         }
         type Technique = fn(&mut Integrator, &Expr, &mut Steps) -> Option<Expr>;
-        let techniques: [Technique; 8] = [
+        let techniques: [Technique; 9] = [
             rational::partial_fractions,
             radical::quadratic_forms,
             trig::trig_forms,
@@ -132,6 +132,7 @@ impl Integrator {
             parts::by_parts,
             Integrator::expand_first,
             trig::hyperbolic_as_exponentials,
+            change::change_of_variable,
         ];
         for t in techniques {
             if let Some(r) = self.attempt(steps, |s, l| t(s, e, l)) {
