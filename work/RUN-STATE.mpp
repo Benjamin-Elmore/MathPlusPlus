@@ -17,6 +17,12 @@
   - **Pipeline tests:** 23 documents in `work/pipeline-tests/` (index in `index.mpp`): the Navier–Stokes proof test, 11 historic proofs and 11 simulation labs. Each lists its own expected results. They are acceptance tests for the whole queue: run them as items land, and M16 needs all of them passing with nothing skipped.
 - **Push after every commit (Ben, 2026-11-20):** every branch, including `wip/*`, is pushed to GitHub after each commit (see Run cycle step 2).
 - If you rewrite this file to update a State, keep this note, the N rows and the Parallel plan. When N1–N11 are all done, shorten this note to one line.
+
+**⚠ PR TO MAIN + RELEASE (Ben, 2026-11-21). Read this before finishing M17.** The stacked PRs #2–#11 merged into each other's branches, not `main` (GitHub only retargets a PR when its base branch is deleted, and these weren't). `main` only has PR #1.
+- **PR #12 is already open as a draft: `fix/validation` → `main`.** It replaces PR 7. **Don't open a PR from `fix/validation` to `feat/proofs`**, and don't open a second PR to `main`.
+- Keep merging each fix round into `fix/validation` and **push it after every merge**, so #12 always shows the latest fixes.
+- When the M17 fix loop is finished and the final report is written: update #12's description with the results (M16 numbers, M-VAL summary, Needs Ben), then mark it ready with `gh pr ready 12`. **Never merge it**: Ben merges.
+- **Release:** Ben chose a GitHub Release with both .exe files attached. A separate session publishes it **after Ben merges #12**: it builds `main` with `work/release/build.ps1` and creates release `v0.1.0` with `Math++.exe`, `mpp.exe` and the portable zip. **The queue doesn't tag, build for release, or publish anything.** Don't commit .exe files or `dist/`. Keep `[workspace.package] version = "0.1.0"`, and make sure `build.ps1 -NoMsi` works from a clean checkout of `fix/validation`.
 **Goal:** Math++ is an interpreted maths language written only in Rust and built with Cargo. A `.mpp` file reads like an academic paper: light prose markup with maths in it, and nothing that looks like code. The interpreter reads the file, keeps track of variables and functions, works out results (algebra, derivatives, integrals, series, limits) and draws 2D and 3D graphs. An IDE shows the typeset result live as you type and lets you jump between files you import.
 
 **Repo (Ben, 2026-11-20):** `https://github.com/Benjamin-Elmore/MathPlusPlus` (private, empty when cloned), cloned to `C:\Elmore\MathPP`. This queue lives in it at `work/RUN-STATE.mpp`.
@@ -46,7 +52,7 @@ Run end to end without prompting Ben, and park anything that needs him under Nee
 | 6b | `feat/docs-export` | N6–N8 formatted comments, paper feel, export to PDF/LaTeX/HTML (added while running) | `feat/ide-cli` |
 | 6c | `feat/ide-tools` | N9–N11 live in-place errors, IDE tools, Windows .exe, plus N13 tile manager and N14 maths font + dark mode (added while running) | `feat/docs-export` |
 | 6d | `feat/proofs` | N15 proofs, proof checker, Lean bridge and proof agent, plus the pipeline tests in `work/pipeline-tests/` (added while running) | `feat/ide-tools` |
-| 7 | `fix/validation` | M16–M17 checks + panel fixes | `feat/proofs` |
+| 7 → #12 | `fix/validation` | M16–M17 checks + panel fixes, and everything from PRs 2–6d (Ben, 2026-11-21: draft PR #12 already open) | `main` |
 
 ### Parallel plan (Ben, 2026-11-20: "work on multiple sections of the codebase at the same time")
 Added while the queue was running. It applies to every item not yet done. Done items and the stacked-PR layout above stay as they are.
@@ -255,5 +261,5 @@ Figure: $z = x^2 - y^2$, $x, y \in [-2, 2]$.                          3D surface
 - **Steps marker:** `= ?!` shows the working. Alternatives: a global "Show steps" toggle only, or `= ??`.
 - **Later fields (not in this queue):** probability and distributions, complex analysis (residues, contour integrals), proofs, differential geometry. (Units moved into the queue as N1, and basic distributions are in N5.) The `Domain` trait from M1 is where they would plug in. Ben additions: (add here)
 - **CSV data files (N5):** `.csv` files are allowed as data (imported with `Data: … from [[file.csv]]`, and used in the examples). The .mpp-only rule still covers every document, doc and note.
-- **Release (N11):** the installer and .exe are built and tested locally only. Publishing a GitHub Release, code signing (needs a certificate) and picking the first version number wait for Ben.
+- **Release (N11):** the installer and .exe are built and tested locally only. Publishing a GitHub Release, code signing (needs a certificate) and picking the first version number wait for Ben. **Settled (Ben, 2026-11-21):** release `v0.1.0`, published by a separate session after Ben merges #12 (see the note at the top). Signing still waits for Ben.
 - **Not added (offered 2026-11-20, Ben didn't pick):** CI with GitHub Actions. Equation numbers and cross-references were already in M4.
