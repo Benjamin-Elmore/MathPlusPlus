@@ -296,6 +296,9 @@ impl<'a> Lowerer<'a> {
                 if let Some(df) = self.total_differential(*op, lhs, rhs) {
                     return Ok(df);
                 }
+                if let Some(e) = self.ellipsis_chain(node)? {
+                    return Ok(e);
+                }
                 let a = self.lower(lhs)?;
                 let b = self.lower(rhs)?;
                 if let Some(m) = matrix_op(*op)
@@ -499,6 +502,9 @@ impl<'a> Lowerer<'a> {
                 return Ok(Expr::apply(&base, vec![index]));
             }
         }
+        if let Some(e) = self.indexed_member(n)? {
+            return Ok(e);
+        }
         let key = name_key(n).ok_or_else(|| {
             fail(
                 span,
@@ -560,6 +566,192 @@ impl<'a> Lowerer<'a> {
     }
 
     /// `\sum_i x_i` without bounds runs over every entry of the data column it indexes.
+    /// `1 + 2 + \dots + n`, `n + (n-1) + \dots + 1` and `p_1 p_2 \cdots p_k`: a sum or
+    /// product written with an ellipsis, read as the sum or product of its pattern.
+    /// The terms before the dots must be an arithmetic progression (numbers that differ
+    /// by a constant) or members of one indexed family with consecutive subscripts;
+    /// anything else stays unsupported. `None` when `node` has no ellipsis.
+    fn ellipsis_chain(&mut self, node: &Node) -> Result<Option<Expr>, Located> {
+        let NodeKind::Binary { op, .. } = &node.kind else {
+            return Ok(None);
+        };
+        let is_sum = match op {
+            BinOp::Add => true,
+            BinOp::Mul(_) => false,
+            _ => return Ok(None),
+        };
+        fn flatten<'n>(n: &'n Node, sum: bool, out: &mut Vec<&'n Node>) {
+            match &n.kind {
+                NodeKind::Binary {
+                    op: BinOp::Add,
+                    lhs,
+                    rhs,
+                } if sum => {
+                    flatten(lhs, sum, out);
+                    flatten(rhs, sum, out);
+                }
+                NodeKind::Binary {
+                    op: BinOp::Mul(_),
+                    lhs,
+                    rhs,
+                } if !sum => {
+                    flatten(lhs, sum, out);
+                    flatten(rhs, sum, out);
+                }
+                _ => out.push(n),
+            }
+        }
+        let mut terms = Vec::new();
+        flatten(node, is_sum, &mut terms);
+        let Some(at) = terms
+            .iter()
+            .position(|t| matches!(t.kind, NodeKind::Dots(_)))
+        else {
+            return Ok(None);
+        };
+        let unsupported = || {
+            fail(
+                node.span,
+                EvalError::Unsupported("this pattern with an ellipsis".into()),
+            )
+        };
+        let (before, after) = (&terms[..at], &terms[at + 1..]);
+        let ([first, second, ..], [last]) = (before, after) else {
+            return Err(unsupported());
+        };
+        let kind = if is_sum {
+            BigOpKind::Sum
+        } else {
+            BigOpKind::Product
+        };
+        let var = ["j", "k", "m", "r"]
+            .into_iter()
+            .find(|v| !self.is_bound_letter(v))
+            .ok_or_else(unsupported)?
+            .to_string();
+        // Members of an indexed family: p_1, p_2, …, p_k.
+        let member = |t: &Node| -> Option<(String, Node)> {
+            match &t.kind {
+                NodeKind::Name(n) if n.accent.is_none() => {
+                    n.sub.as_ref().map(|s| (base_key(n), (**s).clone()))
+                }
+                _ => None,
+            }
+        };
+        if let (Some((b1, s1)), Some((b2, s2)), Some((bl, sl))) =
+            (member(first), member(second), member(last))
+        {
+            if b1 == b2
+                && b1 == bl
+                && before
+                    .iter()
+                    .all(|t| member(t).is_some_and(|(b, _)| b == b1))
+            {
+                if self.scope.binding(&b1).is_some() || self.is_local(&b1) {
+                    return Err(unsupported());
+                }
+                let (i1, i2) = (self.lower(&s1)?, self.lower(&s2)?);
+                if !(i2.clone() - i1.clone()).simplify().is_one() {
+                    return Err(unsupported());
+                }
+                let upper = self.lower(&sl)?;
+                return Ok(Some(Expr::new(ExprNode::BigOp {
+                    kind,
+                    expr: Expr::apply(&b1, vec![Expr::sym(&var)]),
+                    var: var.as_str().into(),
+                    lower: i1,
+                    upper,
+                })));
+            }
+        }
+        // An arithmetic progression a, a + d, …, z: the terms a + j d, j = 0 … (z − a)/d.
+        let lowered: Vec<Expr> = before
+            .iter()
+            .map(|t| self.lower(t))
+            .collect::<Result<_, _>>()?;
+        let a = lowered[0].clone();
+        let d = (lowered[1].clone() - a.clone()).simplify();
+        let constant_step = d.as_number().is_some_and(|n| n.is_exact() && !n.is_zero());
+        let progression = lowered.windows(2).all(|w| {
+            (w[1].clone() - w[0].clone() - d.clone())
+                .simplify()
+                .is_zero()
+        });
+        if !constant_step || !progression {
+            return Err(unsupported());
+        }
+        let z = self.lower(last)?;
+        let count = ((z - a.clone()) / d.clone()).simplify();
+        // The last term must be reached: a whole, non-negative number of steps.
+        if let Some(n) = count.as_number() {
+            if n.as_i64().is_none_or(|k| k < 0) {
+                return Err(unsupported());
+            }
+        }
+        Ok(Some(Expr::new(ExprNode::BigOp {
+            kind,
+            expr: a + Expr::sym(&var) * d,
+            var: var.as_str().into(),
+            lower: Expr::zero(),
+            upper: count,
+        })))
+    }
+
+    /// The one index letter used as a subscript in `body` (`i` in `a_i b_i`), when it
+    /// is free here; `None` when there is none or several.
+    fn implied_index(&self, body: &Node) -> Option<String> {
+        fn walk(n: &Node, out: &mut Vec<String>) {
+            if let NodeKind::Name(name) = &n.kind {
+                if let Some(sub) = &name.sub {
+                    if let NodeKind::Name(s) = &sub.ungrouped().kind {
+                        if s.sub.is_none()
+                            && s.base.chars().count() == 1
+                            && s.accent.is_none()
+                            && !out.contains(&s.base)
+                        {
+                            out.push(s.base.clone());
+                        }
+                    }
+                }
+            }
+            mpp_syntax::math::visit::children(n, &mut |c| walk(c, out));
+        }
+        let mut found = Vec::new();
+        walk(body, &mut found);
+        match found.as_slice() {
+            [i] if !self.is_bound_letter(i) => Some(i.clone()),
+            _ => None,
+        }
+    }
+
+    /// `a_i` inside a sum over i, with neither `a_i` nor `a` defined: the i-th member
+    /// of the family a, written `a(i)` so that each term of the sum is its own value
+    /// (never `a_i` as one name repeated n times).
+    fn indexed_member(&mut self, n: &Name) -> Result<Option<Expr>, Located> {
+        let Some(sub) = &n.sub else {
+            return Ok(None);
+        };
+        let Some(index) = node_key(sub.ungrouped()) else {
+            return Ok(None);
+        };
+        if !self.is_local(&index) || n.accent.is_some() {
+            return Ok(None);
+        }
+        let base = base_key(n);
+        let key = name_key(n);
+        if base == index
+            || self.is_local(&base)
+            || self.scope.binding(&base).is_some()
+            || key
+                .as_ref()
+                .is_some_and(|k| self.scope.binding(k).is_some())
+        {
+            return Ok(None);
+        }
+        let i = self.lower(sub)?;
+        Ok(Some(Expr::apply(&base, vec![i])))
+    }
+
     fn data_bounds(&self, index: &str, body: &Node) -> Option<(Expr, Expr)> {
         let mut found = None;
         find_indexed(body, index, &mut |base| {
@@ -926,9 +1118,18 @@ impl<'a> Lowerer<'a> {
                 EvalError::Unsupported("a sum over a set".into()),
             ));
         }
-        let var = self.bound_name(op.index.as_ref(), span, "sum")?;
+        // `\sum a_i^2`: no index written; the subscript of an indexed family gives it,
+        // over its usual range i = 1, …, n.
+        let implied = op.index.is_none() && op.from.is_none() && op.to.is_none();
+        let var = match (implied, self.implied_index(&op.body)) {
+            (true, Some(i)) => i,
+            _ => self.bound_name(op.index.as_ref(), span, "sum")?,
+        };
         let (lower, upper) = match (&op.from, &op.to) {
             (Some(from), Some(to)) => (self.lower(from)?, self.lower(to)?),
+            (None, None) if implied && self.data_bounds(&var, &op.body).is_none() => {
+                (Expr::one(), Expr::sym("n"))
+            }
             _ => match (&op.from, &op.to, self.data_bounds(&var, &op.body)) {
                 (None, None, Some(bounds)) => bounds,
                 _ => {

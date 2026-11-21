@@ -37,6 +37,9 @@ impl Parser<'_> {
             Tok::Number(text) => {
                 self.bump();
                 let (text, end) = self.digit_groups(text, span);
+                if let Some(node) = self.digit_expansion(&text, span.join(end)) {
+                    return node;
+                }
                 Node::new(NodeKind::Number(text), span.join(end))
             }
             Tok::Letter(c) => {
@@ -252,6 +255,54 @@ impl Parser<'_> {
             _ => NodeKind::Symbol(sym.unicode),
         };
         Node::new(kind, span)
+    }
+
+    /// `0.d_1 d_2 d_3 \dots`: a decimal expansion with symbolic digits, written right
+    /// after a whole number and its point. It is read as one text node (prose
+    /// describing a number, with nothing to compute), so it is not a syntax error.
+    fn digit_expansion(&mut self, whole: &str, number: Span) -> Option<Node> {
+        if !whole.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let point = self.toks.get(self.pos).filter(|_| self.pos < self.stop)?;
+        if !matches!(point.kind, Tok::Period) || point.span.start != number.end {
+            return None;
+        }
+        let digit = self
+            .toks
+            .get(self.pos + 1)
+            .filter(|_| self.pos + 1 < self.stop)?;
+        let letter = match &digit.kind {
+            Tok::Letter(_) => true,
+            Tok::Sym(s) => s.kind == SymbolKind::Letter,
+            _ => false,
+        };
+        if !letter || digit.span.start != point.span.end {
+            return None;
+        }
+        self.bump();
+        let mut end = number.end;
+        // The digits: names (with subscripts) and dots, side by side.
+        loop {
+            let next = self.peek();
+            let more = match next {
+                Some(Tok::Letter(_)) => true,
+                Some(Tok::Sym(s)) => {
+                    s.kind == SymbolKind::Letter
+                        || (s.kind == SymbolKind::Misc
+                            && matches!(s.name, "dots" | "ldots" | "cdots"))
+                }
+                _ => false,
+            };
+            if !more {
+                break;
+            }
+            let part = self.parse_postfix();
+            end = part.span.end;
+        }
+        let span = Span::new(number.start, end);
+        let text = self.text(span).to_string();
+        Some(Node::new(NodeKind::Text(text), span))
     }
 
     /// `10\,000` and `1\,234\,567.5`: groups of three digits joined by a thin space
