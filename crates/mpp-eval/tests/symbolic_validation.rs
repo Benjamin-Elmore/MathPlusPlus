@@ -138,6 +138,43 @@ fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
 }
 
 #[test]
+fn standard_antiderivatives_by_a_change_of_variable() {
+    let cases = [
+        (
+            r"$$ \int \frac{1}{1 + e^x} \, dx = ? $$",
+            "x - ln(|e^x + 1|) + C",
+        ),
+        (
+            r"$$ \int \frac{1}{x^2 \sqrt{x^2 - 9}} \, dx = ? $$",
+            "√(x² - 9)/(9x) + C",
+        ),
+        (
+            r"$$ \int \frac{x}{\sqrt{1 - x^4}} \, dx = ? $$",
+            "asin(x²)/2 + C",
+        ),
+        (
+            r"$$ \int \frac{1}{2 + \cos x} \, dx = ? $$",
+            "2√3 atan(√3 tan(x/2)/3)/3 + C",
+        ),
+        (
+            r"$$ \int \cos(\ln x) \, dx = ? $$",
+            "(x sin(ln(x)) + x cos(ln(x)))/2 + C",
+        ),
+    ];
+    for (src, want) in cases {
+        assert_eq!(answer(src), want, "{src}");
+    }
+}
+
+#[test]
+fn a_bounded_improper_integrand_is_not_called_infinite() {
+    let ev = run(r"$$ \int_0^{\infty} \frac{x^3}{e^x - 1} \, dx \approx ? $$");
+    assert!(ev.errors().is_empty(), "{:?}", ev.errors());
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.approx.as_deref(), Some("6.493939402"));
+}
+
+#[test]
 fn x_to_the_x_is_not_direct_substitution() {
     let ev = run(r"$$ \lim_{x \to 0^+} x^{x} = ?! $$");
     let (_, line) = ev.queries().next().expect("a query");

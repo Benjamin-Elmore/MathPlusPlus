@@ -429,13 +429,9 @@ fn value_at(
 }
 
 fn numeric_pieces(e: &Expr, var: &str, points: &[(Expr, f64)]) -> MathResult<(f64, f64)> {
-    let mut env: BTreeMap<String, f64> = BTreeMap::new();
-    let mut g = |x: f64| {
-        env.insert(var.to_string(), x);
-        e.eval_f64(&env).ok()
-    };
     let (mut total, mut err) = (0.0, 0.0);
     for w in points.windows(2) {
+        let mut g = super::numeric::sampler(e, var, w[0].1, w[1].1);
         let (v, de) = quad(&mut g, w[0].1, w[1].1, DEFAULT_TOLERANCE, MAX_INTERVALS)?;
         total += v;
         err += de;
