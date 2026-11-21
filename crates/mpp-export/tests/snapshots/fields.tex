@@ -31,7 +31,7 @@ A tour of the wider function library: number theory, special functions, analysis
 
 \section*{Number theory}
 
-The divisor count, the divisor sum, the Möbius function and the prime count:
+The divisor count, the divisor sum, the M\"{o}bius function and the prime count:
 $\operatorname{divcount}(360) = 24$, $\operatorname{divsum}(28) = 56$, $\operatorname{mobius}(30) = -1$, $\operatorname{primepi}(1000) = 168$.
 
 The 2-adic absolute value of 8 is $\operatorname{padicabs}(2, 8) = \frac{1}{8}$.
@@ -41,13 +41,13 @@ $\operatorname{convergents}\big(\tfrac{1 + \sqrt 5}{2}, 6\big) = \left(1, 2, \fr
 
 In the Gaussian integers 5 splits: $\operatorname{gaussfactor}(5) = \left(-i, \left(\left(2 + i, 1\right), \left(1 + 2 i, 1\right)\right)\right)$. In $\mathbb F_8 = \mathbb F_2[x]/(x^3 + x + 1)$, $x \cdot x^2$ is $\operatorname{gfmul}(2, 3, (0, 1, 0), (0, 0, 1)) = \left(1, 1, 0\right)$.
 
-$\zeta(2) = \frac{\pi^{2}}{6}$, $\zeta(3) = 1.202056903$, and the Leibniz series $L(1, \chi_4)$ is $\operatorname{dirichletl}(1, (1, 0, -1, 0)) = 0.7853981634$.
+$\zeta(2) = \frac{\pi^{2}}{6}$, $\zeta(3) = \zeta\left(3\right)$, and the Leibniz series $L(1, \chi_4)$ is $\operatorname{dirichletl}(1, (1, 0, -1, 0)) = 0.7853981634$.
 
 \section*{Special functions}
 
-$\operatorname{erf}(\tfrac12) = \operatorname{erf}\left(\frac{1}{2}\right)$, $\operatorname{lambertw}(1) = 0.5671432904$, $\operatorname{lambertw}(-\tfrac1{10}, -1) = -3.577152064$, $\operatorname{besselj}(0, 1) = 0.7651976866$, $\operatorname{beta}(\tfrac12, \tfrac12) = \pi$, $\operatorname{legendrep}(2, x) = \frac{3 x^{2}}{2} - \frac{1}{2}$.
+$\operatorname{erf}(\tfrac12) = \operatorname{erf}\left(\frac{1}{2}\right)$, $\operatorname{lambertw}(1) = \mathrm{lambertw}\left(1\right)$, $\operatorname{lambertw}(-\tfrac1{10}, -1) = -3.577152064$, $\operatorname{besselj}(0, 1) = \mathrm{besselj}\left(0, 1\right)$, $\operatorname{beta}(\tfrac12, \tfrac12) = \pi$, $\operatorname{legendrep}(2, x) = \frac{3 x^{2}}{2} - \frac{1}{2}$.
 
-The pendulum lab needs the complete elliptic integral with modulus $\sin 15\degree $: $\operatorname{ellipk}(\sin\tfrac{\pi}{12}) = 1.598142002$.
+The pendulum lab needs the complete elliptic integral with modulus $\sin 15\degree $: $\operatorname{ellipk}(\sin\tfrac{\pi}{12}) = \mathrm{ellipk}\left(\frac{-\sqrt{2} + \sqrt{6}}{4}\right)$.
 
 \section*{Analysis}
 

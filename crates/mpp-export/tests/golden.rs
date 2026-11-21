@@ -717,7 +717,11 @@ fn accented_letters_and_reference_lists_read_well() {
     // TeX used to write `L'H?pital`.
     let tex = export_path(&f, Format::Tex, &ExportOptions::default()).unwrap();
     let tex = String::from_utf8(tex.main).unwrap();
-    assert!(tex.contains("L'Hôpital"), "{tex}");
+    assert!(
+        tex.contains("L'Hôpital") || tex.contains(r"L'H\^{o}pital"),
+        "{tex}"
+    );
+    assert!(!tex.contains("L'H?pital"), "{tex}");
     // The HTML reference list used to have a bullet before each `[1]`.
     let html = export_path(&f, Format::Html, &ExportOptions::default()).unwrap();
     let html = String::from_utf8(html.main).unwrap();
