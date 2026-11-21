@@ -300,7 +300,59 @@ fn fold_power(base: &Expr, exp: &Expr) -> MathResult<Folded> {
     }
 }
 
+/// The value of a concentration (amount per volume) in mol/L: the chemists' convention
+/// for its logarithm (`pH = −log₁₀[H⁺]`, with `[H⁺]` in mol/L). `None` when `q` is
+/// not a concentration.
+fn concentration_in_mol_per_litre(q: &Quantity) -> Option<Expr> {
+    let mol_per_litre = parse_unit("mol/L").ok()?;
+    if q.unit.dimension() != mol_per_litre.dimension() {
+        return None;
+    }
+    q.convert_to(&mol_per_litre)
+        .ok()
+        .map(|c| c.value.simplify())
+}
+
+/// What a logarithm of a concentration means, for the hover.
+pub const LOG_OF_CONCENTRATION: &str =
+    "the logarithm of a concentration is taken of its value in mol/L";
+
+/// True when `e` takes a logarithm of a concentration somewhere.
+pub fn has_log_of_concentration(e: &Expr) -> bool {
+    match e.node() {
+        ExprNode::Func(Func::Ln | Func::Log, args) => {
+            matches!(
+                args.first().map(fold),
+                Some(Ok(Folded::Known { ref q, certain: true, .. }))
+                    if concentration_in_mol_per_litre(q).is_some()
+            ) || args.iter().any(has_log_of_concentration)
+        }
+        _ => e.children().into_iter().any(has_log_of_concentration),
+    }
+}
+
 fn fold_function(f: Func, args: &[Expr]) -> MathResult<Folded> {
+    // `log₁₀ c` of a concentration: the logarithm of its value in mol/L.
+    if let (Func::Ln | Func::Log, Some(arg)) = (f, args.first()) {
+        if let Folded::Known {
+            q, certain: true, ..
+        } = fold(arg)?
+        {
+            if let Some(value) = concentration_in_mol_per_litre(&q) {
+                let mut plain = vec![value];
+                for base in &args[1..] {
+                    let Folded::Known { q, certain, .. } = fold(base)? else {
+                        return Ok(Folded::Unknown);
+                    };
+                    plain.push(q.require_dimensionless("the base of a logarithm")?);
+                    if !certain {
+                        return Ok(Folded::Unknown);
+                    }
+                }
+                return Ok(known(Quantity::number(Expr::func(f, plain)?), true));
+            }
+        }
+    }
     let [arg] = args else {
         // min, max, gcd … of quantities: every argument in one dimension.
         return fold_many(f, args);

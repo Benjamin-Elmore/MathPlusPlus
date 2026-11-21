@@ -207,3 +207,54 @@ fn the_parser_and_the_core_agree_on_unit_names() {
         assert_eq!(is_unit_name(&n), is_unit(&n), "`{n}`");
     }
 }
+
+fn plain_answers(src: &str) -> Vec<String> {
+    run(src)
+        .queries()
+        .map(|(_, l)| l.plain.clone().unwrap_or_default())
+        .collect()
+}
+
+#[test]
+fn a_single_solve_root_is_a_value() {
+    let src = r"$$ n(V) := 2\,\mathrm{mol/L} \cdot V $$
+
+$$ V_e := \operatorname{solve}_{V} \big(n(V) = 1\,\mathrm{mol}\big) $$
+
+$$ 2 V_e = ? $$";
+    assert_eq!(answer(src), "1 L");
+    // Two roots stay a set: there is no single value to compute with.
+    let src = r"$$ r := \operatorname{solve}_x (x^2 = 4) $$
+
+$$ r = ? $$";
+    assert_eq!(plain_answers(src), vec!["{-2, 2}".to_string()]);
+}
+
+#[test]
+fn piecewise_conditions_compare_quantities() {
+    let src = r"$$ f(V) := \begin{cases} 1 & V < 25\,\mathrm{mL} \\ 2 & V = 25\,\mathrm{mL} \\ 3 & V > 25\,\mathrm{mL} \end{cases} $$
+
+$$ f(0) = ? \qquad f(12.5\,\mathrm{mL}) = ? \qquad f(0.025\,\mathrm{L}) = ? \qquad f(1\,\mathrm{L}) = ? $$";
+    assert_eq!(answers(src), vec!["1", "1", "2", "3"]);
+    // Different kinds are never compared: the case stays undecided.
+    let src = r"$$ g(t) := \begin{cases} 1 & t < 2\,\mathrm{s} \\ 0 & t \ge 2\,\mathrm{s} \end{cases} $$
+
+$$ g(3\,\mathrm{m}) = ? $$";
+    let shown = plain_answers(src);
+    assert!(shown.iter().all(|p| p != "1" && p != "0"), "{shown:?}");
+}
+
+#[test]
+fn the_log_of_a_concentration_is_of_its_value_in_mol_per_litre() {
+    let src = r"$$ c := 0.001\,\mathrm{mol/L} $$
+
+$$ -\log_{10} c = ? \qquad -\log_{10}(1\,\mathrm{mmol/mL}) = ? $$";
+    assert_eq!(answers(src), vec!["3", "0"]);
+    assert!(run(src)
+        .all_diagnostics()
+        .iter()
+        .any(|d| d.message.contains("value in mol/L")));
+    // Any other dimension is still an error.
+    let (msg, _) = failure(r"$$ \ln(2\,\mathrm{m}) = ? $$");
+    assert!(msg.contains("dimensionless"), "{msg}");
+}

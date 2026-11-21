@@ -199,6 +199,24 @@ fn with_locals(e: Expr, locals: &Locals, skip: &[String]) -> Expr {
     }
 }
 
+/// The one root when `input` is a `\operatorname{solve}` of a single unknown and its
+/// value is a set with exactly one element.
+fn single_root(input: &Expr, value: &Expr) -> Option<Expr> {
+    let ExprNode::Apply(name, args) = input.node() else {
+        return None;
+    };
+    let [which, sub, ..] = args.as_slice() else {
+        return None;
+    };
+    if &**name != "operatorname" || which.as_sym() != Some("solve") || sub.as_sym().is_none() {
+        return None;
+    }
+    match value.node() {
+        ExprNode::Set(items) if items.len() == 1 => items.first().cloned(),
+        _ => None,
+    }
+}
+
 /// The span of the first use of the name `key` inside `node`.
 fn find_name(node: &Node, key: &str) -> Option<Span> {
     if node_key(node).as_deref() == Some(key) {
@@ -707,8 +725,15 @@ impl Run<'_, '_> {
             Ok(v) => v,
             Err(err) => return self.error(body.span, err),
         };
+        // `V_eq := \operatorname{solve}_{V_b}(…)` with exactly one root: the name is that
+        // root, a value later lines can compare and compute with (several roots keep
+        // the set, which is no single value).
+        let (shown, single_root) = match single_root(&value, &shown) {
+            Some(root) => (root, true),
+            None => (shown, false),
+        };
         // A definition that reaches its own old value (`x := x + 1`) is a snapshot.
-        let snapshot = kind == DefKind::Const || resolved.touched.contains(key);
+        let snapshot = kind == DefKind::Const || resolved.touched.contains(key) || single_root;
         let (var_kind, def_kind) = match kind {
             DefKind::Assign => (VarKind::Variable, DefinitionKind::Variable),
             DefKind::Const => (VarKind::Constant, DefinitionKind::Constant),
@@ -1061,6 +1086,12 @@ impl Run<'_, '_> {
             self.warn(expr.span, note.clone());
         }
         let raw = resolved.value.clone();
+        if raw
+            .as_ref()
+            .is_ok_and(crate::units_wire::has_log_of_concentration)
+        {
+            self.warn(expr.span, crate::units_wire::LOG_OF_CONCENTRATION);
+        }
         let value = match raw.and_then(|v| self.finish_logged(v, resolved.steps.as_mut())) {
             Ok(v) => v,
             Err(err) => {

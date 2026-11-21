@@ -537,6 +537,34 @@ impl<'a> Resolver<'a> {
     }
 }
 
+/// Decides `a op b` for two quantities (`12.5 mL < 25 mL`): both sides are read as
+/// known quantities of one kind and compared in SI units (a bare 0 compares with any
+/// kind). Sides of different kinds (`2 s < 3 m`), with names whose units are unknown,
+/// or temperatures on a scale, are not decided.
+fn decide_quantities(op: RelOp, a: &Expr, b: &Expr) -> Option<bool> {
+    let si = |e: &Expr| -> Option<(Expr, Option<mpp_core::units::Dimension>)> {
+        let crate::units_wire::Folded::Known { q, certain, .. } =
+            crate::units_wire::fold(e).ok()?
+        else {
+            return None;
+        };
+        if !certain || q.unit.offset().is_some() {
+            return None;
+        }
+        let v = (q.value.clone() * q.unit.scale()).simplify();
+        let dim = (!v.is_zero()).then(|| q.unit.dimension());
+        Some((v, dim))
+    };
+    let (x, dx) = si(a)?;
+    let (y, dy) = si(b)?;
+    if let (Some(dx), Some(dy)) = (&dx, &dy) {
+        if dx != dy {
+            return None;
+        }
+    }
+    decide(&Expr::relation(op, x, y))
+}
+
 /// Decides a condition whose sides are known numbers.
 pub fn decide(cond: &Expr) -> Option<bool> {
     match cond.node() {
@@ -554,6 +582,9 @@ pub fn decide(cond: &Expr) -> Option<bool> {
                     RelOp::Gt => sign == Greater,
                     RelOp::Ge => sign != Less,
                 });
+            }
+            if crate::units_wire::contains_units(&diff) {
+                return decide_quantities(*op, a, b);
             }
             if !(a.is_constant() && b.is_constant()) {
                 return None;
