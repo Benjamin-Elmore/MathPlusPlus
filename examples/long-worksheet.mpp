@@ -1,0 +1,299 @@
+# Long worksheet
+
+A realistic worksheet: prose, definitions, calculus and a figure, repeated over many sections. It is used to time live editing.
+
+## Section 1
+
+Let $a_{1} := 2$ and $b_{1} := 3$. The next lines use them.
+
+$$ a_{1} b_{1} + a_{1}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{3} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{3}}{x^2 + 2} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{3} x^{3} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(3 x)}{x} = ? $$
+
+## Section 2
+
+Let $a_{2} := 3$ and $b_{2} := 4$. The next lines use them.
+
+$$ a_{2} b_{2} + a_{2}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{4} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{4}}{x^2 + 3} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{4} x^{4} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(4 x)}{x} = ? $$
+
+## Section 3
+
+Let $a_{3} := 4$ and $b_{3} := 5$. The next lines use them.
+
+$$ a_{3} b_{3} + a_{3}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{5} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{5}}{x^2 + 4} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{5} x^{5} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(5 x)}{x} = ? $$
+
+## Section 4
+
+Let $a_{4} := 5$ and $b_{4} := 6$. The next lines use them.
+
+$$ a_{4} b_{4} + a_{4}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{6} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{6}}{x^2 + 5} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{6} x^{6} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(6 x)}{x} = ? $$
+
+## Section 5
+
+Let $a_{5} := 6$ and $b_{5} := 2$. The next lines use them.
+
+$$ a_{5} b_{5} + a_{5}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{2} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{2}}{x^2 + 6} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{2} x^{2} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(2 x)}{x} = ? $$
+
+## Section 6
+
+Let $a_{6} := 7$ and $b_{6} := 3$. The next lines use them.
+
+$$ a_{6} b_{6} + a_{6}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{3} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{3}}{x^2 + 7} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{3} x^{3} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(3 x)}{x} = ? $$
+
+## Section 7
+
+Let $a_{7} := 8$ and $b_{7} := 4$. The next lines use them.
+
+$$ a_{7} b_{7} + a_{7}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{4} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{4}}{x^2 + 8} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{4} x^{4} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(4 x)}{x} = ? $$
+
+## Section 8
+
+Let $a_{8} := 9$ and $b_{8} := 5$. The next lines use them.
+
+$$ a_{8} b_{8} + a_{8}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{5} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{5}}{x^2 + 9} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{5} x^{5} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(5 x)}{x} = ? $$
+
+## Section 9
+
+Let $a_{9} := 10$ and $b_{9} := 6$. The next lines use them.
+
+$$ a_{9} b_{9} + a_{9}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{6} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{6}}{x^2 + 10} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{6} x^{6} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(6 x)}{x} = ? $$
+
+## Section 10
+
+Let $a_{10} := 11$ and $b_{10} := 2$. The next lines use them.
+
+$$ a_{10} b_{10} + a_{10}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{2} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{2}}{x^2 + 11} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{2} x^{2} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(2 x)}{x} = ? $$
+
+## Section 11
+
+Let $a_{11} := 12$ and $b_{11} := 3$. The next lines use them.
+
+$$ a_{11} b_{11} + a_{11}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{3} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{3}}{x^2 + 12} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{3} x^{3} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(3 x)}{x} = ? $$
+
+## Section 12
+
+Let $a_{12} := 13$ and $b_{12} := 4$. The next lines use them.
+
+$$ a_{12} b_{12} + a_{12}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{4} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{4}}{x^2 + 13} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{4} x^{4} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(4 x)}{x} = ? $$
+
+## Section 13
+
+Let $a_{13} := 14$ and $b_{13} := 5$. The next lines use them.
+
+$$ a_{13} b_{13} + a_{13}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{5} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{5}}{x^2 + 14} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{5} x^{5} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(5 x)}{x} = ? $$
+
+## Section 14
+
+Let $a_{14} := 15$ and $b_{14} := 6$. The next lines use them.
+
+$$ a_{14} b_{14} + a_{14}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{6} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{6}}{x^2 + 15} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{6} x^{6} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(6 x)}{x} = ? $$
+
+## Section 15
+
+Let $a_{15} := 16$ and $b_{15} := 2$. The next lines use them.
+
+$$ a_{15} b_{15} + a_{15}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{2} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{2}}{x^2 + 16} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{2} x^{2} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(2 x)}{x} = ? $$
+
+## Section 16
+
+Let $a_{16} := 17$ and $b_{16} := 3$. The next lines use them.
+
+$$ a_{16} b_{16} + a_{16}^2 = ? $$
+
+Differentiate a product and a quotient:
+
+$$ \frac{d}{dx} \left( x^{3} \sin x \right) = ? $$
+
+$$ \frac{d}{dx} \frac{x^{3}}{x^2 + 17} = ? $$
+
+Then integrate over a range:
+
+$$ \int_0^{3} x^{3} e^{-x} \, dx = ? $$
+
+$$ \lim_{x \to 0} \frac{\sin(3 x)}{x} = ? $$
+
+The figure below compares the two curves used in the sections above.
+
+A closing note: every result on this page is worked out live as you type.
+
+## Figure
+
+Figure: $\sin x$, $x^2 / 10$, $x \in [-4, 4]$. A sine wave against a parabola.
