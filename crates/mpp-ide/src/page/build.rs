@@ -1613,7 +1613,10 @@ fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState) -> Extras {
         }
         match &v.kind {
             LineKind::Query { mode, steps } => {
-                if let (QueryMode::Approx, Some(a)) = (mode, &approx) {
+                // An exact answer that only repeats the question (`ζ(3) = ζ(3)`)
+                // gives way to its decimal, as `≈ ?` would show it.
+                let decimal = *mode == QueryMode::Approx || v.shows_decimal_only();
+                if let (true, Some(a)) = (decimal, &approx) {
                     ex.results.push(LineResult {
                         relation: Some(RelOp::Approx),
                         ..LineResult::filled(i, a.clone())
@@ -2008,6 +2011,44 @@ mod tests {
             prose_latex("power rule on u^2 with u = x + 1"),
             r"\text{power rule on}\; u^{2} \;\text{with}\; u = x + 1"
         );
+    }
+
+    /// The result boxes of the first maths block of `src`, evaluated.
+    fn results_of(src: &str) -> Vec<(String, Option<RelOp>)> {
+        let mut session = mpp_eval::Session::new();
+        let ev = session.update(src).clone();
+        let b = ev
+            .document
+            .blocks
+            .iter()
+            .find(|b| matches!(b.kind, BlockKind::DisplayMath(_)))
+            .expect("maths block");
+        let BlockKind::DisplayMath(m) = &b.kind else {
+            unreachable!()
+        };
+        let br = ev.block(b.id).expect("evaluated");
+        extras_for(br, m, &ShowState::default())
+            .results
+            .into_iter()
+            .map(|r| match r.value {
+                mpp_render::ResultValue::Latex(l) => (l, r.relation),
+                mpp_render::ResultValue::Node(_) => (String::new(), r.relation),
+            })
+            .collect()
+    }
+
+    #[test]
+    fn an_unsimplified_special_value_shows_its_decimal_not_itself() {
+        // `ζ(3) = ζ(3)` says nothing: the decimal takes the exact answer's place.
+        let r = results_of("$$ \\zeta(3) = ? $$\n");
+        assert_eq!(r, vec![("1.202056903".to_string(), Some(RelOp::Approx))]);
+        let r = results_of("$$ J_0(1) = ? $$\n");
+        assert_eq!(r, vec![("0.7651976866".to_string(), Some(RelOp::Approx))]);
+        // A real closed form is still the exact answer, with its decimal beside it.
+        let r = results_of("$$ \\zeta(2) = ? $$\n");
+        assert_eq!(r.len(), 1);
+        assert!(r[0].0.starts_with(r"\frac{\pi^{2}}{6}"), "{r:?}");
+        assert_eq!(r[0].1, None);
     }
 
     fn page_for(src: &str) -> Page {

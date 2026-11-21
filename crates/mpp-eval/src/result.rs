@@ -219,6 +219,35 @@ impl LineResult {
         }
     }
 
+    /// True when an exact query got no simplification at all (`ζ(3) = ?`, `J₀(1) = ?`):
+    /// the exact text only repeats what was asked, so writing it would show a tautology
+    /// (`ζ(3) = ζ(3)`). The answer is then the decimal, shown with `≈` everywhere: in
+    /// `mpp run`, the editor and every export.
+    pub fn shows_decimal_only(&self) -> bool {
+        if self.verdict.is_some() || self.approx.is_none() {
+            return false;
+        }
+        if !matches!(
+            self.kind,
+            LineKind::Helper
+                | LineKind::Query {
+                    mode: QueryMode::Exact,
+                    ..
+                }
+        ) {
+            return false;
+        }
+        let plain = self.plain.as_ref().or(self.text.as_ref());
+        match (plain, &self.input) {
+            (None, _) => true,
+            // The lowered input is already simplified (`√8` lowers to `2√2`), so an
+            // exact closed form built from numbers, constants and powers is never
+            // "unchanged": `= ?` keeps it.
+            (Some(t), Some(input)) => *t == input.to_string() && !self.is_closed_form(),
+            (Some(_), None) => false,
+        }
+    }
+
     /// The answer as one line of text (`= 2`, `≈ 1.414213562`, `✓ …`).
     pub fn answer(&self) -> Option<String> {
         if let Some(v) = &self.verdict {
@@ -233,6 +262,7 @@ impl LineResult {
                 _,
                 Some(a),
             ) => Some(format!("≈ {a}")),
+            (_, _, Some(a)) if self.shows_decimal_only() => Some(format!("≈ {a}")),
             (_, Some(t), Some(a)) if t != a => Some(format!("= {t} ≈ {a}")),
             (_, Some(t), _) => Some(format!("= {t}")),
             (_, None, Some(a)) => Some(format!("≈ {a}")),

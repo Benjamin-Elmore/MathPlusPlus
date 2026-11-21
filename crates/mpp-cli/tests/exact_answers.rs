@@ -39,3 +39,20 @@ fn unevaluated_calls_still_fall_back_to_a_decimal() {
     );
     assert_eq!(report(r"$$ \zeta(3) = ? $$"), "ζ(3) ≈ 1.202056903");
 }
+
+#[test]
+fn the_one_line_answer_of_an_unsimplified_value_is_its_decimal() {
+    // The editor's report, `mpp calc` and the kept answer all read the one-line answer:
+    // `= ζ(3) ≈ 1.202056903` would repeat the question, so it is the decimal alone.
+    let answer = |src: &str| {
+        let ev = Session::new()
+            .with_importer(Arc::new(NoImports))
+            .run_str(src)
+            .clone();
+        let (_, line) = ev.queries().next().expect("a query");
+        line.answer().expect("an answer")
+    };
+    assert_eq!(answer(r"$$ \zeta(3) = ? $$"), "≈ 1.202056903");
+    assert_eq!(answer(r"$$ J_0(1) = ? $$"), "≈ 0.7651976866");
+    assert_eq!(answer(r"$$ \zeta(2) = ? $$"), "= π²/6 ≈ 1.644934067");
+}

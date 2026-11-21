@@ -130,14 +130,7 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
     // there is no exact text, or the exact text only repeats what was asked
     // (`erf(1/2) = erf(1/2)`).
     let plain_text = line.plain.clone().or_else(|| line.text.clone());
-    // The lowered input is already simplified (`√8` lowers to `2√2`), so an exact closed
-    // form built from numbers, constants and powers is never "unchanged": `= ?` keeps it.
-    let unchanged = match (&plain_text, &line.input) {
-        (Some(t), Some(input)) => *t == input.to_string() && !line.is_closed_form(),
-        _ => false,
-    };
-    let numeric_fallback =
-        !approx_query && line.approx.is_some() && (line.text.is_none() || unchanged);
+    let numeric_fallback = !approx_query && line.shows_decimal_only();
     let (shown, plain) = if approx_query || numeric_fallback {
         let a = line.approx.clone();
         (
