@@ -916,6 +916,23 @@ pub fn find_lake() -> Option<PathBuf> {
         .find_map(|dir| names.iter().map(|n| dir.join(n)).find(|p| p.is_file()))
 }
 
+/// [`find_lake`] remembered for a few seconds, for code that asks on every repaint.
+pub fn find_lake_cached() -> Option<PathBuf> {
+    use std::sync::Mutex;
+    static CACHE: Mutex<Option<(Instant, Option<PathBuf>)>> = Mutex::new(None);
+    let mut cache = CACHE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    match cache.as_ref() {
+        Some((at, found)) if at.elapsed() < Duration::from_secs(10) => found.clone(),
+        _ => {
+            let found = find_lake();
+            *cache = Some((Instant::now(), found.clone()));
+            found
+        }
+    }
+}
+
 /// Writes the export into `dir` and runs `lake build` there.
 pub fn build(
     export: &LeanExport,
@@ -926,34 +943,57 @@ pub fn build(
     export
         .write(dir)
         .map_err(|e| LakeError::Io(e.to_string()))?;
-    let mut child = Command::new(lake)
-        .arg("build")
-        .current_dir(dir)
+    let mut command = Command::new(lake);
+    command.arg("build").current_dir(dir);
+    let (success, log) = run_capturing(&mut command, config.timeout)?;
+    let file = format!("{}.lean", export.module.replace('.', "/"));
+    Ok(parse_lake_output(&log, &file, success))
+}
+
+/// Runs `command` and returns whether it succeeded and its stdout then stderr text.
+///
+/// Both pipes are read on their own threads while the child runs: a child that prints
+/// more than a pipe holds would otherwise block on its write and look like a time-out.
+/// A child still running after `timeout` is killed.
+fn run_capturing(command: &mut Command, timeout: Duration) -> Result<(bool, String), LakeError> {
+    use std::io::Read;
+    let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|e| LakeError::Io(e.to_string()))?;
+    fn drain(pipe: Option<impl Read + Send + 'static>) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut bytes = Vec::new();
+            if let Some(mut pipe) = pipe {
+                let _ = pipe.read_to_end(&mut bytes);
+            }
+            bytes
+        })
+    }
+    let out = drain(child.stdout.take());
+    let err = drain(child.stderr.take());
     let start = Instant::now();
-    loop {
+    let status = loop {
         match child.try_wait() {
-            Ok(Some(_)) => break,
+            Ok(Some(status)) => break status,
             Ok(None) => {
-                if start.elapsed() > config.timeout {
+                if start.elapsed() > timeout {
                     let _ = child.kill();
+                    let _ = child.wait();
+                    // The pipes close with the child, so the readers end by themselves.
+                    let _ = out.join();
+                    let _ = err.join();
                     return Err(LakeError::TimedOut);
                 }
-                std::thread::sleep(Duration::from_millis(200));
+                std::thread::sleep(Duration::from_millis(20));
             }
             Err(e) => return Err(LakeError::Io(e.to_string())),
         }
-    }
-    let out = child
-        .wait_with_output()
-        .map_err(|e| LakeError::Io(e.to_string()))?;
-    let mut log = String::from_utf8_lossy(&out.stdout).to_string();
-    log.push_str(&String::from_utf8_lossy(&out.stderr));
-    let file = format!("{}.lean", export.module.replace('.', "/"));
-    Ok(parse_lake_output(&log, &file, out.status.success()))
+    };
+    let mut log = String::from_utf8_lossy(&out.join().unwrap_or_default()).to_string();
+    log.push_str(&String::from_utf8_lossy(&err.join().unwrap_or_default()));
+    Ok((status.success(), log))
 }
 
 /// Reads `error:` lines that point into `file` (`MppProof/X.lean:12:4: error: …`).
@@ -1036,5 +1076,42 @@ mod tests {
         let log = "info: building\nMppProof/Gauss.lean:12:4: error: unsolved goals\nMppProof/Gauss.lean:20:2: warning: declaration uses 'sorry'\n";
         let o = parse_lake_output(log, "MppProof/Gauss.lean", false);
         assert_eq!(o.errors, vec![(12, "error: unsolved goals".to_string())]);
+    }
+
+    /// Not a test by itself: the child process of `output_bigger_than_a_pipe_is_read`
+    /// runs it with the environment variable set and prints a lot.
+    #[test]
+    fn flood_child() {
+        if std::env::var_os("MPP_FLOOD_CHILD").is_none() {
+            return;
+        }
+        let line = "x".repeat(99);
+        for _ in 0..20_000 {
+            println!("{line}");
+            eprintln!("{line}");
+        }
+    }
+
+    #[test]
+    fn output_bigger_than_a_pipe_is_read() {
+        let me = std::env::current_exe().expect("test binary");
+        let mut command = Command::new(me);
+        command
+            .args(["flood_child", "--nocapture"])
+            .env("MPP_FLOOD_CHILD", "1");
+        let (ok, log) = run_capturing(&mut command, Duration::from_secs(60))
+            .expect("the child must finish instead of blocking on a full pipe");
+        assert!(ok);
+        assert!(log.len() > 3_000_000, "only {} bytes read", log.len());
+    }
+
+    #[test]
+    fn a_child_that_runs_too_long_is_killed() {
+        let me = std::env::current_exe().expect("test binary");
+        let mut command = Command::new(me);
+        command.args(["--list"]).env("MPP_FLOOD_CHILD", "1");
+        // Listing is quick, so a zero time-out only has to be handled, never hang.
+        let r = run_capturing(&mut command, Duration::ZERO);
+        assert!(matches!(r, Ok(_) | Err(LakeError::TimedOut)));
     }
 }

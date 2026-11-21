@@ -636,7 +636,7 @@ impl ProofUi {
                     if ui.button("Export to Lean\u{2026}").clicked() {
                         actions.push(ProofAction::ExportLean);
                     }
-                    if lean::find_lake().is_none() {
+                    if lean::find_lake_cached().is_none() {
                         ui.weak("Lean is not installed, so nothing is built here.");
                     }
                 });
