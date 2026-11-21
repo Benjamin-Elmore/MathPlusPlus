@@ -19,7 +19,10 @@ use mpp_syntax::Span;
 use template::shift_range;
 pub use template::{likely_variable, parse_snippet, Knobs, Session, Snippet, TBox};
 
+/// Most undo steps kept.
 const HISTORY_LIMIT: usize = 500;
+/// Most bytes the undo steps may keep (older steps are dropped past this).
+const HISTORY_BYTES: usize = 8 << 20;
 /// At most this many templates are tracked at once (the oldest are forgotten).
 const SESSION_LIMIT: usize = 64;
 
@@ -30,9 +33,79 @@ enum EditKind {
     Other,
 }
 
+/// The text of an undo step. The step nearest the current state keeps its whole
+/// text; every other step keeps only how it differs from its neighbour nearer the
+/// current state, so a long history of small edits costs little memory.
+#[derive(Debug, Clone)]
+enum Stored {
+    Full(String),
+    /// This step's text is the neighbour's with `neighbour[start..start + inserted]`
+    /// replaced by `removed`.
+    Delta {
+        start: usize,
+        removed: String,
+        inserted: usize,
+    },
+}
+
+impl Stored {
+    /// How `this` differs from `neighbour`.
+    fn delta(this: &str, neighbour: &str) -> Stored {
+        let mut start = this
+            .bytes()
+            .zip(neighbour.bytes())
+            .take_while(|(a, b)| a == b)
+            .count();
+        while !this.is_char_boundary(start) {
+            start -= 1;
+        }
+        let room = this.len().min(neighbour.len()) - start;
+        let mut tail = this
+            .bytes()
+            .rev()
+            .zip(neighbour.bytes().rev())
+            .take(room)
+            .take_while(|(a, b)| a == b)
+            .count();
+        while !this.is_char_boundary(this.len() - tail) {
+            tail -= 1;
+        }
+        Stored::Delta {
+            start,
+            removed: this[start..this.len() - tail].to_string(),
+            inserted: neighbour.len() - tail - start,
+        }
+    }
+
+    /// The whole text, given the neighbour's.
+    fn text_from(&self, neighbour: &str) -> String {
+        match self {
+            Stored::Full(t) => t.clone(),
+            Stored::Delta {
+                start,
+                removed,
+                inserted,
+            } => {
+                let mut t = String::with_capacity(neighbour.len() + removed.len());
+                t.push_str(&neighbour[..*start]);
+                t.push_str(removed);
+                t.push_str(&neighbour[start + inserted..]);
+                t
+            }
+        }
+    }
+
+    fn bytes(&self) -> usize {
+        match self {
+            Stored::Full(t) => t.len(),
+            Stored::Delta { removed, .. } => removed.len() + 16,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct Snapshot {
-    text: String,
+    text: Stored,
     caret: usize,
     sessions: Vec<Session>,
     /// When this state was reached (none: as the file was opened).
@@ -40,18 +113,52 @@ struct Snapshot {
 }
 
 impl Snapshot {
-    fn state(&self) -> HistoryState<'_> {
-        HistoryState {
-            text: &self.text,
-            when: self.when,
+    fn full(&self) -> &str {
+        match &self.text {
+            Stored::Full(t) => t,
+            Stored::Delta { .. } => unreachable!("the nearest step keeps its whole text"),
         }
     }
 }
 
+/// Pushes a step that keeps its whole text; the step below it keeps only a delta.
+fn push_step(stack: &mut Vec<Snapshot>, s: Snapshot) {
+    if let Some(top) = stack.last_mut() {
+        if let Stored::Full(t) = &top.text {
+            top.text = Stored::delta(t, s.full());
+        }
+    }
+    stack.push(s);
+}
+
+/// Pops the nearest step (whole text); the one below gets its whole text back.
+fn pop_step(stack: &mut Vec<Snapshot>) -> Option<Snapshot> {
+    let s = stack.pop()?;
+    if let Some(top) = stack.last_mut() {
+        if let Stored::Delta { .. } = top.text {
+            top.text = Stored::Full(top.text.text_from(s.full()));
+        }
+    }
+    Some(s)
+}
+
+/// The texts of a stack, nearest step first.
+fn step_texts(stack: &[Snapshot], limit: usize) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for s in stack.iter().rev().take(limit) {
+        let text = match out.last() {
+            Some(prev) => s.text.text_from(prev),
+            None => s.full().to_string(),
+        };
+        out.push(text);
+    }
+    out
+}
+
 /// One state of the undo history, as Edit, History lists it.
-#[derive(Debug, Clone, Copy)]
-pub struct HistoryState<'a> {
-    pub text: &'a str,
+#[derive(Debug, Clone)]
+pub struct HistoryState {
+    pub text: String,
     /// When the state was reached (none: as the file was opened).
     pub when: Option<Instant>,
 }
@@ -150,15 +257,16 @@ impl Editor {
             && !self.word_done;
         self.word_done = false;
         if !group {
-            self.undo.push(Snapshot {
-                text: self.text.clone(),
-                caret: self.caret,
-                sessions: self.sessions.clone(),
-                when: self.when,
-            });
-            if self.undo.len() > HISTORY_LIMIT {
-                self.undo.remove(0);
-            }
+            push_step(
+                &mut self.undo,
+                Snapshot {
+                    text: Stored::Full(self.text.clone()),
+                    caret: self.caret,
+                    sessions: self.sessions.clone(),
+                    when: self.when,
+                },
+            );
+            self.trim_history();
         }
         self.redo.clear();
         self.last_kind = Some(kind);
@@ -332,9 +440,34 @@ impl Editor {
         self.revision += 1;
     }
 
+    /// Drops the oldest undo steps past the step and byte limits.
+    fn trim_history(&mut self) {
+        let mut bytes: usize = self.undo.iter().map(|s| s.text.bytes()).sum();
+        let mut drop = 0;
+        while self.undo.len() - drop > 1
+            && (self.undo.len() - drop > HISTORY_LIMIT || bytes > HISTORY_BYTES)
+        {
+            bytes -= self.undo[drop].text.bytes();
+            drop += 1;
+        }
+        self.undo.drain(..drop);
+    }
+
+    /// Bytes the undo and redo steps keep.
+    pub fn history_bytes(&self) -> usize {
+        self.undo
+            .iter()
+            .chain(&self.redo)
+            .map(|s| s.text.bytes())
+            .sum()
+    }
+
     fn restore(&mut self, s: Snapshot) -> Snapshot {
+        let Stored::Full(text) = s.text else {
+            unreachable!("the nearest step keeps its whole text")
+        };
         let old = Snapshot {
-            text: std::mem::replace(&mut self.text, s.text),
+            text: Stored::Full(std::mem::replace(&mut self.text, text)),
             caret: self.caret,
             sessions: std::mem::replace(&mut self.sessions, s.sessions),
             when: std::mem::replace(&mut self.when, s.when),
@@ -349,34 +482,62 @@ impl Editor {
 
     /// Steps back one undo step.
     pub fn undo(&mut self) -> bool {
-        let Some(s) = self.undo.pop() else {
+        let Some(s) = pop_step(&mut self.undo) else {
             return false;
         };
         let old = self.restore(s);
-        self.redo.push(old);
+        push_step(&mut self.redo, old);
         true
     }
 
     /// Steps forward again.
     pub fn redo(&mut self) -> bool {
-        let Some(s) = self.redo.pop() else {
+        let Some(s) = pop_step(&mut self.redo) else {
             return false;
         };
         let old = self.restore(s);
-        self.undo.push(old);
+        push_step(&mut self.undo, old);
         true
     }
 
     /// Every state of the undo history, oldest first: the undo steps, the
     /// current state (at [`Editor::history_position`]), then the redo steps.
-    pub fn history(&self) -> Vec<HistoryState<'_>> {
-        let mut out: Vec<HistoryState<'_>> = self.undo.iter().map(Snapshot::state).collect();
-        out.push(HistoryState {
-            text: &self.text,
-            when: self.when,
-        });
-        out.extend(self.redo.iter().rev().map(Snapshot::state));
-        out
+    pub fn history(&self) -> Vec<HistoryState> {
+        self.history_window(usize::MAX)
+            .into_iter()
+            .map(|(_, s)| s)
+            .collect()
+    }
+
+    /// The newest `count` states of [`Editor::history`] with their indices, oldest
+    /// first (cheaper than the whole history when it is long).
+    pub fn history_window(&self, count: usize) -> Vec<(usize, HistoryState)> {
+        let redo = step_texts(&self.redo, usize::MAX);
+        let mut newest: Vec<(usize, HistoryState)> = Vec::new();
+        let here = self.undo.len();
+        for (k, (text, s)) in redo
+            .into_iter()
+            .zip(self.redo.iter().rev())
+            .enumerate()
+            .rev()
+        {
+            newest.push((here + 1 + k, HistoryState { text, when: s.when }));
+        }
+        newest.push((
+            here,
+            HistoryState {
+                text: self.text.clone(),
+                when: self.when,
+            },
+        ));
+        let room = count.saturating_sub(newest.len());
+        let undo = step_texts(&self.undo, room);
+        for (k, (text, s)) in undo.into_iter().zip(self.undo.iter().rev()).enumerate() {
+            newest.push((here - 1 - k, HistoryState { text, when: s.when }));
+        }
+        newest.truncate(count);
+        newest.reverse();
+        newest
     }
 
     /// Where the current state is in [`Editor::history`].
@@ -959,7 +1120,8 @@ mod tests {
         let mut e = Editor::new("x");
         e.replace_node(Span::new(0, 1), "y");
         e.replace_node(Span::new(0, 1), "z");
-        let texts: Vec<&str> = e.history().iter().map(|h| h.text).collect();
+        let history = e.history();
+        let texts: Vec<&str> = history.iter().map(|h| h.text.as_str()).collect();
         assert_eq!(texts, ["x", "y", "z"]);
         assert_eq!(e.history_position(), 2);
         assert!(e.go_to_history(0));
@@ -968,6 +1130,61 @@ mod tests {
         assert!(e.go_to_history(2));
         assert_eq!(e.text(), "z");
         assert!(!e.go_to_history(3));
+    }
+
+    #[test]
+    fn a_long_history_of_small_edits_stays_small_and_walks_back_exactly() {
+        // A 64 KB document and 600 separate edits: full copies took about 84 KB a step.
+        let base: String = "$$ x_1 := 1 $$\n\n".repeat(4000);
+        let mut e = Editor::new(base.clone());
+        let mut texts = vec![base.clone()];
+        for i in 0..600 {
+            e.move_caret((i * 97) % e.text().len(), false);
+            e.insert_text("\n");
+            texts.push(e.text().to_string());
+        }
+        assert!(
+            e.history_bytes() < 4 * base.len(),
+            "{} bytes for a {}-byte text",
+            e.history_bytes(),
+            base.len()
+        );
+        // Only the newest HISTORY_LIMIT steps are kept; each comes back exactly.
+        let kept = texts.len() - 1 - HISTORY_LIMIT;
+        let history = e.history();
+        assert_eq!(history.len(), HISTORY_LIMIT + 1);
+        assert!(history
+            .iter()
+            .zip(&texts[kept..])
+            .all(|(h, t)| h.text == *t));
+        let window = e.history_window(3);
+        assert_eq!(window.len(), 3);
+        assert_eq!(window[0].0, HISTORY_LIMIT - 2);
+        assert_eq!(window[2].1.text, texts[600]);
+        for _ in 0..250 {
+            assert!(e.undo());
+        }
+        assert_eq!(e.text(), texts[350]);
+        for _ in 0..100 {
+            assert!(e.redo());
+        }
+        assert_eq!(e.text(), texts[450]);
+        assert!(e.go_to_history(10));
+        assert_eq!(e.text(), texts[kept + 10]);
+        e.insert_text("é");
+        assert!(e.undo());
+        assert_eq!(e.text(), texts[kept + 10]);
+    }
+
+    #[test]
+    fn steps_with_multibyte_text_come_back_whole() {
+        let mut e = Editor::new("αβγ");
+        e.replace_node(Span::new(2, 4), "ββ");
+        e.replace_node(Span::new(0, 2), "é");
+        let texts: Vec<String> = e.history().into_iter().map(|h| h.text).collect();
+        assert_eq!(texts, ["αβγ", "αββγ", "éββγ"]);
+        assert!(e.undo() && e.undo());
+        assert_eq!(e.text(), "αβγ");
     }
 
     #[test]

@@ -51,15 +51,15 @@ impl IdeApp {
         let Some(d) = self.doc() else {
             return vec![];
         };
-        let states = d.editor.history();
+        // One state more than is listed: the oldest listed one is compared with it.
+        let states = d.editor.history_window(MENU_STEPS + 1);
         let now = Instant::now();
         let current = d.editor.history_position();
-        let parsed: Vec<_> = states.iter().map(|s| parse_document(s.text)).collect();
         (0..states.len())
             .rev()
             .take(MENU_STEPS)
-            .map(|i| {
-                let s = &states[i];
+            .map(|j| {
+                let (i, s) = (states[j].0, &states[j].1);
                 let when = match s.when {
                     _ if i == current => "Now".to_string(),
                     Some(t) if i > 0 => ago(t, now),
@@ -68,12 +68,12 @@ impl IdeApp {
                 let offset = if i == 0 {
                     0
                 } else {
-                    first_difference(states[i - 1].text, s.text)
+                    first_difference(&states[j - 1].1.text, &s.text)
                 };
                 let mut latex = String::new();
-                parsed[i].walk(&mut |b| {
+                parse_document(&s.text).walk(&mut |b| {
                     if latex.is_empty() && b.span.start <= offset && offset <= b.span.end {
-                        latex = block_latex(b, s.text);
+                        latex = block_latex(b, &s.text);
                     }
                 });
                 if latex.is_empty() {
