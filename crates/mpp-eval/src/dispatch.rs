@@ -199,7 +199,7 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
         }
         "euler" => Route::OdeToolkit,
         "laplace" | "invlaplace" | "fourier" | "invfourier" => {
-            return Some(transform(&call, e, ctx));
+            return Some(transform(&call, ctx));
         }
         _ => return None,
     };
@@ -275,7 +275,7 @@ fn transform_vars(call: &Call) -> (String, String) {
 
 /// `\mathcal L\{f\}`, `\mathcal L^{-1}\{F\}`, `\mathcal F\{f\}`, `\mathcal F^{-1}\{F\}` and the
 /// operator forms `laplace`, `invlaplace`, `fourier`, `invfourier`.
-fn transform(call: &Call, e: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
+fn transform(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
     use mpp_core::tools_b::fourier;
     use mpp_core::tools_b::ode::laplace as lt;
     let [f] = call.args.as_slice() else {
@@ -310,25 +310,7 @@ fn transform(call: &Call, e: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
             ctx.log(rule, f, &v, Some(note));
             Ok(v)
         }
-        // The multivariable helpers have their own Laplace table; it answers when this
-        // one has no entry.
-        Err(err @ (MathError::Unsupported(_) | MathError::NoClosedForm(_)))
-            if call.name.contains("laplace") && from.as_str() == default_from(&call.name) =>
-        {
-            match crate::helpers::evaluate(e, ctx) {
-                Some(Ok(v)) => Ok(v),
-                _ => Err(err),
-            }
-        }
         Err(err) => Err(err),
-    }
-}
-
-fn default_from(name: &str) -> &'static str {
-    if name == "laplace" {
-        "t"
-    } else {
-        "s"
     }
 }
 

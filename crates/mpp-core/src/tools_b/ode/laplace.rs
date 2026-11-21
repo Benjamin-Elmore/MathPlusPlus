@@ -1,7 +1,10 @@
-//! The Laplace transform: a table of transforms (powers, exponentials, sines and cosines,
-//! their products, the step `H(t − a)` and the delta `δ(t − a)`), the inverse transform of
-//! rational functions by partial fractions (with the shift `e^{−as} F(s) ↔ H(t − a) f(t − a)`),
-//! and the transform method for constant-coefficient initial value problems.
+//! The Laplace transform, the one engine every caller uses: a table of transforms (powers,
+//! exponentials, sines and cosines, hyperbolic functions, their products, the step
+//! `H(t − a)` and the delta `δ(t − a)`), the inverse transform of rational functions by
+//! partial fractions (with the shift `e^{−as} F(s) ↔ H(t − a) f(t − a)`, and `cosh`/`sinh`
+//! for a quadratic with real irrational roots), and the transform method for
+//! constant-coefficient initial value problems, given either as a parsed equation
+//! ([`solve_ivp`]) or as a list of coefficients ([`solve_coefficients`]).
 //!
 //! `H(t − a)` is written `H(t - a)` (also `heaviside`, `step`, `u`, `theta`) and the delta
 //! `delta(t - a)` (also `dirac`, `δ`).
@@ -313,14 +316,29 @@ fn piece(factor: &Poly, k: u32, numer: &Poly, t: &Expr) -> Option<Expr> {
                 c,
                 neg(mul(vec![Expr::rational(1, 4), pow(b, Expr::int(2))])),
             ]));
-            if value(&w2)? <= 0.0 {
-                return None;
-            }
-            let w = simplify(&pow(w2, Expr::rational(1, 2)));
             let (a_coef, b_coef) = (rat(numer, 1), rat(numer, 0));
             // numer = A (s − α) + (B + A α)
             let shifted = simplify(&add(vec![b_coef, mul(vec![a_coef.clone(), alpha.clone()])]));
             let ex = pow(Expr::e(), mul(vec![alpha, t.clone()]));
+            let w2v = value(&w2)?;
+            if w2v < 0.0 && k == 1 {
+                // (s − α)² − γ² with γ irrational: A cosh γt + (B + Aα)/γ sinh γt
+                let gamma = simplify(&pow(neg(w2), Expr::rational(1, 2)));
+                let gt = mul(vec![gamma.clone(), t.clone()]);
+                let body = add(vec![
+                    mul(vec![a_coef, func(Func::Cosh, vec![gt.clone()])]),
+                    mul(vec![
+                        shifted,
+                        pow(gamma, Expr::int(-1)),
+                        func(Func::Sinh, vec![gt]),
+                    ]),
+                ]);
+                return Some(simplify(&mul(vec![ex, body])));
+            }
+            if w2v <= 0.0 {
+                return None;
+            }
+            let w = simplify(&pow(w2, Expr::rational(1, 2)));
             let wt = mul(vec![w.clone(), t.clone()]);
             let (cos, sin) = (
                 func(Func::Cos, vec![wt.clone()]),
@@ -351,6 +369,98 @@ fn piece(factor: &Poly, k: u32, numer: &Poly, t: &Expr) -> Option<Expr> {
             Some(simplify(&mul(vec![ex, body])))
         }
         _ => None,
+    }
+}
+
+/// The transformed equation `Σ aₖ (sᵏ Y − Σ_{j<k} s^{k−1−j} y⁽ʲ⁾(0)) = G` solved for `Y`:
+/// returns `(P(s), Y(s))` with `P(s) = Σ aₖ sᵏ`.
+fn transformed_solution(a: &[Expr], big_g: &Expr, init: &[Expr], s: &str) -> (Expr, Expr) {
+    let ss = Expr::sym(s);
+    let mut p_s = Vec::new();
+    let mut ic = Vec::new();
+    for (k, ak) in a.iter().enumerate() {
+        p_s.push(mul(vec![ak.clone(), pow(ss.clone(), Expr::int(k as i64))]));
+        for (j, yj) in init.iter().enumerate().take(k) {
+            ic.push(mul(vec![
+                ak.clone(),
+                pow(ss.clone(), Expr::int((k - 1 - j) as i64)),
+                yj.clone(),
+            ]));
+        }
+    }
+    let p_s = simplify(&add(p_s));
+    let y_s = tidy(&mul(vec![
+        add(vec![big_g.clone(), add(ic)]),
+        pow(p_s.clone(), Expr::int(-1)),
+    ]));
+    (p_s, y_s)
+}
+
+/// Solves `Σ aₖ y⁽ᵏ⁾ = g(t)` (coefficients `a₀, a₁, …` from the lowest order up, all
+/// constant) with `y(0), y′(0), …` given, by the Laplace transform. Returns `Y(s)` and
+/// `y(t)`; the solution is checked by putting it back into the equation.
+pub fn solve_coefficients(
+    coeffs: &[Expr],
+    forcing: &Expr,
+    initial: &[Expr],
+    t: &str,
+    s: &str,
+) -> MathResult<(Expr, Expr)> {
+    let order = coeffs.len().saturating_sub(1);
+    if order == 0 || initial.len() != order {
+        return Err(MathError::WrongArity {
+            function: "the initial conditions".into(),
+            expected: order.to_string(),
+            got: initial.len(),
+        });
+    }
+    if coeffs.iter().any(|a| !a.is_constant()) {
+        return Err(MathError::Unsupported(
+            "the Laplace method for coefficients that are not constant".into(),
+        ));
+    }
+    let big_g = transform(forcing, t, s)?;
+    let (_, big_y) = transformed_solution(coeffs, &big_g, initial, s);
+    let y = inverse(&big_y, s, t)?;
+    check_coefficients(coeffs, forcing, initial, &y, t)?;
+    Ok((big_y, y))
+}
+
+/// Puts `y` back into the equation and the initial conditions (numerically at a few
+/// points), so a wrong solution is never returned.
+fn check_coefficients(
+    coeffs: &[Expr],
+    forcing: &Expr,
+    initial: &[Expr],
+    y: &Expr,
+    t: &str,
+) -> MathResult<()> {
+    let mut lhs = Vec::new();
+    let mut d = y.clone();
+    let mut derivs = vec![y.clone()];
+    for a in coeffs {
+        lhs.push(mul(vec![a.clone(), d.clone()]));
+        d = diff(&d, t, 1, None)?;
+        derivs.push(d.clone());
+    }
+    let residual = simplify(&add(vec![add(lhs), neg(forcing.clone())]));
+    let ok_at = |e: &Expr, x: f64| -> bool {
+        match crate::domains::solve::numeric::eval_at(e, t, x) {
+            Some(v) => v.abs() <= 1e-7 * (1.0 + v.abs()),
+            None => false,
+        }
+    };
+    let equation_ok = [0.3, 0.7, 1.3].iter().all(|x| ok_at(&residual, *x));
+    let initial_ok = initial.iter().zip(&derivs).all(|(y0, dk)| {
+        let at0 = simplify(&dk.subs(t, &Expr::zero()));
+        crate::domains::util::equal(&at0, y0)
+    });
+    if equation_ok && initial_ok {
+        Ok(())
+    } else {
+        Err(MathError::Inconclusive(
+            "the Laplace solution (it did not check out when put back into the equation)".into(),
+        ))
     }
 }
 
@@ -389,25 +499,7 @@ pub(crate) fn solve_ivp(
         init.push(c.value.clone());
     }
     let big_g = transform(&g, t, s)?;
-    let ss = Expr::sym(s);
-    // Σ aₖ (sᵏ Y − Σ_{j<k} s^{k−1−j} y⁽ʲ⁾(0)) = G
-    let mut p_s = Vec::new();
-    let mut ic = Vec::new();
-    for (k, ak) in a.iter().enumerate() {
-        p_s.push(mul(vec![ak.clone(), pow(ss.clone(), Expr::int(k as i64))]));
-        for (j, yj) in init.iter().enumerate().take(k) {
-            ic.push(mul(vec![
-                ak.clone(),
-                pow(ss.clone(), Expr::int((k - 1 - j) as i64)),
-                yj.clone(),
-            ]));
-        }
-    }
-    let p_s = simplify(&add(p_s));
-    let y_s = tidy(&mul(vec![
-        add(vec![big_g.clone(), add(ic)]),
-        pow(p_s.clone(), Expr::int(-1)),
-    ]));
+    let (p_s, y_s) = transformed_solution(&a, &big_g, &init, s);
     let y_t = inverse(&y_s, s, t)?;
     steps.push(
         "Laplace transform",
@@ -487,6 +579,15 @@ fn replace_steps(e: &Expr, t: &str, at: f64) -> Expr {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools::testkit::p;
+
+    fn s(e: &Expr) -> String {
+        e.to_string()
+    }
+
+    fn ps(v: &[&str]) -> Vec<Expr> {
+        v.iter().map(|x| p(x)).collect()
+    }
 
     fn t() -> Expr {
         Expr::sym("t")
@@ -537,6 +638,63 @@ mod tests {
                 .unwrap()
                 .to_string(),
             "e^(-s)"
+        );
+    }
+
+    #[test]
+    fn laplace_table_shift_and_inverse() {
+        assert_eq!(
+            s(&transform(&p("t^2*exp(3*t)"), "t", "s").unwrap()),
+            "2/(s - 3)^3"
+        );
+        assert_eq!(
+            s(&transform(&p("sin(2*t)"), "t", "s").unwrap()),
+            "2/(s^2 + 4)"
+        );
+        assert_eq!(s(&transform(&p("5"), "t", "s").unwrap()), "5/s");
+        let shifted = transform(&p("exp(-t)*cos(2*t)"), "t", "s").unwrap();
+        assert_eq!(
+            s(&inverse(&shifted, "s", "t").unwrap()),
+            s(&p("exp(-t)*cos(2*t)"))
+        );
+        assert_eq!(s(&inverse(&p("1/(s^2 + 1)"), "s", "t").unwrap()), "sin(t)");
+        assert_eq!(
+            s(&inverse(&p("1/(s*(s + 1))"), "s", "t").unwrap()),
+            s(&p("1 - exp(-t)"))
+        );
+        assert_eq!(
+            s(&inverse(&p("1/(s - 2)^2"), "s", "t").unwrap()),
+            s(&p("t*exp(2*t)"))
+        );
+        assert!(inverse(&p("s^2/(s + 1)"), "s", "t").is_err());
+        assert!(transform(&p("ln(t)"), "t", "s").is_err());
+    }
+
+    #[test]
+    fn laplace_solves_odes() {
+        // y'' + y = 0, y(0) = 1, y'(0) = 0.
+        let (_, y) =
+            solve_coefficients(&ps(&["1", "0", "1"]), &p("0"), &ps(&["1", "0"]), "t", "s").unwrap();
+        assert_eq!(s(&y), "cos(t)");
+        // y'' − 3y' + 2y = 0, y(0) = 0, y'(0) = 1.
+        let (_, y) =
+            solve_coefficients(&ps(&["2", "-3", "1"]), &p("0"), &ps(&["0", "1"]), "t", "s")
+                .unwrap();
+        assert_eq!(s(&y), s(&p("exp(2*t) - exp(t)")));
+        // y' + y = 1, y(0) = 0.
+        let (_, y) = solve_coefficients(&ps(&["1", "1"]), &p("1"), &ps(&["0"]), "t", "s").unwrap();
+        assert_eq!(s(&y), s(&p("1 - exp(-t)")));
+        assert!(solve_coefficients(&ps(&["1", "1"]), &p("0"), &[], "t", "s").is_err());
+    }
+
+    #[test]
+    fn real_irrational_roots_invert_to_hyperbolic_functions() {
+        let back = inverse(&p("1/(s^2 - 2)"), "s", "t").unwrap();
+        let want = p("sinh(sqrt(2)*t)/sqrt(2)");
+        let d = simplify(&add(vec![back.clone(), neg(want.clone())]));
+        assert!(
+            super::super::verify::vanishes(&d, std::slice::from_ref(&want), "t", None),
+            "{back}"
         );
     }
 }
