@@ -6,6 +6,7 @@
 //! list of caret stops mapping screen positions to source offsets. Prose stops sit
 //! between visible characters, so hidden markup (`#`, `*`, `$$`) is never a stop.
 
+pub(crate) mod blank;
 pub(crate) mod build;
 mod flow;
 mod mathcache;
@@ -175,6 +176,9 @@ pub struct Page {
     pub spinners: Vec<Pos2>,
     /// Citations, footnote marks, equation references and note folds.
     pub links: Vec<PageLink>,
+    /// The whitespace between top-level blocks (from the end of one block to the
+    /// start of the next, or to the end of the file).
+    pub between: Vec<Span>,
 }
 
 /// Drawing primitives and boxes being collected for one block.
@@ -321,9 +325,17 @@ impl Page {
         }
         // Spaces that are not drawn (between a proof's heading and its ∎) have no
         // stop of their own: the caret goes to the nearer drawn neighbour, not
-        // back to the start of the block.
+        // back to the start of the block. Between blocks only on the same line:
+        // there the choice sticks to the line before, so a rebuild never moves
+        // the caret onto the next block's line.
         if let (Some(b), Some(a)) = (best, after) {
-            if b.offset < offset && a.offset - offset < offset - b.offset {
+            let same_line = (a.top - b.top).abs() < 1.0;
+            let between = self
+                .between
+                .iter()
+                .any(|r| r.start <= offset && offset <= r.end);
+            if (same_line || !between) && b.offset < offset && a.offset - offset < offset - b.offset
+            {
                 return Some(*a);
             }
         }

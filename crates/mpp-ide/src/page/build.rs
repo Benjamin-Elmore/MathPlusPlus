@@ -70,53 +70,84 @@ pub fn build_page(input: &PageInput<'_>) -> Page {
     let gap = input.size * 0.85;
     let mut prev_end: Option<usize> = None;
     let mut prev_bottom = y;
+    // Where the stops of the block above begin (its last line is what counts).
+    let mut prev_stops = 0;
     for b in &input.doc.blocks {
         let before = page.blocks.len();
         let stops_before = page.stops.len();
         let top = y;
+        // Empty lines a person sees before this block: each is a line of its own.
+        let ws_start = prev_end.unwrap_or(0);
+        let blank = blank_line_stops(
+            input.src,
+            ws_start,
+            b.span.start,
+            (prev_end.is_some(), true),
+            &mut y,
+            input.size,
+            gap,
+        );
         place_block(input, &cx, b, 0.0, col, &mut y, gap, &mut page);
         if page.blocks.len() > before {
-            // Stops for the blank space between blocks (newlines you can move over).
-            let first_top = page.blocks[before].top;
-            let start = prev_end.map(|e| e + 1).unwrap_or(0);
-            let line_end = prev_end.and_then(|e| last_stop_upto(&page.stops[..stops_before], e));
-            gap_stops(
+            // Spaces typed after the block above, still on its last line.
+            let line_end =
+                prev_end.and_then(|e| last_stop_upto(&page.stops[prev_stops..stops_before], e));
+            same_line_stops(
                 input.src,
-                start,
+                ws_start + 1,
                 b.span.start,
-                (prev_bottom + first_top) / 2.0,
-                input.size,
                 line_end,
+                input.size,
                 &mut page.stops,
             );
+            page.stops.extend(blank);
+            page.between.push(Span::new(ws_start, b.span.start));
             prev_end = Some(b.span.end);
+            prev_stops = stops_before;
             prev_bottom = y - gap;
         } else {
             y = top;
         }
     }
-    let end_y = (prev_bottom + gap * 0.5).max(input.size);
+    let mut end_y = prev_bottom + gap;
     match prev_end {
         Some(e) => {
+            page.between.push(Span::new(e, input.src.len()));
             let line_end = last_stop_upto(&page.stops, e);
-            gap_stops(
+            same_line_stops(
                 input.src,
                 e + 1,
                 input.src.len() + 1,
-                end_y,
-                input.size,
                 line_end,
+                input.size,
                 &mut page.stops,
             );
+            let blank = blank_line_stops(
+                input.src,
+                e,
+                input.src.len(),
+                (true, false),
+                &mut end_y,
+                input.size,
+                gap,
+            );
+            page.stops.extend(blank);
         }
-        None => page.stops.push(CaretStop {
-            x: 0.0,
-            top: input.size * 0.4,
-            bottom: input.size * 1.4,
-            offset: 0,
-        }),
+        None => {
+            end_y = y;
+            let blank = blank_line_stops(
+                input.src,
+                0,
+                input.src.len(),
+                (false, false),
+                &mut end_y,
+                input.size,
+                gap,
+            );
+            page.stops.extend(blank);
+        }
     }
-    page.height = (prev_bottom + gap * 3.0).max(input.size * 4.0);
+    page.height = (end_y - gap + gap * 3.0).max(input.size * 4.0);
     page.chars.sort_by_key(|c| c.start);
     page.stops.sort_by(|a, b| {
         a.offset
@@ -149,43 +180,70 @@ fn last_stop_upto(stops: &[CaretStop], end: usize) -> Option<CaretStop> {
         .copied()
 }
 
-/// Stops for the offsets in `start..end` that lie in whitespace between blocks.
-/// Spaces still on the line a block ends on (typed after its last word) stay on
-/// that line, after the last character, so the caret never drops to the next
-/// line while someone types a space; whitespace after a line break sits in the
-/// gap below.
-fn gap_stops(
+/// Stops for spaces typed after a block's last word, still on its last line:
+/// they stay on that line, after the last character, so the caret never drops
+/// to the next line while someone types a space. Offsets after a line break
+/// get no stop here (see [`blank_line_stops`]).
+fn same_line_stops(
     src: &str,
     start: usize,
     end: usize,
-    y: f32,
-    size: f32,
     line_end: Option<CaretStop>,
+    size: f32,
     out: &mut Vec<CaretStop>,
 ) {
+    let Some(last) = line_end else {
+        return;
+    };
     let end = end.min(src.len() + 1);
-    for o in start..end {
-        if o <= src.len() && src.is_char_boundary(o) {
-            if let Some(last) = line_end.filter(|l| l.offset <= o) {
-                let between = &src[last.offset..o];
-                if !between.contains('\n') {
-                    let n = between.chars().count() as f32;
-                    out.push(CaretStop {
-                        x: last.x + n * size * 0.28,
-                        offset: o,
-                        ..last
-                    });
-                    continue;
-                }
-            }
+    for o in start.max(last.offset)..end {
+        if o > src.len() || !src.is_char_boundary(o) {
+            continue;
+        }
+        let between = &src[last.offset..o];
+        if between.contains('\n') {
+            break;
+        }
+        out.push(CaretStop {
+            x: last.x + between.chars().count() as f32 * size * 0.28,
+            offset: o,
+            ..last
+        });
+    }
+}
+
+/// The height of an empty line on screen: a line of body text.
+pub(crate) fn blank_line_height(size: f32) -> f32 {
+    size * 1.5
+}
+
+/// Caret stops for the empty lines a person sees in `src[start..end]` (see
+/// [`super::blank`]), stacked from `y` down like empty paragraphs; `y` moves
+/// past them. `(prev, next)`: whether there is a block before and after.
+fn blank_line_stops(
+    src: &str,
+    start: usize,
+    end: usize,
+    (prev, next): (bool, bool),
+    y: &mut f32,
+    size: f32,
+    gap: f32,
+) -> Vec<CaretStop> {
+    let mut out = Vec::new();
+    for line in super::blank::visible_blank_lines(src, start, end, prev, next) {
+        // Where the caret of a one-line paragraph sits (see `flow`).
+        let (top, bottom) = (*y + size * 0.21, *y + size * 1.31);
+        for (n, &o) in line.iter().enumerate() {
             out.push(CaretStop {
-                x: 0.0,
-                top: y - size * 0.4,
-                bottom: y + size * 0.6,
+                x: n as f32 * size * 0.28,
+                top,
+                bottom,
                 offset: o,
             });
         }
+        *y += blank_line_height(size) + gap;
     }
+    out
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2582,6 +2640,58 @@ This is ",
                 "{src:?}: the caret after the space moved left"
             );
         }
+    }
+
+    fn top_of(page: &Page, offset: usize) -> f32 {
+        page.caret_stop(offset).expect("a stop").top
+    }
+
+    #[test]
+    fn a_new_empty_line_has_its_own_stop_where_its_text_will_go() {
+        // Enter at the end of a line (the editor writes "\n\n"), then a letter.
+        for (empty, typed) in [
+            ("Hello\n\n", "Hello\n\nx"),
+            ("# Title\n\n", "# Title\n\nx"),
+            ("Hello\n\n\n\nWorld", "Hello\n\nx\n\nWorld"),
+            ("\n\nWorld", "x\n\nWorld"),
+            ("", "x"),
+        ] {
+            let at = empty.find("\n\n").map_or(0, |i| i + 2);
+            let at = if empty.starts_with('\n') { 0 } else { at };
+            let a = page_for(empty);
+            let b = page_for(typed);
+            let s = a.stops.iter().find(|s| s.offset == at);
+            let s = s.unwrap_or_else(|| panic!("{empty:?}: no stop on the new line"));
+            let x = top_of(&b, at + 1);
+            assert!(
+                (s.top - x).abs() < 1.0,
+                "{empty:?}: the empty line's caret is at {} but its text goes at {x}",
+                s.top
+            );
+            if let Some(first) = a.stops.iter().find(|o| o.offset < at) {
+                assert!(s.top > first.top + 5.0, "{empty:?}: not on a line below");
+            }
+        }
+    }
+
+    #[test]
+    fn empty_lines_push_the_blocks_below_them_down() {
+        let one = page_for("Hello\n\nWorld");
+        let two = page_for("Hello\n\n\n\nWorld");
+        let w = |p: &Page, src: &str| top_of(p, src.find('W').expect("W"));
+        assert!(w(&two, "Hello\n\n\n\nWorld") > w(&one, "Hello\n\nWorld") + 18.0);
+    }
+
+    #[test]
+    fn the_blank_line_between_two_blocks_has_no_caret_stop() {
+        let src = "Hello\n\nWorld";
+        let page = page_for(src);
+        assert!(page.stops.iter().all(|s| s.offset != 6), "{:?}", page.stops);
+        // An offset there sticks to the line before, never to the next block.
+        assert!((top_of(&page, 6) - top_of(&page, 5)).abs() < 1.0);
+        // Left from the start of "World" goes to the end of "Hello".
+        assert_eq!(page.offset_step(7, false), Some(5));
+        assert_eq!(page.offset_step(5, true), Some(7));
     }
 
     #[test]
