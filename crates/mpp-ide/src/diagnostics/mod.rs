@@ -53,6 +53,7 @@ impl Level {
         match s {
             Severity::Error => Level::Error,
             Severity::Warning => Level::Warning,
+            Severity::Info => Level::Info,
         }
     }
 

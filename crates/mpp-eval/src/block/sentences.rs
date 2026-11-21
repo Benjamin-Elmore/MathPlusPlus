@@ -108,7 +108,7 @@ impl Run<'_, '_> {
             }
         }
         for note in &resolved.notes {
-            self.warn(s.equation.span, note.clone());
+            self.note(s.equation.span, note.clone());
         }
         match resolved.value {
             Ok(v) if matches!(v.node(), ExprNode::Apply(name, _) if &**name == "solve") => {

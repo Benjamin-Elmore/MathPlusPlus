@@ -121,6 +121,7 @@ pub(crate) fn apply(ev: &mut Evaluated, base: &NumberFormat) {
         formats.insert(id, (fmt, exact));
     }
     ev.diagnostics.extend(problems);
+    let mut shortfalls: Vec<Diagnostic> = Vec::new();
     for block in &mut ev.blocks {
         let (fmt, exact) = formats
             .get(&block.id)
@@ -134,8 +135,45 @@ pub(crate) fn apply(ev: &mut Evaluated, base: &NumberFormat) {
                 fmt.style = Style::Decimal;
             }
             line.refresh(&fmt, Some(angle));
+            if let Some(known) = float_shortfall(line, &fmt) {
+                for t in [&mut line.text, &mut line.approx].into_iter().flatten() {
+                    if !t.ends_with('…') {
+                        t.push('…');
+                    }
+                }
+                shortfalls.push(Diagnostic::warning(
+                    line.span,
+                    format!(
+                        "only about {known} significant digits of this value are known (it was \
+                         found numerically in floating point), fewer than the display format \
+                         asks for; … marks the digits left out"
+                    ),
+                ));
+            }
         }
     }
+    ev.diagnostics.extend(shortfalls);
+}
+
+/// The digits a floating-point answer is known to, when the format asks for more
+/// (`%dp 30` on a sum that was only summed in double precision).
+fn float_shortfall(line: &LineResult, fmt: &NumberFormat) -> Option<usize> {
+    if !matches!(line.kind, LineKind::Query { .. }) {
+        return None;
+    }
+    let e = line.value.as_ref()?.expr();
+    let x = e.as_number().filter(|n| !n.is_exact())?.to_f64();
+    if x == 0.0 || !x.is_finite() {
+        return None;
+    }
+    let k = x.abs().log10().floor() as i64;
+    let wanted = match fmt.precision {
+        Precision::Sig(n) => i64::from(n),
+        Precision::Places(p) => k + 1 + i64::from(p),
+        Precision::Default => return None,
+    };
+    let known = mpp_core::display::FLOAT_DIGITS;
+    (wanted > known as i64).then_some(known)
 }
 
 /// What a line reads as under a format.

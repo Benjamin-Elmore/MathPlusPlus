@@ -263,3 +263,109 @@ fn derivative_of_floor_notes_the_integers() {
         block.diagnostics
     );
 }
+
+/// A displayed `=` between two closed sides is a statement that can be decided: a false
+/// one is an error like a failed check, and one with a typed decimal is a warning.
+#[test]
+fn false_numeric_statements_are_reported() {
+    let ev = run(r"$$ 2^{10} = 1000 $$
+
+$$ 2^{10} = 1024 $$
+
+$$ \pi = 3.14159 $$
+");
+    let errors: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("this statement is false"), "{errors:?}");
+    assert!(errors[0].contains("1024") && errors[0].contains("1000"));
+    let warnings: Vec<&str> = ev
+        .all_diagnostics()
+        .into_iter()
+        .filter(|d| d.severity == mpp_syntax::Severity::Warning)
+        .map(|d| d.message.as_str())
+        .collect();
+    assert!(
+        warnings.iter().any(|w| w.contains("write ≈")),
+        "{warnings:?}"
+    );
+    // Statements with unknowns are equations, not claims to decide.
+    assert!(run("$$ x^2 = 4 $$\n").errors().is_empty());
+}
+
+/// Congruences asked as queries are answered true or false, and a fraction modulo m
+/// uses the inverse of its denominator.
+#[test]
+fn congruences_and_inverses_modulo_m() {
+    let answer = |src: &str| {
+        let ev = run(src);
+        let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+        assert!(errs.is_empty(), "{src}: {errs:?}");
+        let (_, line) = ev.queries().next().expect("a query");
+        line.text.clone().unwrap_or_default()
+    };
+    assert_eq!(answer(r"$$ 17 \equiv 2 \pmod{5} = ? $$"), "true ✓");
+    assert!(answer(r"$$ 17 \equiv 3 \pmod{5} = ? $$").starts_with("false ✗"));
+    assert_eq!(answer(r"$$ 1 < 2 = ? $$"), "true ✓");
+    assert_eq!(answer(r"$$ 3^{-1} \bmod 7 = ? $$"), "5");
+}
+
+/// An interval whose ends are the wrong way round is empty.
+#[test]
+fn reversed_interval_is_empty() {
+    let ev = run("$$ [3, 1] = ? $$\n\n$$ [2, 2] = ? $$\n");
+    let texts: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.text.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(texts, ["∅", "{2}"]);
+    assert!(ev
+        .all_diagnostics()
+        .iter()
+        .any(|d| d.message.contains("holds no numbers")));
+}
+
+/// A long display format on a value only known in floating point says so instead of
+/// silently showing fewer digits; a ζ value has all of them.
+#[test]
+fn long_formats_mark_floating_point_values() {
+    let ev = run(r"%dp 30
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n^3} \approx ? $$
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n^2 + 1} \approx ? $$
+");
+    let shown: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.approx.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(shown[0], "1.202056903159594285399738161511");
+    assert!(shown[1].ends_with('…'), "{shown:?}");
+    assert!(ev.all_diagnostics().iter().any(|d| d
+        .message
+        .contains("significant digits of this value are known")));
+}
+
+/// A fit's R² and what a helper's value means are information, not warnings.
+#[test]
+fn descriptive_notes_are_info() {
+    let ev = run(r"| $u$ | $v$ |
+|---|---|
+| 1 | 2 |
+| 2 | 4.1 |
+| 3 | 5.9 |
+| 10 | 30 |
+
+$$ \operatorname{linreg}(u, v) \approx ? $$
+
+$$ \operatorname{range}(u) = ? $$
+");
+    let notes: Vec<_> = ev
+        .all_diagnostics()
+        .into_iter()
+        .filter(|d| d.message.contains("R² = ") || d.message.contains("the range of data"))
+        .collect();
+    assert_eq!(notes.len(), 2, "{notes:?}");
+    assert!(notes
+        .iter()
+        .all(|d| d.severity == mpp_syntax::Severity::Info));
+}

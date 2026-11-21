@@ -7,7 +7,7 @@ use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
 
 use crate::budget;
-use crate::domains::util::{expect_args, int_arg, integer};
+use crate::domains::util::{expect_args, int_arg, integer, rational};
 use crate::domains::{Ctx, Domain, Value};
 use crate::error::{MathError, MathResult};
 use crate::expr::{Expr, ExprNode};
@@ -334,6 +334,25 @@ fn apply(op: &str, args: &[Value]) -> MathResult<Value> {
                     if !e.is_negative() && !m.is_zero() {
                         return Ok(Expr::bigint(modulo(&powmod(&b, &e, &m)?, &m)?));
                     }
+                    // `3^{-1000} mod 7`: the inverse of 3 raised to the power.
+                    if e.is_negative() && m.is_positive() {
+                        return Ok(Expr::bigint(powmod(&b, &e, &m)?));
+                    }
+                }
+            }
+            // `3^{-1} mod 7`, `2/3 mod 7`: a fraction p/q is p times the inverse of q
+            // modulo m, which exists when q and m share no factor.
+            if let Some(q) = rational(&args[0].simplify()).filter(|q| !q.is_integer()) {
+                let m = int(1)?;
+                if m.is_positive() {
+                    let inv = modinv(q.denom(), &m).map_err(|_| MathError::Domain {
+                        function: op.into(),
+                        detail: format!(
+                            "{} has no value modulo {m}: {} and {m} share a factor, so {} has no inverse",
+                            args[0], q.denom(), q.denom()
+                        ),
+                    })?;
+                    return Ok(Expr::bigint(modulo(&(q.numer() * inv), &m)?));
                 }
             }
             Ok(Expr::bigint(modulo(&int(0)?, &int(1)?)?))
@@ -445,10 +464,16 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(r.to_string(), "((2, 2), (3, 1))");
-        let r = NumberTheory
-            .apply("mod", &[Expr::rational(1, 2), Expr::int(3)], &mut ctx)
-            .unwrap();
-        assert!(r.is_err());
+        // A fraction modulo m is the numerator times the inverse of the denominator:
+        // 3⁻¹ mod 7 = 5, since 3 · 5 = 15 ≡ 1; 1/2 mod 4 has no value.
+        let modulo = |a: Expr, m: i64, ctx: &mut Ctx<'_>| {
+            NumberTheory.apply("mod", &[a, Expr::int(m)], ctx).unwrap()
+        };
+        assert_eq!(modulo(Expr::rational(1, 3), 7, &mut ctx), Ok(Expr::int(5)));
+        assert_eq!(modulo(Expr::rational(1, 2), 3, &mut ctx), Ok(Expr::int(2)));
+        assert_eq!(modulo(Expr::rational(2, 3), 7, &mut ctx), Ok(Expr::int(3)));
+        assert_eq!(modulo(Expr::int(3).pow(-2), 7, &mut ctx), Ok(Expr::int(4)));
+        assert!(modulo(Expr::rational(1, 2), 4, &mut ctx).is_err());
     }
 
     proptest! {
