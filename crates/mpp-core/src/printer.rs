@@ -870,6 +870,10 @@ fn latex_name(name: &str) -> String {
             None => c.to_string(),
         },
         _ if GREEK.contains(&head) => format!("\\{head}"),
+        // `Δx`, the change in x: `\Delta x`, with the x in italics.
+        (Some('Δ'), Some(c)) if c.is_ascii_alphabetic() && chars.next().is_none() => {
+            format!("\\Delta {c}")
+        }
         _ => format!("\\mathrm{{{head}}}"),
     };
     match sub {

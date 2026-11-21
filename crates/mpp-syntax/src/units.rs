@@ -142,11 +142,11 @@ pub fn after_number(text: &str) -> Option<Found> {
             plain: false,
         });
     }
-    if let Some(len) = roman(rest) {
+    if let Some((len, text)) = roman_unit(rest) {
         return Some(Found {
             len: lead + len,
             lead,
-            text: rest[..len].to_string(),
+            text,
             plain: false,
         });
     }
@@ -187,11 +187,11 @@ pub fn conversion_target(text: &str) -> Option<Found> {
             plain: false,
         });
     }
-    if let Some(len) = roman(rest) {
+    if let Some((len, text)) = roman_unit(rest) {
         return Some(Found {
             len: lead + len,
             lead,
-            text: rest[..len].to_string(),
+            text,
             plain: false,
         });
     }
@@ -292,6 +292,40 @@ fn roman(text: &str) -> Option<usize> {
         }
     }
     Some(k)
+}
+
+/// The micro prefix written as a Greek letter before the upright unit, as siunitx-free
+/// papers do (`100\,\mu\mathrm{F}`, `5\,µ\mathrm{s}`): its length.
+fn micro_roman(text: &str) -> Option<usize> {
+    micro_parts(text).map(|(p, spaces, len)| p + spaces + len)
+}
+
+/// Upright units at the start of `text`: their length and the unit text. A micro
+/// sign before them goes inside (`\mu\mathrm{F}` reads `\mathrm{\mu F}`).
+fn roman_unit(text: &str) -> Option<(usize, String)> {
+    if let Some(len) = roman(text) {
+        return Some((len, text[..len].to_string()));
+    }
+    let (p, spaces, len) = micro_parts(text)?;
+    let unit = &text[p + spaces..p + spaces + len];
+    let open = unit.find('{')? + 1;
+    Some((
+        micro_roman(text)?,
+        format!("{}\\mu {}", &unit[..open], &unit[open..]),
+    ))
+}
+
+/// The prefix length, the spaces after it and the length of the upright unit.
+fn micro_parts(text: &str) -> Option<(usize, usize, usize)> {
+    let prefix = ["\\mu", "µ", "μ"].iter().find(|p| text.starts_with(**p))?;
+    let after = &text[prefix.len()..];
+    // `\mul` is not `\mu`.
+    if *prefix == "\\mu" && after.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return None;
+    }
+    let spaces = after.len() - after.trim_start_matches(' ').len();
+    let len = roman(&after[spaces..])?;
+    Some((prefix.len(), spaces, len))
 }
 
 /// One `\mathrm{unit}` (or `\text{unit}`, `\textrm{unit}`) with an optional power.

@@ -7,7 +7,7 @@ mod fit;
 mod ode;
 mod random;
 mod seed;
-mod sentences;
+pub(crate) mod sentences;
 mod units;
 
 use std::cell::RefCell;

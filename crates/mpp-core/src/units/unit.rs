@@ -167,6 +167,13 @@ impl Unit {
             }
             return (Unit::one(), self.scale());
         }
+        // A root of a unit (`√(J/kg)`) whose dimension has whole powers is written in
+        // whole powers (`m/s`).
+        let fractional = |u: &Unit| u.factors.iter().any(|(_, e)| !e.is_integer());
+        if fractional(self) && !fractional(&base_unit(&dim)) {
+            let best = best_named(&dim).unwrap_or_else(|| base_unit(&dim));
+            return (best, self.scale());
+        }
         let mixed = self.factors.iter().enumerate().any(|(i, (a, _))| {
             !a.dim.is_none()
                 && self.factors[i + 1..]

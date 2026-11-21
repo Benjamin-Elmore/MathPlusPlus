@@ -69,6 +69,21 @@ impl Run<'_, '_> {
             1 => lowered.swap_remove(0),
             _ => Expr::new(ExprNode::Tuple(lowered)),
         };
+        // One equation in one unknown that turns out to carry units is solved by the
+        // solver for quantities, so `h_0 - ½ g t² = 0` gives `t = … s`, not a root of
+        // `m²/s²` left inside the answer.
+        let with_units = match (unknowns.as_slice(), eqs.node()) {
+            ([x], ExprNode::Relation(..)) => Some(Expr::apply(
+                "operatorname",
+                vec![
+                    Expr::sym("solve"),
+                    Expr::sym(x),
+                    Expr::new(ExprNode::Tuple(Vec::new())),
+                    Expr::new(ExprNode::Tuple(vec![eqs.clone()])),
+                ],
+            )),
+            _ => None,
+        };
         let mut args = vec![eqs];
         match unknowns.as_slice() {
             [] => {}
@@ -79,7 +94,19 @@ impl Run<'_, '_> {
         }
         let input = Expr::apply("solve", args);
         lr.input = Some(input.clone());
-        let resolved = self.resolve_full(&input, &Locals::new(), &unknowns, false, false);
+        let mut resolved = self.resolve_full(&input, &Locals::new(), &unknowns, false, false);
+        if let Some(call) = with_units {
+            if resolved
+                .value
+                .as_ref()
+                .is_ok_and(crate::units_wire::contains_units)
+            {
+                let quantities = self.resolve_full(&call, &Locals::new(), &unknowns, false, false);
+                if quantities.value.is_ok() {
+                    resolved = quantities;
+                }
+            }
+        }
         for note in &resolved.notes {
             self.warn(s.equation.span, note.clone());
         }
@@ -134,7 +161,7 @@ fn equations_of(node: &Node) -> Vec<&Node> {
 
 /// `x = 2 or x = 3` for one unknown with finitely many solutions, `no solution` for
 /// none; other answers keep the solver's own form.
-pub(super) fn solution_text(unknowns: &[String], v: &Expr) -> Option<(String, String)> {
+pub(crate) fn solution_text(unknowns: &[String], v: &Expr) -> Option<(String, String)> {
     let [x] = unknowns else {
         return None;
     };
@@ -153,10 +180,31 @@ pub(super) fn solution_text(unknowns: &[String], v: &Expr) -> Option<(String, St
         return Some(("no solution".into(), "\\text{no solution}".into()));
     }
     let latex_x = Expr::sym(x).to_latex();
-    let text: Vec<String> = values.iter().map(|s| format!("{x} = {s}")).collect();
+    // A root with units is shown as a quantity, with its decimal value when it
+    // is not a plain fraction (`t = 10√1090/109 s ≈ 3.029 s`).
+    let quantity = |s: &Expr| -> Option<(String, String)> {
+        let p = crate::units_wire::present(s).ok().flatten()?;
+        Some(match p.approx {
+            Some(a) => (
+                format!("{} ≈ {a}", p.unicode),
+                format!("{} \\approx \\mathrm{{{}}}", p.latex, a.replace(' ', "\\,")),
+            ),
+            None => (p.unicode, p.latex),
+        })
+    };
+    let text: Vec<String> = values
+        .iter()
+        .map(|s| match quantity(s) {
+            Some((t, _)) => format!("{x} = {t}"),
+            None => format!("{x} = {s}"),
+        })
+        .collect();
     let latex: Vec<String> = values
         .iter()
-        .map(|s| format!("{latex_x} = {}", s.to_latex()))
+        .map(|s| match quantity(s) {
+            Some((_, l)) => format!("{latex_x} = {l}"),
+            None => format!("{latex_x} = {}", s.to_latex()),
+        })
         .collect();
     Some((text.join(" or "), latex.join(" \\;\\text{or}\\; ")))
 }

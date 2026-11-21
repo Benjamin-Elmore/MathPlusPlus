@@ -237,6 +237,18 @@ fn present(lr: &LineResult, fmt: Option<&NumberFormat>) -> Option<Presented> {
         LineKind::Query { mode, .. } => Some(*mode),
         _ => None,
     };
+    // `%sf` and `%dp` are about numeric answers: the coefficients of a symbolic
+    // answer stay as they are (`50e^(3t/10)`, never `50.00·e^(3.000·t/10)`).
+    if let Some(f) = fmt {
+        if !e.is_constant()
+            && f.precision != Precision::Default
+            && units_wire::present(&e).ok().flatten().is_none()
+        {
+            let mut plain = *f;
+            plain.precision = Precision::Default;
+            return with_format(&plain, || shown(lr, &e, mode, Some(&plain)));
+        }
+    }
     run(&|| shown(lr, &e, mode, fmt))
 }
 
@@ -472,7 +484,33 @@ impl LineResult {
             }
             self.plain = plain;
             self.present_text();
+        } else if let Some((text, latex)) = self.solution_under(fmt) {
+            self.text = Some(text);
+            self.latex = Some(latex);
         }
+    }
+
+    /// The roots of a `Solve` sentence in one unknown, written again under `fmt`
+    /// (`t = 10√1090/109 s ≈ 3.029 s` under `%sf 4`).
+    fn solution_under(&self, fmt: &NumberFormat) -> Option<(String, String)> {
+        let input = self.input.as_ref()?;
+        let ExprNode::Apply(name, args) = input.node() else {
+            return None;
+        };
+        let [_, x] = args.as_slice() else {
+            return None;
+        };
+        let x = x.as_sym()?;
+        if &**name != "solve" {
+            return None;
+        }
+        let value = self.value.as_ref()?.expr();
+        if !matches!(value.node(), ExprNode::Set(_)) {
+            return None;
+        }
+        with_format(fmt, || {
+            crate::block::sentences::solution_text(&[x.to_string()], &value)
+        })
     }
 
     /// The answer to write into the file when the user keeps it (Ctrl+Enter):

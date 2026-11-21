@@ -731,3 +731,78 @@ fn decimals_in_give_decimals_out() {
     );
     assert_eq!(answer("$$ 1/3 + 1 = ? $$\n"), "4/3");
 }
+
+/// The text of the first query line (no errors allowed).
+fn shown(src: &str) -> String {
+    let ev = run(src);
+    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    assert!(errs.is_empty(), "{src}: {errs:?}");
+    let (_, line) = ev.queries().next().expect("a query");
+    line.text.clone().unwrap_or_default()
+}
+
+const FALLING: &str = r"Let $h_0 = 45\,\mathrm{m}$ and $g = 9.81\,\mathrm{m/s^2}$.
+
+";
+
+#[test]
+fn a_solve_sentence_with_units_gives_quantities() {
+    // It used to give `10·sqrt(1090)·sqrt(m^2/s^2)/109 s^2/m`.
+    let src = format!(
+        "{FALLING}{}",
+        r"Solve $h_0 - \frac{1}{2} g t^2 = 0$ for $t$."
+    );
+    assert_eq!(
+        shown(&src),
+        "t = 10√1090/109 s ≈ 3.028912664 s or t = -10√1090/109 s ≈ -3.028912664 s"
+    );
+    // `%sf` applies to the decimal value of each root.
+    let text = shown(&format!("%sf 3\n\n{src}"));
+    assert!(text.contains("≈ 3.03 s"), "{text}");
+    assert!(!text.contains("m^2"), "{text}");
+}
+
+#[test]
+fn a_root_of_a_unit_with_whole_powers_is_simplified() {
+    // `√(m·m/s²)` used to read `J^(1/2)/kg^(1/2)`.
+    let src = format!("{FALLING}{}", r"$$ (h_0 g)^{1/2} \approx ? $$");
+    assert_eq!(approx(&src), "21.01071155 m/s");
+}
+
+#[test]
+fn significant_figures_leave_symbolic_coefficients_alone() {
+    // `%sf 4` used to print `50.00·e^(3.000·t/10)`.
+    let src = r"%sf 4
+
+$$ \operatorname{dsolve}(P' = 0.3 P, P, t, P(0) = 50) = ? $$
+
+$$ \frac{\ln 2}{0.3} \approx ? $$
+";
+    let ev = run(src);
+    let lines: Vec<_> = ev.queries().map(|(_, l)| l.clone()).collect();
+    let text = lines[0].text.clone().unwrap_or_default();
+    assert!(!text.contains("50.00") && !text.contains("3.000"), "{text}");
+    assert_eq!(lines[1].approx.as_deref(), Some("2.310"));
+}
+
+#[test]
+fn a_micro_sign_before_an_upright_unit_is_the_prefix() {
+    // `100\,\mu\mathrm{F}` used to read as 100·μ·F and print `100Fμ`.
+    assert_eq!(shown(r"$$ 100\,\mu\mathrm{F} = ? $$"), "100 µF");
+    let src = r"$$ R := 4.7\,\mathrm{k\Omega} $$
+
+$$ C := 100\,\mu\mathrm{F} $$
+
+$$ R C = ? $$
+";
+    assert_eq!(answer(src), "0.47 s");
+}
+
+#[test]
+fn a_change_in_a_quantity_is_typeset_as_delta_x() {
+    // The LaTeX of the name `Δx` used to be `\mathrm{\Delta x}` (upright x).
+    let ev = run(r"$$ 2 \Delta x + \Delta x = ? $$");
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.latex.as_deref(), Some("3 \\Delta x"));
+    assert_eq!(mpp_core::Expr::sym("Δx").to_latex(), "\\Delta x");
+}

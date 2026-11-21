@@ -286,6 +286,15 @@ impl Parser {
             "in" => "∈".into(),
             "cdot" => "·".into(),
             "times" => "×".into(),
+            // `\Delta x` is one name, the change in x: `Δx`.
+            "Delta" => {
+                let save = self.i;
+                self.skip_space();
+                if !self.peek().is_some_and(|c| c.is_ascii_alphabetic()) {
+                    self.i = save;
+                }
+                "Δ".into()
+            }
             other => match lookup_latex(other) {
                 Some(s) if s.kind == SymbolKind::Function => s.unicode.to_string(),
                 Some(s) => s.unicode.to_string(),
@@ -401,6 +410,9 @@ mod tests {
             "∑ₙ₌₁^∞ 1/n²"
         );
         assert_eq!(to_unicode(r"\alpha + \beta"), "α + β");
+        // `\Delta x` is one name: no space inside it.
+        assert_eq!(to_unicode(r"\frac{\Delta x}{\Delta t}"), "Δx/Δt");
+        assert_eq!(to_unicode(r"\Delta + 1"), "Δ + 1");
     }
 
     #[test]
