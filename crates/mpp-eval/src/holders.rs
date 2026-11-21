@@ -48,6 +48,8 @@ pub struct Shown {
     pub value: Expr,
     pub text: String,
     pub latex: String,
+    /// The Unicode reading of `text`, when it differs (`x²/2 + C` for `x^2/2 + C`).
+    pub unicode: Option<String>,
 }
 
 /// What a context collected while a statement was evaluated.
@@ -146,6 +148,21 @@ impl<'a> Ctx<'a> {
             value: value.clone(),
             text,
             latex,
+            unicode: None,
+        });
+    }
+
+    /// [`Ctx::show_as`] for `F + C`: the antiderivative with its constant last.
+    pub fn show_with_constant(&self, value: &Expr, f: &Expr, constant: &str) {
+        self.shown.borrow_mut().push(Shown {
+            value: value.clone(),
+            text: format!("{f} + {constant}"),
+            latex: format!("{} + {constant}", f.to_latex()),
+            unicode: Some(format!(
+                "{} + {}",
+                f.to_text(),
+                Expr::sym(constant).to_text()
+            )),
         });
     }
 

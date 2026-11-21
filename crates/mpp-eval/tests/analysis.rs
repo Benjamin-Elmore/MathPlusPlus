@@ -38,7 +38,7 @@ fn texts(src: &str) -> Vec<String> {
     no_errors(&ev);
     answered(&ev)
         .into_iter()
-        .map(|l| l.text.unwrap_or_default())
+        .map(|l| l.plain.unwrap_or_default())
         .collect()
 }
 
@@ -91,8 +91,8 @@ fn domain_range_asymptotes_of_a_rational_function() {
     let ev = run(src);
     no_errors(&ev);
     let a = answered(&ev);
-    assert_eq!(a[0].text.as_deref(), Some("(-∞, -1) ∪ (-1, 1) ∪ (1, ∞)"));
-    assert_eq!(a[1].text.as_deref(), Some("(-∞, -1] ∪ (2, ∞)"));
+    assert_eq!(a[0].plain.as_deref(), Some("(-∞, -1) ∪ (-1, 1) ∪ (1, ∞)"));
+    assert_eq!(a[1].plain.as_deref(), Some("(-∞, -1] ∪ (2, ∞)"));
     assert_eq!(row(&a[2], "vertical"), "{x = -1, x = 1}");
     assert_eq!(row(&a[2], "horizontal"), "{y = 2}");
 }
@@ -177,7 +177,7 @@ fn removable_holes_stay_out_of_the_domain() {
     // The core simplifies x²/x to x, but the function as written is undefined at 0.
     let ev = run("$$ \\operatorname{domain} \\frac{x^2}{x} = ? $$\n");
     no_errors(&ev);
-    assert_eq!(answered(&ev)[0].text.as_deref(), Some("(-∞, 0) ∪ (0, ∞)"));
+    assert_eq!(answered(&ev)[0].plain.as_deref(), Some("(-∞, 0) ∪ (0, ∞)"));
     assert!(
         warnings(&ev)
             .iter()
@@ -188,7 +188,7 @@ fn removable_holes_stay_out_of_the_domain() {
     // Through a function definition and a helper sentence.
     let ev = run("$$ h(x) := \\frac{x^2 - 1}{x - 1} $$\n\nFind the domain of $h$.\n");
     no_errors(&ev);
-    assert_eq!(answered(&ev)[0].text.as_deref(), Some("(-∞, 1) ∪ (1, ∞)"));
+    assert_eq!(answered(&ev)[0].plain.as_deref(), Some("(-∞, 1) ∪ (1, ∞)"));
     assert!(warnings(&ev).iter().any(|w| w.contains("hole at (1, 2)")));
     // A hole is not a vertical asymptote.
     let src = "$$ k(x) := \\frac{x^2}{x} $$\n\nFind the asymptotes of $k$.\n";

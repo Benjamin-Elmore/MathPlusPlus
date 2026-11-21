@@ -228,7 +228,8 @@ impl Run<'_, '_> {
             lr.text = None;
         }
         if let Some(s) = shown {
-            lr.text = Some(s.text);
+            lr.plain = Some(s.text.clone());
+            lr.text = Some(s.unicode.unwrap_or(s.text));
             lr.latex = Some(s.latex);
         }
         if matches!(kind, Kind::Ode) {

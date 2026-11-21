@@ -16,9 +16,9 @@
         local minima: {(2, -3)}
         absolute maximum: {(4, 17)}
         absolute minimum: {(2, -3)}
-  32: Find the tangent line of $f$ at $x = 1$.  = y = -3*x + 2
+  32: Find the tangent line of $f$ at $x = 1$.  = y = -3x + 2
   34: Find the normal line of $f$ at $x = 3$.  = y = -x/9 + 4/3
-  36: \operatorname{linearisation}_{x=3} f = ?  = L(x) = 9*x - 26
+  36: \operatorname{linearisation}_{x=3} f = ?  = L(x) = 9x - 26
   42: Find the domain of $g$.  = (-∞, -1) ∪ (-1, 1) ∪ (1, ∞)
   44: Find the range of $g$.  = (-∞, -1] ∪ (2, ∞)
   46: Find the asymptotes of $g$.  = vertical: {x = -1, x = 1}

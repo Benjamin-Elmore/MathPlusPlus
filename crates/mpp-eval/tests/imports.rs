@@ -29,7 +29,7 @@ fn answers(ev: &Evaluated) -> Vec<&LineResult> {
 }
 
 fn exact(line: &LineResult) -> String {
-    line.text.clone().unwrap_or_else(|| "<none>".into())
+    line.plain.clone().unwrap_or_else(|| "<none>".into())
 }
 
 fn errors(ev: &Evaluated) -> Vec<String> {

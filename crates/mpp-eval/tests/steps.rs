@@ -108,7 +108,7 @@ fn partial_fractions_show_the_decomposition() {
 #[test]
 fn lhopital_steps_name_the_form() {
     let (line, tree) = tree_of("$$ \\lim_{x \\to 0} \\frac{e^x - 1 - x}{x^2} = ?! $$");
-    assert_eq!(line.text.as_deref(), Some("1/2"));
+    assert_eq!(line.plain.as_deref(), Some("1/2"));
     let lh: Vec<String> = tree
         .walk()
         .into_iter()
@@ -140,7 +140,7 @@ fn series_terms_are_listed() {
 #[test]
 fn definite_integrals_end_with_the_fundamental_theorem() {
     let (line, tree) = tree_of("$$ \\int_0^2 x^2 \\, dx = ?! $$");
-    assert_eq!(line.text.as_deref(), Some("8/3"));
+    assert_eq!(line.plain.as_deref(), Some("8/3"));
     assert_eq!(
         tree.roots.last().map(|n| n.rule.as_str()),
         Some("fundamental theorem of calculus")
@@ -158,7 +158,7 @@ fn show_steps_option_records_plain_queries() {
     let line = only_query(s.update(src));
     let tree = line.step_tree().expect("steps with the option on");
     assert_eq!(tree.rules(), vec!["power rule"]);
-    assert_eq!(line.text.as_deref(), Some("3*x^2"));
+    assert_eq!(line.plain.as_deref(), Some("3*x^2"));
     s.set_show_steps(false);
     assert!(only_query(s.update(src)).steps.is_none());
 }

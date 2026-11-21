@@ -63,9 +63,9 @@ fn actual(doc: &Path) -> Vec<String> {
         .into_iter()
         .map(|l| {
             if l.error {
-                format!("{} → {}", l.asked, l.answer)
+                format!("{} → {}", l.asked, l.plain)
             } else {
-                format!("{} ? → {}", l.asked, l.answer)
+                format!("{} ? → {}", l.asked, l.plain)
             }
         })
         .collect();

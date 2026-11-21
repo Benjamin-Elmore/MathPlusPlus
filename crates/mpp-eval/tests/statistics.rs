@@ -29,7 +29,7 @@ fn notes(ev: &Evaluated) -> Vec<String> {
 fn shown(ev: &Evaluated) -> Vec<String> {
     ev.queries()
         .map(|(_, l)| {
-            l.text
+            l.plain
                 .clone()
                 .or_else(|| l.approx.clone())
                 .unwrap_or_else(|| "<none>".into())

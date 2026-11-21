@@ -34,7 +34,7 @@ fn render(src: &str) -> String {
     for (block, line) in ev.queries() {
         let text = src.get(line.span.start..line.span.end).unwrap_or("").trim();
         let _ = writeln!(out, "{}: {text}", index.line_of(line.span.start));
-        if let Some(a) = line.answer() {
+        if let Some(a) = line.plain_answer() {
             let _ = writeln!(out, "    {a}");
         }
         for d in &block.diagnostics {
@@ -129,7 +129,7 @@ fn checks_never_auto_evaluate() {
 fn trig_answers_are_tidied() {
     let ev = run(r"$$ \frac{\partial(r \cos\theta, r \sin\theta)}{\partial(r, \theta)} = ? $$");
     let (_, line) = ev.queries().next().expect("a query");
-    assert_eq!(line.text.as_deref(), Some("r"));
+    assert_eq!(line.plain.as_deref(), Some("r"));
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn quick_calculator() {
     assert_eq!(calc_line(r"\int_0^1 x^2 dx").as_deref(), Ok("1/3"));
     assert_eq!(
         calc_line(r"\sum_{n=1}^{\infty} \frac{1}{n^2}").as_deref(),
-        Ok("π^2/6 ≈ 1.644934067")
+        Ok("π²/6 ≈ 1.644934067")
     );
     assert_eq!(
         calc_line(r"y'' + y = 0, \quad y(0) = 1, y'(0) = 0").as_deref(),

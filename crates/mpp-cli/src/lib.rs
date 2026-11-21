@@ -19,8 +19,11 @@ pub struct RunLine {
     pub line: usize,
     /// What was asked, as Unicode text (`∫₀¹ x² dx =`).
     pub asked: String,
-    /// The answer (`1/3`), or the error message for a line that failed.
+    /// The answer as Unicode text (`9π`, `2xy`), or the error message for a line that
+    /// failed.
     pub answer: String,
+    /// The same answer in the stable ASCII form (`9*π`, `2*x*y`), for golden files.
+    pub plain: String,
     /// True when the line is an error.
     pub error: bool,
     /// The working of a `= ?!` query, one step per line (`rule: before → after`).
@@ -58,6 +61,7 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
                     line: ev.line_of(line.span.start),
                     asked: to_unicode(&src),
                     answer: errors[i].message.clone(),
+                    plain: errors[i].message.clone(),
                     error: true,
                     steps: vec![],
                 }
@@ -74,6 +78,7 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
                     line: ev.line_of(d.span.start),
                     asked: to_unicode(&snippet(ev, d.span.start, d.span.end)),
                     answer: d.message.clone(),
+                    plain: d.message.clone(),
                     error: true,
                     steps: vec![],
                 },
@@ -96,6 +101,7 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
             line: n,
             asked: to_unicode(src),
             answer: v.describe(),
+            plain: v.describe(),
             error: false,
             steps: vec![],
         };
@@ -110,16 +116,21 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
     // An exact query with no closed form falls back to a number, shown with `≈`: when
     // there is no exact text, or the exact text only repeats what was asked
     // (`erf(1/2) = erf(1/2)`).
-    let unchanged = match (&line.text, &line.input) {
+    let plain_text = line.plain.clone().or_else(|| line.text.clone());
+    let unchanged = match (&plain_text, &line.input) {
         (Some(t), Some(input)) => *t == input.to_string(),
         _ => false,
     };
     let numeric_fallback =
         !approx_query && line.approx.is_some() && (line.text.is_none() || unchanged);
-    let shown = if approx_query || numeric_fallback {
-        line.approx.clone().or_else(|| line.text.clone())
+    let (shown, plain) = if approx_query || numeric_fallback {
+        let a = line.approx.clone();
+        (
+            a.clone().or_else(|| line.text.clone()),
+            a.or_else(|| plain_text.clone()),
+        )
     } else {
-        line.text.clone()
+        (line.text.clone(), plain_text)
     };
     // Everything before the `?` is the question; the answer takes the `?`'s place.
     let mut asked = match src.rfind('?') {
@@ -135,6 +146,7 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
         line: n,
         asked,
         answer: shown.unwrap_or_else(|| "(no answer)".into()),
+        plain: plain.unwrap_or_else(|| "(no answer)".into()),
         error: false,
         steps: line
             .steps

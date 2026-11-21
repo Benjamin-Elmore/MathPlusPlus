@@ -26,7 +26,7 @@ fn answer(src: &str) -> String {
     let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a query");
-    line.text.clone().unwrap_or_default()
+    line.plain.clone().unwrap_or_default()
 }
 
 /// The numeric answer of the first query (no errors allowed).
@@ -141,7 +141,7 @@ fn a_numeric_query_with_an_unknown_name_shows_no_result() {
     let ev = run(r"$$ \sin\theta \approx ? $$");
     assert_eq!(ev.errors().len(), 1);
     let (_, line) = ev.queries().next().expect("a query");
-    assert_eq!(line.answer(), None, "{:?}", line.text);
+    assert_eq!(line.plain_answer(), None, "{:?}", line.plain);
     assert!(line.value.is_none());
 }
 
@@ -262,4 +262,27 @@ fn checks_of_lists_inequalities_and_units() {
         "✗ (left side 1 km, right side 999 m)"
     );
     assert!(verdict(r"$$ 1\,\mathrm{kg} \overset{?}{=} 1\,\mathrm{m} $$").starts_with('✗'));
+}
+
+#[test]
+fn results_read_as_unicode_text_with_a_stable_plain_form() {
+    let ev = run(r"$$ 9\pi = ? $$");
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.text.as_deref(), Some("9π"));
+    assert_eq!(line.plain.as_deref(), Some("9*π"));
+    let text = |src: &str| {
+        let ev = run(src);
+        let (_, line) = ev.queries().next().expect("a query");
+        line.text.clone().unwrap_or_default()
+    };
+    assert_eq!(text(r"$$ \frac{\partial}{\partial x}(x^2 y) = ? $$"), "2xy");
+    assert_eq!(
+        text(r"$$ \frac{d}{dx} x^3 \sin x = ? $$"),
+        "x³ cos(x) + 3x² sin(x)"
+    );
+    assert_eq!(text(r"$$ \int x e^x \, dx = ? $$"), "x e^x - e^x + C");
+    assert_eq!(text(r"$$ \sqrt{8} = ? $$"), "2√2");
+    // A · only where two factors would run together.
+    assert_eq!(text(r"$$ 2 \cdot 3^x = ? $$"), "2·3^x");
+    assert_eq!(text(r"$$ \frac{d}{dx} J_0(x) = ? $$"), "-J₁(x)");
 }

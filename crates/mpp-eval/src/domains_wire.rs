@@ -650,11 +650,7 @@ fn piecewise_calculus(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
                             let c = if f.contains_sym("C") { "C_1" } else { "C" };
                             let value =
                                 mpp_core::simplify(&mpp_core::add(vec![f.clone(), Expr::sym(c)]));
-                            ctx.show_as(
-                                &value,
-                                format!("{f} + {c}"),
-                                format!("{} + {c}", f.to_latex()),
-                            );
+                            ctx.show_with_constant(&value, &f, c);
                             ctx.note("the pieces' constants are chosen so the antiderivative is continuous");
                             ctx.log(
                                 "integrate each piece and join them continuously",

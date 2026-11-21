@@ -66,8 +66,11 @@ pub struct LineResult {
     pub value: Option<Value>,
     /// The value as LaTeX.
     pub latex: Option<String>,
-    /// The value as plain text.
+    /// The value as Unicode text for people to read (`9π`, `2xy`, `x² + 1`).
     pub text: Option<String>,
+    /// The same value in the stable ASCII form of [`std::fmt::Display`] (`9*π`,
+    /// `2*x*y`, `x^2 + 1`), for tools and tests.
+    pub plain: Option<String>,
     /// The numeric value, 10 significant digits.
     pub approx: Option<String>,
     /// The verdict of a check.
@@ -102,6 +105,7 @@ impl LineResult {
             value: None,
             latex: None,
             text: None,
+            plain: None,
             approx: None,
             verdict: None,
             conditions: Vec::new(),
@@ -124,6 +128,40 @@ impl LineResult {
             _ => mpp_core::tools::StepTree::from_steps(steps),
         };
         Some(tree)
+    }
+
+    /// Splits the shown text into its two forms: [`LineResult::plain`] keeps the text
+    /// as it was made, and [`LineResult::text`] becomes the Unicode reading of the value
+    /// when the text is just the value printed (a presentation of its own, such as a
+    /// quantity with units or a table, is kept as it is).
+    pub fn present_text(&mut self) {
+        if self.plain.is_some() {
+            // Already split (a presentation that came with its own Unicode text).
+            return;
+        }
+        self.plain = self.text.clone();
+        let (Some(t), Some(v)) = (&self.text, &self.value) else {
+            return;
+        };
+        let unicode = match v {
+            Value::Function { params, body } => (*t == format!("({}) ↦ {body}", params.join(", ")))
+                .then(|| format!("({}) ↦ {}", params.join(", "), body.to_text())),
+            Value::Table(_) => None,
+            other => {
+                let e = other.expr();
+                (*t == e.to_string()).then(|| e.to_text())
+            }
+        };
+        if let Some(u) = unicode {
+            self.text = Some(u);
+        }
+    }
+
+    /// The answer as [`LineResult::answer`] gives it, in the plain ASCII form.
+    pub fn plain_answer(&self) -> Option<String> {
+        let mut plain = self.clone();
+        plain.text = self.plain.clone().or_else(|| self.text.clone());
+        plain.answer()
     }
 
     /// Sets the value with its LaTeX and plain text.

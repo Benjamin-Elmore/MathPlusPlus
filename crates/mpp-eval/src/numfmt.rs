@@ -348,7 +348,7 @@ impl LineResult {
         }
         match present(self, None) {
             Some(p) => {
-                p.text == self.text
+                p.text == self.plain.clone().or_else(|| self.text.clone())
                     && p.latex == self.latex
                     && (p.approx == self.approx || !matches!(self.kind, LineKind::Query { .. }))
             }
@@ -402,13 +402,16 @@ impl LineResult {
             if matches!(self.kind, LineKind::Query { .. }) {
                 self.approx = approx;
             }
+            self.plain = None;
+            self.present_text();
         }
     }
 
     /// The answer to write into the file when the user keeps it (Ctrl+Enter):
-    /// the answer as shown, with powers of ten written as `\times 10^{n}`.
+    /// the answer in its plain form (which the parser reads back exactly), with powers
+    /// of ten written as `\times 10^{n}`.
     pub fn keep_text(&self) -> Option<String> {
-        self.answer().map(|a| file_safe(&a))
+        self.plain_answer().map(|a| file_safe(&a))
     }
 }
 

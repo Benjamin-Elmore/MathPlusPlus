@@ -249,7 +249,8 @@ impl Run<'_, '_> {
             .push(Diagnostic::warning(span, message));
     }
 
-    fn push(&mut self, line: LineResult) {
+    fn push(&mut self, mut line: LineResult) {
+        line.present_text();
         self.result.values.push(line);
     }
 
@@ -1083,7 +1084,8 @@ impl Run<'_, '_> {
             lr.text = None;
         }
         if let Some(s) = shown {
-            lr.text = Some(s.text);
+            lr.plain = Some(s.text.clone());
+            lr.text = Some(s.unicode.unwrap_or(s.text));
             lr.latex = Some(s.latex);
         }
         self.push(lr);
