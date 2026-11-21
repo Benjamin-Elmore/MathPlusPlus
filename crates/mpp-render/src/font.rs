@@ -118,6 +118,30 @@ pub enum Stretched {
     },
 }
 
+/// The kern of the band `height` falls in: the heights (ascending) split the line
+/// into bands, band i (below height i) has kern i, and everything at or above the
+/// last height has the last kern. Malformed data (a kern missing for a band) gives 0.
+pub fn kern_band(heights: &[f32], kerns: &[f32], height: f32) -> f32 {
+    let band = heights
+        .iter()
+        .position(|&h| height < h)
+        .unwrap_or(heights.len());
+    kerns
+        .get(band)
+        .copied()
+        .filter(|k| k.is_finite())
+        .unwrap_or(0.0)
+}
+
+/// A corner of a glyph, for [`Fonts::math_kern`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KernCorner {
+    TopRight,
+    TopLeft,
+    BottomRight,
+    BottomLeft,
+}
+
 /// The MATH table constants, in em at the base size.
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 #[allow(missing_docs)]
@@ -358,6 +382,47 @@ impl Fonts {
             .and_then(|i| i.italic_corrections)
             .and_then(|ic| ic.get(GlyphId(glyph)));
         self.math_value(v).unwrap_or(0.0)
+    }
+
+    /// The MATH table's cut-in for a corner of a maths glyph at `height` (em above its
+    /// baseline), in em: negative where a script may tuck into the glyph's shape (the
+    /// top right of an upright `f`, the bottom right of a `V`). Zero when the font
+    /// gives the glyph no kerning at that corner.
+    pub fn math_kern(&self, glyph: u16, corner: KernCorner, height: f32) -> f32 {
+        let Some(info) = self
+            .face(FontId::Math)
+            .and_then(|f| f.tables().math)
+            .and_then(|m| m.glyph_info)
+            .and_then(|i| i.kern_infos)
+            .and_then(|k| k.get(GlyphId(glyph)))
+        else {
+            return 0.0;
+        };
+        let kern = match corner {
+            KernCorner::TopRight => info.top_right,
+            KernCorner::TopLeft => info.top_left,
+            KernCorner::BottomRight => info.bottom_right,
+            KernCorner::BottomLeft => info.bottom_left,
+        };
+        let Some(kern) = kern else {
+            return 0.0;
+        };
+        let n = kern.count();
+        let mut heights = Vec::with_capacity(usize::from(n));
+        let mut kerns = Vec::with_capacity(usize::from(n) + 1);
+        for i in 0..n {
+            match self.math_value(kern.height(i)) {
+                Some(h) => heights.push(h),
+                None => return 0.0,
+            }
+        }
+        for i in 0..=n {
+            match self.math_value(kern.kern(i)) {
+                Some(k) => kerns.push(k),
+                None => return 0.0,
+            }
+        }
+        kern_band(&heights, &kerns, height)
     }
 
     /// Where an accent attaches to a maths glyph, in em from its origin.
@@ -691,6 +756,34 @@ mod tests {
             }
             Stretched::Glyph(_) => panic!("a 6em paren should be assembled"),
         }
+    }
+
+    #[test]
+    fn math_kern_bands() {
+        // Two heights, three bands.
+        let h = [0.2, 0.5];
+        let k = [-0.1, -0.05, 0.0];
+        assert_eq!(kern_band(&h, &k, 0.0), -0.1);
+        assert_eq!(kern_band(&h, &k, 0.3), -0.05);
+        assert_eq!(kern_band(&h, &k, 0.5), 0.0);
+        assert_eq!(kern_band(&h, &k, 9.0), 0.0);
+        // No heights: one band.
+        assert_eq!(kern_band(&[], &[-0.2], 0.4), -0.2);
+        // A kern missing for the band is no kerning, never a guess.
+        assert_eq!(kern_band(&h, &k[..2], 0.9), 0.0);
+    }
+
+    #[test]
+    fn glyphs_without_math_kerning_kern_nothing() {
+        let f = Fonts::get();
+        // Latin Modern Math has no MathKernInfo table, so every cut-in is zero and
+        // scripts sit where the italic correction puts them.
+        for c in ['f', 'V', 'P', 'x'] {
+            let g = f.glyph(FontId::Math, c).unwrap();
+            assert_eq!(f.math_kern(g, KernCorner::TopRight, 0.5), 0.0);
+            assert_eq!(f.math_kern(g, KernCorner::BottomRight, -0.1), 0.0);
+        }
+        assert_eq!(f.math_kern(u16::MAX, KernCorner::TopLeft, 0.5), 0.0);
     }
 
     #[test]

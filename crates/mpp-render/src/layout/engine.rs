@@ -11,7 +11,7 @@ use super::chars;
 use super::style::{space_mu, Class, Style};
 use super::{IntegralLimits, LayoutOptions};
 use crate::display::{Color, HitKind, NodePath};
-use crate::font::{FontId, Fonts, MathConstants, Stretched};
+use crate::font::{FontId, Fonts, KernCorner, MathConstants, Stretched};
 
 /// A laid-out piece of a formula with the classes of its two ends.
 #[derive(Debug, Clone)]
@@ -325,6 +325,16 @@ impl<'a> Engine<'a> {
                 }
             }
         }
+        // OpenType MATH kerning: a script cuts into the corner of a single-glyph
+        // nucleus where the shapes leave room (`f²`, `V₁`, `P_n`).
+        let sup_kern = sup
+            .as_ref()
+            .filter(|_| is_char)
+            .map_or(0.0, |p| self.cut_in(&base, p, sup_shift, true));
+        let sub_kern = sub
+            .as_ref()
+            .filter(|_| is_char)
+            .map_or(0.0, |b| self.cut_in(&base, b, sub_shift, false));
         let after = c.space_after_script * s;
         let bw = base.width;
         let mut width = bw;
@@ -337,7 +347,7 @@ impl<'a> Engine<'a> {
         }];
         let mut new_italic = 0.0;
         if let Some(p) = sup {
-            let x = if op { bw } else { bw + italic };
+            let x = if op { bw } else { bw + italic + sup_kern };
             height = height.max(sup_shift + p.height);
             depth = depth.max(p.depth - sup_shift);
             width = width.max(x + p.width + after);
@@ -349,7 +359,7 @@ impl<'a> Engine<'a> {
             });
         }
         if let Some(b) = sub {
-            let x = if op { bw - italic } else { bw };
+            let x = if op { bw - italic } else { bw + sub_kern };
             height = height.max(b.height - sub_shift);
             depth = depth.max(sub_shift + b.depth);
             width = width.max(x + b.width + after);
@@ -358,6 +368,53 @@ impl<'a> Engine<'a> {
         let mut out = LBox::with_children(width, height.max(0.0), depth.max(0.0), children);
         out.italic = new_italic;
         out
+    }
+
+    /// The MATH-table cut-in between a single-glyph nucleus and a script, in the
+    /// layout's units (negative moves the script left). The kern is read at two
+    /// heights, as the OpenType specification describes, and the larger (the one that
+    /// overlaps less) is used: for a superscript at the bottom of the script and at the
+    /// top of the nucleus, for a subscript at the top of the script and at the bottom
+    /// of the nucleus. A corner the font gives no kerning counts as zero.
+    fn cut_in(&self, base: &LBox, script: &LBox, shift: f32, sup: bool) -> f32 {
+        let Some(g) = base.single_glyph().filter(|g| g.font == FontId::Math) else {
+            return 0.0;
+        };
+        let script_glyph = script.single_glyph().filter(|s| s.font == FontId::Math);
+        // Heights in the nucleus's coordinates (up from its baseline); the script's
+        // own baseline sits `shift` above (superscript) or below (subscript) it.
+        let (heights, base_corner, script_corner, offset) = if sup {
+            (
+                [shift - script.depth, base.height],
+                KernCorner::TopRight,
+                KernCorner::BottomLeft,
+                shift,
+            )
+        } else {
+            (
+                [script.height - shift, -base.depth],
+                KernCorner::BottomRight,
+                KernCorner::TopLeft,
+                -shift,
+            )
+        };
+        let mut best: Option<f32> = None;
+        for h in heights {
+            let mut k = self.fonts.math_kern(g.glyph, base_corner, h / g.size) * g.size;
+            if let Some(sg) = script_glyph {
+                k += self
+                    .fonts
+                    .math_kern(sg.glyph, script_corner, (h - offset) / sg.size)
+                    * sg.size;
+            }
+            best = Some(best.map_or(k, |b: f32| b.max(k)));
+        }
+        let k = best.unwrap_or(0.0);
+        if k.is_finite() {
+            k
+        } else {
+            0.0
+        }
     }
 
     /// Limits above and below a big operator (centred, offset by its italic
