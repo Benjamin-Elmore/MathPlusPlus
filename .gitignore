@@ -1,2 +1,7 @@
 target/
 .claude/
+*.msi
+*.zip
+*.wixobj
+*.wixpdb
+/dist/

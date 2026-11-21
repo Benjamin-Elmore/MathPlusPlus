@@ -1,0 +1,15 @@
+Title: Math++ changelog
+Author: The Math++ project
+
+## 0.1.0
+
+First release: a maths language that reads like a paper, with a live editor.
+
+- **The language.** A `.mpp` file is prose with maths in it, worked out from top to bottom. A `?` after an equals sign is replaced by the answer, kept exact (`1/3`) or as a decimal with `≈ ?`. Maths can be written in LaTeX, plain text or Unicode.
+- **The engine.** Algebra, derivatives, integrals, series, limits, matrices, differential equations, units, assumptions, piecewise functions, intervals and sets, data tables and statistics, and a standard library of named results. The working can be shown step by step.
+- **The editor.** A live, typeset equation view you type straight into. Problems are underlined in place as you type, with a card that says what is wrong and how to fix it. Tiled panes, an outline, an Insert menu, a Problems panel, dark mode and a maths font.
+- **Graphs.** 2D and 3D plots drawn in the page.
+- **Documents.** Title block, theorems, citations, footnotes and formatted comments; a paper-like page.
+- **Export.** PDF, LaTeX and HTML, from the File menu or with `mpp export`.
+- **The command line.** `mpp run`, `check`, `render`, `export`, `calc` and `ide`.
+- **Windows.** `Math++.exe` (the editor, with an icon and no console window) and `mpp.exe`. An installer adds a Start-menu entry, opens `.mpp` files with a double-click and can put `mpp` on the PATH. A portable zip is also built.

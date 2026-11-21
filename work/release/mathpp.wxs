@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Math++ per-user installer (WiX 3). Built by work/release/build.ps1; no admin rights needed.
+     Variables: Version (from Cargo.toml), Stage (the staged folder), Ico (the icon file),
+     Rtf (licence page text). -->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product Id="*" Name="Math++" Language="1033" Version="$(var.Version)" Manufacturer="Benjamin Elmore"
+           UpgradeCode="6B1F3A52-9C0E-4D7B-8E3A-4B7C2D5A91F0">
+    <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" InstallPrivileges="limited"
+             Description="Math++ $(var.Version): a maths language that reads like a paper" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Math++ is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+    <Icon Id="MathppIcon.ico" SourceFile="$(var.Ico)" />
+    <Property Id="ARPPRODUCTICON" Value="MathppIcon.ico" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLFOLDER" />
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.Rtf)" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="LocalAppDataFolder">
+        <Directory Id="ProgramsDir" Name="Programs">
+          <Directory Id="INSTALLFOLDER" Name="Math++">
+            <Component Id="IdeExe" Guid="A3D1E6C0-5B7A-4F2E-9D41-0C8E7B6A5F11">
+              <File Id="IdeExeFile" Name="Math++.exe" Source="$(var.Stage)\Math++.exe" KeyPath="yes" />
+              <RegistryValue Root="HKCU" Key="Software\Math++" Name="InstallDir" Type="string" Value="[INSTALLFOLDER]" />
+              <!-- .mpp files: double-click opens the IDE with that file -->
+              <RegistryValue Root="HKCU" Key="Software\Classes\.mpp" Type="string" Value="MathPlusPlus.Document" />
+              <RegistryValue Root="HKCU" Key="Software\Classes\MathPlusPlus.Document" Type="string" Value="Math++ document" />
+              <RegistryValue Root="HKCU" Key="Software\Classes\MathPlusPlus.Document\DefaultIcon" Type="string" Value="[INSTALLFOLDER]Math++.exe,0" />
+              <RegistryValue Root="HKCU" Key="Software\Classes\MathPlusPlus.Document\shell" Type="string" Value="open" />
+              <RegistryValue Root="HKCU" Key="Software\Classes\MathPlusPlus.Document\shell\open\command" Type="string" Value="&quot;[INSTALLFOLDER]Math++.exe&quot; &quot;%1&quot;" />
+            </Component>
+            <Component Id="CliExe" Guid="B4E2F7D1-6C8B-4A3F-8E52-1D9F8C7B6A22">
+              <File Id="CliExeFile" Name="mpp.exe" Source="$(var.Stage)\mpp.exe" KeyPath="yes" />
+            </Component>
+            <Component Id="PathEntry" Guid="C5F3A8E2-7D9C-4B40-9F63-2EA09D8C7B33">
+              <RegistryValue Root="HKCU" Key="Software\Math++" Name="PathEntry" Type="integer" Value="1" KeyPath="yes" />
+              <Environment Id="MppPath" Name="PATH" Value="[INSTALLFOLDER]" Part="last" Action="set" System="no" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Component Id="StartMenuShortcut" Guid="D6A4B9F3-8EAD-4C51-A074-3FB1AE9D8C44">
+          <Shortcut Id="IdeShortcut" Name="Math++" Description="Math++ live editor"
+                    Target="[INSTALLFOLDER]Math++.exe" WorkingDirectory="INSTALLFOLDER" Icon="MathppIcon.ico" />
+          <RegistryValue Root="HKCU" Key="Software\Math++" Name="StartMenu" Type="integer" Value="1" KeyPath="yes" />
+        </Component>
+      </Directory>
+    </Directory>
+
+    <Feature Id="Main" Title="Math++" Description="The Math++ editor, the mpp command, the guide and examples." Level="1" Absent="disallow" ConfigurableDirectory="INSTALLFOLDER">
+      <ComponentRef Id="IdeExe" />
+      <ComponentRef Id="CliExe" />
+      <ComponentRef Id="StartMenuShortcut" />
+      <ComponentGroupRef Id="StageFiles" />
+      <Feature Id="AddToPath" Title="Add mpp to PATH" Description="Lets you type mpp in any terminal (open a new terminal after installing)." Level="1000">
+        <ComponentRef Id="PathEntry" />
+      </Feature>
+    </Feature>
+
+    <UIRef Id="WixUI_FeatureTree" />
+    <UIRef Id="WixUI_ErrorProgressText" />
+  </Product>
+</Wix>

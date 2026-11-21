@@ -40,7 +40,7 @@ pub use doc::{Doc, PageCache};
 pub use sample::WELCOME;
 
 /// Opens the editor window with `paths` (or the welcome page) and runs until it is
-/// closed. `mathpp-ide` and `mpp ide` both start here.
+/// closed. `mathpp` (shipped as `Math++.exe`) and `mpp ide` both start here.
 pub fn run(paths: Vec<std::path::PathBuf>) -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
