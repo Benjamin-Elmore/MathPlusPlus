@@ -193,6 +193,27 @@ impl LineResult {
         self.value = Some(value);
     }
 
+    /// True when the value is built from numbers, constants, sums, products and powers
+    /// only (`π/2`, `2√2`, `(1 - i)/2`): an exact closed form worth showing as it is,
+    /// unlike an unevaluated call such as `erf(1/2)`.
+    pub fn is_closed_form(&self) -> bool {
+        fn closed(e: &Expr) -> bool {
+            use mpp_core::ExprNode as N;
+            match e.node() {
+                // A free name or a call with no arguments, in a value that has a decimal,
+                // is a named constant (`γ`).
+                N::Num(_) | N::Const(_) | N::Sym(_) => true,
+                N::Apply(_, args) => args.is_empty(),
+                N::Add(_) | N::Mul(_) | N::Pow(..) => e.children().into_iter().all(closed),
+                _ => false,
+            }
+        }
+        match &self.value {
+            Some(Value::Function { .. } | Value::Table(_)) | None => false,
+            Some(v) => closed(&v.expr()),
+        }
+    }
+
     /// The answer as one line of text (`= 2`, `≈ 1.414213562`, `✓ …`).
     pub fn answer(&self) -> Option<String> {
         if let Some(v) = &self.verdict {
