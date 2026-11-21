@@ -1,0 +1,47 @@
+# Lane notes: C10, N13, N10 (ide-a)
+
+## Shared-file requests for the integrator
+
+- Cargo.lock: `mpp-ide` now also depends on `egui_tiles` 0.18 (serde feature), `serde` 1, `serde_json` 1, `notify` 8 and `trash` 5. Regenerate the lockfile after merging.
+- eframe is used without its `persistence` feature, so settings and the session live in our own JSON file in the app-data folder (`settings/`), never inside a project.
+- Guide text (docs/guide.mpp): the explorer, tabs and navigation keys are listed in the module doc of `workspace/ui.rs` and in the C10 row.
+
+## Keys added (C10)
+
+- `Ctrl+B` side bar, `Ctrl+P` quick open, `Ctrl+Shift+F` search all files, `Ctrl+Shift+E` explorer, `F2` rename, `Alt+Left` and `Alt+Right` back and forward, `Ctrl+Tab` and `Ctrl+Shift+Tab` cycle tabs, `Ctrl+W` close tab, `Shift+F12` find all uses, `Ctrl+0` reset zoom.
+
+## Merge notes
+
+- `app.rs`: the old `side_panel`, `close_tab`, `folder`/`files` fields are gone. The window is now `menu`, `status_ui`, `side_ui`, `header_ui`, central page. `IdeApp::ws` holds the project, side bar, search and history state.
+- `view.rs`: one new `ViewEvent::OpenLinkAt` and one call that emits it on a click.
+- `doc.rs`: `Doc::id`, `Doc::reload`, `Doc::problems`.
+
+## N13 tile manager
+
+- Panels are `egui_tiles` tiles (`layout/tiles.rs` pure operations, `layout/behavior.rs` the app glue). The old side panel and tab strip are gone: the Explorer, Search, Outline, Variables, Problems (placeholder until N9), Steps and Standard library (placeholders) and every equation view are tiles.
+- Keys: `Ctrl+\` split right, `Ctrl+Shift+\` split down, `Ctrl+Shift+Enter` or double-click a tab to maximise and restore, `Ctrl+K` then an arrow moves focus.
+- Layouts are saved per project in the app-data folder (`layouts/<hash>.json`); View → Layout lists the built-in Writing, Graphing and Review and any saved names; View → Reset layout.
+- Right-click a figure → "Open in tile" (`ViewEvent::OpenFigureTile` in view.rs).
+- The variables tile edits the plain number after a `:=` (slider and input box) and the evaluation follows.
+
+## N10 IDE tools
+
+- Undo and redo stay with the editor (it already groups a run of typing into one step and restores the caret); `history/` adds the browsable trail (Edit → History lists steps as the typeset block that changed; any step restores as one undoable edit). The editor groups all contiguous typing, not word by word: change that in `editor/` if per-word steps are wanted.
+- Autosave: Edit → Autosave (off, after a second of quiet, when the window loses focus). Recovery copies go to `<app data>/recovery/` every three seconds for files with unsaved edits and are removed on save or close; the next start-up offers "Restore unsaved changes to N files?" with a typeset side-by-side compare (`autosave/compare.rs`).
+- Zoom: `Ctrl+=`, `Ctrl+-`, `Ctrl+0`, `Ctrl+scroll` scale the page (and so every graph on it); remembered in the settings file. egui's own keyboard zoom is switched off in `EframeApp::new`.
+- Tutorial: eleven lessons plus `constants.mpp` in `tutorial/lessons.rs`, written to `<app data>/tutorial/` on first launch and from Help → Tutorial. The units and steps lessons describe the tools in words until those lanes are integrated; update them then.
+- Did you mean: `suggest::Suggester` has `names`, `symbols`, `units`, `phrases` and `files` with the same shapes as ide-b's `diagnostics::suggest::Suggest` plug point. After the merge, implement that trait for `Suggester` and call `set_suggester(Arc::new(Suggester))` in `EframeApp::new`; autocomplete in `editor/symbols.rs` can call `Suggester::names` and `phrases` too. In this lane it is used by the search view ("Did you mean …?") and by the missing-import message.
+- Shared scratch note: two lanes wrote scripts to the same scratchpad folder; keep lane scripts in a per-lane subfolder.
+
+## After the merge with ide-b (fonts, dark mode, Insert menu, live problems)
+
+- The Problems tile hosts `problems::ProblemsView` (all open files and their imports, grouped by file). Ctrl+Shift+M, View, Problems and a click on the status bar count open it; `IdeApp::toggle_problems` keeps `problems.open` in step with the tile.
+- Tabs and explorer rows (open files and the tree) show error counts (warnings when there are no errors) from `IdeApp::file_counts`, which covers imported files that are not open.
+- The status bar keeps imports, definitions and the spinner and adds the problem summary and the theme button; it is set in Latin Modern Sans.
+- `suggest::Suggester` implements `diagnostics::suggest::Suggest` (defined names only, Greek look-alikes first) and is installed at start-up; autocomplete falls back to it when nothing starts with what was typed (`lamda` offers the letter).
+- One undo history: Edit, History lists the editor's own undo steps (a template insert is one step) and walks them with undo and redo. Typing groups word by word: a word and the space or punctuation after it are one step; a new line is its own step. The old separate timeline is gone.
+- Several equation views can be on screen: the Insert menu, quick-fix menu, F8 card, autocomplete and template toolbar belong to one view, the focused tile (or a visible view of the active file). F8 also works when the keyboard is in the explorer or a tab strip.
+- Ctrl+K then Ctrl+T (theme) and Ctrl+K then an arrow (focus) share the chord in the tile shortcuts.
+- Theme choice, Insert settings and the copy format are saved in the settings JSON (eframe storage is not used).
+- No colour is named outside `theme/`: `theme::CLEAR` replaces the transparent literal.
+- Screenshots: `cargo test -p mpp-ide --test merged_ui` writes `merged-*.png` to `target/ide-snapshots/`.

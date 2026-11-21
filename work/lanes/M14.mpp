@@ -1,0 +1,31 @@
+# Lane notes: M14 (ide)
+
+## Shared-file requests for the integrator
+
+- Cargo.lock: new crate `mpp-ide` adds eframe 0.37 (glow), egui 0.37, lyon_tessellation 1,
+  rfd 0.18; dev-dependency egui_kittest 0.37 (wgpu, snapshot). Regenerate the lockfile after merging.
+- The Placeholder match arm in mpp-eval/src/lower.rs was applied by the integrator (b360c55).
+
+## Module map (for the later IDE lanes)
+
+- `explorer/`: flat `.mpp` list (`list_mpp`, `show`). C10 replaces it with the tree.
+- `tabs/`: the tab strip (`Tab`, `TabAction`). C10 adds the dirty dot, errors, close all.
+- `editor/`: `Editor` (`insert_text`, `delete`, `delete_range`, `move_caret`, `replace_node`,
+  undo/redo) and `editor/symbols.rs` (live replacement, completions). C9 builds the template
+  and box editor on `replace_node` and `Page::slots`-style stops.
+- `diagnostics/`: `Problem` list per page and the wavy underline painter. N9 extends it.
+- `theme/`: `Mode`, `install_fonts` (Latin Modern Roman for all chrome), `apply`. N14 finishes it.
+- `layout/`: sizes and constants only. N13 replaces it with the tile manager.
+- `page/`: document to typeset page (`build_page`), caret stops, hit boxes.
+- `figure.rs`: `FigureDrawer` trait; `PlaceholderFigure` draws a "Figure" box until the plot
+  crate implements it (`IdeApp::set_figure_drawer`).
+
+## Behaviour notes
+
+- The page is rebuilt from the current text every edit; evaluation results are matched by block id,
+  so a stale result never shows at the wrong place. Parser problems show at once, evaluation
+  problems only when the evaluation is of the same text.
+- Raw text is only reachable through View -> Show file text (off at start, not persisted).
+- Ghost (grey) results show only for `Relation` lines; definitions do not get ghosts yet.
+- Calculus holders (integrals, derivatives) show unevaluated until the calculus phase lands.
+- Screenshots: `cargo test -p mpp-ide --test ui` writes PNGs to `target/ide-snapshots/`.

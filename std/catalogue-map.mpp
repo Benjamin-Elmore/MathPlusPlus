@@ -1,0 +1,190 @@
+# Standard library: catalogue map
+
+Every line of Ben's catalogue `work/stdlib-catalogue.mpp` (the fenced list, without its section titles) and where the standard library covers it. The class says how:
+
+- **compute**: a function or constant Math++ evaluates; the entry is a definition or a worked example on a `$$` line of the file.
+- **check**: an identity or value the library verifies, symbolically or numerically at random points; the entry is on a `\overset{?}{=}` line.
+- **state**: a theorem that cannot be computed, written as a **Theorem** block with its conditions and offered to the proof checker as a cited known result; the entry is in that block.
+
+A catalogue line that runs on to the next line has a row for each part. The test `crates/mpp-eval/tests/stdlib.rs` reads this table and checks that every catalogue line has a row and that every entry is really in its file, in the form its class promises.
+
+Totals: 174 lines; compute 72, check 76, state 26.
+
+Name clashes are resolved as the catalogue asks: a name means the constant unless it is applied to an argument or brought in from a specific library file. $\pi$ alone is the circle constant, and prime counting is `\operatorname{primepi}(x)`; a stationary distribution is `p_{\text{st}}`. $\varphi$ alone is the golden ratio, $\varphi(n)$ the totient. $\chi$ is a character in [[std/algebra-structures.mpp]], a Dirichlet character as a list in [[std/number-theory.mpp]], and the Euler characteristic `\chi_{\text{Betti}}` in [[std/topology-geometry.mpp]]. $F$ is Fibonacci (`F_n`) in [[std/numbers.mpp]], Frobenius is `\operatorname{frobenius}`, and a functor is $F$ in the stated theorems. $h$ is the support function `h_{\text{ball}}`, the class number $h_K$ is stated, and hook lengths are inside `\operatorname{hooklength}`. $\Phi(z)$ applied to a number is the normal distribution function, and the flow map is `\Phi_{\text{flow}}`. $L(s, \chi)$ with two arguments is the $L$-function, the graph Laplacian is `\operatorname{graphlaplacian}`, and the Lagrangians are `L_{\text{KKT}}` and `L_{\text{spring}}`.
+
+| Catalogue line | Class | File | Entry |
+|---|---|---|---|
+| π = 3.1415926536…                    Circle circumference / diameter | check | `std/prelude.mpp` | `\pi \overset{?}{=} 3.14159` |
+| e = 2.7182818285…                    Base of the natural logarithm | check | `std/prelude.mpp` | `e \overset{?}{=} 2.71828` |
+| φ = (1 + √5)/2 = 1.6180339887…        Golden ratio, φ² = φ + 1 | compute | `std/constants.mpp` | `\varphi \equiv` |
+| γ = 0.5772156649…                    Euler–Mascheroni constant | compute | `std/constants.mpp` | `\gamma \equiv` |
+| γ = lim[n→∞] (Σ_{k=1}^n 1/k − ln n) | check | `std/constants.mpp` | `\ln 1000 - \frac{1}{2000}` |
+| i² = −1, exp(iπ) = −1 | check | `std/prelude.mpp` | `i^2 \overset{?}{=} -1` |
+| sin(π/6) = 1/2, cos(π/4) = 1/√2, tan(π/4) = 1 | check | `std/trig.mpp` | `\sin\frac{\pi}{6} \overset{?}{=} \frac{1}{2}` |
+| ∫_ℝ exp(−x²) dx = √π | check | `std/calculus.mpp` | `e^{-x^2} \, dx \overset{?}{=} \sqrt{\pi}` |
+| Γ(1/2) = √π, Γ(n+1) = n! for integers n ≥ 0 | check | `std/special.mpp` | `\Gamma\left(\frac{1}{2}\right) \overset{?}{=} \sqrt{\pi}` |
+| ζ(0) = −1/2, ζ(2) = π²/6, ζ(4) = π⁴/90 | check | `std/number-theory.mpp` | `\zeta(0) \overset{?}{=} -\frac{1}{2}` |
+| ζ(3) = 1.2020569032…                 Apéry’s constant, irrational | compute | `std/constants.mpp` | `\zeta_3 \equiv` |
+| gcd(a,b) = gcd(b, a mod b) for b > 0. | check | `std/number-theory.mpp` | `\gcd(462, 1071 \bmod 462)` |
+| For a,b > 0, lcm(a,b) = ab/gcd(a,b). | check | `std/number-theory.mpp` | `\operatorname{lcm}(12, 18) \overset{?}{=}` |
+| If n = ∏ p^a, divisor count τ(n) = ∏(a+1). | check | `std/number-theory.mpp` | `\tau(360) \overset{?}{=} (3 + 1)` |
+| Sum of positive divisors σ(n) = ∏(p^(a+1)−1)/(p−1). | check | `std/number-theory.mpp` | `\sigma(360) \overset{?}{=}` |
+| Euler totient φ(n) = n∏_{p\|n}(1−1/p), with primes p in the product. | check | `std/number-theory.mpp` | `\varphi(360) \overset{?}{=} 360` |
+| a^φ(n) ≡ 1 mod n if gcd(a,n) = 1. | check | `std/number-theory.mpp` | `\operatorname{powmod}(7, \varphi(40), 40)` |
+| Chinese remainder map: ℤ/(mn) ≅ ℤ/m × ℤ/n for coprime m,n. | compute | `std/number-theory.mpp` | `\operatorname{crt}((2, 3), (3, 5))` |
+| Dirichlet convolution (f\*g)(n) = Σ_{d\|n} f(d)g(n/d). | compute | `std/number-theory.mpp` | `\operatorname{dirconv}(` |
+| Möbius μ(n) = 0 if a prime square divides n, otherwise (−1)^k | compute | `std/number-theory.mpp` | `\mu(30) \overset{?}{=} (-1)^3` |
+| if n has k distinct prime factors. In particular μ(1) = 1. | check | `std/number-theory.mpp` | `\mu(1) \overset{?}{=} 1` |
+| If F(n) = Σ_{d\|n} f(d), then f(n) = Σ_{d\|n} μ(d)F(n/d). | compute | `std/number-theory.mpp` | `\operatorname{mobiusinv}(` |
+| ζ(s) = Σ_{n≥1} n^(−s) = ∏_p (1−p^(−s))^(−1) for Re(s) > 1. | compute | `std/number-theory.mpp` | `\frac{1}{n^4} \overset{?}{=} \zeta(4)` |
+| Prime-counting function π(x) = #{primes p ≤ x} ~ x/ln x. | compute | `std/number-theory.mpp` | `\operatorname{primepiapprox}(1000)` |
+| Dirichlet L-function L(s,χ) = Σ_{n≥1} χ(n)n^(−s) for Re(s) > 1. | compute | `std/number-theory.mpp` | `L(1, (1, 0, -1, 0))` |
+| Field norm N_{K/ℚ}(x) = ∏_σ σ(x), over all embeddings K → ℂ. | compute | `std/number-theory.mpp` | `N_{\text{Gauss}}(a, b) :=` |
+| Class number h_K counts ideal classes of the ring of integers. | state | `std/number-theory.mpp` | `(Class number)` |
+| h_{ℚ(i)} = 1, so the Gaussian integers admit unique factorization. | check | `std/number-theory.mpp` | `(2 + i)(2 - i) \overset{?}{=} 5` |
+| Repeated squaring evaluates a^e mod m in O(log e) modular | compute | `std/number-theory.mpp` | `\operatorname{powmod}(3, 200, 7)` |
+| multiplications for e ≥ 2. | compute | `std/number-theory.mpp` | `\operatorname{powmod}(2, 1000, 1000007)` |
+| For prime p, v_p(n!) = Σ_{k≥1} floor(n/p^k). | compute | `std/number-theory.mpp` | `\operatorname{factorialval}(2, 10)` |
+| Continued fractions produce rational convergents p_k/q_k. | compute | `std/number-theory.mpp` | `\operatorname{contfracvalue}((3, 7, 15, 1))` |
+| For irrational α, \|α−p_k/q_k\| < 1/(q_k q_{k+1}). | check | `std/number-theory.mpp` | `\mathrm{sgn}\left(\frac{1}{7 \cdot 106}` |
+| The golden ratio has continued fraction [1; 1, 1, 1, …]. | check | `std/number-theory.mpp` | `\operatorname{contfracvalue}((1, 1, 1, 1, 1, 1, 1, 1))` |
+| \|x\|_p = p^(−v_p(x)) for x ≠ 0, and \|0\|_p = 0. | compute | `std/number-theory.mpp` | `\operatorname{padicabs}(3, 0)` |
+| \|x+y\|_p ≤ max(\|x\|_p, \|y\|_p). For example, \|8\|₂ = 1/8. | check | `std/number-theory.mpp` | `\operatorname{padicabs}(2, 8) \overset{?}{=} \frac{1}{8}` |
+| A finite field 𝔽_q exists exactly when q = p^m for prime p and m ≥ 1. | state | `std/number-theory.mpp` | `(Finite fields)` |
+| Frobenius F(x) = x^p. Its mth iterate is the identity on 𝔽_q. | compute | `std/number-theory.mpp` | `\operatorname{frobenius}(7, 1, 3)` |
+| Trace to 𝔽_p: Tr(x) = Σ_{j=0}^{m−1} x^(p^j). | compute | `std/number-theory.mpp` | `\operatorname{gftrace}(2, 3, (0, 1, 0))` |
+| A finite set of n elements has 2^n subsets. | compute | `std/discrete.mpp` | `N_{\text{subsets}}(n) :=` |
+| A set of n Boolean variables has 2^n truth assignments and | check | `std/discrete.mpp` | `N_{\text{Boolean}}(3) \overset{?}{=} 2^{N_{\text{subsets}}(3)}` |
+| 2^(2^n) distinct Boolean functions. | compute | `std/discrete.mpp` | `N_{\text{Boolean}}(n) :=` |
+| exp(x) = Σ_{n≥0} x^n/n!, ln x = ∫₁ˣ dt/t for x > 0. | check | `std/calculus.mpp` | `\frac{x^n}{n!} \overset{?}{=} e^x` |
+| sin x = Σ_{n≥0} (−1)^n x^(2n+1)/(2n+1)!. | check | `std/calculus.mpp` | `\frac{(-1)^n x^{2n+1}}{(2n+1)!} \overset{?}{=} \sin x` |
+| arctan x = ∫₀ˣ dt/(1+t²), so arctan(1) = π/4. | check | `std/calculus.mpp` | `\int_0^1 \frac{1}{1 + t^2} \, dt \overset{?}{=} \frac{\pi}{4}` |
+| d/dx ∫ₐˣ f(t)dt = f(x) for continuous f. | check | `std/calculus.mpp` | `\frac{d}{dx} \int_0^x \cos t \, dt \overset{?}{=} \cos x` |
+| Chain rule: (f ∘ g)'(x) = f'(g(x))g'(x). | check | `std/calculus.mpp` | `\frac{d}{dx} \sin(x^2) \overset{?}{=}` |
+| Taylor polynomial: T_n(x) = Σ_{k=0}^n f^(k)(a)(x−a)^k/k!. | compute | `std/calculus.mpp` | `T_{\text{exp}}(a, x) :=` |
+| ‖f‖_p = (∫\|f\|^p dμ)^(1/p) for f in L^p and 1 ≤ p < ∞. | compute | `std/analysis.mpp` | `\operatorname{lpnorm}(x, x, 0, 1, 2)` |
+| Indicator 1_A(x) equals 1 on A and 0 elsewhere, so ∫1_A dμ = μ(A). | compute | `std/analysis.mpp` | `\operatorname{lpnorm}(x \le 1, x, 0, 3, 1)` |
+| Cauchy integral formula: f(a) = (1/2πi)∮ f(z)/(z−a) dz | state | `std/complex.mpp` | `(Cauchy's integral formula)` |
+| for f holomorphic on and inside a positively oriented simple contour | state | `std/complex.mpp` | `positively oriented simple closed contour` |
+| enclosing a. In particular, ∮ dz/z = 2πi around such a contour enclosing 0. | check | `std/complex.mpp` | `\frac{i e^{i t}}{e^{i t}} \, dt \overset{?}{=} 2 \pi i` |
+| Gamma: Γ(z) = ∫₀^∞ t^(z−1)e^(−t) dt for Re(z) > 0. | check | `std/special.mpp` | `\int_0^{\infty} t^{2} e^{-t} \, dt \overset{?}{=} \Gamma(3)` |
+| Beta: B(a,b) = Γ(a)Γ(b)/Γ(a+b) for a,b > 0. | compute | `std/special.mpp` | `B(2, 3) \overset{?}{=} \frac{\Gamma(2) \Gamma(3)}{\Gamma(5)}` |
+| Error function: erf(x) = (2/√π)∫₀ˣ e^(−t²) dt, with erf(0) = 0. | compute | `std/special.mpp` | `\operatorname{erf}(1) \overset{?}{=} \frac{2}{\sqrt{\pi}}` |
+| Lambert W: W(z)e^W(z) = z. The principal branch has W₀(0) = 0. | compute | `std/special.mpp` | `W(1) e^{W(1)} \overset{?}{=} 1` |
+| Bessel: J₀(x) = Σ_{k≥0} (−1)^k(x²/4)^k/(k!)², with J₀(0) = 1. | compute | `std/special.mpp` | `J_0(1) \overset{?}{=} \sum_{k=0}^{20}` |
+| Legendre: P₀(x) = 1, P₁(x) = x, P₂(x) = (3x²−1)/2. | compute | `std/special.mpp` | `P_2(x) \overset{?}{=} \frac{3x^2 - 1}{2}` |
+| Chebyshev: T_n(cos θ) = cos(nθ), so T_n(1) = 1. | compute | `std/special.mpp` | `T_3(\cos t) \overset{?}{=} \cos(3t)` |
+| Fourier transform: f̂(ξ) = ∫_ℝ f(x)e^(−2πixξ) dx for f in L¹. | check | `std/analysis.mpp` | `\int_{-\infty}^{\infty} e^{-\pi x^2} \, dx \overset{?}{=} 1` |
+| Under this convention, e^(−πx²) transforms to e^(−πξ²). | check | `std/analysis.mpp` | `\int_{-10}^{10} e^{-\pi x^2} \cos(\pi x)` |
+| Plancherel: ‖f̂‖₂ = ‖f‖₂ for the extended L² transform. | state | `std/analysis.mpp` | `(Plancherel)` |
+| Dirac delta: δ(ψ) = ψ(0). Its derivative satisfies δ′(ψ) = −ψ′(0). | compute | `std/analysis.mpp` | `\operatorname{diracpair}(\sin x, x, 1)` |
+| The Heaviside step has distributional derivative δ. | check | `std/analysis.mpp` | `-\int_0^{\infty} \frac{d}{dx} e^{-x^2}` |
+| Operator norm: ‖T‖ = sup_{‖x‖≤1} ‖Tx‖ for bounded linear T. | check | `std/analysis.mpp` | `\sqrt{\frac{3 + \sqrt{5}}{2}} \overset{?}{=}` |
+| Hilbert-space adjoint: ⟨Tx,y⟩ = ⟨x,T\*y⟩. | check | `std/analysis.mpp` | `(T_{\text{shear}} \mathbf{p}) \cdot \mathbf{q}` |
+| y′ = ay, y(0)=y₀ gives y(t) = y₀e^(at). | check | `std/analysis.mpp` | `\frac{d}{dt} y_{\text{growth}}(t, a, y_0)` |
+| y″+ω²y=0 for ω>0 gives y(t) = A cos(ωt)+B sin(ωt). | check | `std/analysis.mpp` | `\frac{d^2}{dt^2} y_{\text{SHM}}` |
+| Laplace transform of e^(at) is 1/(s−a) for real a and Re(s) > a. | check | `std/analysis.mpp` | `\int_0^{\infty} e^{t} e^{-3 t} \, dt` |
+| Heat kernel on ℝ^n for u_t = αΔu, α>0: | check | `std/analysis.mpp` | `\frac{\partial}{\partial t} K_{\text{heat}}(x, t, \alpha)` |
+| K_t(x) = (4παt)^(−n/2) exp(−\|x\|²/(4αt)) for t>0. | compute | `std/analysis.mpp` | `K_{\text{heat}}(x, t, \alpha) :=` |
+| Convolving K_t with the initial data gives the free-space solution | state | `std/analysis.mpp` | `(Heat equation on` |
+| under standard integrability or boundedness assumptions. | state | `std/analysis.mpp` | `under standard integrability or boundedness assumptions` |
+| Flow maps satisfy Φ_{s+t} = Φ_s ∘ Φ_t wherever defined. | check | `std/analysis.mpp` | `\Phi_{\text{flow}}(s + t, x, a)` |
+| Logistic map f_r(x) = rx(1−x), with first period-doubling at r=3. | check | `std/analysis.mpp` | `r \left(1 - 2\left(1 - \frac{1}{r}\right)\right) \overset{?}{=} 2 - r` |
+| For stationary paths of ∫L(x,y,y′)dx with fixed endpoints, | state | `std/analysis.mpp` | `(Euler–Lagrange)` |
+| the Euler–Lagrange equation is ∂L/∂y − d/dx(∂L/∂y′) = 0. | check | `std/analysis.mpp` | `\frac{\partial}{\partial y} L_{\text{spring}}(y, p, m, k)` |
+| Newton iteration: x_{k+1} = x_k − f(x_k)/f′(x_k). | compute | `std/analysis.mpp` | `x_{\text{Newton}}(x) :=` |
+| Forward Euler: y_{k+1} = y_k + h f(t_k,y_k) for y′ = f(t,y). | compute | `std/analysis.mpp` | `y_{\text{Euler}}(y, h, f) :=` |
+| A continuously differentiable iteration g with \|g′(x\*)\| < 1 at a | compute | `std/analysis.mpp` | `\operatorname{fixedpoint}(\cos x, x, 1)` |
+| fixed point x\* converges from sufficiently nearby starting points. | state | `std/analysis.mpp` | `(Fixed-point convergence)` |
+| Bernstein approximation on [0,1]: | compute | `std/analysis.mpp` | `\operatorname{bernstein}(x^2, x, 2)` |
+| B_n[f](x) = Σ_{k=0}^n f(k/n) C(n,k)x^k(1−x)^(n−k). | compute | `std/analysis.mpp` | `\operatorname{bernsteinbasis}(1, 2, x)` |
+| It converges uniformly to f when f is continuous. | state | `std/analysis.mpp` | `(Weierstrass, via Bernstein)` |
+| Binomial coefficient C(n,k) = n!/[k!(n−k)!] for 0 ≤ k ≤ n. | compute | `std/stats.mpp` | `C_{\text{choose}}(n, k) :=` |
+| Catalan C_n = C(2n,n)/(n+1), beginning 1, 1, 2, 5, 14, 42. | compute | `std/numbers.mpp` | `C_{\text{Cat}}(n) :=` |
+| Fibonacci F_0=0, F_1=1, F_{n+2}=F_{n+1}+F_n. | compute | `std/numbers.mpp` | `F_{n+1} := F_n + F_{n-1}` |
+| Σ_{n≥0} x^n = 1/(1−x) for \|x\|<1. | check | `std/discrete.mpp` | `\sum_{n=0}^{\infty} x^n \overset{?}{=} \frac{1}{1 - x}` |
+| Fibonacci generating function: Σ_{n≥0} F_n x^n = x/(1−x−x²) | check | `std/numbers.mpp` | `\overset{?}{=} G_{\text{Fib}}(\tfrac{1}{10})` |
+| as a formal power series. | compute | `std/numbers.mpp` | `G_{\text{Fib}}(x) :=` |
+| Σ_v deg(v) = 2\|E\| for a finite undirected graph. | check | `std/discrete.mpp` | `4 \operatorname{mean}(\operatorname{graphdegrees}(K_{\text{4 edges}}))` |
+| A connected finite graph is a tree exactly when \|E\| = \|V\|−1. | state | `std/discrete.mpp` | `(Trees)` |
+| Cayley’s formula: n^(n−2) labeled trees on n vertices for n ≥ 2. | compute | `std/discrete.mpp` | `N_{\text{Cayley}}(n) :=` |
+| Graph Laplacian L = D−A, with degree matrix D and adjacency A. | compute | `std/discrete.mpp` | `\operatorname{graphlaplacian}(((1, 2), (2, 3)))` |
+| R(3,3)=6: every red/blue coloring of K₆ has a monochromatic triangle. | check | `std/discrete.mpp` | `\operatorname{ramseynumber}(3, 3) \overset{?}{=} 6` |
+| Largest antichain of subsets of an n-set: C(n,floor(n/2)). | compute | `std/discrete.mpp` | `N_{\text{Sperner}}(n) :=` |
+| Burnside’s lemma: #orbits = (1/\|G\|)Σ_{g∈G}\|Fix(g)\| for a finite action. | compute | `std/discrete.mpp` | `\operatorname{burnside}(((2, 3, 4, 1)), 2)` |
+| Hook-length formula for standard Young tableaux of shape λ of size n: | compute | `std/discrete.mpp` | `\operatorname{hooklength}((4, 3, 1))` |
+| f^λ = n! / ∏_{cells c} h(c), with h(c) counting c and cells right/below. | check | `std/discrete.mpp` | `\frac{8!}{6 \cdot 4 \cdot 3` |
+| Bayes: P(A\|B) = P(B\|A)P(A)/P(B) when P(A),P(B)>0. | compute | `std/probability.mpp` | `P_{\text{Bayes}}(p_{BA}, p_A, p_B) :=` |
+| Var(X) = E[X²] − (E[X])² when the second moment is finite. | compute | `std/probability.mpp` | `\mathrm{Var}_{\text{moments}}(m_1, m_2) :=` |
+| Uniform[0,1] has mean 1/2 and variance 1/12. | check | `std/probability.mpp` | `\int_0^1 x^2 \, dx\right) \overset{?}{=} \frac{1}{12}` |
+| Poisson(λ): P(X=k) = e^(−λ)λ^k/k!, with mean and variance both λ. | compute | `std/stats.mpp` | `p_{\text{Poisson}}(\lambda, k) :=` |
+| Sample variance s² = Σ(x_i−x̄)²/(n−1) for n ≥ 2. | check | `std/stats.mpp` | `\frac{(2 - 5)^2 + 3 (4 - 5)^2` |
+| Least squares β̂ = (XᵀX)⁻¹Xᵀy for full-column-rank X. | check | `std/stats.mpp` | `(X_{\text{ls}}^T X_{\text{ls}})^{-1} X_{\text{ls}}^T y_{\text{ls}}` |
+| Normal CDF Φ(z) = [1+erf(z/√2)]/2, with Φ(0)=1/2. | compute | `std/stats.mpp` | `\Phi_{\text{erf}}(z) :=` |
+| For a time-homogeneous finite Markov chain, k-step transitions are P^k. | compute | `std/probability.mpp` | `\operatorname{markovpower}(P_{\text{chain}}, 2) \overset{?}{=} P_{\text{chain}}` |
+| A stationary distribution satisfies πP = π. | check | `std/probability.mpp` | `p_{\text{st}} P_{\text{chain}} \overset{?}{=} p_{\text{st}}` |
+| Standard Brownian motion has W_t ~ N(0,t) and quadratic variation t. | compute | `std/probability.mpp` | `\operatorname{brownian}(10, 1)` |
+| Shannon entropy H(X) = −Σ p_i log₂ p_i, with 0 log₂ 0 = 0. | compute | `std/information.mpp` | `\operatorname{entropy}((\tfrac{1}{2}, \tfrac{1}{4}, \tfrac{1}{4}))` |
+| For m possible outcomes, H ranges from 0 to log₂ m, attained by a | check | `std/information.mpp` | `\operatorname{entropy}((1, 0, 0, 0)) \overset{?}{=} 0` |
+| point mass and the uniform distribution, respectively. | check | `std/information.mpp` | `\overset{?}{=} \log_2 4` |
+| Mutual information I(X;Y) = H(X)+H(Y)−H(X,Y) for finite alphabets. | compute | `std/information.mpp` | `\operatorname{mutualinfo}(J_{\text{copy}}) \overset{?}{=} 1 + 1` |
+| A binary symmetric channel with flip probability p has capacity | compute | `std/information.mpp` | `C_{\text{BSC}}(p) :=` |
+| 1−H(Bernoulli(p)) bits per use. | check | `std/information.mpp` | `C_{\text{BSC}}(0.11) \overset{?}{=} \operatorname{bsccapacity}(0.11)` |
+| Hamming distance counts coordinates where two codewords differ. | compute | `std/information.mpp` | `\operatorname{hamming}((1, 0, 1, 1, 0), (1, 1, 1, 0, 0))` |
+| A q-ary linear [n,k,d] code satisfies d ≤ n−k+1 (Singleton bound). | check | `std/information.mpp` | `\mathrm{sgn}((7 - 4 + 1) - 3` |
+| Binary Hamming codes have [2^m−1, 2^m−1−m, 3] for m ≥ 2. | compute | `std/information.mpp` | `\operatorname{codeparams}(\operatorname{hammingcode}(3), 2)` |
+| The halting predicate is undecidable. Boolean satisfiability is NP-complete. | state | `std/discrete.mpp` | `(Turing)` |
+| Comparison sorting needs at least ceil(log₂(n!)) comparisons in the | compute | `std/discrete.mpp` | `N_{\text{sort}}(n) :=` |
+| worst case for n distinct items. | state | `std/discrete.mpp` | `(Sorting lower bound)` |
+| One-time pad: C = M ⊕ K. For an independent, uniform, same-length key | state | `std/information.mpp` | `(Shannon, perfect secrecy)` |
+| used once, H(M\|C) = H(M). | check | `std/information.mpp` | `\operatorname{mutualinfo}(\begin{pmatrix} \tfrac{1}{4}` |
+| RSA’s modular identity: m^(ed) ≡ m mod pq for distinct primes p,q | check | `std/information.mpp` | `\operatorname{powmod}(\operatorname{powmod}(65, 17, 3233), 413, 3233)` |
+| when ed ≡ 1 mod lcm(p−1,q−1). | check | `std/information.mpp` | `\operatorname{modinv}(17, 780) \overset{?}{=} 413` |
+| Rank–nullity: dim V = rank(T) + dim ker(T) for finite-dimensional V. | state | `std/linalg.mpp` | `(Rank–nullity)` |
+| det(AB) = det(A)det(B). For square A, tr(A) = sum of its eigenvalues | check | `std/linalg.mpp` | `\det(A_{\text{g}} B_{\text{g}})` |
+| and det(A) = their product, counted with algebraic multiplicity. | check | `std/linalg.mpp` | `\det M_{\text{ex}} \overset{?}{=} \frac{5 - \sqrt{33}}{2}` |
+| Orbit–stabilizer: \|Orb(x)\| = \|G\|/\|Stab(x)\| for a finite group action. | check | `std/algebra-structures.mpp` | `\operatorname{card}(\operatorname{orbit}(S_{\text{3 gens}}, 1))` |
+| A finite group’s order is divisible by the order of each subgroup. | check | `std/algebra-structures.mpp` | `\bmod \operatorname{grouporder}(((2, 3, 1)))` |
+| Character of a representation ρ: χ(g) = tr(ρ(g)). | compute | `std/algebra-structures.mpp` | `\chi_{\text{std}}(\theta) :=` |
+| For a finite group, the dimensions d_i of its inequivalent complex | check | `std/algebra-structures.mpp` | `1^2 + 1^2 + 2^2 \overset{?}{=}` |
+| irreducible representations satisfy Σ_i d_i² = \|G\|. | check | `std/algebra-structures.mpp` | `1^2 + 1^2 + 2^2 + 3^2 + 3^2` |
+| Matrix Lie bracket: [X,Y] = XY−YX. | compute | `std/algebra-structures.mpp` | `\operatorname{liebracket}(X_{\text{L}}, Y_{\text{L}}) \overset{?}{=} X_{\text{L}} Y_{\text{L}}` |
+| Matrix exponential exp(tX) = Σ_{k≥0}(tX)^k/k! generates a | compute | `std/algebra-structures.mpp` | `\operatorname{expm}(X_{\text{L}}, t) \overset{?}{=}` |
+| one-parameter subgroup: exp(sX)exp(tX) = exp((s+t)X). | check | `std/algebra-structures.mpp` | `\operatorname{matmul}(\operatorname{expm}(X_{\text{L}}, s)` |
+| Localization S⁻¹R sends s∈S to a unit. Example: invert all nonzero | state | `std/algebra-structures.mpp` | `(Localization)` |
+| integers in ℤ to obtain ℚ. | check | `std/algebra-structures.mpp` | `\frac{3}{4} \cdot \frac{4}{3} \overset{?}{=} 1` |
+| Krull dimension is the supremum of lengths of prime-ideal chains. | state | `std/algebra-structures.mpp` | `(Krull dimension)` |
+| dim k[x₁,…,x_n] = n for a field k. | state | `std/algebra-structures.mpp` | `For a field $k$, $\dim k[x_1` |
+| A smooth plane projective curve of degree d over an algebraically | compute | `std/algebra-structures.mpp` | `g_{\text{plane}}(d) :=` |
+| closed field has genus (d−1)(d−2)/2. A smooth plane cubic has genus 1. | check | `std/algebra-structures.mpp` | `g_{\text{plane}}(3) \overset{?}{=} 1` |
+| Circle area = πr². Sphere area = 4πr². Ball volume = 4πr³/3. | check | `std/geometry.mpp` | `\frac{d}{dr} V_{\text{ball}}(r) \overset{?}{=} S_{\text{sphere}}(r)` |
+| Support function of a nonempty compact convex set K: | compute | `std/topology-geometry.mpp` | `h_{\text{ball}}(r, u_1, u_2) :=` |
+| h_K(u) = sup_{x∈K} u·x. For a radius-r ball centered at 0, h_K(u)=r‖u‖₂. | check | `std/topology-geometry.mpp` | `\overset{?}{=} h_{\text{ball}}(r, u_1, u_2)` |
+| A metric measures speed by ‖γ′(t)‖_g and length by ∫‖γ′(t)‖_g dt. | compute | `std/topology-geometry.mpp` | `\ell_{\text{circle}}(r) :=` |
+| On a closed oriented Riemannian surface, ∫K dA = 2πχ by Gauss–Bonnet. | state | `std/topology-geometry.mpp` | `(Gauss–Bonnet)` |
+| Gaussian curvature of a round sphere of radius r is 1/r². | compute | `std/topology-geometry.mpp` | `K_{\text{sphere}}(r) :=` |
+| Interior int(A) is the largest open subset of A. | state | `std/topology-geometry.mpp` | `(Interior, closure, boundary)` |
+| Closure cl(A) is the smallest closed superset. Boundary ∂A = cl(A)\int(A). | check | `std/topology-geometry.mpp` | `\operatorname{card}(\operatorname{setminus}([0, 1], (0, 1)))` |
+| π₁(S¹) ≅ ℤ. The winding number labels loops up to based homotopy. | state | `std/topology-geometry.mpp` | `(Fundamental group of the circle)` |
+| Euler characteristic χ = Σ_k (−1)^k b_k for a finite cell complex, | compute | `std/topology-geometry.mpp` | `\chi_{\text{Betti}}(b_0, b_1, b_2) :=` |
+| where b_k are its Betti numbers. χ(S²)=2, χ(torus)=0. | check | `std/topology-geometry.mpp` | `\chi_{\text{Betti}}(1, 0, 1) \overset{?}{=} 2` |
+| Adjunction F ⊣ G: Hom(FX,Y) ≅ Hom(X,GY), naturally in X and Y. | state | `std/topology-geometry.mpp` | `(Adjunction)` |
+| Covariant Yoneda: Nat(Hom(A,−), F) ≅ F(A) for a Set-valued functor F. | state | `std/topology-geometry.mpp` | `(Covariant Yoneda lemma)` |
+| Gradient descent: x_{k+1} = x_k − η∇f(x_k) with step η>0. | compute | `std/applied.mpp` | `x_{\text{GD}}(x, \eta, g) :=` |
+| Lagrangian: L(x,λ) = f(x)+Σ_i λ_i g_i(x) for constraints g_i(x)≤0. | compute | `std/applied.mpp` | `L_{\text{KKT}}(x, \lambda) :=` |
+| At regular local minima, KKT includes ∇_xL=0, λ_i≥0, and λ_i g_i(x)=0. | check | `std/applied.mpp` | `\frac{\partial}{\partial x} L_{\text{KKT}}(x, \lambda) \overset{?}{=} 2x - \lambda` |
+| Finite zero-sum game value: max_x min_y xᵀAy = min_y max_x xᵀAy | state | `std/applied.mpp` | `(von Neumann's minimax theorem)` |
+| over mixed strategies x,y. Matching pennies with payoffs ±1 has value 0. | check | `std/applied.mpp` | `x_{\text{mix}} A_{\text{pennies}} \overset{?}{=}` |
+| Two-player Shapley value for player 1, with v(∅)=0: | compute | `std/applied.mpp` | `\phi_{\text{Shapley}}(v_1, v_2, v_{12}) :=` |
+| [v({1}) + v({1,2}) − v({2})]/2. | check | `std/applied.mpp` | `\phi_{\text{Shapley}}(1, 2, 4) \overset{?}{=} \frac{3}{2}` |
+| Linear state equation x′ = Ax+Bu. With zero input, x(t)=exp(tA)x(0). | check | `std/applied.mpp` | `\operatorname{expm}(A_{\text{dbl}}, 2) \begin{pmatrix}` |
+| The finite-dimensional continuous-time system is controllable exactly | compute | `std/applied.mpp` | `\operatorname{ctrbrank}(A_{\text{dbl}}, B_{\text{dbl}})` |
+| when [B, AB, …, A^(n−1)B] has rank n, the state dimension. | state | `std/applied.mpp` | `(Kalman rank condition)` |
+| N-point DFT: X[k] = Σ_{j=0}^{N−1} x[j] exp(−2πijk/N). | compute | `std/applied.mpp` | `X_{\text{DFT}}(k) :=` |
+| X[0] = Σ_j x[j], so X[0]/N is the signal’s mean. | check | `std/applied.mpp` | `\frac{X_{\text{DFT}}(0)}{4} \overset{?}{=}` |
+| Hamilton’s equations: q̇ = ∂H/∂p, ṗ = −∂H/∂q. | check | `std/applied.mpp` | `\frac{\partial}{\partial p} H_{\text{osc}}(q, p) \overset{?}{=} p` |
+| Schrödinger evolution: iℏ ∂ψ/∂t = Ĥψ. | state | `std/applied.mpp` | `(Schrödinger equation)` |
+| On an energy eigenstate of energy E, the time factor is exp(−iEt/ℏ). | check | `std/applied.mpp` | `i \hbar \frac{d}{dt} \psi_{\text{t}}(t, E, \hbar)` |
+| Present value PV = FV·e^(−rT) under constant continuous discounting. | compute | `std/finance.mpp` | `\mathrm{PV}_{\text{cont}}(F, r, T) :=` |
+| European put–call parity without dividends: C−P = S−Ke^(−rT) | compute | `std/finance.mpp` | `P_{\text{parity}}(C, S, K, r, T) :=` |
+| for spot S, common strike K, and time T to expiry. | check | `std/finance.mpp` | `\operatorname{putfromcall}(10, 100, 105` |

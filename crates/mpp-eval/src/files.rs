@@ -273,9 +273,11 @@ impl Default for FileImporter {
 }
 
 impl FileImporter {
-    /// An importer reading files from disk.
+    /// An importer reading files from disk, with the standard library (`std/…`) first.
     pub fn new() -> Self {
-        FileImporter::with_source(Arc::new(FsSource))
+        FileImporter::with_source(Arc::new(LayeredSource::over_files(
+            crate::stdlib::embedded(),
+        )))
     }
 
     /// An importer reading through `source`.
@@ -286,6 +288,22 @@ impl FileImporter {
                 cache: Mutex::new(HashMap::new()),
             }),
         }
+    }
+
+    /// Finds an imported file. A name written without an extension (`[[constants]]`,
+    /// as in a wiki link) also finds `constants.mpp`.
+    fn locate_import(&self, base: Option<&Path>, written: &str) -> Result<Location, ImportError> {
+        let source = &self.inner.source;
+        let found = source.locate(base, written).or_else(|first| {
+            if Path::new(written).extension().is_none() {
+                source
+                    .locate(base, &format!("{written}.mpp"))
+                    .map_err(|_| first)
+            } else {
+                Err(first)
+            }
+        });
+        found.map_err(|why| ImportError::new(ImportErrorKind::Missing, why))
     }
 
     /// The files currently cached, sorted.
@@ -524,11 +542,7 @@ impl Importer for FileImporter {
         ctx: &ImportContext<'_>,
         request: &ImportRequest,
     ) -> Result<Exports, ImportError> {
-        let loc = self
-            .inner
-            .source
-            .locate(ctx.base, &request.path)
-            .map_err(|m| ImportError::new(ImportErrorKind::Missing, m))?;
+        let loc = self.locate_import(ctx.base, &request.path)?;
         let root = ctx.root_dir.or(ctx.base);
         let display = self.display(&loc.key, root);
 
