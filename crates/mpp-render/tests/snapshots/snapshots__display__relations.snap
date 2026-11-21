@@ -1,0 +1,15 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "a \\le b < c \\ne d \\approx e"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="154.12" height="19.2" viewBox="0 0 154.12 19.2" overflow="visible">
+<text x="0" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑎</text>
+<text x="16.14" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">≤</text>
+<text x="37.25" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑏</text>
+<text x="51.39" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">&lt;</text>
+<text x="72.5" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑐</text>
+<text x="86.72" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">≠</text>
+<text x="107.83" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="123.79" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">≈</text>
+<text x="144.8" y="14.6" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑒</text>
+</svg>

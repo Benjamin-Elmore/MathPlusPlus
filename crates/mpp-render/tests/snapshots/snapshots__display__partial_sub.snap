@@ -1,0 +1,9 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\partial_x f"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="31.71" height="19.4" viewBox="0 0 31.71 19.4" overflow="visible">
+<text x="0" y="14.32" font-family="Latin Modern Math" font-size="20" fill="#111111">∂</text>
+<text x="11.72" y="19.26" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑥</text>
+<text x="21.91" y="14.32" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑓</text>
+</svg>

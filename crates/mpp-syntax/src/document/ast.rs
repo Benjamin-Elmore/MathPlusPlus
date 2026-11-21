@@ -200,10 +200,14 @@ figure_keywords! {
     RiemannLeft => "riemann left",
     RiemannRight => "riemann right",
     RiemannMid => "riemann mid",
+    RiemannTrapezoid => "riemann trapezoid",
     AreaBetween => "area between",
     RevolveAbout => "revolve about",
     Taylor => "taylor",
     NewtonFrom => "newton from",
+    Scatter => "scatter",
+    Histogram => "histogram",
+    BoxPlot => "box plot",
 }
 
 /// `Using $names$ [as $aliases$] from [[path]].`

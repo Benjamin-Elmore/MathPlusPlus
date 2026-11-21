@@ -1,0 +1,9 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "1 + \\xmark"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="50.45" height="16.06" viewBox="0 0 50.45 16.06" overflow="visible">
+<text x="0" y="14.4" font-family="Latin Modern Math" font-size="20" fill="#111111">1</text>
+<text x="14.44" y="14.4" font-family="Latin Modern Math" font-size="20" fill="#111111">+</text>
+<path d="M36.05 1.44L48.85 14.4M48.85 1.44L36.05 14.4" fill="none" stroke="#111111" stroke-width="1.5"/>
+</svg>

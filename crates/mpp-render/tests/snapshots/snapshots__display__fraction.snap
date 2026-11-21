@@ -1,0 +1,11 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\frac{a + b}{c}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="48.41" height="41.36" viewBox="0 0 48.41 41.36" overflow="visible">
+<text x="2.4" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑎</text>
+<text x="17.42" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">+</text>
+<text x="37.43" y="13.88" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑏</text>
+<text x="19.87" y="41.14" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑐</text>
+<rect x="0" y="22.02" width="48.41" height="0.8" fill="#111111"/>
+</svg>

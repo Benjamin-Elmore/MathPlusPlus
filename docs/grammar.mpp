@@ -266,11 +266,14 @@ fig_item      = "$" expr "$"                               (* curve, surface or 
               | fig_keyword [ " " "$" clause "$" ] ;
 fig_keyword   = "polar" | "parametric" | "implicit" | "points" | "contour" | "slope field"
               | "vector field" | "gradient field" | "tangent at" | "tangent plane at"
-              | "riemann left" | "riemann right" | "riemann mid" | "area between"
-              | "revolve about" | "taylor" | "newton from" ;
+              | "riemann left" | "riemann right" | "riemann mid" | "riemann trapezoid" | "area between"
+              | "revolve about" | "taylor" | "newton from"
+              | "scatter" | "histogram" | "box plot" ;
 ```
 
 `Figure: $y(x)$, $x \in [0, R]$.` draws a curve. An item with two free variables, or a range for both $x$ and $y$, makes a 3D surface: `Figure: $z = x^2 - y^2$, $x, y \in [-2, 2]$.` The text after the first `. ` is the caption.
+
+The argument of a keyword is a list inside one `$…$`, separated by commas outside brackets: `riemann left $n = 8, [0, 2]$`, `slope field $y' = x - y, (0, 1)$`. The calculus keywords add to the curve `y = f(x)` written in the same figure: `tangent at $x = 1$` (a slider moves the point), `riemann left|right|mid|trapezoid $n = 8$` (a slider for the strips; a bound `[a, b]` is optional), `area between` (the first two curves; bounds `[a, b]` optional, else the region they enclose), `taylor $n = 3, a = 1$` (degree and centre) and `newton from $x_0 = 2, n = 4$`. `revolve about $y = 0$` turns the curves into a solid (disks, washers or shells by the axis). `tangent plane at $(1, 1)$` goes with a surface. Fields: `slope field $y' = x - y, (0, 1)$` (starting points are optional), `slope field $x' = y, y' = -x$` (a phase portrait), `vector field $(-y, x)$`, `gradient field $x^2 + y^2$`; without an argument the figure's own item is the field, as in `$y - x$, slope field`. Data: `scatter $t, x$`, `histogram $x$` or `histogram $x, 6$`, `box plot $x, y$`, naming columns of a data table.
 
 ## 5. Errors
 
