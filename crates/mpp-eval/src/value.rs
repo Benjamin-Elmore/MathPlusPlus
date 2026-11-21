@@ -26,6 +26,9 @@ pub struct Origin {
     /// The number as typed when the definition is a decimal (`g \equiv 9.81`), so it
     /// is shown as `9.81` rather than `981/100`.
     pub decimal: Option<Arc<str>>,
+    /// The definition is worked out from a decimal the user typed (`9.81`, or a
+    /// name defined from one), so answers that use it are shown as decimals.
+    pub decimal_input: bool,
 }
 
 impl Origin {
@@ -38,6 +41,7 @@ impl Origin {
             path: None,
             line: None,
             decimal: None,
+            decimal_input: false,
         }
     }
 

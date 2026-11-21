@@ -112,10 +112,31 @@ fn the_integral_shortcut_works_while_typing() {
     // The caret starts in the integrand.
     text(&mut h, "x");
     assert_eq!(doc_text(&h), "$$ \\int_{}^{} {x} \\, dx $$\n");
-    // Leaving with Tab drops the empty bounds: an indefinite integral.
-    key(&mut h, Key::Tab);
-    key(&mut h, Key::Tab);
+    // Tab goes from the variable on to the bounds the caret started after, so they
+    // are never passed by; leaving with them empty makes an indefinite integral.
+    for _ in 0..4 {
+        key(&mut h, Key::Tab);
+    }
     assert_eq!(doc_text(&h), "$$ \\int {x} \\, dx $$\n");
+}
+
+#[test]
+fn tab_reaches_the_bounds_of_a_definite_integral() {
+    let mut h = settled(app_with("$$  $$\n", 3, theme::ThemeChoice::Light));
+    for c in ["i", "n", "t", " ", "x"] {
+        text(&mut h, c);
+    }
+    // Integrand, variable, then the lower and upper bounds.
+    key(&mut h, Key::Tab);
+    key(&mut h, Key::Tab);
+    text(&mut h, "0");
+    key(&mut h, Key::Tab);
+    text(&mut h, "1");
+    key(&mut h, Key::Tab);
+    assert_eq!(doc_text(&h), "$$ \\int_{0}^{1} {x} \\, dx $$\n");
+    // The caret has left the template: typing goes after it.
+    text(&mut h, " = ?");
+    assert_eq!(doc_text(&h), "$$ \\int_{0}^{1} {x} \\, dx = ? $$\n");
 }
 
 #[test]

@@ -17,10 +17,12 @@ pub struct DefInfo {
     pub span: Span,
 }
 
-fn name_latex(name: &str) -> String {
+/// A name as the page sets it: a symbol by its command, a word such as
+/// `velocity` upright, a letter in italic.
+pub fn name_latex(name: &str) -> String {
     match lookup_name(name) {
         Some(s) if s.unicode == name => s.latex.to_string(),
-        _ => name.to_string(),
+        _ => mpp_core::Expr::sym(name).to_latex(),
     }
 }
 
@@ -59,10 +61,12 @@ pub fn describe(ev: &Evaluated, name: &str) -> Option<DefInfo> {
             } else {
                 ":="
             };
-            (
-                format!("{n} {op} {}", value.to_latex()),
-                Some(value.to_latex()),
-            )
+            // A decimal is shown as it was typed (`g \equiv 9.81`, not 981/100).
+            let shown = origin
+                .decimal
+                .as_deref()
+                .map_or_else(|| value.to_latex(), str::to_string);
+            (format!("{n} {op} {shown}"), Some(shown))
         }
         Binding::Function { params, body, .. } => (
             format!("{n}({}) := {}", params.join(", "), body.to_latex()),
@@ -192,6 +196,21 @@ mod tests {
         let d = describe(ev, "b").expect("b is defined");
         assert!(d.definition.contains(":="));
         assert!(d.value.is_some());
+    }
+
+    #[test]
+    fn a_decimal_is_described_as_typed() {
+        let mut s = Session::new();
+        let ev = s.run_str("$$ g := 9.81 $$\n");
+        let d = describe(ev, "g").expect("g is defined");
+        assert_eq!(d.definition, "g := 9.81");
+        assert_eq!(d.value.as_deref(), Some("9.81"));
+    }
+
+    #[test]
+    fn a_word_is_set_upright() {
+        assert_eq!(name_latex("velocity"), r"\mathrm{velocity}");
+        assert_eq!(name_latex("x"), "x");
     }
 
     #[test]

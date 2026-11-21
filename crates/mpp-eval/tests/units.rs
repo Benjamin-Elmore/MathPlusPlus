@@ -70,7 +70,7 @@ fn the_example_worksheet_gives_its_expected_answers() {
 fn quantities_and_simplified_units() {
     assert_eq!(
         answer(r"$$ 70\,\mathrm{kg} \cdot 9.81\,\mathrm{m/s^2} = ? $$"),
-        "6867/10 N"
+        "686.7 N"
     );
     assert_eq!(answer("$$ 3 m/s \\cdot 4 s = ? $$"), "12 m");
     assert_eq!(answer("$$ 2 kg \\cdot 3 m/s^2 = ? $$"), "6 N");
@@ -86,7 +86,7 @@ fn quantities_and_simplified_units() {
     );
     assert_eq!(
         answer(r"$$ 1.5 \times 10^{3}\,\mathrm{m} \operatorname{in} \mathrm{km} = ? $$"),
-        "3/2 km"
+        "1.5 km"
     );
     assert_eq!(answer(r"$$ \cos(60^\circ) = ? $$"), "1/2");
     assert_eq!(answer(r"$$ 3\,\mathrm{m} < 2\,\mathrm{km} = ? $$"), "true");
@@ -145,7 +145,7 @@ $$ g := 9.81\,\mathrm{m/s^2} $$
 $$ m g = ? $$
 $$ 2 m = ? $$
 ";
-    assert_eq!(answers(src), vec!["6867/10 N", "140 kg"]);
+    assert_eq!(answers(src), vec!["686.7 N", "140 kg"]);
     // Parameters, indices and integration variables stay names after a number.
     assert_eq!(answer("$$ f(t) := 3 t^2 $$\n$$ f(2) = ? $$"), "12");
     assert_eq!(answer(r"$$ \int_0^1 3 t^2 \, dt = ? $$"), "1");

@@ -385,7 +385,8 @@ $$ \sum_{n=0}^{\infty} \frac{y(1)}{2^n} = ? $$
     // Unknown names stay symbolic in exact mode.
     assert_eq!(exact(a[2]), "b^2*c/2");
     assert_eq!(exact(a[3]), "2*a*x + 3");
-    assert_eq!(exact(a[4]), "981/100");
+    // g was typed as the decimal 9.81, so the answer is shown as one.
+    assert_eq!(exact(a[4]), "9.81");
     assert_eq!(exact(a[5]), "8");
 }
 

@@ -56,7 +56,26 @@ pub(crate) fn split_lines(src: &str) -> Vec<Line> {
     split_trailing_displays(src, lines)
 }
 
-/// Byte offsets of the unescaped `$$` pairs in `text`.
+/// Where the backtick code span opening at `k` ends (just past its closing
+/// run), or `None` when the run of backticks at `k` is never closed.
+fn code_span_end(b: &[u8], k: usize) -> Option<usize> {
+    let run = b[k..].iter().take_while(|&&c| c == b'`').count();
+    let mut j = k + run;
+    while j < b.len() {
+        if b[j] == b'`' {
+            let n = b[j..].iter().take_while(|&&c| c == b'`').count();
+            if n == run {
+                return Some(j + n);
+            }
+            j += n;
+        } else {
+            j += 1;
+        }
+    }
+    None
+}
+
+/// Byte offsets of the unescaped `$$` pairs in `text`, outside code spans.
 fn display_marks(text: &str) -> Vec<usize> {
     let b = text.as_bytes();
     let mut out = Vec::new();
@@ -64,6 +83,10 @@ fn display_marks(text: &str) -> Vec<usize> {
     while k < b.len() {
         match b[k] {
             b'\\' => k += 2,
+            b'`' => {
+                let run = b[k..].iter().take_while(|&&c| c == b'`').count();
+                k = code_span_end(b, k).unwrap_or(k + run);
+            }
             b'$' if b.get(k + 1) == Some(&b'$') => {
                 out.push(k);
                 k += 2;
@@ -91,6 +114,12 @@ fn trailing_display(text: &str) -> Option<usize> {
         match before[k] {
             b'\\' => k += 1,
             b'$' => singles += 1,
+            b'`' => {
+                if let Some(end) = code_span_end(before, k) {
+                    k = end;
+                    continue;
+                }
+            }
             _ => {}
         }
         k += 1;

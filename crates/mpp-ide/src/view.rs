@@ -1085,6 +1085,14 @@ fn handle_keys(
     let input = ui.input(|i| i.events.clone());
     let mut moved = false;
     for ev in input {
+        // The go-to-definition highlight lasts until the next key or edit.
+        if matches!(
+            ev,
+            Event::Text(_) | Event::Paste(_) | Event::Cut | Event::Key { pressed: true, .. }
+        ) && !matches!(ev, Event::Key { key: Key::F12, .. })
+        {
+            doc.highlight = None;
+        }
         match ev {
             Event::Text(t) => {
                 type_text(doc, pc, cx, &t);
@@ -1444,7 +1452,9 @@ fn hover_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, c
             card_frame(ui).show(ui, |ui| {
                 ui.set_max_width(420.0);
                 typeset::show(ui, &d.definition, size, *theme);
-                if let Some(v) = &d.value {
+                // `g := 9.81` needs no second line saying `= 9.81`.
+                let repeated = |v: &String| d.definition.ends_with(&format!(" {v}"));
+                if let Some(v) = d.value.as_ref().filter(|v| !repeated(v)) {
                     ui.add_space(4.0);
                     typeset::show(ui, &format!("= {v}"), size, *theme);
                 }

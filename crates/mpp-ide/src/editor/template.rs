@@ -344,6 +344,12 @@ pub struct Session {
     pub groups: Vec<(Range<usize>, Vec<usize>)>,
     /// The box the caret starts in.
     pub primary: Option<usize>,
+    /// Tab went on from the last box to the empty boxes before the first one
+    /// (the bounds of an integral the caret started in), so the next Tab past
+    /// those leaves the template.
+    pub wrapped: bool,
+    /// The caret has been in one of the boxes before the first one.
+    pub lead_seen: bool,
 }
 
 impl Session {
@@ -376,6 +382,8 @@ impl Session {
                 .map(|(r, b)| (r.start + at..r.end + at, b.clone()))
                 .collect(),
             primary: None,
+            wrapped: false,
+            lead_seen: false,
         };
         for (i, b) in snippet.boxes.iter().enumerate() {
             if let Some(k) = &b.mirror {

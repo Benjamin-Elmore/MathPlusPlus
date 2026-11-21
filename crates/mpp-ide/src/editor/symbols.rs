@@ -126,11 +126,7 @@ pub fn completions<'a>(
     let mut out = vec![];
     for name in &scope {
         if name.starts_with(p) && name != p {
-            out.push(Completion {
-                latex: name.to_string(),
-                label: name.to_string(),
-                insert: name.to_string(),
-            });
+            out.push(name_completion(name));
         }
     }
     for s in SYMBOLS {
@@ -152,17 +148,23 @@ pub fn completions<'a>(
     out
 }
 
+/// A name of the document, shown typeset the way the page sets it (a word such as
+/// `velocity` upright, a letter in italic).
+fn name_completion(name: &str) -> Completion {
+    Completion {
+        latex: mpp_core::Expr::sym(name).to_latex(),
+        label: name.to_string(),
+        insert: name.to_string(),
+    }
+}
+
 /// Nothing starts with what was typed: offer the closest names and symbols
 /// instead (`lamda` offers λ, `velcoity` offers `velocity`).
 fn misspelt(p: &str, scope: &[String], out: &mut Vec<Completion>) {
     let s = Suggester;
     for name in s.names(p, scope) {
         if scope.contains(&name) {
-            out.push(Completion {
-                latex: name.clone(),
-                label: name.clone(),
-                insert: name,
-            });
+            out.push(name_completion(&name));
         }
     }
     for letter in s.symbols(p) {
@@ -174,9 +176,16 @@ fn misspelt(p: &str, scope: &[String], out: &mut Vec<Completion>) {
             continue;
         };
         if !out.iter().any(|o| o.insert == sym.unicode) {
+            // The spelling of the symbol closest to what was typed (`lamda` shows
+            // `lambda`), not whichever of its names comes first in the table.
+            let label = SYMBOLS
+                .iter()
+                .filter(|x| x.unicode == sym.unicode)
+                .min_by_key(|x| crate::suggest::edit_distance(p, x.name))
+                .map_or(sym.name, |x| x.name);
             out.push(Completion {
                 latex: sym.latex.to_string(),
-                label: sym.name.to_string(),
+                label: label.to_string(),
                 insert: sym.unicode.to_string(),
             });
         }
@@ -237,6 +246,16 @@ mod tests {
         assert!(c.iter().any(|e| e.label == "alpha_1"));
         assert!(c.iter().any(|e| e.insert == "α"));
         assert!(!c.iter().any(|e| e.label == "beta"));
+    }
+
+    #[test]
+    fn words_show_upright_and_symbols_by_their_closest_name() {
+        let c = completions("vel", ["velocity"], 8);
+        assert_eq!(c[0].latex, r"\mathrm{velocity}");
+        let c = completions("x_", ["x_0"], 8);
+        assert!(!c.iter().any(|c| c.latex.contains("mathrm{x")), "{c:?}");
+        let c = completions("lamda", ["x"], 8);
+        assert!(c.iter().any(|c| c.label == "lambda"), "{c:?}");
     }
 
     #[test]

@@ -337,6 +337,19 @@ impl IdeApp {
         }
     }
 
+    /// The autocomplete entries on show, as (typeset LaTeX, label) pairs.
+    pub fn completion_items(&self) -> Vec<(String, String)> {
+        self.completion
+            .as_ref()
+            .map(|c| {
+                c.items
+                    .iter()
+                    .map(|i| (i.latex.clone(), i.label.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
     /// The text of the typeset page: every glyph shown on it, block by block.
     /// (This is what a reader sees, never the source.)
     pub fn visible_text(&mut self, width: f32) -> String {

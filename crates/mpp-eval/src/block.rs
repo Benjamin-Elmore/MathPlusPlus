@@ -952,8 +952,10 @@ impl Run<'_, '_> {
             value.clone()
         };
         let decimal = written_decimal(body);
+        let decimal_input = self.uses_decimal(body);
         let mut origin = self.origin(line.span);
         origin.decimal = decimal.as_deref().map(Arc::from);
+        origin.decimal_input = decimal_input;
         self.define(
             key,
             Binding::Variable {
@@ -970,6 +972,7 @@ impl Run<'_, '_> {
             },
         );
         lr.input = Some(value);
+        lr.decimal_input = decimal_input;
         if self.present_units(&mut lr, &shown, QueryMode::Exact, body.span) {
             if let Some(d) = &decimal {
                 show_decimal(&mut lr, d);
@@ -984,6 +987,28 @@ impl Run<'_, '_> {
             show_decimal(&mut lr, d);
         }
         self.push(lr);
+    }
+
+    /// True when `node` holds a decimal the user typed (`9.81`) or a name worked out
+    /// from one.
+    fn uses_decimal(&self, node: &Node) -> bool {
+        match &node.kind {
+            NodeKind::Number(t) => return t.contains('.'),
+            NodeKind::Name(_) => {
+                if let Some(b) = node_key(node).and_then(|k| self.view().get(&k, false)) {
+                    if let Binding::Variable { origin, .. } = b.as_ref() {
+                        return origin.decimal.is_some() || origin.decimal_input;
+                    }
+                }
+                return false;
+            }
+            _ => {}
+        }
+        let mut found = false;
+        mpp_syntax::math::visit::children(node, &mut |c| {
+            found = found || self.uses_decimal(c);
+        });
+        found
     }
 
     /// The decimal a bare name was defined as (`g` for `g \equiv 9.81`), when `value`
@@ -1298,6 +1323,7 @@ impl Run<'_, '_> {
     ) {
         let mut lr = LineResult::new(line.span, LineKind::Query { mode, steps });
         lr.noeval = noeval;
+        lr.decimal_input = mode == QueryMode::Exact && self.uses_decimal(expr);
         let input = match self.lower(expr, s.names) {
             Ok(e) => e,
             Err(l) => {

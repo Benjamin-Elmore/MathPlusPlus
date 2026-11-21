@@ -43,6 +43,7 @@ pub fn parse_document(src: &str) -> Document {
         resolve_block(b, &labels, &mut diagnostics);
     }
     letters::bind_unit_letters(&mut blocks, src);
+    letters::bind_spelled_names(&mut blocks);
     assign_ids(&mut blocks, src);
     let mut doc = Document {
         blocks,

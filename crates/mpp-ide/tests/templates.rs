@@ -948,7 +948,7 @@ fn cases() -> Vec<Case> {
         ),
         case(
             "graph.scatter",
-            &[("xcolumn", "", R), ("ycolumn", "", R)],
+            &[("x column", "", R), ("y column", "", R)],
             &[r"t", r"x"],
             r"Figure: scatter ${t}, {x}$.",
             None,
@@ -1686,4 +1686,46 @@ fn empty_required_boxes_give_a_fill_in_hint_and_no_answer() {
         answer(&format!("{} = ? $$", ed.text().trim_end_matches(" $$"))),
         None
     );
+}
+
+#[test]
+fn a_footnote_puts_its_mark_at_the_caret_and_its_note_after_the_paragraph() {
+    let src = "Water boils at 100 degrees.\n\nNext paragraph.";
+    let mut ed = Editor::new(src);
+    ed.move_caret(src.find('.').expect("dot"), false);
+    insert_into_block(&mut ed, "doc.footnote");
+    assert_eq!(
+        ed.text(),
+        "Water boils at 100 degrees[^1].\n\n[^1]: \n\nNext paragraph."
+    );
+    // The caret is in the note, ready to type it.
+    assert_eq!(ed.caret(), ed.text().find("[^1]: ").expect("note") + 6);
+    let doc = parse_document(ed.text());
+    assert!(doc.errors().next().is_none(), "{}", ed.text());
+    assert!(doc
+        .blocks
+        .iter()
+        .any(|b| matches!(b.kind, BlockKind::FootnoteDef { .. })));
+    // The next one takes the next number; from an empty line the mark goes at
+    // the end of the paragraph above.
+    let src = format!("{}\n\nMore text\n\n", ed.text());
+    let mut ed = Editor::new(&src);
+    ed.move_caret(src.len(), false);
+    insert_into_block(&mut ed, "doc.footnote");
+    assert!(
+        ed.text().contains("More text[^2]\n\n[^2]: "),
+        "{}",
+        ed.text()
+    );
+    // Inside a word, the mark goes after it.
+    let mut ed = Editor::new("Some prose here.");
+    ed.move_caret(7, false);
+    insert_into_block(&mut ed, "doc.footnote");
+    assert_eq!(ed.text(), "Some prose[^1] here.\n\n[^1]: \n");
+}
+
+fn insert_into_block(ed: &mut Editor, id: &str) {
+    let t = find(id).unwrap_or_else(|| panic!("no template {id}"));
+    let page = page_of(ed);
+    insert::insert(ed, &page, t, t.knobs, &BuildCx::default());
 }

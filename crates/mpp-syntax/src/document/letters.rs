@@ -192,3 +192,209 @@ fn rewrite(n: &mut Node, src: &str, bound: &HashSet<String>) {
     }
     visit::children_mut(n, &mut |c| rewrite(c, src, bound));
 }
+
+// ---- names spelled out in letters -------------------------------------------
+
+/// The multi-letter names the document defines (`velocity := 3`,
+/// `\mathrm{speed} := 2`).
+fn spelled_definitions(blocks: &mut [Block]) -> HashSet<String> {
+    let mut out = HashSet::new();
+    each_math_mut(blocks, &mut |ast| {
+        for line in &ast.lines {
+            if let Statement::Definition {
+                head: DefHead::Name(n),
+                ..
+            } = &line.statement
+            {
+                if let NodeKind::Name(Name {
+                    base,
+                    sub: None,
+                    accent: None,
+                    ..
+                }) = &n.ungrouped().kind
+                {
+                    if base.chars().count() >= 2 && base.chars().all(|c| c.is_ascii_alphabetic()) {
+                        out.insert(base.clone());
+                    }
+                }
+            }
+        }
+    });
+    out
+}
+
+/// Every maths span of `blocks`, in document order.
+fn each_math_mut(blocks: &mut [Block], f: &mut dyn FnMut(&mut MathAst)) {
+    fn inl(items: &mut [Inline], f: &mut dyn FnMut(&mut MathAst)) {
+        for i in items {
+            match &mut i.kind {
+                InlineKind::Math(m) => f(&mut m.ast),
+                InlineKind::Emphasis(inner) | InlineKind::Strong(inner) => inl(inner, f),
+                InlineKind::Link { text, .. } => inl(text, f),
+                _ => {}
+            }
+        }
+    }
+    fn lst(l: &mut List, f: &mut dyn FnMut(&mut MathAst)) {
+        for item in &mut l.items {
+            inl(&mut item.content, f);
+            for child in &mut item.children {
+                lst(child, f);
+            }
+        }
+    }
+    for b in blocks {
+        match &mut b.kind {
+            BlockKind::DisplayMath(d) => f(&mut d.ast),
+            BlockKind::Heading { content, .. } | BlockKind::FootnoteDef { content, .. } => {
+                inl(content, f)
+            }
+            BlockKind::Paragraph(content) => inl(content, f),
+            BlockKind::Let(l) => inl(&mut l.content, f),
+            BlockKind::Quote(ps) => ps.iter_mut().for_each(|p| inl(p, f)),
+            BlockKind::List(l) => lst(l, f),
+            BlockKind::Table(t) => t
+                .header
+                .iter_mut()
+                .chain(t.rows.iter_mut().flatten())
+                .for_each(|c| inl(c, f)),
+            BlockKind::Figure(fig) => {
+                for item in &mut fig.items {
+                    if let super::FigureItemKind::Expr(ast) = &mut item.kind {
+                        f(ast);
+                    }
+                }
+                inl(&mut fig.caption, f);
+            }
+            BlockKind::Theorem(t) => each_math_mut(&mut t.body, f),
+            _ => {}
+        }
+    }
+}
+
+/// Letters side by side that spell a name the document defines (`velocity · 2`
+/// after `velocity := 3`) become that one name, so the page sets the word the
+/// same way wherever it is written (upright, as where it is defined) and the
+/// evaluator reads the name, not a product of letters.
+pub(super) fn bind_spelled_names(blocks: &mut [Block]) {
+    let words = spelled_definitions(blocks);
+    if words.is_empty() {
+        return;
+    }
+    each_math_mut(blocks, &mut |ast| {
+        for line in &mut ast.lines {
+            let mut roots: Vec<&mut Node> = Vec::new();
+            match &mut line.statement {
+                Statement::Definition { body, .. } => roots.push(body),
+                Statement::Query { expr, .. } => roots.push(expr),
+                Statement::Check { lhs, rhs } => {
+                    roots.push(lhs);
+                    roots.push(rhs);
+                }
+                Statement::Relation(n) => roots.push(n),
+                _ => {}
+            }
+            for c in &mut line.clauses {
+                match c {
+                    Clause::Where { value, .. } => roots.push(value),
+                    Clause::Condition(n) | Clause::Assumption(n) => roots.push(n),
+                    Clause::Range(_) => {}
+                }
+            }
+            for r in roots {
+                spell(r, &words);
+            }
+        }
+    });
+}
+
+fn spell(n: &mut Node, words: &HashSet<String>) {
+    use crate::math::letters::{implicit_factors, letter_runs};
+    let implicit = matches!(
+        n.kind,
+        NodeKind::Binary {
+            op: BinOp::Mul(MulStyle::Implicit),
+            ..
+        }
+    );
+    if !implicit {
+        visit::children_mut(n, &mut |c| spell(c, words));
+        return;
+    }
+    let factors = implicit_factors(n);
+    let runs: Vec<_> = letter_runs(&factors)
+        .into_iter()
+        .filter(|r| words.contains(&r.word))
+        .collect();
+    if !runs.is_empty() {
+        let mut terms: Vec<Node> = vec![];
+        let mut i = 0;
+        while i < factors.len() {
+            if let Some(r) = runs.iter().find(|r| r.start == i) {
+                let name = Node::new(NodeKind::Name(Name::simple(r.word.clone())), r.span);
+                let last = factors[r.end - 1];
+                let term = match &last.kind {
+                    NodeKind::Pow { exp, .. } if r.powered => Node::new(
+                        NodeKind::Pow {
+                            base: Box::new(name),
+                            exp: exp.clone(),
+                        },
+                        r.span.join(last.span),
+                    ),
+                    _ => name,
+                };
+                terms.push(term);
+                i = r.end;
+            } else {
+                terms.push(factors[i].clone());
+                i += 1;
+            }
+        }
+        let mut terms = terms.into_iter();
+        let Some(mut acc) = terms.next() else {
+            return;
+        };
+        for t in terms {
+            let span = acc.span.join(t.span);
+            acc = Node::new(
+                NodeKind::Binary {
+                    op: BinOp::Mul(MulStyle::Implicit),
+                    lhs: Box::new(acc),
+                    rhs: Box::new(t),
+                },
+                span,
+            );
+        }
+        *n = acc;
+    }
+    // The other factors may hold words too (`2(velocity + 1)`).
+    for f in implicit_children_mut(n) {
+        if !matches!(f.kind, NodeKind::Name(_)) {
+            visit::children_mut(f, &mut |c| spell(c, words));
+        }
+    }
+}
+
+/// The factors of an implicit product, mutably.
+fn implicit_children_mut(n: &mut Node) -> Vec<&mut Node> {
+    fn walk<'a>(n: &'a mut Node, out: &mut Vec<&'a mut Node>) {
+        let implicit = matches!(
+            n.kind,
+            NodeKind::Binary {
+                op: BinOp::Mul(MulStyle::Implicit),
+                ..
+            }
+        );
+        if !implicit {
+            out.push(n);
+            return;
+        }
+        if let NodeKind::Binary { lhs, rhs, .. } = &mut n.kind {
+            walk(lhs, out);
+            walk(rhs, out);
+        }
+    }
+    let mut out = vec![];
+    walk(n, &mut out);
+    out
+}

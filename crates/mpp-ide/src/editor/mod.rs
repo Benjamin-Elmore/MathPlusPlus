@@ -481,6 +481,13 @@ impl Editor {
         else {
             return;
         };
+        if let Some(si) = self.session_index(id) {
+            let s = &mut self.sessions[si];
+            let first = s.primary.and_then(|i| s.tab_pos(i)).unwrap_or(0);
+            if s.tab_pos(index).is_some_and(|p| p < first) {
+                s.lead_seen = true;
+            }
+        }
         if b.is_empty() {
             self.move_caret(b.start, false);
         } else {
@@ -504,6 +511,25 @@ impl Editor {
             (Some(p), false) => p.checked_sub(1),
             (None, true) => s.tab.iter().position(|&i| s.boxes[i].range.start > caret),
             (None, false) => s.tab.iter().rposition(|&i| s.boxes[i].range.end < caret),
+        };
+        // The caret starts in the primary box, so the boxes before it in the Tab
+        // order (an integral's bounds) would be passed by. Tab on from the last box
+        // goes to the first of them that is still empty, and on from those leaves.
+        let first = s.primary.and_then(|i| s.tab_pos(i)).unwrap_or(0);
+        let next = match (cur, next) {
+            (Some(p), Some(n)) if forward && s.wrapped && p < first && n == first => None,
+            (Some(_), Some(n)) if forward && n >= s.tab.len() && !s.lead_seen => s.tab[..first]
+                .iter()
+                .position(|&i| s.boxes[i].range.is_empty())
+                .or(Some(n)),
+            _ => next,
+        };
+        let wraps = forward && matches!((cur, next), (Some(p), Some(n)) if n < p);
+        if let (true, Some(si)) = (wraps, self.session_index(id)) {
+            self.sessions[si].wrapped = true;
+        }
+        let Some(s) = self.session(id) else {
+            return false;
         };
         match next.and_then(|p| s.tab.get(p).copied()) {
             Some(i) => self.focus_box(id, i),
