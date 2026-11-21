@@ -404,3 +404,25 @@ fn repository_files_parse_without_panics() {
         }
     }
 }
+
+#[test]
+fn a_display_after_a_list_number_or_prose_is_its_own_block() {
+    let src = "4. $$ x = ? $$\n\nPartial fractions: $$ y = ? $$\n\nIt costs $$5 = ? here.\n";
+    let doc = parse_document(src);
+    let kinds: Vec<&str> = doc
+        .blocks
+        .iter()
+        .map(|b| match b.kind {
+            BlockKind::List(_) => "list",
+            BlockKind::DisplayMath(_) => "display",
+            BlockKind::Paragraph(_) => "paragraph",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        ["list", "display", "paragraph", "display", "paragraph"],
+        "{}",
+        dump(&doc)
+    );
+}
