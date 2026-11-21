@@ -4,6 +4,7 @@ Builds the Windows release artefacts locally. Nothing is published or signed.
 Output (in dist/, which git ignores):
   dist/Math++-<version>-portable.zip   Math++.exe + mpp.exe + docs + examples + licences
   dist/Math++-<version>-x64.msi        per-user installer (no admin rights needed)
+Also writes licences\THIRD-PARTY-NOTICES.txt (every linked crate's licence text, via third-party-notices.ps1).
 Needs: cargo; WiX Toolset 3.x (candle.exe/light.exe) for the .msi. WiX is found from $env:WIX_BIN,
 $env:WIX (its bin folder), target/tools/wix3 (the unzipped wix314-binaries.zip) or the PATH.
 #>
@@ -33,6 +34,9 @@ Copy-Item "$rel\mathpp.exe" "$stage\Math++.exe"
 Copy-Item "$rel\mpp.exe" "$stage\mpp.exe"
 Copy-Item LICENSE-MIT, LICENSE-APACHE, CHANGELOG.mpp, README.mpp $stage
 Copy-Item work\release\licences "$stage\licences" -Recurse
+# Licence notices for every Rust crate linked into the binaries (required by their licences).
+& (Join-Path $PSScriptRoot 'third-party-notices.ps1') -Output "$stage\licences\THIRD-PARTY-NOTICES.txt"
+if (-not (Test-Path "$stage\licences\THIRD-PARTY-NOTICES.txt")) { throw 'third-party notices were not written' }
 Copy-Item docs "$stage\docs" -Recurse
 Copy-Item examples "$stage\examples" -Recurse
 
@@ -67,11 +71,12 @@ function Add-Dir([string]$dir, [string]$rel, [int]$depth) {
         $r = if ($rel) { "$rel\$($f.Name)" } else { $f.Name }
         if ($r -in 'Math++.exe', 'mpp.exe') { continue }
         $id = 'N' + (Get-Hash $r); $comps.Add($id)
-        $null = $sb.AppendLine("$pad<Component Id=`"$id`" Guid=`"$(Get-Guid $r)`"><File Id=`"F$id`" Name=`"$($f.Name)`" Source=`"$($f.FullName)`" KeyPath=`"yes`" /></Component>")
+        $name = [Security.SecurityElement]::Escape($f.Name); $src = [Security.SecurityElement]::Escape($f.FullName)
+        $null = $sb.AppendLine("$pad<Component Id=`"$id`" Guid=`"$(Get-Guid $r)`"><File Id=`"F$id`" Name=`"$name`" Source=`"$src`" KeyPath=`"yes`" /></Component>")
     }
     foreach ($d in Get-ChildItem $dir -Directory) {
         $r = if ($rel) { "$rel\$($d.Name)" } else { $d.Name }
-        $null = $sb.AppendLine("$pad<Directory Id=`"D$(Get-Hash $r)`" Name=`"$($d.Name)`">")
+        $null = $sb.AppendLine("$pad<Directory Id=`"D$(Get-Hash $r)`" Name=`"$([Security.SecurityElement]::Escape($d.Name))`">")
         Add-Dir $d.FullName $r ($depth + 1)
         $null = $sb.AppendLine("$pad</Directory>")
     }

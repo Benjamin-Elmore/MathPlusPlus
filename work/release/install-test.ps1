@@ -2,9 +2,10 @@
 Installs the .msi per-user and silently, checks it, launches the IDE on a .mpp, uninstalls and checks
 nothing is left. Run: pwsh work/release/install-test.ps1 > work/release/install-test.txt
 #>
-$ErrorActionPreference = 'Continue'
+$ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$msi = Get-ChildItem "$root\dist\Math++-*-x64.msi" | Select-Object -First 1
+$msi = Get-ChildItem "$root\dist\Math++-*-x64.msi" -ErrorAction SilentlyContinue | Select-Object -First 1
+if (-not $msi) { throw "no installer found in $root\dist: run work/release/build.ps1 first" }
 $dir = "$env:LOCALAPPDATA\Programs\Math++"
 $lnk = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\Math++.lnk"
 $fail = 0
@@ -13,6 +14,8 @@ function Run([string]$cmd) { "> $cmd" }
 
 "Math++ install test, $(Get-Date -Format s), whoami: $(whoami), admin: $(([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole('Administrator'))"
 "msi: $($msi.Name) ($([math]::Round($msi.Length/1MB,1)) MB)"
+# This test installs and then uninstalls: never run it over a real Math++ install.
+if (Test-Path $dir) { throw "Math++ is already installed in $dir; uninstall it first (this test would remove it)" }
 Check 'not installed before' (-not (Test-Path $dir))
 
 # 1. install (Main feature + the optional AddToPath feature)
@@ -21,7 +24,7 @@ $p = Start-Process msiexec -ArgumentList "/i `"$($msi.FullName)`" /qn /l*v `"$ro
 Check "msiexec install exit code 0 (got $($p.ExitCode))" ($p.ExitCode -eq 0)
 
 # 2. files, shortcut, registry
-foreach ($f in 'Math++.exe', 'mpp.exe', 'LICENSE-MIT', 'LICENSE-APACHE', 'CHANGELOG.mpp', 'licences\GUST-Latin-Modern-LICENSE.txt', 'licences\OFL-egui-fonts.txt', 'docs\guide.mpp', 'examples\integrals.mpp', 'examples\imports') {
+foreach ($f in 'Math++.exe', 'mpp.exe', 'LICENSE-MIT', 'LICENSE-APACHE', 'CHANGELOG.mpp', 'licences\GUST-Latin-Modern-LICENSE.txt', 'licences\OFL-egui-fonts.txt', 'licences\UFL-Ubuntu-font.txt', 'licences\Hack-LICENSE.txt', 'licences\emoji-icon-font-MIT.txt', 'licences\THIRD-PARTY-NOTICES.txt', 'docs\guide.mpp', 'examples\integrals.mpp', 'examples\imports') {
     Check "installed: $f" (Test-Path "$dir\$f")
 }
 Check 'Start-menu shortcut Math++.lnk' (Test-Path $lnk)
@@ -70,3 +73,4 @@ Check 'HKCU\Software\Math++ gone' (-not (Test-Path 'HKCU:\Software\Math++'))
 Check 'user PATH no longer has the folder' (-not (([Environment]::GetEnvironmentVariable('Path', 'User') -split ';') -contains ($dir + [char]92)))
 Check 'Apps & features entry gone' ($null -eq (Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*' | Where-Object DisplayName -eq 'Math++'))
 "RESULT: $fail failure(s)"
+exit $fail
