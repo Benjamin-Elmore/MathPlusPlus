@@ -11,9 +11,8 @@ use mpp_render::Theme;
 
 use super::PendingClose;
 use crate::app::IdeApp;
-use crate::defs;
 use crate::explorer::outline::{OutlineItem, OutlineKind};
-use crate::explorer::panel::{section_header, text_galley};
+use crate::explorer::panel::text_galley;
 use crate::explorer::{self, icons, quick_open, ExplorerCtx, OpenFile};
 use crate::paint::c32;
 use crate::settings::SideView;
@@ -123,15 +122,55 @@ impl IdeApp {
     }
 
     fn activity_bar(&mut self, ui: &mut Ui, theme: &Theme) {
-        let items: [(SideView, &str, IconFn); 3] = [
-            (SideView::Explorer, "Explorer", icons::activity_explorer),
-            (SideView::Search, "Search", icons::activity_search),
-            (SideView::Outline, "Outline", icons::activity_outline),
+        // The only way to switch side panels: click an icon to show its panel,
+        // click the lit icon to hide the side column.
+        let items: [(SideView, &str, IconFn); 6] = [
+            (
+                SideView::Explorer,
+                "Explorer (Ctrl+Shift+E)",
+                icons::activity_explorer,
+            ),
+            (
+                SideView::Search,
+                "Search (Ctrl+Shift+F)",
+                icons::activity_search,
+            ),
+            (
+                SideView::Outline,
+                "Outline: headings and blocks",
+                icons::activity_outline,
+            ),
+            (
+                SideView::Variables,
+                "Definitions: names, values and imports",
+                icons::activity_variables,
+            ),
+            (
+                SideView::Problems,
+                "Problems (Ctrl+Shift+M)",
+                icons::activity_problems,
+            ),
+            (
+                SideView::Tutorial,
+                "Tutorial: the lessons",
+                icons::activity_tutorial,
+            ),
         ];
-        for (view, label, draw) in items {
-            let (rect, resp) = ui.allocate_exact_size(Vec2::new(46.0, 46.0), Sense::click());
-            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
+        // Clicks first, painting after: every icon is drawn with the state the
+        // click left, in the same frame.
+        let laid: Vec<(Rect, egui::Response)> = items
+            .iter()
+            .map(|_| ui.allocate_exact_size(Vec2::new(46.0, 46.0), Sense::click()))
+            .collect();
+        for ((view, ..), (_, resp)) in items.iter().zip(&laid) {
+            if resp.clicked() {
+                self.activity_click(*view);
+            }
+        }
+        for ((view, tip, draw), (rect, resp)) in items.into_iter().zip(laid) {
+            let label = view.label();
             let active = self.ws.side_visible && self.ws.side_view == view;
+            resp.widget_info(|| WidgetInfo::selected(Role::Button, true, active, label));
             let p = ui.painter_at(rect);
             let color = if active || resp.hovered() {
                 c32(theme.text)
@@ -145,41 +184,66 @@ impl IdeApp {
                 );
             }
             draw(&p, rect, color);
-            if resp.clicked() {
-                if active {
-                    self.ws.side_visible = false;
-                } else {
-                    self.show_side(view);
-                }
-            }
-            resp.on_hover_text(label);
+            resp.on_hover_text(tip);
         }
     }
 
     /// The outline as a tile.
     pub(crate) fn outline_tile(&mut self, ui: &mut Ui, theme: &Theme) {
-        view_title(ui, "OUTLINE", theme);
         egui::ScrollArea::vertical()
             .id_salt("outline-view")
             .auto_shrink([false, false])
             .show(ui, |ui| self.outline_list(ui, theme));
     }
 
-    pub(crate) fn explorer_view(&mut self, ui: &mut Ui, theme: &Theme) {
-        ui.horizontal_wrapped(|ui| {
-            ui.add_space(10.0);
-            if ui.small_button("New file").clicked() {
+    /// The explorer's New file and New folder buttons: two icons at the right
+    /// of `row` (the panel's header, or a row of their own).
+    pub(crate) fn explorer_buttons(&mut self, ui: &mut Ui, row: Rect, theme: &Theme) {
+        let items: [(&str, bool); 2] = [("New folder", true), ("New file", false)];
+        for (i, (label, is_dir)) in items.into_iter().enumerate() {
+            let r = Rect::from_center_size(
+                egui::pos2(row.right() - 16.0 - 26.0 * i as f32, row.center().y),
+                Vec2::splat(22.0),
+            );
+            let resp = ui.interact(
+                r,
+                ui.scope_id().with(("explorer-new", label)),
+                Sense::click(),
+            );
+            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
+            let color = if resp.hovered() {
+                c32(theme.text)
+            } else {
+                c32(theme.muted)
+            };
+            if resp.hovered() {
+                ui.painter()
+                    .rect_filled(r, 3.0, c32(theme.text).gamma_multiply(0.08));
+            }
+            let p = ui.painter_at(r);
+            let icon = r.shrink(3.0).translate(Vec2::new(-1.5, 1.0));
+            if is_dir {
+                icons::folder(&p, icon, color);
+            } else {
+                icons::plain_file(&p, icon, color);
+            }
+            icons::plus(&p, r, color);
+            if resp.on_hover_text(label).clicked() {
                 if let Some(d) = self.ws.explorer.target_dir() {
-                    self.ws.explorer.start_create(&d, false);
+                    self.ws.explorer.start_create(&d, is_dir);
                 }
             }
-            if ui.small_button("New folder").clicked() {
-                if let Some(d) = self.ws.explorer.target_dir() {
-                    self.ws.explorer.start_create(&d, true);
-                }
-            }
-        });
-        ui.add_space(2.0);
+        }
+    }
+
+    /// The Explorer: files and folders only (open files, then the folder tree).
+    /// `headed` is true when the side header above already holds the buttons.
+    pub(crate) fn explorer_view(&mut self, ui: &mut Ui, theme: &Theme, headed: bool) {
+        if !headed {
+            let (row, _) =
+                ui.allocate_exact_size(Vec2::new(ui.available_width(), 26.0), Sense::hover());
+            self.explorer_buttons(ui, row, theme);
+        }
         let open: Vec<OpenFile> = self
             .docs
             .iter()
@@ -210,15 +274,6 @@ impl IdeApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 actions = self.ws.explorer.show(ui, &cx);
-                ui.add_space(8.0);
-                let open_outline = self.ws.outline_open;
-                let h = section_header(ui, "OUTLINE", open_outline, theme);
-                if h.clicked() {
-                    self.ws.outline_open = !open_outline;
-                }
-                if open_outline {
-                    self.outline_list(ui, theme);
-                }
             });
         self.run_explorer_actions(actions);
     }
@@ -352,7 +407,7 @@ impl IdeApp {
     }
 
     pub(crate) fn search_view(&mut self, ui: &mut Ui, theme: &Theme) {
-        view_title(ui, "SEARCH", theme);
+        ui.add_space(4.0);
         let mut run = None;
         ui.horizontal(|ui| {
             ui.add_space(10.0);
@@ -472,16 +527,31 @@ impl IdeApp {
     pub(crate) fn status_ui(&mut self, ui: &mut Ui) {
         let theme = self.mode.theme();
         let imports = self.current_imports();
-        let ndefs = self
-            .doc()
-            .and_then(|d| d.eval.as_ref())
-            .map(|e| defs::all(e).iter().filter(|d| d.file.is_none()).count())
-            .unwrap_or(0);
-        let evaluating = self.doc().is_some_and(crate::doc::Doc::evaluating);
-        let counts = self
-            .doc()
-            .map(crate::doc::Doc::problem_counts)
-            .unwrap_or_default();
+        // Calm numbers: they change when a run finishes, and "Working…" shows
+        // only for a run that takes more than a second.
+        let id = self.doc().map(|d| d.id);
+        let running = self.doc().is_some_and(crate::doc::Doc::running);
+        let settled = self.doc().is_some_and(|d| !d.evaluating());
+        let doc = self.docs.get_mut(self.active);
+        let shown = self
+            .ws
+            .status
+            .update(id, running, settled, std::time::Instant::now(), || {
+                let Some(d) = doc else {
+                    return Default::default();
+                };
+                let counts = if settled {
+                    d.problem_counts_now()
+                } else {
+                    d.problem_counts()
+                };
+                let defs = d.eval.as_deref().map_or(0, super::status::definitions);
+                (counts, defs)
+            });
+        if let Some(w) = shown.wake {
+            ui.ctx().request_repaint_after(w);
+        }
+        let (ndefs, evaluating, counts) = (shown.defs, shown.working, shown.counts);
         let mut open_import = None;
         let mut show_outline = false;
         let mut show_problems = false;
@@ -775,18 +845,6 @@ impl IdeApp {
             None => {}
         }
     }
-}
-
-fn view_title(ui: &mut Ui, title: &str, theme: &Theme) {
-    ui.horizontal(|ui| {
-        ui.add_space(10.0);
-        ui.label(
-            egui::RichText::new(title)
-                .size(13.5)
-                .color(c32(theme.muted)),
-        );
-    });
-    ui.add_space(4.0);
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {

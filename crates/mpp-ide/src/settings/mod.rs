@@ -19,13 +19,40 @@ pub enum AutosaveMode {
 }
 
 /// Which side-bar view is showing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum SideView {
     #[default]
     Explorer,
     Search,
     Outline,
+    Variables,
+    Problems,
+    Tutorial,
+}
+
+impl SideView {
+    /// The views in activity-bar order.
+    pub const ALL: [SideView; 6] = [
+        SideView::Explorer,
+        SideView::Search,
+        SideView::Outline,
+        SideView::Variables,
+        SideView::Problems,
+        SideView::Tutorial,
+    ];
+
+    /// The name on the icon's tooltip and the panel's header.
+    pub fn label(self) -> &'static str {
+        match self {
+            SideView::Explorer => "Explorer",
+            SideView::Search => "Search",
+            SideView::Outline => "Outline",
+            SideView::Variables => "Definitions",
+            SideView::Problems => "Problems",
+            SideView::Tutorial => "Tutorial",
+        }
+    }
 }
 
 /// Everything remembered between runs.
