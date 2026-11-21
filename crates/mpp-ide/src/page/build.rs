@@ -2694,6 +2694,8 @@ This is ",
         assert_eq!(page.offset_step(5, true), Some(7));
     }
 
+    use super::super::Side;
+
     fn page_showing(src: &str, show: &ShowState) -> Page {
         let doc = parse_document(src);
         build_page(&PageInput {
@@ -2737,8 +2739,7 @@ World";
         assert!((back + moved).abs() < 0.5);
         // Typing on the pinned line keeps the pin; nothing moved.
         let typed = format!("{src}s");
-        let pin =
-            super::super::Pin::new(&shown, src, caret, super::super::Side::Before).expect("a pin");
+        let pin = super::super::Pin::new(&shown, src, caret, Side::Before).expect("a pin");
         let s = pin.shift(&page_for(&typed), &typed).expect("still pinned");
         assert!(s.abs() < 0.5, "{s}");
         // Text changed before the line: no pin (the caret is scrolled to instead).
@@ -2753,15 +2754,156 @@ World";
 World";
         let page = page_for(src);
         // Offset 6 (the blank line between the blocks) has no stop of its own.
-        let before = page
-            .caret_stop_on(6, super::super::Side::Before)
-            .expect("stop");
-        let after = page
-            .caret_stop_on(6, super::super::Side::After)
-            .expect("stop");
+        let before = page.caret_stop_on(6, Side::Before).expect("stop");
+        let after = page.caret_stop_on(6, Side::After).expect("stop");
         assert!((before.top - top_of(&page, 5)).abs() < 1.0);
         assert!((after.top - top_of(&page, 7)).abs() < 1.0);
         assert!(after.top > before.top + 5.0);
+    }
+
+    /// The document from the video: a heading, prose, maths, an empty line.
+    const ARROWS: &str = "# Title\n\nE = 2x + 5\n\n$$ x := 5 $$\n\n\n\nlast";
+
+    /// Every place Right reaches from the start of `src`, then every place
+    /// Left reaches back from the end.
+    type Places = Vec<(usize, Side)>;
+
+    fn walk(page: &Page) -> (Places, Places) {
+        let (lo, hi) = page.offset_extent().expect("stops");
+        let mut fwd = vec![(lo, Side::Before)];
+        while let Some(n) = page.step_on(fwd[fwd.len() - 1].0, fwd[fwd.len() - 1].1, true) {
+            fwd.push(n);
+            assert!(fwd.len() < 500, "Right never reached the end");
+        }
+        let mut back = vec![(hi, Side::Before)];
+        while let Some(n) = page.step_on(back[back.len() - 1].0, back[back.len() - 1].1, false) {
+            back.push(n);
+            assert!(back.len() < 500, "Left never reached the start");
+        }
+        assert_eq!(fwd.last().map(|s| s.0), Some(hi));
+        assert_eq!(back.last().map(|s| s.0), Some(lo));
+        (fwd, back)
+    }
+
+    #[test]
+    fn arrows_never_stop_in_the_gap_between_blocks() {
+        let src = ARROWS;
+        let page = page_for(src);
+        let (fwd, back) = walk(&page);
+        let doc = parse_document(src);
+        // A place is on a block, or on an empty line a person sees.
+        let shown = |o: usize| {
+            if doc
+                .blocks
+                .iter()
+                .any(|b| b.span.start <= o && o <= b.span.end)
+            {
+                return true;
+            }
+            super::super::blank::on_visible_line(src, o)
+        };
+        for (o, _) in fwd.iter().chain(&back) {
+            assert!(
+                shown(*o),
+                "the caret stopped at {o}, in a gap between blocks"
+            );
+        }
+        // Each drawn place is visited once each way, at a different position.
+        let pos = |(o, side): &(usize, Side)| page.caret_stop_on(*o, *side).expect("stop");
+        for w in fwd.windows(2) {
+            let (a, b) = (pos(&w[0]), pos(&w[1]));
+            assert!(
+                (a.x - b.x).abs() >= 0.5 || (a.top - b.top).abs() >= 1.0,
+                "Right from {:?} to {:?} did not move",
+                w[0],
+                w[1]
+            );
+        }
+        assert_eq!(fwd.len(), back.len(), "{fwd:?}\n{back:?}");
+    }
+
+    #[test]
+    fn left_at_the_start_of_a_line_goes_to_the_end_of_the_line_above() {
+        let src = ARROWS;
+        let page = page_for(src);
+        let e = src.find('E').expect("E");
+        let title_end = src.find("\n\n").expect("end of the title");
+        assert_eq!(
+            page.step_on(e, Side::Before, false).map(|s| s.0),
+            Some(title_end)
+        );
+        assert_eq!(
+            page.step_on(title_end, Side::Before, true).map(|s| s.0),
+            Some(e)
+        );
+        // From the first character of the maths to the end of the prose line.
+        let five = src.find("5\n").expect("5") + 1;
+        let x = src.find("x :=").expect("x");
+        let first_maths = page
+            .stops
+            .iter()
+            .filter(|s| s.offset > five)
+            .map(|s| s.offset)
+            .min()
+            .expect("maths");
+        assert!(first_maths <= x, "{first_maths} {x}");
+        assert_eq!(
+            page.step_on(first_maths, Side::Before, false).map(|s| s.0),
+            Some(five)
+        );
+        // The empty line between the maths and "last" is a place of its own.
+        let last = src.find("last").expect("last");
+        let blank = last - 2;
+        assert_eq!(
+            page.step_on(last, Side::Before, false).map(|s| s.0),
+            Some(blank)
+        );
+        let maths_end = page.step_on(blank, Side::Before, false).expect("maths").0;
+        assert!(maths_end < blank - 2, "{maths_end}");
+    }
+
+    #[test]
+    fn up_and_down_keep_the_column_across_lines_of_different_heights() {
+        let src = "Hello world, this is prose\n\n$$ \\frac{a}{b} + c = d $$\n\nAnother line of prose here";
+        let page = page_for(src);
+        let start = src.find("world").expect("world") + 2;
+        let want = page.caret_stop(start).expect("stop").x;
+        let (down1, side) = page
+            .vertical_on(start, Side::Before, false, Some(want))
+            .expect("a line below");
+        let mut at = (down1, side);
+        // Down until the last line, never more than a few steps.
+        for _ in 0..4 {
+            match page.vertical_on(at.0, at.1, false, Some(want)) {
+                Some(n) => at = n,
+                None => break,
+            }
+        }
+        let bottom = page.caret_stop_on(at.0, at.1).expect("stop");
+        let last_line = src.find("Another").expect("last line");
+        assert!(at.0 >= last_line, "ended at {} above the last line", at.0);
+        assert!(
+            (bottom.x - want).abs() < 12.0,
+            "the column moved from {want} to {}",
+            bottom.x
+        );
+        // And back up to where it started.
+        let mut up = at;
+        while let Some(n) = page.vertical_on(up.0, up.1, true, Some(want)) {
+            up = n;
+        }
+        assert_eq!(up.0, start);
+    }
+
+    #[test]
+    fn home_and_end_go_to_the_ends_of_the_line() {
+        let src = ARROWS;
+        let page = page_for(src);
+        let x2 = src.find("2x").expect("2x");
+        let (lo, hi) = page.line_extent_on(x2, Side::Before).expect("line");
+        assert_eq!(lo, src.find('E').expect("E"));
+        assert_eq!(hi, src.find("5\n").expect("5") + 1);
+        assert_eq!(page.offset_extent(), Some((2, src.len())));
     }
 
     #[test]

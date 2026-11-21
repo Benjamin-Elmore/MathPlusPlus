@@ -21,7 +21,7 @@ use crate::diagnostics::ui::{self as dui, DiagUi, FixMenu, MenuOutcome};
 use crate::doc::{Doc, PageCache};
 use crate::editor::symbols::{completions, live_replacement, word_at, Completion};
 use crate::insert::{self, InsertUi};
-use crate::page::BlockTag;
+use crate::page::{BlockTag, Side};
 use crate::paint::{c32, paint_display_list, paint_text};
 use crate::theme::Mode;
 use crate::typeset;
@@ -1282,13 +1282,17 @@ fn key_pressed(
             Key::Home => {
                 if let Some((lo, _)) = page.offset_extent() {
                     doc.editor.move_caret(lo, shift);
+                    doc.caret_side = Side::After;
                 }
+                doc.want_x = None;
                 return true;
             }
             Key::End => {
                 if let Some((_, hi)) = page.offset_extent() {
                     doc.editor.move_caret(hi, shift);
+                    doc.caret_side = Side::Before;
                 }
+                doc.want_x = None;
                 return true;
             }
             Key::Enter => return doc.keep_result_at(caret),
@@ -1372,8 +1376,10 @@ fn key_pressed(
             if let (Some(sel), false) = (doc.editor.selection(), shift) {
                 doc.editor
                     .move_caret(if fwd { sel.end } else { sel.start }, false);
-            } else if let Some(t) = page.offset_step(caret, fwd) {
+                doc.caret_side = if fwd { Side::Before } else { Side::After };
+            } else if let Some((t, side)) = page.step_on(caret, doc.caret_side, fwd) {
                 doc.editor.move_caret(t, shift);
+                doc.caret_side = side;
             }
             true
         }
@@ -1389,17 +1395,19 @@ fn key_pressed(
                 return false;
             }
             if doc.want_x.is_none() {
-                doc.want_x = page.caret_stop(caret).map(|s| s.x);
+                doc.want_x = page.caret_stop_on(caret, doc.caret_side).map(|s| s.x);
             }
-            if let Some(t) = page.offset_vertical(caret, up, doc.want_x) {
+            if let Some((t, side)) = page.vertical_on(caret, doc.caret_side, up, doc.want_x) {
                 doc.editor.move_caret(t, shift);
+                doc.caret_side = side;
             }
             true
         }
         Key::Home | Key::End => {
-            if let Some((lo, hi)) = page.line_extent(caret) {
-                doc.editor
-                    .move_caret(if key == Key::Home { lo } else { hi }, shift);
+            if let Some((lo, hi)) = page.line_extent_on(caret, doc.caret_side) {
+                let home = key == Key::Home;
+                doc.editor.move_caret(if home { lo } else { hi }, shift);
+                doc.caret_side = if home { Side::After } else { Side::Before };
             }
             doc.want_x = None;
             true

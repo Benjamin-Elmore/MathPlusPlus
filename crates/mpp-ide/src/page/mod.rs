@@ -332,9 +332,10 @@ impl Page {
         if side == Side::After {
             let exact = self.stops.iter().filter(|s| s.offset == offset);
             let last_line = exact.clone().map(|s| s.top).fold(f32::MIN, f32::max);
+            // On one line, the last of the stops (as with `Before`).
             let on_line = exact
                 .filter(|s| (s.top - last_line).abs() < 1.0)
-                .min_by(|a, b| cmp_f(a.x, b.x));
+                .max_by(|a, b| cmp_f(a.x, b.x));
             if let Some(s) = on_line {
                 return Some(*s);
             }
@@ -342,7 +343,7 @@ impl Page {
                 .stops
                 .iter()
                 .filter(|s| s.offset > offset)
-                .min_by(|a, b| a.offset.cmp(&b.offset).then(cmp_f(a.x, b.x)));
+                .min_by(|a, b| a.offset.cmp(&b.offset).then(cmp_f(b.x, a.x)));
             if let Some(s) = after {
                 return Some(*s);
             }
@@ -436,7 +437,29 @@ impl Page {
     /// The offset one visual line above (`up`) or below the caret, at about the
     /// same x.
     pub fn offset_vertical(&self, offset: usize, up: bool, want_x: Option<f32>) -> Option<usize> {
-        let cur = self.caret_stop(offset)?;
+        self.vertical_on(offset, Side::Before, up, want_x)
+            .map(|(o, _)| o)
+    }
+
+    /// The side a caret at stop `s` is drawn on: the one that puts it at `s`.
+    fn side_of(&self, s: &CaretStop) -> Side {
+        match self.caret_stop_on(s.offset, Side::Before) {
+            Some(b) if (b.top - s.top).abs() >= 1.0 || (b.x - s.x).abs() >= 0.5 => Side::After,
+            _ => Side::Before,
+        }
+    }
+
+    /// The offset (and side) one visual line above (`up`) or below the caret at
+    /// `offset` on `side`, nearest to `want_x` (the column the caret keeps while
+    /// moving up and down, across lines of any height).
+    pub fn vertical_on(
+        &self,
+        offset: usize,
+        side: Side,
+        up: bool,
+        want_x: Option<f32>,
+    ) -> Option<(usize, Side)> {
+        let cur = self.caret_stop_on(offset, side)?;
         let cy = (cur.top + cur.bottom) / 2.0;
         let x = want_x.unwrap_or(cur.x);
         let cand: Vec<&CaretStop> = self
@@ -463,23 +486,45 @@ impl Page {
         cand.into_iter()
             .filter(|s| ((s.top + s.bottom) / 2.0 - line_y).abs() < 6.0)
             .min_by(|a, b| cmp_f((a.x - x).abs(), (b.x - x).abs()))
-            .map(|s| s.offset)
+            .map(|s| (s.offset, self.side_of(s)))
     }
 
     /// The previous or next offset whose stop is somewhere else on the page
     /// (offsets that differ only by hidden markup share a position and are skipped).
     pub fn offset_step(&self, offset: usize, forward: bool) -> Option<usize> {
-        let cur = self.caret_stop(offset);
+        self.step_on(offset, Side::Before, forward).map(|(o, _)| o)
+    }
+
+    /// The previous or next place for the caret at `offset` on `side`: an
+    /// offset drawn in two places (the end of one line and the start of the
+    /// next) is two steps, one on each side. Only drawn positions are steps,
+    /// so the blank line that only separates two blocks is never one: Left at
+    /// the start of a line goes to the end of the line above.
+    pub fn step_on(&self, offset: usize, side: Side, forward: bool) -> Option<(usize, Side)> {
+        let at = |side| self.caret_stop_on(offset, side);
+        if let (Some(b), Some(a)) = (at(Side::Before), at(Side::After)) {
+            let two = (b.top - a.top).abs() >= 1.0 && a.offset == offset && b.offset == offset;
+            match (two, side, forward) {
+                (true, Side::Before, true) => return Some((offset, Side::After)),
+                (true, Side::After, false) => return Some((offset, Side::Before)),
+                _ => {}
+            }
+        }
+        let cur = self.caret_stop_on(offset, side);
         let same = |s: &CaretStop| {
             cur.is_some_and(|c| {
                 (s.x - c.x).abs() < 0.5 && ((s.top + s.bottom) - (c.top + c.bottom)).abs() < 4.0
             })
         };
         let cands = self.stops.iter().filter(|s| !same(s));
+        // Moving forward lands on the first place of an offset drawn in two,
+        // moving back on the second.
         if forward {
-            cands.map(|s| s.offset).filter(|&o| o > offset).min()
+            let o = cands.map(|s| s.offset).filter(|&o| o > offset).min()?;
+            Some((o, Side::Before))
         } else {
-            cands.map(|s| s.offset).filter(|&o| o < offset).max()
+            let o = cands.map(|s| s.offset).filter(|&o| o < offset).max()?;
+            Some((o, Side::After))
         }
     }
 
@@ -510,7 +555,14 @@ impl Page {
 
     /// The first and last stop offsets on the caret's visual line.
     pub fn line_extent(&self, offset: usize) -> Option<(usize, usize)> {
-        let cur = self.caret_stop(offset)?;
+        self.line_extent_on(offset, Side::Before)
+    }
+
+    /// The first and last stop offsets on the visual line of the caret at
+    /// `offset` on `side` (Home goes to the first on [`Side::After`], End to
+    /// the last on [`Side::Before`]).
+    pub fn line_extent_on(&self, offset: usize, side: Side) -> Option<(usize, usize)> {
+        let cur = self.caret_stop_on(offset, side)?;
         let cy = (cur.top + cur.bottom) / 2.0;
         let on_line = |s: &&CaretStop| ((s.top + s.bottom) / 2.0 - cy).abs() < 6.0;
         let first = self

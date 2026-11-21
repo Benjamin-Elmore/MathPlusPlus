@@ -204,3 +204,65 @@ fn working_arriving_above_the_caret_does_not_move_its_line() {
         "nothing above the line changed: {before} -> {after}"
     );
 }
+
+fn press(h: &mut Harness<'static, IdeApp>, key: egui::Key) {
+    h.key_press(key);
+    h.step();
+}
+
+fn text_of(h: &Harness<'static, IdeApp>) -> String {
+    h.state().doc().expect("doc").editor.text().to_string()
+}
+
+#[test]
+fn left_from_the_start_of_a_line_goes_to_the_end_of_the_line_above() {
+    // The video at 38 s: Left from the start of `E = 2x +5` went to an
+    // invisible line between the heading and E, and typing went there.
+    let src = "# This is a test\n\nE = 2x +5";
+    let mut app = app_with(src);
+    let e = src.find('E').expect("E");
+    app.doc_mut().expect("doc").editor.move_caret(e, false);
+    let mut h = harness(app);
+    h.run_steps(3);
+    let on_e = caret_at(&h);
+    press(&mut h, egui::Key::ArrowLeft);
+    let after = caret_at(&h);
+    assert!(after.y < on_e.y - 10.0, "the caret did not go up a line");
+    type_text(&mut h, "!");
+    assert_eq!(text_of(&h), "# This is a test!\n\nE = 2x +5");
+    // Right from the end of the heading comes back to the start of E.
+    press(&mut h, egui::Key::ArrowRight);
+    type_text(&mut h, "x");
+    assert_eq!(text_of(&h), "# This is a test!\n\nxE = 2x +5");
+}
+
+#[test]
+fn up_and_down_keep_the_column_and_home_and_end_go_to_the_line_ends() {
+    let src = "A first line of prose\n\nShort\n\nA third line of prose";
+    let mut app = app_with(src);
+    let at = src.find("line").expect("line");
+    app.doc_mut().expect("doc").editor.move_caret(at, false);
+    let mut h = harness(app);
+    h.run_steps(3);
+    let x0 = caret_at(&h).x;
+    press(&mut h, egui::Key::ArrowDown);
+    press(&mut h, egui::Key::ArrowDown);
+    let x2 = caret_at(&h).x;
+    assert!((x2 - x0).abs() < 12.0, "the column moved from {x0} to {x2}");
+    type_text(&mut h, "|");
+    let t = text_of(&h);
+    assert!(
+        t.ends_with("A third |line of prose") || t.ends_with("A third| line of prose"),
+        "typed somewhere else: {t}"
+    );
+    press(&mut h, egui::Key::Home);
+    type_text(&mut h, "<");
+    press(&mut h, egui::Key::End);
+    type_text(&mut h, ">");
+    let t = text_of(&h);
+    let last = t.rsplit("\n\n").next().expect("a last line");
+    assert!(
+        last.starts_with("<A third") && last.ends_with("prose>"),
+        "{t}"
+    );
+}
