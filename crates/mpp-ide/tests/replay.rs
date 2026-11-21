@@ -5,6 +5,7 @@
 use std::time::{Duration, Instant};
 
 use egui::{Event, Vec2};
+use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use mpp_ide::{theme, IdeApp};
 
@@ -264,5 +265,141 @@ fn up_and_down_keep_the_column_and_home_and_end_go_to_the_line_ends() {
     assert!(
         last.starts_with("<A third") && last.ends_with("prose>"),
         "{t}"
+    );
+}
+
+/// A click (press and release) at a screen point (the page's own clicks).
+fn click_at(h: &mut Harness<'static, IdeApp>, pos: egui::Pos2) {
+    h.event(Event::PointerMoved(pos));
+    for pressed in [true, false] {
+        h.event(Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.step();
+    }
+    h.step();
+}
+
+/// True when typing a letter changes the document (the page has the keyboard).
+fn typing_reaches_the_page(h: &mut Harness<'static, IdeApp>) -> bool {
+    let before = text_of(h);
+    type_text(h, "z");
+    let after = text_of(h);
+    if after != before {
+        // Take the letter back out.
+        h.state_mut().doc_mut().expect("doc").editor.undo();
+        h.step();
+        true
+    } else {
+        false
+    }
+}
+
+#[test]
+fn escape_does_one_thing_then_lets_go_of_the_keyboard() {
+    // In inline maths, Esc leaves the maths: typing goes just after it.
+    let src = "Hello $x$ world";
+    let mut app = app_with(src);
+    app.doc_mut().expect("doc").editor.move_caret(7, false);
+    let mut h = harness(app);
+    h.run_steps(3);
+    press(&mut h, egui::Key::Escape);
+    type_text(&mut h, "!");
+    assert_eq!(text_of(&h), "Hello $x$! world");
+    // In prose with nothing open, Esc lets go of the keyboard, and the page
+    // does not take it back by itself, however many frames go by.
+    press(&mut h, egui::Key::Escape);
+    h.run_steps(5);
+    assert!(!typing_reaches_the_page(&mut h), "Esc did not let go");
+    // A click on the page takes it back.
+    let at = caret_at(&h);
+    click_at(&mut h, at);
+    assert!(
+        typing_reaches_the_page(&mut h),
+        "a click did not take it back"
+    );
+}
+
+#[test]
+fn escape_leaves_a_template_box() {
+    let mut h = harness(app_with("$$  $$"));
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .move_caret(3, false);
+    h.run_steps(3);
+    for c in ["i", "n", "t", " ", "x"] {
+        type_text(&mut h, c);
+    }
+    assert!(text_of(&h).contains("\\int"), "{}", text_of(&h));
+    press(&mut h, egui::Key::Escape);
+    type_text(&mut h, " = ?");
+    let t = text_of(&h);
+    assert!(
+        t.contains("dx = ?"),
+        "typing did not go after the template: {t}"
+    );
+}
+
+#[test]
+fn tab_is_only_kept_while_there_is_a_box_to_go_to() {
+    let mut h = harness(app_with("Plain prose"));
+    h.run_steps(3);
+    assert!(typing_reaches_the_page(&mut h));
+    press(&mut h, egui::Key::Tab);
+    h.run_steps(2);
+    assert_eq!(text_of(&h), "Plain prose", "Tab typed something");
+    assert!(!typing_reaches_the_page(&mut h), "Tab was kept by the page");
+}
+
+#[test]
+fn the_page_never_takes_the_keyboard_from_another_widget() {
+    let mut h = harness(app_with("Some text"));
+    h.run_steps(3);
+    assert!(typing_reaches_the_page(&mut h));
+    // Quick open has a search box: what is typed goes there, frame after frame.
+    h.key_press_modifiers(egui::Modifiers::COMMAND, egui::Key::P);
+    h.run_steps(3);
+    assert!(h.state().ws.quick.open);
+    type_text(&mut h, "abc");
+    h.run_steps(5);
+    assert_eq!(text_of(&h), "Some text", "the page took the keys");
+    assert_eq!(h.state().ws.quick.query, "abc");
+    // Closed again, the keyboard comes back to the page.
+    press(&mut h, egui::Key::Escape);
+    h.run_steps(3);
+    assert!(!h.state().ws.quick.open);
+    assert!(typing_reaches_the_page(&mut h));
+    // A click on a menu, then Esc: typing goes to the page again.
+    h.get_by_label("Edit").click();
+    h.run_steps(3);
+    press(&mut h, egui::Key::Escape);
+    h.run_steps(3);
+    assert!(typing_reaches_the_page(&mut h), "lost after a menu");
+}
+
+#[test]
+fn an_arrow_at_the_edge_of_the_document_lets_go() {
+    let src = "One line";
+    let mut app = app_with(src);
+    app.doc_mut().expect("doc").editor.move_caret(0, false);
+    let mut h = harness(app);
+    h.run_steps(3);
+    // Right moves inside the text as usual.
+    press(&mut h, egui::Key::ArrowRight);
+    assert!(typing_reaches_the_page(&mut h));
+    assert_eq!(text_of(&h), src);
+    press(&mut h, egui::Key::Home);
+    // Up on the first line, already at its start: nowhere to go in the page,
+    // so the keyboard moves up to the tabs and menus.
+    press(&mut h, egui::Key::ArrowUp);
+    h.run_steps(3);
+    assert!(
+        !typing_reaches_the_page(&mut h),
+        "the page kept the keyboard"
     );
 }

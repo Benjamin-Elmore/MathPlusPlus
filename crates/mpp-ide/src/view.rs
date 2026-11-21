@@ -240,26 +240,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 cx.diag.origin = origin;
             }
 
-            if ui.memory(|m| m.focused().is_none()) {
-                ui.memory_mut(|m| m.request_focus(resp.id));
-            }
-            if resp.clicked() || resp.drag_started() {
-                ui.memory_mut(|m| m.request_focus(resp.id));
-            }
-            let focused = ui.memory(|m| m.has_focus(resp.id));
-            if focused {
-                ui.memory_mut(|m| {
-                    m.set_focus_lock_filter(
-                        resp.id,
-                        EventFilter {
-                            tab: true,
-                            horizontal_arrows: true,
-                            vertical_arrows: true,
-                            escape: false,
-                        },
-                    );
-                });
-            }
+            let focused = take_focus(ui, &resp);
 
             // A click on the bulb opens the quick fixes instead of moving the caret.
             let bulb = bulb_target(doc, &pc0, origin);
@@ -380,6 +361,13 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 }
                 insert_menu(ui, doc, cx, caret_rect, resp.id, &mut events);
             }
+            // A menu or popup open now closes itself on the next Esc.
+            let popup = ui.ctx().any_popup_open();
+            ui.data_mut(|d| d.insert_temp(egui::Id::unique(POPUP_OPEN), popup));
+            if ui.memory(|m| m.has_focus(resp.id)) {
+                let filter = key_filter(doc, &pc, cx, popup);
+                ui.memory_mut(|m| m.set_focus_lock_filter(resp.id, filter));
+            }
             if shift != 0.0 {
                 ui.data_mut(|d| d.insert_temp(floor_id, scrolled + shift));
             } else if floor == 0.0 {
@@ -406,6 +394,150 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
         dui::paint_scrollbar_marks(&painter, track, content_h, problems, &theme);
     }
     events
+}
+
+/// Where the view notes whether a menu or popup was open at the end of the
+/// last frame (Esc then closes it and does nothing else).
+const POPUP_OPEN: &str = "mpp-popup-open";
+
+/// Gives the page the keyboard: on a click, or when nothing else has it. When
+/// the page let go of it on purpose (Esc with nothing open), only a click
+/// brings it back, and the page never takes it from another widget (the side
+/// column's search box, quick open, a dialog): a click elsewhere hands it over
+/// as anywhere in egui. True when the page has it.
+fn take_focus(ui: &Ui, resp: &egui::Response) -> bool {
+    let away_id = resp.id.with("mpp-keyboard-away");
+    let pressed = ui.input(|i| i.pointer.any_pressed());
+    // A menu or popup moves the keyboard about while it is open.
+    let popup = ui.ctx().any_popup_open()
+        || ui
+            .data(|d| d.get_temp::<bool>(egui::Id::unique(POPUP_OPEN)))
+            .unwrap_or(false);
+    // Let go this frame by a key, not taken by a click, a menu or another widget.
+    let let_go = !pressed
+        && !popup
+        && ui.memory(|m| {
+            m.had_focus_last_frame(resp.id) && !m.has_focus(resp.id) && m.focused().is_none()
+        });
+    let away = let_go || ui.data(|d| d.get_temp::<bool>(away_id)).unwrap_or(false);
+    if resp.clicked() || resp.drag_started() {
+        ui.memory_mut(|m| m.request_focus(resp.id));
+    } else if !away && ui.memory(|m| m.focused().is_none()) {
+        ui.memory_mut(|m| m.request_focus(resp.id));
+    }
+    let focused = ui.memory(|m| m.has_focus(resp.id));
+    ui.data_mut(|d| d.insert_temp(away_id, away && !focused));
+    focused
+}
+
+/// Which keys the page keeps for itself next frame (the rest move the
+/// keyboard to other widgets, as anywhere else). Tab only while there is a box
+/// to go to or an autocomplete to accept; Esc only while it has something to
+/// do (close a popup, leave a box, leave maths).
+fn key_filter(doc: &Doc, pc: &PageCache, cx: &ViewCtx<'_>, menu: bool) -> EventFilter {
+    let caret = doc.editor.caret();
+    let in_template = doc.editor.session_at(caret).is_some();
+    let popup = menu
+        || cx.completion.is_some()
+        || cx.diag.peek.is_some()
+        || cx.insert.menu.open
+        || cx.diag.menu_open();
+    EventFilter {
+        tab: popup || in_template || !empty_slots(&pc.page, caret).is_empty(),
+        horizontal_arrows: true,
+        vertical_arrows: true,
+        escape: popup || in_template || pc.page.in_math(caret),
+    }
+}
+
+/// The empty boxes on the page other than the one at `caret`, in order.
+fn empty_slots(page: &crate::page::Page, caret: usize) -> Vec<usize> {
+    let mut slots: Vec<usize> = page
+        .blocks
+        .iter()
+        .flat_map(|b| b.dl.hits.iter())
+        .filter(|h| h.kind == mpp_render::HitKind::Slot)
+        .map(|h| h.span.start)
+        .filter(|&o| o != caret)
+        .collect();
+    slots.sort_unstable();
+    slots.dedup();
+    slots
+}
+
+/// An arrow key at the edge of the document: the page has nowhere to move the
+/// caret, so the key moves the keyboard to the widget that way, as it does
+/// everywhere else. Up on the first line first goes to the line's start, and
+/// Down on the last line to its end.
+fn edge_release(
+    doc: &Doc,
+    pc: &PageCache,
+    key: Key,
+    mods: egui::Modifiers,
+) -> Option<egui::FocusDirection> {
+    use egui::FocusDirection as F;
+    if mods.any() || doc.editor.selection().is_some() {
+        return None;
+    }
+    let page = &pc.page;
+    let (caret, side) = (doc.editor.caret(), doc.caret_side);
+    let (lo, hi) = page.line_extent_on(caret, side).unwrap_or((caret, caret));
+    match key {
+        Key::ArrowLeft => page
+            .step_on(caret, side, false)
+            .is_none()
+            .then_some(F::Left),
+        Key::ArrowRight => page
+            .step_on(caret, side, true)
+            .is_none()
+            .then_some(F::Right),
+        Key::ArrowUp => {
+            (page.vertical_on(caret, side, true, None).is_none() && caret == lo).then_some(F::Up)
+        }
+        Key::ArrowDown => {
+            (page.vertical_on(caret, side, false, None).is_none() && caret == hi).then_some(F::Down)
+        }
+        _ => None,
+    }
+}
+
+/// Esc does one thing, the first of: close a popup, leave the template box,
+/// leave the maths (the caret goes just after it). True when the caret moved.
+fn escape(doc: &mut Doc, page: &crate::page::Page, cx: &mut ViewCtx<'_>) -> bool {
+    if cx.completion.take().is_some() || cx.diag.peek.take().is_some() {
+        return false;
+    }
+    let caret = doc.editor.caret();
+    let target = match doc.editor.session_at(caret) {
+        Some(s) => Some(s.range.end),
+        None => leave_maths(doc.editor.text(), page, caret),
+    };
+    let Some(t) = target else {
+        return false;
+    };
+    doc.editor.move_caret(t, false);
+    doc.caret_side = Side::Before;
+    doc.want_x = None;
+    true
+}
+
+/// Just after the maths holding `caret`: past the closing `$` of inline maths,
+/// or the end of a display block.
+fn leave_maths(text: &str, page: &crate::page::Page, caret: usize) -> Option<usize> {
+    let r = page
+        .math_ranges
+        .iter()
+        .filter(|r| r.start <= caret && caret <= r.end)
+        .min_by_key(|r| r.end - r.start)?;
+    if let Some(b) = page.block_at(caret).filter(|b| b.tag == BlockTag::Math) {
+        return Some(b.span.end);
+    }
+    let rest = text.get(r.end..).unwrap_or("");
+    let close = ["$$", "\\]", "\\)", "$"]
+        .iter()
+        .find(|c| rest.starts_with(**c))
+        .map_or(0, |c| c.len());
+    Some(r.end + close)
 }
 
 /// The scroll area, moved to `y` when a scroll is pending.
@@ -1174,6 +1306,9 @@ fn handle_keys(
     let input = ui.input(|i| i.events.clone());
     let mut moved = false;
     let revision = doc.editor.revision();
+    let menu = ui
+        .data(|d| d.get_temp::<bool>(egui::Id::unique(POPUP_OPEN)))
+        .unwrap_or(false);
     for ev in input {
         // The go-to-definition highlight lasts until the next key or edit.
         if matches!(
@@ -1212,6 +1347,16 @@ fn handle_keys(
                 modifiers,
                 ..
             } => {
+                if key == Key::Escape && menu {
+                    // The menu that was open closes on this Esc; nothing else.
+                    continue;
+                }
+                if cx.completion.is_none() {
+                    if let Some(dir) = edge_release(doc, pc, key, modifiers) {
+                        ui.memory_mut(|m| m.move_focus(dir));
+                        continue;
+                    }
+                }
                 moved |= key_pressed(doc, pc, cx, events, key, modifiers);
             }
             _ => {}
@@ -1314,10 +1459,7 @@ fn key_pressed(
             events.push(ViewEvent::GotoAt(caret));
             false
         }
-        Key::Escape => {
-            *cx.completion = None;
-            false
-        }
+        Key::Escape => escape(doc, page, cx),
         Key::Tab => {
             if accept_completion(doc, cx) {
                 return true;
@@ -1400,6 +1542,10 @@ fn key_pressed(
             if let Some((t, side)) = page.vertical_on(caret, doc.caret_side, up, doc.want_x) {
                 doc.editor.move_caret(t, shift);
                 doc.caret_side = side;
+            } else if let Some((lo, hi)) = page.line_extent_on(caret, doc.caret_side) {
+                // No line above (below): to the start (end) of this one.
+                doc.editor.move_caret(if up { lo } else { hi }, shift);
+                doc.caret_side = if up { Side::After } else { Side::Before };
             }
             true
         }
@@ -1457,15 +1603,7 @@ fn note_enter(doc: &mut Doc) -> bool {
 
 fn tab_to_slot(doc: &mut Doc, page: &crate::page::Page, forward: bool) {
     let caret = doc.editor.caret();
-    let mut slots: Vec<usize> = page
-        .blocks
-        .iter()
-        .flat_map(|b| b.dl.hits.iter())
-        .filter(|h| h.kind == mpp_render::HitKind::Slot)
-        .map(|h| h.span.start)
-        .collect();
-    slots.sort_unstable();
-    slots.dedup();
+    let slots = empty_slots(page, caret);
     let target = if forward {
         slots.into_iter().find(|&o| o > caret)
     } else {
