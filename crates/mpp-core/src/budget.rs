@@ -100,6 +100,16 @@ pub fn peek_tripped() -> Option<Trip> {
 /// Checks the budget: `Err` once the work should stop. Cheap enough for inner loops
 /// (the clock is read once every 64 calls; the cancel flag on every call).
 pub fn check() -> MathResult<()> {
+    check_with(false)
+}
+
+/// Like [`check`] but always reads the clock: for loops whose steps are each slow
+/// (big-number series), where 64 steps between clock reads could be seconds.
+pub fn check_now() -> MathResult<()> {
+    check_with(true)
+}
+
+fn check_with(clock: bool) -> MathResult<()> {
     CURRENT.with(|c| {
         let c = c.borrow();
         let Some(b) = c.as_ref() else {
@@ -116,7 +126,7 @@ pub fn check() -> MathResult<()> {
                 n
             });
             let already = TRIPPED.with(Cell::get) == Some(Trip::TimedOut);
-            if already || tick.is_multiple_of(64) {
+            if clock || already || tick.is_multiple_of(64) {
                 let now = Instant::now();
                 if already || now >= deadline {
                     TRIPPED.with(|t| t.set(Some(Trip::TimedOut)));

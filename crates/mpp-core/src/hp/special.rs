@@ -19,7 +19,8 @@ thread_local! {
     static BERNOULLI: RefCell<Vec<BigRational>> = const { RefCell::new(Vec::new()) };
 }
 
-/// `B_n` (with `B₁ = −1/2`), or `None` past [`MAX_BERNOULLI`]. The table grows only as
+/// `B_n` (with `B₁ = −1/2`), or `None` past [`MAX_BERNOULLI`] or once the query's
+/// budget has run out. The table grows only as
 /// far as asked, since the recurrence is quadratic and the large entries are costly.
 fn bernoulli(n: usize) -> Option<BigRational> {
     if n > MAX_BERNOULLI {
@@ -28,6 +29,11 @@ fn bernoulli(n: usize) -> Option<BigRational> {
     BERNOULLI.with(|b| {
         let mut b = b.borrow_mut();
         while b.len() <= n {
+            // The large entries take long: stop with the query's budget (the entries
+            // made so far are exact and stay).
+            if tick().is_err() {
+                return None;
+            }
             let m = b.len();
             let next = if m == 0 {
                 BigRational::one()
@@ -245,5 +251,27 @@ mod tests {
             bernoulli(12),
             Some(BigRational::new((-691).into(), 2730.into()))
         );
+    }
+
+    /// Building the Bernoulli table stops with the query's budget, and what it built
+    /// before stopping is still exact.
+    #[test]
+    fn the_bernoulli_table_stops_with_the_budget() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::Arc;
+        std::thread::spawn(|| {
+            {
+                let cancel = Arc::new(AtomicBool::new(true));
+                let _guard = crate::budget::install(crate::budget::Budget::new(cancel, None));
+                assert_eq!(bernoulli(800), None);
+            }
+            let _ = crate::budget::take_tripped();
+            assert_eq!(
+                bernoulli(12),
+                Some(BigRational::new((-691).into(), 2730.into()))
+            );
+        })
+        .join()
+        .expect("thread");
     }
 }
