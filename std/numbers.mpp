@@ -78,7 +78,7 @@ The Fibonacci generating function $\sum F_n x^n = x/(1 - x - x^2)$, as a formal 
 
 $$ G_{\text{Fib}}(x) := \frac{x}{1 - x - x^2} $$
 
-$$ \sum_{k=0}^{30} F_{\text{Binet}}(k) \left(\frac{1}{10}\right)^k \overset{?}{=} G_{\text{Fib}}(\tfrac{1}{10}) $$
+$$ \left| \sum_{k=0}^{30} F_{\text{Binet}}(k) \left(\frac{1}{10}\right)^k - G_{\text{Fib}}(\tfrac{1}{10}) \right| < 10^{-24} \overset{?}{=} \text{true} $$
 
 $$ G_{\text{Fib}}(\tfrac{1}{10}) \overset{?}{=} \frac{10}{89} $$
 
