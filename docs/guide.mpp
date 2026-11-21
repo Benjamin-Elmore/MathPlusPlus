@@ -107,7 +107,7 @@ The starting values can also be a tuple, `(0, 1)` for y(0) = 1. Without them the
 
 ## 7. Units
 
-Write a unit after a number with a thin space and `\mathrm`: `$g \equiv 9.81\,\mathrm{m/s^2}$`. A unit of two or more letters (`kg`, `m/s`) also works after a plain space or none, as in `2 kg`. A single letter after a plain space, such as `20 t`, is the variable t when t is a name in scope (a parameter of the function being defined, or something the document defines), and otherwise the unit with a warning that shows both spellings: write `20\,\mathrm{t}` for 20 tonnes and `20t` for 20 times t. Prefixes work on SI units (`km`, `ms`, `kΩ`, `MPa`), and the common other units are there too: minutes, hours, miles, pounds, degrees Celsius and Fahrenheit, electron-volts and more.
+Write a unit after a number with a thin space and `\mathrm`: `$g \equiv 9.81\,\mathrm{m/s^2}$`. A unit of two or more letters (`kg`, `m/s`) also works after a plain space or none, as in `2 kg`. A single letter after a plain space, such as `20 t`, is the variable t when t is a variable there (a parameter of the function being defined, something the document defined before, the range of the same figure, or a letter the same line uses as a variable, as in `\int 2 t \, dt`), and is then set in italic; otherwise it is the unit with a warning that shows both spellings: write `20\,\mathrm{t}` for 20 tonnes and `20t` for 20 times t. Prefixes work on SI units (`km`, `ms`, `kΩ`, `MPa`), and the common other units are there too: minutes, hours, miles, pounds, degrees Celsius and Fahrenheit, electron-volts and more.
 
 Math++ keeps track of dimensions. A mass times an acceleration comes out as a force, in newtons:
 

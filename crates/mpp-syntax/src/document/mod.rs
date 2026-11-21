@@ -14,6 +14,7 @@ pub mod display;
 pub mod dump;
 mod figure;
 mod inline;
+mod letters;
 mod list;
 pub mod proof;
 mod refs;
@@ -41,6 +42,7 @@ pub fn parse_document(src: &str) -> Document {
     for b in &mut blocks {
         resolve_block(b, &labels, &mut diagnostics);
     }
+    letters::bind_unit_letters(&mut blocks, src);
     assign_ids(&mut blocks, src);
     let mut doc = Document {
         blocks,

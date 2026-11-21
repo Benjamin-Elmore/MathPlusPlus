@@ -187,16 +187,7 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
         return crate::helpers_b::evaluate(&adapted.to_expr(), ctx);
     }
     if call.name == "dsolve" {
-        let answer = dsolve_route(&call, e, ctx)?;
-        // The units solver (asked first) could not give every quantity a unit; an
-        // answer with a unit inside an exponential or a function is meaningless.
-        return Some(answer.and_then(|v| {
-            if unit_inside_function(&v, false) {
-                Err(partial_units())
-            } else {
-                Ok(v)
-            }
-        }));
+        return dsolve_route(&call, e, ctx);
     }
     let route = match call.name.as_str() {
         "rk4" | "rk4table" => {

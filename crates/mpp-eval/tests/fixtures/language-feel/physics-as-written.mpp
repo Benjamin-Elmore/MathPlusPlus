@@ -1,0 +1,77 @@
+# Physics 101 — Problem Set 4
+
+Show your work. Use $g \equiv 9.81\,\mathrm{m/s^2}$ throughout.
+
+## Problem 1. Projectile
+
+A ball is kicked from level ground at $v_0 := 20\,\mathrm{m/s}$ at an angle $\theta := 35°$ above the horizontal.
+
+(a) Horizontal and vertical components of the launch velocity:
+
+$$ v_x := v_0 \cos\theta $$
+$$ v_y := v_0 \sin\theta $$
+
+$$ v_x \approx ? $$
+$$ v_y \approx ? $$
+
+(b) Time of flight:
+
+$$ T := \frac{2 v_y}{g} $$
+
+$$ T \approx ? $$
+
+(c) Range and maximum height:
+
+$$ R := v_x T $$
+$$ R \approx ? $$
+
+$$ H := \frac{v_y^2}{2 g} $$
+$$ H \approx ? $$
+
+(d) Range in feet:
+
+$$ R \operatorname{in} \mathrm{ft} \approx ? $$
+
+## Problem 2. RC circuit
+
+A capacitor $C := 100\,\mathrm{\mu F}$ charges through a resistor $R_1 := 4.7\,\mathrm{k\Omega}$ from a $V_s := 12\,\mathrm{V}$ supply. The voltage across the capacitor obeys
+
+$$ R_1 C \frac{dV}{dt} + V = V_s, \quad V(0) = 0. $$
+
+Time constant:
+
+$$ \tau := R_1 C $$
+$$ \tau = ? $$
+
+Solve the ODE (with numbers stripped of units):
+
+$$ \operatorname{dsolve}(V' = (12 - V)/0.47, V, t, V(0) = 0) = ? $$
+
+Voltage after one time constant:
+
+$$ V_s (1 - e^{-1}) \approx ? $$
+
+## Problem 3. Spring–mass
+
+A mass $m := 0.5\,\mathrm{kg}$ hangs on a spring of stiffness $k := 200\,\mathrm{N/m}$.
+
+$$ \omega := \sqrt{k / m} $$
+$$ \omega = ? $$
+
+$$ f_n := \frac{\omega}{2\pi} $$
+$$ f_n \approx ? $$
+
+The equation of motion $x'' + \omega^2 x = 0$ with $x(0) = 0.1$, $x'(0) = 0$:
+
+$$ \operatorname{dsolve}(x'' + 400 x = 0, x, t, x(0) = 0.1, x'(0) = 0) = ? $$
+
+## Problem 4. Damped response graph
+
+Let the damping ratio be a slider: $\zeta := 0.2, \zeta \in [0, 1]$.
+
+$$ u(t) := e^{-\zeta 20 t} \cos(20 t) $$
+
+Figure: $u(t)$, $t \in [0, 1]$. Displacement for the chosen damping ratio.
+
+$$ u(0.1) \approx ? $$
+

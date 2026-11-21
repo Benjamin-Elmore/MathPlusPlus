@@ -219,3 +219,38 @@ fn the_evaluation_bar_puts_the_point_in() {
     // An absolute value is still an absolute value.
     assert!(got[3].as_deref().unwrap().contains('|'), "{got:?}");
 }
+
+#[test]
+fn the_physics_worksheet_runs_as_first_written() {
+    // The reviewer's worksheet without its workarounds: `u(t)` with `20 t` and a figure
+    // of `u(t)`, `V(0) = 0` in dsolve, and a displayed ODE with no question.
+    let src = std::fs::read_to_string(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/language-feel/physics-as-written.mpp"),
+    )
+    .unwrap();
+    let ev = run(&src);
+    assert!(
+        ev.errors().is_empty(),
+        "{:?}",
+        messages(&ev, Severity::Error)
+    );
+    // Nothing is reported for the displayed ODE, the methods used or `20 t`.
+    let warnings = messages(&ev, Severity::Warning);
+    assert!(warnings.is_empty(), "{warnings:?}");
+    let got = plain_answers(&ev);
+    assert!(
+        got.iter()
+            .any(|a| a.starts_with("V(t) = ") && !a.contains("ln")),
+        "{got:?}"
+    );
+    assert!(got.iter().any(|a| a == "x(t) = cos(20*t)/10"), "{got:?}");
+    assert!(got.last().is_some_and(|a| a == "cos(2)/e^(2/5)"), "{got:?}");
+}
+
+#[test]
+fn a_variable_after_a_number_in_an_integral_is_the_variable() {
+    let ev = run(concat!(r"$$ \int_0^1 2 t \, dt = ? $$", "\n"));
+    assert!(messages(&ev, Severity::Warning).is_empty());
+    assert_eq!(answers(&ev)[0].as_deref(), Some("1"));
+}

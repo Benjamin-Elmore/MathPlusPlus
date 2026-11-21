@@ -247,12 +247,10 @@ fn show_decimal(lr: &mut LineResult, decimal: &str) {
     }
 }
 
-/// The one root when `input` is a `\operatorname{solve}` of a single unknown and its
-/// value is a set with exactly one element.
 /// A remark that only reports how an answer was found and that it checked out
 /// (`method: separable`, `… substituting it back gives 0 exactly`): not a problem
 /// with the line, so `mpp check` does not list it as a warning.
-fn is_success_note(note: &str) -> bool {
+pub(super) fn is_success_note(note: &str) -> bool {
     note.starts_with("method: ")
         || note.ends_with("substituting it back gives 0 exactly")
         || note.ends_with("is an arbitrary constant")
@@ -318,6 +316,8 @@ fn unknown_call_message(name: &str) -> String {
     m
 }
 
+/// The one root when `input` is a `\operatorname{solve}` of a single unknown and its
+/// value is a set with exactly one element.
 fn single_root(input: &Expr, value: &Expr) -> Option<Expr> {
     let ExprNode::Apply(name, args) = input.node() else {
         return None;
