@@ -40,7 +40,7 @@ pub struct SearchState {
 }
 
 /// A file with edits waiting on the user's answer before it closes.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PendingClose(pub usize);
 
 /// Project, navigation and side-bar state.
@@ -165,7 +165,10 @@ impl IdeApp {
                 self.ws.preview = None;
             }
         }
-        self.note_place();
+        match (known, self.current_place()) {
+            (None, Some(p)) => self.ws.nav.record_opened(p),
+            _ => self.note_place(),
+        }
         self.ws.explorer.reveal(path);
         Ok(i)
     }
@@ -415,6 +418,8 @@ impl IdeApp {
                         self.note_place();
                         self.active = i;
                         self.note_place();
+                        // Its tab comes to the front and its page takes the keyboard.
+                        self.ws.tiles.focus_doc = Some(self.docs[i].id);
                     }
                     Ok(())
                 }

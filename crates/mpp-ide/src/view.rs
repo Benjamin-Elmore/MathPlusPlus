@@ -221,7 +221,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 cx.diag.origin = origin;
             }
 
-            if ui.memory(|m| m.focused().is_none()) {
+            if std::mem::take(&mut doc.take_focus) || ui.memory(|m| m.focused().is_none()) {
                 ui.memory_mut(|m| m.request_focus(resp.id));
             }
             if resp.clicked() || resp.drag_started() {

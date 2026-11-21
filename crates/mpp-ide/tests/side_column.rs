@@ -45,6 +45,11 @@ fn app_in(d: &Path) -> IdeApp {
 /// asks for (as the desktop event loop runs).
 fn frames(h: &mut Harness<'static, IdeApp>) {
     h.step();
+    idle(h);
+}
+
+/// Only the frames the app asks for (no input arrives).
+fn idle(h: &mut Harness<'static, IdeApp>) {
     for _ in 0..30 {
         if !h.ctx.has_requested_repaint() {
             break;

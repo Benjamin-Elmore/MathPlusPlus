@@ -90,6 +90,10 @@ pub struct Doc {
     /// A number that stays with this document while it is open (tiles point at it).
     pub id: u64,
     pub path: Option<PathBuf>,
+    /// The N of "Untitled-N" for a file with no name yet (0 until the app numbers it).
+    pub untitled: u32,
+    /// The page takes keyboard focus on its next frame (a file picked in Open files).
+    pub take_focus: bool,
     pub editor: Editor,
     saved: String,
     worker: EvalWorker,
@@ -233,6 +237,8 @@ impl Doc {
         let mut d = Doc {
             id: NEXT_DOC_ID.fetch_add(1, Ordering::Relaxed),
             path,
+            untitled: 0,
+            take_focus: false,
             editor: Editor::new(text),
             saved: text.to_string(),
             worker: EvalWorker::new(),
@@ -272,18 +278,24 @@ impl Doc {
         Doc::with_text("", None)
     }
 
-    /// Reads a file.
+    /// Reads a file. The caret starts at the end of its first line, so typing
+    /// works at once.
     pub fn open(path: &Path) -> std::io::Result<Self> {
         let text = mpp_eval::read_text(path)?;
-        Ok(Doc::with_text(&text, Some(path.to_path_buf())))
+        let mut d = Doc::with_text(&text, Some(path.to_path_buf()));
+        let first_line_end = text.find('\n').unwrap_or(text.len());
+        let end = text[..first_line_end].trim_end_matches('\r').len();
+        d.editor.move_caret(end, false);
+        Ok(d)
     }
 
-    /// The name shown on the tab.
+    /// The name shown on the tab: the file's name, or "Untitled-N".
     pub fn title(&self) -> String {
-        self.path
-            .as_deref()
-            .map(crate::explorer::display_name)
-            .unwrap_or_else(|| "Untitled".into())
+        match (&self.path, self.untitled) {
+            (Some(p), _) => crate::explorer::display_name(p),
+            (None, 0) => "Untitled".into(),
+            (None, n) => format!("Untitled-{n}"),
+        }
     }
 
     /// True when there are changes that are not saved.

@@ -52,6 +52,8 @@ pub struct TileState {
     /// The tree is out being drawn: changes wait in `deferred` until it is back.
     drawing: bool,
     deferred: Vec<Pane>,
+    /// A file picked in Open files: its view gets focus once the tree is back.
+    pub focus_doc: Option<u64>,
 }
 
 impl std::fmt::Debug for TileState {
@@ -896,6 +898,9 @@ impl IdeApp {
                 self.ws.tiles.last_active_doc = self.docs.get(i).map(|d| d.id);
             }
         }
+        if let Some(doc) = self.ws.tiles.focus_doc.take() {
+            self.focus_doc_view(doc);
+        }
         for r in requests {
             match r {
                 Request::Split(t, d) => {
@@ -944,6 +949,33 @@ impl IdeApp {
         // is put in place now, so the next frame draws it.
         if let Some(t) = self.ws.tiles.tree.as_mut() {
             tiles::sync_side(t, self.ws.side_view, self.ws.side_visible);
+        }
+    }
+
+    /// Shows the view of `doc` (the focused one when it shows that file),
+    /// focuses its tile and gives its page the keyboard.
+    pub(crate) fn focus_doc_view(&mut self, doc: u64) {
+        let focused = self.ws.tiles.focused;
+        let tile = self
+            .with_tree(|t| {
+                let id = focused
+                    .filter(|f| {
+                        matches!(tiles::pane_of(t, *f), Some(Pane::Equation { doc: d, .. }) if *d == doc)
+                    })
+                    .or_else(|| {
+                        tiles::find_by(t, |p| matches!(p, Pane::Equation { doc: d, .. } if *d == doc))
+                    })?;
+                tiles::activate(t, id);
+                Some(id)
+            })
+            .flatten();
+        if let Some(t) = tile {
+            self.ws.tiles.focused = Some(t);
+            self.ws.tiles.last_active_doc = Some(doc);
+        }
+        if let Some(i) = self.docs.iter().position(|d| d.id == doc) {
+            self.active = i;
+            self.docs[i].take_focus = true;
         }
     }
 
