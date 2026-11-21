@@ -37,10 +37,6 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
         "geometry steps the CAS cannot check",
     ),
     (
-        "historic/cauchy-schwarz.mpp",
-        "sums over indexed families a_i",
-    ),
-    (
         "historic/pythagoras.mpp",
         "area-counting premise; prose figure",
     ),

@@ -102,6 +102,9 @@ pub enum Squiggle {
 pub enum ClaimOutcome {
     /// The CAS proved it.
     Proved,
+    /// Proved symbolically by a rule the checker applies exactly (a sum of real squares is
+    /// never negative, finite sums are linear …); the text names the rule.
+    ProvedBy(String),
     /// Agrees at random points or on a random instance; the text says how.
     Numeric(String),
     /// A counterexample: the point and the two sides.

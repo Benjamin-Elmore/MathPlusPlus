@@ -170,6 +170,7 @@ fn claim_outcome(o: &mpp_proof::ClaimOutcome) -> String {
     use mpp_proof::ClaimOutcome as C;
     match o {
         C::Proved => "proved".into(),
+        C::ProvedBy(rule) => format!("proved ({rule})"),
         C::Numeric(how) => format!("agrees numerically ({how})"),
         C::Failed(cx) => format!("fails: {cx}"),
         C::Unverified(why) => format!("not verified ({why})"),

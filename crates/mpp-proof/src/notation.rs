@@ -27,6 +27,15 @@ pub(crate) fn names(node: &Node, src: &str) -> BTreeSet<String> {
         NodeKind::Name(_) => {
             out.insert(node_text(n, src).trim().to_string());
         }
+        // `2 C x` is read as 2 coulombs times x; the evaluator reads a defined `C` as the
+        // name, so a plain one-letter unit counts as a name too.
+        NodeKind::Quantity { unit, .. }
+            if unit.plain
+                && unit.text.chars().count() == 1
+                && unit.text.chars().all(char::is_alphabetic) =>
+        {
+            out.insert(unit.text.clone());
+        }
         NodeKind::BigOp(b) => {
             if let Some(i) = &b.index {
                 bound.insert(node_text(i, src).trim().to_string());

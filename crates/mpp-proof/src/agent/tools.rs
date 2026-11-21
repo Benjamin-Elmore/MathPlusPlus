@@ -413,10 +413,12 @@ impl Workspace {
         {
             return Err(format!("the conjecture is false: {at}"));
         }
-        if !tested
-            .iter()
-            .all(|o| matches!(o, ClaimOutcome::Proved | ClaimOutcome::Numeric(_)))
-        {
+        if !tested.iter().all(|o| {
+            matches!(
+                o,
+                ClaimOutcome::Proved | ClaimOutcome::ProvedBy(_) | ClaimOutcome::Numeric(_)
+            )
+        }) {
             return Err(
                 "the conjecture could not be tested numerically; restate it so it can be".into(),
             );

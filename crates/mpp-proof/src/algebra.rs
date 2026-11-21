@@ -15,6 +15,7 @@
 
 use std::collections::BTreeSet;
 
+use mpp_core::Expr;
 use mpp_eval::Verdict;
 
 use crate::cas::{self, Def, LineOut};
@@ -64,6 +65,14 @@ pub(crate) struct Knowledge {
     pub universal: BTreeSet<String>,
     /// Definitions whose body sums over an indexed family (`A := \sum a_i^2`).
     pub indexed: BTreeSet<String>,
+    /// Names known to be real ("for every real $x$", "For real numbers $a_1, \dots,
+    /// a_n$"); a family is recorded by its members as written (`a_1`, `a_n`).
+    pub reals: BTreeSet<String>,
+    /// Indexed families written out as `a_1, \dots, a_n`: base, first and last index.
+    pub families: Vec<(String, String, String)>,
+    /// Established inequalities `small ≤ big` (both LaTeX), with the names they use:
+    /// from checked steps and hypotheses, chains combined (`0 \le S = Q` gives `0 ≤ Q`).
+    pub le_facts: Vec<(String, String, BTreeSet<String>)>,
 }
 
 /// Points tried by the sampler, and how many must agree.
@@ -72,7 +81,7 @@ const SAMPLE_WANTED: usize = 8;
 
 impl Knowledge {
     /// The definitions a set of names needs (transitively), in their written order.
-    fn defs_for(&self, names: &BTreeSet<String>) -> Vec<Def> {
+    pub(crate) fn defs_for(&self, names: &BTreeSet<String>) -> Vec<Def> {
         let mut need: BTreeSet<String> = names.clone();
         loop {
             let before = need.len();
@@ -355,17 +364,17 @@ enum Domain {
 }
 
 /// A small deterministic generator.
-struct Rng(u64);
+pub(crate) struct Rng(pub(crate) u64);
 
 impl Rng {
-    fn next(&mut self) -> u64 {
+    pub(crate) fn next(&mut self) -> u64 {
         self.0 ^= self.0 << 13;
         self.0 ^= self.0 >> 7;
         self.0 ^= self.0 << 17;
         self.0
     }
 
-    fn below(&mut self, n: u64) -> u64 {
+    pub(crate) fn below(&mut self, n: u64) -> u64 {
         if n == 0 {
             0
         } else {
@@ -508,7 +517,7 @@ fn sample(claim: &Claim, defs: &[Def], k: &Knowledge, domain: Domain) -> Attempt
     }
 }
 
-fn wrap(t: &str) -> String {
+pub(crate) fn wrap(t: &str) -> String {
     format!("\\left({t}\\right)")
 }
 
@@ -519,7 +528,7 @@ fn is_name(t: &str) -> bool {
             .all(|c| c.is_alphabetic() || c == '_' || c == '\\')
 }
 
-fn fmt(x: f64) -> String {
+pub(crate) fn fmt(x: f64) -> String {
     if x.fract() == 0.0 && x.abs() < 1e15 {
         format!("{}", x as i64)
     } else {
@@ -528,7 +537,7 @@ fn fmt(x: f64) -> String {
 }
 
 /// Whether `l op r` holds (with the modulus for a congruence).
-fn holds(op: ClaimOp, l: f64, r: f64, modulus: Option<f64>) -> bool {
+pub(crate) fn holds(op: ClaimOp, l: f64, r: f64, modulus: Option<f64>) -> bool {
     let tol = 1e-9 * l.abs().max(r.abs()).max(1.0);
     match op {
         ClaimOp::Eq => (l - r).abs() <= tol,
@@ -552,6 +561,119 @@ fn holds(op: ClaimOp, l: f64, r: f64, modulus: Option<f64>) -> bool {
             }
         }
     }
+}
+
+/// A claim about a discriminant: `lhs op rhs` with `op` one of ≤ and ≥, proved from an
+/// earlier `P ≥ 0` for every real `x` where `P` is a quadratic in `x`. A polynomial of
+/// degree at most 2 in a real variable that is never negative has `b² − 4ac ≤ 0` (if
+/// `a > 0` its minimum `c − b²/4a` is not negative; if `a = 0` then `b = 0`; `a < 0` is
+/// impossible), so the claim holds when its two sides differ by a positive constant times
+/// that discriminant. The names in the claim and in `P` are taken as they stand: their
+/// definitions are not expanded, except definitions that sum nothing over a family.
+pub(crate) fn discriminant_rule(
+    lhs: &str,
+    op: ClaimOp,
+    rhs: &str,
+    names: &BTreeSet<String>,
+    k: &Knowledge,
+) -> Option<ClaimOutcome> {
+    // The claim as `d ≤ 0`.
+    let d = match op {
+        ClaimOp::Le => format!("{} - {}", wrap(lhs), wrap(rhs)),
+        ClaimOp::Ge => format!("{} - {}", wrap(rhs), wrap(lhs)),
+        _ => return None,
+    };
+    for (small, big, fact_names) in k.le_facts.iter().rev() {
+        let mut all = names.clone();
+        all.extend(fact_names.iter().cloned());
+        // A sum over a family stays one opaque symbol (a reserved one, so that a name
+        // such as `C` is not read as a unit).
+        let defs: Vec<Def> = k
+            .defs_for(&all)
+            .into_iter()
+            .enumerate()
+            .map(|(i, d)| {
+                if k.indexed.contains(&d.name) {
+                    Def::new(d.name, format!("\\Upsilon_{{{}}}", 900 + i))
+                } else {
+                    d
+                }
+            })
+            .collect();
+        let out = cas::run(
+            &defs,
+            &[
+                format!("{} - {} = ?", wrap(big), wrap(small)),
+                format!("{d} = ?"),
+            ],
+        );
+        let (Some(LineOut::Value(p)), Some(LineOut::Value(de))) = (out.first(), out.get(1)) else {
+            continue;
+        };
+        let Ok(p) = mpp_core::expand(p) else {
+            continue;
+        };
+        for v in fact_names {
+            if !(k.universal.contains(v) && k.reals.contains(v)) {
+                continue;
+            }
+            let Some(sym) = p
+                .free_symbols()
+                .iter()
+                .find(|s| &***s == v.trim_start_matches('\\'))
+                .map(|s| s.to_string())
+            else {
+                continue;
+            };
+            let Some(cs) = mpp_core::as_poly(&p, &sym) else {
+                continue;
+            };
+            let [c0, c1, c2] = cs.as_slice() else {
+                continue;
+            };
+            if de.contains_sym(&sym) || cs.iter().any(|c| c.contains_sym(&sym)) {
+                continue;
+            }
+            let disc = c1 * c1 - &Expr::int(4) * &(c2 * c0);
+            if positive_multiple(de, &disc) {
+                return Some(ClaimOutcome::ProvedBy(format!(
+                    "${big} \\ge {small}$ for every real ${v}$ (an earlier step), and a quadratic in ${v}$ that is never negative has discriminant at most 0"
+                )));
+            }
+        }
+    }
+    None
+}
+
+/// True when `e = c · base` for a positive rational constant `c` (proved by expanding
+/// `e − c · base` to 0).
+fn positive_multiple(e: &Expr, base: &Expr) -> bool {
+    let mut env = std::collections::HashMap::new();
+    let syms = e
+        .free_symbols()
+        .union(&base.free_symbols())
+        .cloned()
+        .collect::<Vec<_>>();
+    for (i, s) in syms.iter().enumerate() {
+        env.insert(
+            s.to_string(),
+            num_complex::Complex64::new(0.37 + 0.61 * i as f64, 0.0),
+        );
+    }
+    let (Ok(a), Ok(b)) = (e.eval_complex(&env), base.eval_complex(&env)) else {
+        return false;
+    };
+    if b.norm() < 1e-12 || (a / b).im.abs() > 1e-9 {
+        return false;
+    }
+    let Some((num, den)) = simple_fraction((a / b).re) else {
+        return false;
+    };
+    if num <= 0 {
+        return false;
+    }
+    let c = Expr::rational(num, den);
+    mpp_core::expand(&(e - &(&c * base))).is_ok_and(|r| r.simplify().is_zero())
 }
 
 /// The closed form of `t1 + t2 + ⋯ + tl` read as an arithmetic progression, as LaTeX.

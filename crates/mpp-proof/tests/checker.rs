@@ -199,3 +199,19 @@ fn congruence_checks_in_steps_stay_congruences() {
     assert!(steps[0].status.is_computed(), "{}", c.report());
     assert_eq!(steps[1].status, StepStatus::Wrong, "{}", c.report());
 }
+
+#[test]
+fn sums_over_indexed_families() {
+    let src = "**Theorem 1.** For real numbers $a_1, \\dots, a_n$ and $b_1, \\dots, b_n$, it holds.\n\n\
+               **Proof.**\n\
+               1. Let $A := \\sum a_i^2$, $C := \\sum a_i b_i$. For every real $x$: $\\sum_{i=1}^{n} a_i (a_i x + b_i) = A x + C$ — by algebra.\n\
+               2. For every real $x$: $\\sum_{i=1}^{n} a_i (a_i x + b_i) = A x + 2 C$ — by algebra.\n\
+               3. $\\left(\\sum_{i=1}^{n} a_i b_i\\right)^2 \\le \\left(\\sum_{i=1}^{n} a_i^2\\right)\\left(\\sum_{i=1}^{n} b_i^2\\right)$ — by algebra.\n∎\n";
+    let c = check_source(src);
+    let steps = &c.results[0].proofs[0].steps;
+    // Linearity proves the first for every n; the second is not proved; the third is only
+    // evidence (random families), so ≈ and never ✓.
+    assert_eq!(steps[0].status, StepStatus::Symbolic, "{}", c.report());
+    assert!(!steps[1].status.is_computed(), "{}", c.report());
+    assert_eq!(steps[2].status, StepStatus::Numeric, "{}", c.report());
+}

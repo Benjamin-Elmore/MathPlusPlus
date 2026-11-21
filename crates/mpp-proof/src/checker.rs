@@ -19,6 +19,7 @@ use mpp_syntax::Span;
 use crate::algebra::{self, Claim, Condition, Equation, Knowledge};
 use crate::cas::Def;
 use crate::fields::FieldScope;
+use crate::indexed;
 use crate::model::*;
 use crate::notation::{self, ClaimOp, Link};
 
@@ -80,8 +81,8 @@ struct DocContext<'a> {
     /// come from.
     defs: Vec<(usize, Def, BTreeSet<String>)>,
     conditions: Vec<(usize, Condition)>,
-    primes: Vec<(usize, String)>,
-    universal: Vec<(usize, String)>,
+    /// Facts read from prose: primes, universal and real names, indexed families.
+    marks: Vec<(usize, Mark)>,
     /// Maths outside theorems that can declare fields, with its block index.
     field_maths: Vec<(usize, &'a Node)>,
     /// Definitions that sum over an indexed family.
@@ -96,8 +97,7 @@ impl<'a> DocContext<'a> {
             labels: HashMap::new(),
             defs: Vec::new(),
             conditions: Vec::new(),
-            primes: Vec::new(),
-            universal: Vec::new(),
+            marks: Vec::new(),
             field_maths: Vec::new(),
             indexed: BTreeSet::new(),
         };
@@ -166,9 +166,18 @@ impl<'a> DocContext<'a> {
 
     fn read_inlines(&mut self, pos: usize, inlines: &'a [Inline], src: &'a str) {
         for p in prose_marks(inlines, src) {
-            match p {
-                Mark::Prime(n) => self.primes.push((pos, n)),
-                Mark::Universal(n) => self.universal.push((pos, n)),
+            self.marks.push((pos, p));
+        }
+        // "with $a < b$": an inequality the document assumes from here on.
+        for (link, hyp) in prose_relations(inlines, src) {
+            let inequality = matches!(
+                link.op,
+                ClaimOp::Lt | ClaimOp::Le | ClaimOp::Gt | ClaimOp::Ge
+            );
+            if hyp && inequality {
+                if let Some(cond) = condition(&link, src) {
+                    self.conditions.push((pos, cond));
+                }
             }
         }
         for i in inlines {
@@ -272,19 +281,115 @@ fn condition(link: &Link, src: &str) -> Option<Condition> {
 }
 
 /// Facts read from prose around maths.
+#[derive(Debug, Clone)]
 enum Mark {
     /// "Let $p$ be a prime", "a prime $p$".
     Prime(String),
     /// "for every real $x$", "for an integer $m$": a name that stands for any value.
     Universal(String),
+    /// A name in a sentence that says it is real ("for every real $x$", "For real
+    /// numbers $a_1, \dots, a_n$").
+    Real(String),
+    /// An indexed family written out as `a_1, \dots, a_n`: base, first and last index.
+    Family(String, String, String),
+}
+
+/// Records a mark in what a proof knows.
+fn apply_mark(k: &mut Knowledge, mark: Mark) {
+    match mark {
+        Mark::Prime(n) => {
+            k.primes.insert(n);
+        }
+        Mark::Universal(n) => {
+            k.universal.insert(n);
+        }
+        Mark::Real(n) => {
+            k.reals.insert(n);
+        }
+        Mark::Family(base, from, to) => {
+            if !k.families.iter().any(|(b, _, _)| *b == base) {
+                k.families.push((base, from, to));
+            }
+        }
+    }
+}
+
+/// The relations in maths inside prose, each with whether the word before it makes it a
+/// hypothesis ("if", "with", "suppose" …).
+fn prose_relations(inlines: &[Inline], src: &str) -> Vec<(Link, bool)> {
+    let mut out = Vec::new();
+    let mut prev_text = String::new();
+    for i in inlines {
+        match &i.kind {
+            InlineKind::Text(t) => prev_text = t.to_lowercase(),
+            InlineKind::Math(m) => {
+                let last = prev_text
+                    .split(|c: char| !c.is_alphabetic())
+                    .rfind(|w| !w.is_empty())
+                    .unwrap_or("")
+                    .to_string();
+                let hyp = HYPOTHESIS_WORDS.contains(&last.as_str());
+                for line in &m.ast.lines {
+                    if let Statement::Relation(n) = &line.statement {
+                        out.extend(notation::links(n, src).into_iter().map(|l| (l, hyp)));
+                    }
+                }
+                prev_text.clear();
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// `a_1, \dots, a_n` in a name list: the family's base and its first and last index.
+fn family_list(names: &[Node], src: &str) -> Option<(String, String, String)> {
+    let subscripted = |n: &Node| -> Option<(String, String)> {
+        let NodeKind::Name(name) = &n.ungrouped().kind else {
+            return None;
+        };
+        let sub = name.sub.as_ref()?;
+        let whole = notation::node_text(n, src);
+        let base = whole.split('_').next()?.trim().to_string();
+        let idx = notation::text(src, sub.span)
+            .trim()
+            .trim_start_matches('{')
+            .trim_end_matches('}')
+            .trim()
+            .to_string();
+        Some((base, idx))
+    };
+    if !names.iter().any(|n| matches!(n.kind, NodeKind::Dots(_))) {
+        return None;
+    }
+    let first = names.first().and_then(subscripted)?;
+    let last = names.last().and_then(subscripted)?;
+    (first.0 == last.0 && !first.0.is_empty()).then_some((first.0, first.1, last.1))
+}
+
+/// True when the sentence says its names are real.
+fn says_real(sentence: &str) -> bool {
+    sentence
+        .split(|c: char| !c.is_alphabetic())
+        .any(|w| w == "real" || w == "reals")
 }
 
 fn prose_marks(inlines: &[Inline], src: &str) -> Vec<Mark> {
     let mut out = Vec::new();
+    // The current sentence's text before each maths span.
+    let mut sentence = String::new();
     for (k, i) in inlines.iter().enumerate() {
         let InlineKind::Math(m) = &i.kind else {
+            if let InlineKind::Text(t) = &i.kind {
+                let t = t.to_lowercase();
+                match t.rfind(['.', ';']) {
+                    Some(at) => sentence = t[at + 1..].to_string(),
+                    None => sentence.push_str(&t),
+                }
+            }
             continue;
         };
+        let real = says_real(&sentence);
         let before = match k.checked_sub(1).and_then(|j| inlines.get(j)) {
             Some(Inline {
                 kind: InlineKind::Text(t),
@@ -308,7 +413,13 @@ fn prose_marks(inlines: &[Inline], src: &str) -> Vec<Mark> {
                 for n in ns {
                     names.extend(notation::names(n, src));
                 }
+                if let Some((base, from, to)) = family_list(ns, src) {
+                    out.push(Mark::Family(base, from, to));
+                }
             }
+        }
+        if real {
+            out.extend(names.iter().cloned().map(Mark::Real));
         }
         let single = names.len() == 1;
         let after_t = after.trim_start();
@@ -455,14 +566,9 @@ fn check_proof(
             k.conditions.push(c.clone());
         }
     }
-    for (pos, p) in &ctx.primes {
+    for (pos, m) in &ctx.marks {
         if *pos < item.position {
-            k.primes.insert(p.clone());
-        }
-    }
-    for (pos, u) in &ctx.universal {
-        if *pos < item.position {
-            k.universal.insert(u.clone());
+            apply_mark(&mut k, m.clone());
         }
     }
     k.indexed = ctx.indexed.clone();
@@ -599,14 +705,7 @@ fn read_statement_block(
         BlockKind::DisplayMath(m) => read_ast(&m.ast, k, fields),
         BlockKind::Paragraph(p) | BlockKind::Let(mpp_syntax::document::Let { content: p }) => {
             for mark in prose_marks(p, src) {
-                match mark {
-                    Mark::Prime(n) => {
-                        k.primes.insert(n);
-                    }
-                    Mark::Universal(n) => {
-                        k.universal.insert(n);
-                    }
-                }
+                apply_mark(k, mark);
             }
             collect_eqrefs(p, eqrefs);
             for i in p {
@@ -633,6 +732,8 @@ struct StepMaths {
     defs: Vec<(Def, BTreeSet<String>, Node, Node)>,
     hypotheses: Vec<Link>,
     claims: Vec<(Link, String)>,
+    /// Each relation chain (`0 \le S = Q`) as its links, and whether it is a hypothesis.
+    chains: Vec<(Vec<Link>, bool)>,
 }
 
 fn step_maths(claim: &[Inline], src: &str) -> StepMaths {
@@ -660,7 +761,9 @@ fn step_maths(claim: &[Inline], src: &str) -> StepMaths {
                             }
                         }
                         Statement::Relation(n) => {
-                            for l in notation::links(n, src) {
+                            let links = notation::links(n, src);
+                            out.chains.push((links.clone(), hyp));
+                            for l in links {
                                 let text = notation::text(src, l.span).to_string();
                                 if hyp {
                                     out.hypotheses.push(l);
@@ -757,14 +860,7 @@ fn check_step(
         prose: false,
     };
     for mark in prose_marks(&step.claim, src) {
-        match mark {
-            Mark::Prime(n) => {
-                st.k.primes.insert(n);
-            }
-            Mark::Universal(n) => {
-                st.k.universal.insert(n);
-            }
-        }
+        apply_mark(&mut st.k, mark);
     }
     let maths = step_maths(&step.claim, src);
     for (d, uses, head, body) in &maths.defs {
@@ -947,6 +1043,24 @@ fn check_step(
             }
         }
     }
+    // Inequalities the step establishes or assumes, for later steps (a discriminant).
+    for (links, hyp) in &maths.chains {
+        let established = *hyp
+            || links.iter().all(|l| {
+                c.claims.iter().any(|cc| {
+                    cc.span == l.span
+                        && matches!(
+                            cc.outcome,
+                            ClaimOutcome::Proved
+                                | ClaimOutcome::ProvedBy(_)
+                                | ClaimOutcome::Numeric(_)
+                        )
+                })
+            });
+        if established && !links.is_empty() {
+            record_inequalities(&mut st.k, links, src);
+        }
+    }
     // The step's own relations are known from here on (claims the CAS proved are
     // identities and add nothing; `claims_status` records the others as it goes).
     if reason_kind != Some(ReasonKind::Assumption) && c.claims.is_empty() {
@@ -963,6 +1077,52 @@ fn check_step(
         }
     }
     c
+}
+
+/// Records the inequalities a chain gives (`0 \le S = Q` gives `0 ≤ S` and `0 ≤ Q`): every
+/// pair of terms joined only by `=` and `≤` (or `<`), or only by `=` and `≥` (or `>`), with
+/// at least one inequality between them. A link the checker cannot test breaks the chain.
+fn record_inequalities(k: &mut Knowledge, links: &[Link], src: &str) {
+    let mut terms: Vec<&Node> = Vec::new();
+    let mut ops: Vec<ClaimOp> = Vec::new();
+    let mut runs: Vec<(Vec<&Node>, Vec<ClaimOp>)> = Vec::new();
+    for l in links {
+        let joined = terms.last().is_some_and(|t| t.span == l.lhs.span);
+        if !joined && !terms.is_empty() {
+            runs.push((std::mem::take(&mut terms), std::mem::take(&mut ops)));
+        }
+        if terms.is_empty() {
+            terms.push(&l.lhs);
+        }
+        terms.push(&l.rhs);
+        ops.push(l.op);
+    }
+    runs.push((terms, ops));
+    for (terms, ops) in runs {
+        for i in 0..terms.len() {
+            for j in i + 1..terms.len() {
+                let between = &ops[i..j];
+                let up = between
+                    .iter()
+                    .all(|o| matches!(o, ClaimOp::Eq | ClaimOp::Le | ClaimOp::Lt));
+                let down = between
+                    .iter()
+                    .all(|o| matches!(o, ClaimOp::Eq | ClaimOp::Ge | ClaimOp::Gt));
+                let strict = between.iter().any(|o| *o != ClaimOp::Eq);
+                let (small, big) = match (up, down) {
+                    (true, false) if strict => (terms[i], terms[j]),
+                    (false, true) if strict => (terms[j], terms[i]),
+                    _ => continue,
+                };
+                let (Some(s), Some(b)) = (formal_text(small, src), formal_text(big, src)) else {
+                    continue;
+                };
+                let mut names = notation::names(small, src);
+                names.extend(notation::names(big, src));
+                k.le_facts.push((s, b, names));
+            }
+        }
+    }
 }
 
 fn keys_text(keys: &[String]) -> String {
@@ -1019,9 +1179,13 @@ fn claims_status(
     let mut detail: Option<String> = None;
     let mut numeric_how: Option<String> = None;
     let mut informal: Option<String> = None;
+    let mut proved_by: Vec<String> = Vec::new();
     for (link, text) in &maths.claims {
         let outcome = check_link(link, st, src);
-        if !matches!(outcome, ClaimOutcome::Proved | ClaimOutcome::Numeric(_)) {
+        if !matches!(
+            outcome,
+            ClaimOutcome::Proved | ClaimOutcome::ProvedBy(_) | ClaimOutcome::Numeric(_)
+        ) {
             add_fact(&mut st.k, link, src);
         }
         c.claims.push(ClaimCheck {
@@ -1031,6 +1195,12 @@ fn claims_status(
         });
         let status = match &outcome {
             ClaimOutcome::Proved => StepStatus::Symbolic,
+            ClaimOutcome::ProvedBy(rule) => {
+                if !proved_by.contains(rule) {
+                    proved_by.push(rule.clone());
+                }
+                StepStatus::Symbolic
+            }
             ClaimOutcome::Numeric(how) => {
                 numeric_how.get_or_insert_with(|| how.clone());
                 StepStatus::Numeric
@@ -1061,7 +1231,11 @@ fn claims_status(
     }
     let worst = worst.unwrap_or(StepStatus::Structure);
     let detail = detail.or_else(|| match worst {
-        StepStatus::Symbolic => Some("checked symbolically by the CAS".into()),
+        StepStatus::Symbolic => Some(if proved_by.is_empty() {
+            "checked symbolically by the CAS".into()
+        } else {
+            format!("checked symbolically: {}", proved_by.join("; "))
+        }),
         StepStatus::Numeric => Some(format!(
             "checked numerically: {}",
             numeric_how.clone().unwrap_or_default()
@@ -1085,18 +1259,38 @@ fn check_link(link: &Link, st: &ProofState<'_>, src: &str) -> ClaimOutcome {
     }
     let mut names = notation::names(&link.lhs, src);
     names.extend(notation::names(&link.rhs, src));
-    // Notation the CAS reads wrongly or not at all.
-    if notation::has_indexed_family(&link.lhs, src) || notation::has_indexed_family(&link.rhs, src)
-    {
-        return ClaimOutcome::Unverified(
-            "it sums over an indexed family (a_i); the CAS cannot compute such sums yet".into(),
-        );
+    let sides = (formal_text(&link.lhs, src), formal_text(&link.rhs, src));
+    // An inequality about a discriminant, from an earlier quadratic that is never negative.
+    if let (Some(lhs), Some(rhs)) = &sides {
+        if let Some(o) = algebra::discriminant_rule(lhs, link.op, rhs, &names, &st.k) {
+            return o;
+        }
     }
+    // Sums over an indexed family (`\sum a_i b_i`), which the CAS reads as one symbol.
     let reach = st.k.closure(&names);
-    if reach.iter().any(|n| st.k.indexed.contains(n)) {
-        return ClaimOutcome::Unverified(
-            "it uses a sum over an indexed family (a_i); the CAS cannot compute such sums yet"
-                .into(),
+    if notation::has_indexed_family(&link.lhs, src)
+        || notation::has_indexed_family(&link.rhs, src)
+        || reach.iter().any(|n| st.k.indexed.contains(n))
+        || (!st.k.indexed.is_empty() && names.iter().any(|n| indexed::is_template(n)))
+    {
+        let (Some(lhs), Some(rhs)) = &sides else {
+            return ClaimOutcome::Informal(
+                "it is written with an ellipsis (⋯), which is read but not computed".into(),
+            );
+        };
+        if link.modulus.is_some() || matches!(link.op, ClaimOp::Congruent | ClaimOp::Divides) {
+            return ClaimOutcome::Unverified(
+                "congruences about sums over an indexed family are not checked".into(),
+            );
+        }
+        return indexed::check(
+            &indexed::FamilyClaim {
+                lhs,
+                op: link.op,
+                rhs,
+                names: &names,
+            },
+            &st.k,
         );
     }
     let defs = st.k.defs.iter().filter(|(d, _)| reach.contains(&d.name));
