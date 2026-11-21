@@ -18,6 +18,7 @@
 pub mod background;
 pub mod fixes;
 pub mod map;
+mod placed;
 pub mod rich;
 pub mod suggest;
 pub mod ui;
@@ -888,10 +889,11 @@ fn import_problems(doc: &Document, bg: &Background) -> Vec<Problem> {
 /// Every problem of a document, page-independent (`rects` empty), in source order.
 pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
     let known = known_names(inp.eval);
-    let mut out: Vec<Problem> = raw_diagnostics(inp)
-        .iter()
-        .flat_map(|d| classify(inp.src, d, &known, inp.background))
-        .collect();
+    let context = classify_context(&known, inp.background);
+    let mut out: Vec<Problem> =
+        placed::classify_cached(inp.doc, &raw_diagnostics(inp), context, |d| {
+            classify(inp.src, d, &known, inp.background)
+        });
     if let (Some(ev), true) = (inp.eval, inp.eval_fresh) {
         out.extend(checks(inp.doc, ev));
     }
@@ -905,6 +907,21 @@ pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
     }
     out.sort_by_key(|p| (p.span.start, p.level, p.span.end));
     out
+}
+
+/// A fingerprint of what classifying a diagnostic reads besides the diagnostic and
+/// its block: the known names and the project's files and names.
+fn classify_context(known: &[String], bg: Option<&Background>) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    known.hash(&mut h);
+    if let Some(bg) = bg {
+        for s in &bg.imports {
+            (&s.path, &s.written, s.problems.len()).hash(&mut h);
+        }
+        bg.index.files.hash(&mut h);
+    }
+    h.finish()
 }
 
 /// Three or more letters side by side that spell no defined name: the grammar keeps
@@ -1022,7 +1039,14 @@ fn proof_problems(steps: &[crate::proof::StepMark]) -> Vec<Problem> {
 
 /// Places problems on a page: the exact boxes to underline.
 pub fn place(mut problems: Vec<Problem>, page: &Page, src: &str) -> Vec<Problem> {
-    for p in &mut problems {
+    placed::place_cached(&mut problems, page, |p| place_one(p, page, src));
+    problems.retain(|p| !p.rects.is_empty());
+    problems
+}
+
+/// Places one problem on the page.
+fn place_one(p: &mut Problem, page: &Page, src: &str) {
+    {
         let rects = match &mut p.kind {
             Kind::Undefined { name, at, .. } => {
                 let found = map::name_nodes(page, src, block_span(page, p.span), name);
@@ -1096,8 +1120,6 @@ pub fn place(mut problems: Vec<Problem>, page: &Page, src: &str) -> Vec<Problem>
         p.rects = rects;
         p.block = page.block_at(p.span.start).map(|b| b.span);
     }
-    problems.retain(|p| !p.rects.is_empty());
-    problems
 }
 
 /// The span of the page block holding `span` (or `span` itself).

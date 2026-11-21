@@ -535,10 +535,7 @@ impl IdeApp {
         let Some(d) = self.doc() else {
             return vec![];
         };
-        let Some(dir) = d.path.as_deref().and_then(Path::parent) else {
-            return vec![];
-        };
-        links::targets(d.editor.text(), dir)
+        d.link_targets().iter().map(|(p, _)| p.clone()).collect()
     }
 
     /// Reloads open files that were changed on disk and have no unsaved edits.

@@ -351,10 +351,11 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 }
                 insert_menu(ui, doc, cx, caret_rect, resp.id, &mut events);
             }
-            (pc.page.height, pc.problems.clone())
+            pc
         });
     // Problem marks beside the scrollbar: where each problem is on the page.
-    let (page_h, problems) = out.inner;
+    let pc = out.inner;
+    let (page_h, problems) = (pc.page.height, &pc.problems);
     let content_h = out.content_size.y.max(page_h);
     if !problems.is_empty() {
         let r = out.inner_rect;
@@ -363,7 +364,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             egui::pos2(r.right() - 1.0, r.bottom() - 2.0),
         );
         let painter = ui.painter_at(r);
-        dui::paint_scrollbar_marks(&painter, track, content_h, &problems, &theme);
+        dui::paint_scrollbar_marks(&painter, track, content_h, problems, &theme);
     }
     events
 }

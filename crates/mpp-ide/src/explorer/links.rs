@@ -150,12 +150,13 @@ pub fn rewrite_links(
 /// The files `text` imports (resolved against `dir`), missing or not.
 pub fn targets(text: &str, dir: &Path) -> Vec<PathBuf> {
     let mut v: Vec<PathBuf> = vec![];
+    let mut seen: std::collections::HashSet<PathBuf> = std::collections::HashSet::new();
     for l in scan_links(text) {
         if l.path.contains("://") {
             continue;
         }
         let p = resolve(dir, &l.path);
-        if !v.contains(&p) {
+        if seen.insert(p.clone()) {
             v.push(p);
         }
     }

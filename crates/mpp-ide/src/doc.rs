@@ -104,7 +104,21 @@ pub struct Doc {
     /// The parse of the text at a revision, shared by the page, the outline and the
     /// proof view (a 3000-line file takes milliseconds to parse).
     parsed: std::sync::Mutex<Option<(u64, Arc<Document>)>>,
+    /// The files the text links to and whether each exists, at a revision and a time
+    /// (the explorer and the status bar ask every frame).
+    links: std::sync::Mutex<Option<LinkMemo>>,
 }
+
+/// See [`Doc::link_targets`].
+#[derive(Debug)]
+struct LinkMemo {
+    revision: u64,
+    checked: Instant,
+    targets: Arc<Vec<(PathBuf, bool)>>,
+}
+
+/// How long the existence of linked files is trusted before it is checked again.
+const LINK_RECHECK: Duration = Duration::from_secs(1);
 
 impl Doc {
     /// The parse of the current text (parsed once per revision).
@@ -122,6 +136,51 @@ impl Doc {
         let d = Arc::new(parse_document(self.editor.text()));
         *memo = Some((rev, d.clone()));
         d
+    }
+
+    /// The files the text imports or links to (resolved against its folder), each with
+    /// whether it exists. Kept per revision, and the existence for a second, so a
+    /// file with thousands of links is not scanned on every frame.
+    pub fn link_targets(&self) -> Arc<Vec<(PathBuf, bool)>> {
+        let Some(dir) = self.path.as_deref().and_then(Path::parent) else {
+            return Arc::default();
+        };
+        let rev = self.editor.revision();
+        let mut memo = self
+            .links
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(m) = memo.as_ref() {
+            if m.revision == rev && m.checked.elapsed() < LINK_RECHECK {
+                return m.targets.clone();
+            }
+        }
+        let paths: Vec<PathBuf> = match memo.as_ref() {
+            Some(m) if m.revision == rev => m.targets.iter().map(|(p, _)| p.clone()).collect(),
+            _ => crate::explorer::links::targets(self.editor.text(), dir),
+        };
+        let targets: Arc<Vec<(PathBuf, bool)>> = Arc::new(
+            paths
+                .into_iter()
+                .map(|p| {
+                    let exists = p.is_file();
+                    (p, exists)
+                })
+                .collect(),
+        );
+        *memo = Some(LinkMemo {
+            revision: rev,
+            checked: Instant::now(),
+            targets: targets.clone(),
+        });
+        targets
+    }
+
+    /// The error, warning and note counts of the current text, without copying
+    /// the problems (laid out at the last page size when the page is not built yet).
+    pub fn problem_counts_now(&mut self) -> Counts {
+        let (w, s, m) = self.last_layout;
+        Counts::of(&self.page(w, s, m).problems)
     }
 
     /// A document with the given text.
@@ -154,6 +213,7 @@ impl Doc {
             proof: None,
             proof_text: String::new(),
             parsed: std::sync::Mutex::new(None),
+            links: std::sync::Mutex::new(None),
             proof_id: 0,
         };
         d.submit_now();

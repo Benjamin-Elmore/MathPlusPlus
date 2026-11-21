@@ -180,22 +180,20 @@ impl IdeApp {
             }
         });
         ui.add_space(2.0);
-        let open: Vec<OpenFile> =
-            self.docs
-                .iter()
-                .enumerate()
-                .map(|(i, d)| OpenFile {
-                    index: i,
-                    title: d.title(),
-                    dirty: d.is_dirty(),
-                    active: i == self.active,
-                    preview: self.is_preview(d),
-                    broken: d.path.as_deref().and_then(Path::parent).is_some_and(|dir| {
-                        explorer::panel::has_broken_import(d.editor.text(), dir)
-                    }),
-                    path: d.path.clone(),
-                })
-                .collect();
+        let open: Vec<OpenFile> = self
+            .docs
+            .iter()
+            .enumerate()
+            .map(|(i, d)| OpenFile {
+                index: i,
+                title: d.title(),
+                dirty: d.is_dirty(),
+                active: i == self.active,
+                preview: self.is_preview(d),
+                broken: d.link_targets().iter().any(|(_, exists)| !exists),
+                path: d.path.clone(),
+            })
+            .collect();
         let linked = self.current_imports();
         let current = self.doc().and_then(|d| d.path.clone());
         let counts = self.file_counts();

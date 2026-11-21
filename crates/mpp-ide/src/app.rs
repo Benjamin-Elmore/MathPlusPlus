@@ -644,16 +644,19 @@ impl IdeApp {
 
     /// The error, warning and note counts of a file (for tab and explorer badges).
     pub fn problem_counts_for(&mut self, path: &Path) -> crate::diagnostics::Counts {
-        let list = self.project_problems();
-        crate::problems::counts_for(&list, path)
+        crate::problems::file_counts(&mut self.docs)
+            .into_iter()
+            .filter(|(p, _)| p == path)
+            .map(|(_, c)| c)
+            .fold(
+                crate::diagnostics::Counts::default(),
+                crate::diagnostics::Counts::plus,
+            )
     }
 
     /// The counts of every file with problems (open files and their imports).
     pub fn file_counts(&mut self) -> Vec<(PathBuf, crate::diagnostics::Counts)> {
-        self.project_problems()
-            .iter()
-            .filter_map(|f| Some((f.path.clone()?, f.counts())))
-            .collect()
+        crate::problems::file_counts(&mut self.docs)
     }
 
     /// The number of errors in a file (0 when it is not open or imported).
