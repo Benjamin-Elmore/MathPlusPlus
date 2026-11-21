@@ -85,29 +85,24 @@ pub fn bisect(f: &Expr, var: &str, mut a: f64, mut b: f64) -> Option<f64> {
     Some(0.5 * (a + b))
 }
 
-/// Newton's method from `x0` with a central-difference derivative.
+/// Newton's method from `x0` with a central-difference derivative (so it works for any
+/// function the evaluator can compute), run by the one Newton iteration,
+/// [`newton_iterate`](crate::tools_b::numerics::newton_iterate).
 pub fn newton(f: &Expr, var: &str, x0: f64) -> Option<f64> {
-    let mut x = x0;
-    for _ in 0..100 {
-        let fx = eval_at(f, var, x)?;
-        if fx == 0.0 {
-            return Some(x);
-        }
+    let undefined = || MathError::Undefined(format!("{f} near {var} = {x0}"));
+    let value = |x: f64| eval_at(f, var, x).ok_or_else(undefined);
+    let slope = |x: f64| {
         let h = 1e-7 * x.abs().max(1.0);
-        let d = (eval_at(f, var, x + h)? - eval_at(f, var, x - h)?) / (2.0 * h);
-        if d == 0.0 || !d.is_finite() {
-            return None;
+        let d = (value(x + h)? - value(x - h)?) / (2.0 * h);
+        if d.is_finite() {
+            Ok(d)
+        } else {
+            Err(undefined())
         }
-        let step = fx / d;
-        x -= step;
-        if !x.is_finite() {
-            return None;
-        }
-        if step.abs() <= tolerance(x) {
-            return Some(x);
-        }
-    }
-    None
+    };
+    crate::tools_b::numerics::newton_iterate(value, slope, x0, 1e-12, |_| {})
+        .ok()
+        .map(|(x, _)| x)
 }
 
 /// Real roots of `f` in `[lo, hi]`: sign changes are bracketed and bisected, and local

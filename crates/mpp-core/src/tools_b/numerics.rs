@@ -291,8 +291,9 @@ pub struct Iterate {
     pub next: f64,
 }
 
-/// Newton's method for `f = 0` from `x0`, stopping when a step is below `tol` (relative to
-/// `max(1, |x|)`) and `|f|` is small. Returns the root and every iteration.
+/// Newton's method for `f = 0` from `x0` with the exact derivative, stopping when a step is
+/// below `tol` (relative to `max(1, |x|)`) and `|f|` is small. Returns the root and every
+/// iteration.
 pub fn newton(
     f: &Expr,
     var: &str,
@@ -301,16 +302,8 @@ pub fn newton(
     mut steps: Option<&mut Steps>,
 ) -> MathResult<(f64, Vec<Iterate>)> {
     if !x0.is_finite() {
-        return Err(MathError::Domain {
-            function: "Newton's method".into(),
-            detail: "the starting point must be a finite number".into(),
-        });
+        return Err(not_finite_start());
     }
-    let tol = if tol.is_finite() && tol > 0.0 {
-        tol
-    } else {
-        1e-12
-    };
     let df = diff(f, var, 1, None)?;
     Steps::record(
         &mut steps,
@@ -322,14 +315,73 @@ pub fn newton(
             format_f64(x0, 10)
         )),
     );
+    newton_iterate(
+        |x| {
+            at(f, var, x)
+                .ok_or_else(|| MathError::Undefined(format!("f at {var} = {}", format_f64(x, 10))))
+        },
+        |x| {
+            at(&df, var, x)
+                .ok_or_else(|| MathError::Undefined(format!("f′ at {var} = {}", format_f64(x, 10))))
+        },
+        x0,
+        tol,
+        |it| {
+            Steps::record(
+                &mut steps,
+                format!("iteration {}", it.n + 1),
+                &Expr::float(it.x),
+                &Expr::float(it.next),
+                Some(format!(
+                    "x{} = {} − ({})/({}) = {}",
+                    subscript(it.n + 1),
+                    format_f64(it.x, 12),
+                    format_f64(it.fx, 8),
+                    format_f64(it.dfx, 8),
+                    format_f64(it.next, 12)
+                )),
+            );
+        },
+    )
+}
+
+fn not_finite_start() -> MathError {
+    MathError::Domain {
+        function: "Newton's method".into(),
+        detail: "the starting point must be a finite number".into(),
+    }
+}
+
+/// The Newton iteration itself, the one every Newton answer in Math++ comes from:
+/// `xₙ₊₁ = xₙ − f(xₙ)/f′(xₙ)` from `x0`, with `f` and `f′` given as functions (the exact
+/// derivative for [`newton`], a central difference where the solver polishes roots). Stops
+/// when a step is below `tol` (relative to `max(1, |x|)`; a non-positive `tol` means
+/// `10⁻¹²`) and `|f|` is small; `each` sees every iteration.
+pub fn newton_iterate(
+    f: impl Fn(f64) -> MathResult<f64>,
+    df: impl Fn(f64) -> MathResult<f64>,
+    x0: f64,
+    tol: f64,
+    mut each: impl FnMut(&Iterate),
+) -> MathResult<(f64, Vec<Iterate>)> {
+    if !x0.is_finite() {
+        return Err(not_finite_start());
+    }
+    let tol = if tol.is_finite() && tol > 0.0 {
+        tol
+    } else {
+        1e-12
+    };
     let mut x = x0;
     let mut table = Vec::new();
     for n in 0..MAX_NEWTON {
-        let fx = at(f, var, x)
-            .ok_or_else(|| MathError::Undefined(format!("f at {var} = {}", format_f64(x, 10))))?;
-        let dfx = at(&df, var, x)
-            .ok_or_else(|| MathError::Undefined(format!("f′ at {var} = {}", format_f64(x, 10))))?;
+        let fx = f(x)?;
+        let dfx = df(x)?;
         if dfx == 0.0 {
+            if fx == 0.0 {
+                // Standing on a root where the tangent is flat (a double root).
+                return Ok((x, table));
+            }
             return Err(MathError::Domain {
                 function: "Newton's method".into(),
                 detail: format!(
@@ -345,31 +397,19 @@ pub fn newton(
                 detail: "the iterates blew up; try another starting point".into(),
             });
         }
-        table.push(Iterate {
+        let it = Iterate {
             n,
             x,
             fx,
             dfx,
             next,
-        });
-        Steps::record(
-            &mut steps,
-            format!("iteration {}", n + 1),
-            &Expr::float(x),
-            &Expr::float(next),
-            Some(format!(
-                "x{} = {} − ({})/({}) = {}",
-                subscript(n + 1),
-                format_f64(x, 12),
-                format_f64(fx, 8),
-                format_f64(dfx, 8),
-                format_f64(next, 12)
-            )),
-        );
+        };
+        each(&it);
+        table.push(it);
         let small_step = (next - x).abs() <= tol * x.abs().max(1.0);
         x = next;
         if small_step {
-            let fx = at(f, var, x).unwrap_or(f64::INFINITY);
+            let fx = f(x).unwrap_or(f64::INFINITY);
             let scale = table.iter().map(|it| it.fx.abs()).fold(1.0, f64::max);
             if fx.abs() <= 1e-8 * scale {
                 return Ok((x, table));
