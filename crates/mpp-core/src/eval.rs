@@ -172,7 +172,7 @@ fn real(e: &Expr, env: &dyn Env) -> MathResult<f64> {
             lower,
             upper,
         } => {
-            let (lo, hi) = int_bounds(real(lower, env)?, real(upper, env)?)?;
+            let (lo, hi) = int_bounds(*kind, real(lower, env)?, real(upper, env)?)?;
             let mut vals = Vec::new();
             for k in lo..=hi {
                 let bound = Bind {
@@ -238,7 +238,7 @@ fn real_pow(b: f64, x: f64, exact_exp: Option<&Number>) -> MathResult<f64> {
     Ok(b.powf(x))
 }
 
-fn int_bounds(lo: f64, hi: f64) -> MathResult<(i64, i64)> {
+fn int_bounds(kind: BigOpKind, lo: f64, hi: f64) -> MathResult<(i64, i64)> {
     if !lo.is_finite() || !hi.is_finite() {
         return Err(MathError::Unsupported(
             "numeric evaluation of an infinite sum".into(),
@@ -246,7 +246,11 @@ fn int_bounds(lo: f64, hi: f64) -> MathResult<(i64, i64)> {
     }
     let (lo, hi) = (lo.ceil() as i64, hi.floor() as i64);
     if hi.saturating_sub(lo) > MAX_TERMS {
-        return Err(MathError::TooLarge("this sum".into()));
+        let what = match kind {
+            BigOpKind::Sum => "this sum",
+            BigOpKind::Product => "this product",
+        };
+        return Err(MathError::TooLarge(what.into()));
     }
     Ok((lo, hi))
 }
@@ -378,7 +382,7 @@ pub fn eval_complex_with(e: &Expr, env: &dyn Env) -> MathResult<Complex64> {
             lower,
             upper,
         } => {
-            let (lo, hi) = int_bounds(real(lower, env)?, real(upper, env)?)?;
+            let (lo, hi) = int_bounds(*kind, real(lower, env)?, real(upper, env)?)?;
             let mut acc = match kind {
                 BigOpKind::Sum => Complex64::new(0.0, 0.0),
                 BigOpKind::Product => Complex64::new(1.0, 0.0),

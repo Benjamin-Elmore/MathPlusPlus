@@ -405,22 +405,38 @@ impl FileImporter {
 
         let path: Arc<Path> = Arc::from(loc.key.as_path());
         let file: Arc<str> = Arc::from(display);
+        // A file reachable along several import paths (a diamond) brings the same
+        // diagnostics more than once; keep one copy of each, so the lists stay as long as
+        // the number of distinct problems rather than doubling per layer.
+        let mut seen: HashSet<(Arc<str>, usize, usize, String)> = HashSet::new();
         let mut diagnostics: Vec<FileDiagnostic> = Vec::new();
+        let mut push = |d: FileDiagnostic, out: &mut Vec<FileDiagnostic>| {
+            let key = (
+                d.file.clone(),
+                d.diagnostic.span.start,
+                d.diagnostic.span.end,
+                d.diagnostic.message.clone(),
+            );
+            if seen.insert(key) {
+                out.push(d);
+            }
+        };
         for d in ev.all_diagnostics() {
-            diagnostics.push(FileDiagnostic {
-                file: file.clone(),
-                diagnostic: d.clone(),
-            });
+            push(
+                FileDiagnostic {
+                    file: file.clone(),
+                    diagnostic: d.clone(),
+                },
+                &mut diagnostics,
+            );
         }
-        let error_count = diagnostics
-            .iter()
-            .filter(|d| d.diagnostic.severity == Severity::Error)
-            .count();
         let mut files = vec![loc.key.clone()];
         let mut uncacheable = false;
         for block in &ev.blocks {
             for import in &block.imports {
-                diagnostics.extend(import.diagnostics.iter().cloned());
+                for d in &import.diagnostics {
+                    push(d.clone(), &mut diagnostics);
+                }
                 for f in &import.files {
                     if !files.contains(f) {
                         files.push(f.clone());
@@ -429,6 +445,15 @@ impl FileImporter {
                 uncacheable |= import.uncacheable;
             }
         }
+        // Every distinct error in the file and the files it imports, without the
+        // "n errors in …" summaries that only point at them.
+        let error_count = diagnostics
+            .iter()
+            .filter(|d| {
+                d.diagnostic.severity == Severity::Error
+                    && !crate::import::is_import_summary(&d.diagnostic)
+            })
+            .count();
 
         let mut bindings = BTreeMap::new();
         for (name, binding) in &ev.bindings {

@@ -39,6 +39,11 @@ pub trait LowerScope {
     fn is_ode_unknown(&self, _name: &str) -> bool {
         false
     }
+    /// True when the document defines `name` as a function somewhere (perhaps further
+    /// down), so `g(x)` in an earlier definition calls it rather than meaning `g · x`.
+    fn is_document_function(&self, _name: &str) -> bool {
+        false
+    }
 }
 
 /// Result of lowering one node.
@@ -857,6 +862,16 @@ impl<'a> Lowerer<'a> {
                 // `u(0, t)`, `u(x, 0)`: the unknown of a partial differential equation at
                 // a point, which its solver reads as a condition.
                 if args.len() >= 2 && self.is_unknown_fn(&key) {
+                    return Ok(Expr::apply(&key, self.lower_all(args)?));
+                }
+                // `f(x) := g(x) + 1` above `g(x) := …`: a call of the function the
+                // document defines further down (mutual recursion included), resolved
+                // when `f` is used.
+                if self.scope.is_document_function(&key)
+                    && self.scope.binding(&key).is_none()
+                    && !self.is_local(&key)
+                    && !self.is_bound_letter(&key)
+                {
                     return Ok(Expr::apply(&key, self.lower_all(args)?));
                 }
                 // The Heaviside step and the Dirac delta, when the names are free.

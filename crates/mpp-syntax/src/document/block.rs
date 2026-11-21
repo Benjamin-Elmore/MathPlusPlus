@@ -27,18 +27,30 @@ pub(crate) struct Line {
 
 /// Splits `src` into lines (`\n` or `\r\n` endings).
 pub(crate) fn split_lines(src: &str) -> Vec<Line> {
+    // Old Mac files end lines with a lone CR; Windows files end them with CRLF.
+    let sep = if !src.contains('\n') && src.contains('\r') {
+        '\r'
+    } else {
+        '\n'
+    };
     let mut lines = Vec::new();
     let mut start = 0;
-    for piece in src.split('\n') {
+    for piece in src.split(sep) {
         let mut end = start + piece.len();
-        if piece.ends_with('\r') {
+        if sep == '\n' && piece.ends_with('\r') {
             end -= 1;
         }
         lines.push(Line { start, end });
         start += piece.len() + 1;
     }
+    // A byte-order mark (Notepad writes one) is not part of the first line.
+    if let Some(first) = lines.first_mut() {
+        if src.starts_with('\u{FEFF}') {
+            first.start = '\u{FEFF}'.len_utf8().min(first.end);
+        }
+    }
     // A final newline does not start another line.
-    if src.ends_with('\n') {
+    if src.ends_with(sep) {
         lines.pop();
     }
     split_trailing_displays(src, lines)

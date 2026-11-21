@@ -8,6 +8,7 @@
 
 mod build;
 mod flow;
+mod mathcache;
 pub mod paper;
 
 use egui::{Pos2, Rect, Vec2};

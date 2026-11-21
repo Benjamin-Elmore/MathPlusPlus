@@ -102,7 +102,12 @@ impl IdeApp {
         let (Some(dir), Some(d)) = (self.ws.settings_dir.clone(), self.docs.get(i)) else {
             return;
         };
-        crate::autosave::remove(&dir, &crate::autosave::key_for(d.path.as_deref(), d.id));
+        let owner = self.ws.autosave.owner.clone();
+        crate::autosave::remove(
+            &dir,
+            &crate::autosave::key_for(d.path.as_deref(), d.id),
+            &owner,
+        );
     }
 
     /// The message for an import whose file is missing, with the closest real names.

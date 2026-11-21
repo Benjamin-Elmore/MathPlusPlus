@@ -47,6 +47,8 @@ pub(crate) struct Inputs<'a> {
     pub called: &'a BTreeSet<String>,
     /// Names differentiated in an equation somewhere in the document.
     pub ode_unknowns: &'a BTreeSet<String>,
+    /// Every name the document defines as a function (`f(x) := …`), wherever it is.
+    pub functions: &'a BTreeSet<String>,
     /// The document's text (spans index into it).
     pub source: &'a str,
     pub holders: &'a Arc<Holders>,
@@ -149,6 +151,7 @@ struct View<'v> {
     uses: &'v RefCell<BTreeSet<String>>,
     sequences: &'v BTreeSet<String>,
     ode_unknowns: &'v BTreeSet<String>,
+    functions: &'v BTreeSet<String>,
 }
 
 impl View<'_> {
@@ -179,6 +182,9 @@ impl LowerScope for View<'_> {
     }
     fn is_ode_unknown(&self, name: &str) -> bool {
         self.ode_unknowns.contains(name)
+    }
+    fn is_document_function(&self, name: &str) -> bool {
+        self.functions.contains(name)
     }
 }
 
@@ -357,6 +363,7 @@ impl Run<'_, '_> {
             uses: &self.uses,
             sequences: self.inputs.sequences,
             ode_unknowns: self.inputs.ode_unknowns,
+            functions: self.inputs.functions,
         }
     }
 
@@ -1923,12 +1930,16 @@ impl Run<'_, '_> {
     fn import_names(&mut self, req: &ImportRequest, exports: &Exports) {
         if exports.error_count > 0 {
             let n = exports.error_count;
-            let first = exports
-                .diagnostics
-                .iter()
-                .find(|d| d.diagnostic.severity == Severity::Error);
+            // The root cause, not a chain of "1 error in …" summaries.
+            let first = exports.diagnostics.iter().find(|d| {
+                d.diagnostic.severity == Severity::Error
+                    && !crate::import::is_import_summary(&d.diagnostic)
+            });
             let detail = match first {
-                Some(d) if n == 1 => format!(": {}", d.diagnostic.message),
+                Some(d) if n == 1 && d.file == exports.file => {
+                    format!(": {}", d.diagnostic.message)
+                }
+                Some(d) if n == 1 => format!(" (in {}): {}", d.file, d.diagnostic.message),
                 _ => String::new(),
             };
             self.error(

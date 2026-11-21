@@ -796,12 +796,32 @@ impl Parser<'_> {
             return;
         }
         let span = self.cur_span();
+        if self.unclosed_already_reported(span.start) {
+            self.skip_group_rest();
+            return;
+        }
         let open_text = self.text(open).to_string();
         self.error(
             span,
             format!("expected `}}` to close the `{open_text}`"),
             &["`}`"],
         );
+        self.skip_group_rest();
+    }
+
+    /// True when the nesting error was reported, or an unclosed bracket was already
+    /// reported at `at`: one deep unclosed nest then gives one error, not one per level.
+    fn unclosed_already_reported(&self, at: usize) -> bool {
+        self.too_deep_reported
+            || self.diags.last().is_some_and(|d| {
+                d.span.start == at
+                    && d.message.starts_with("expected `")
+                    && d.message.contains("` to close the ")
+            })
+    }
+
+    /// Skips to the `}` that closes the current group (consumed) or the line end.
+    fn skip_group_rest(&mut self) {
         let mut depth = 0usize;
         while let Some(t) = self.peek() {
             match t {
@@ -971,6 +991,9 @@ impl Parser<'_> {
 
     fn unclosed(&mut self, open: Span, closer: &str) {
         let span = self.cur_span();
+        if self.unclosed_already_reported(span.start) {
+            return;
+        }
         let open_text = self.text(open).to_string();
         let expected = format!("`{closer}`");
         self.error(

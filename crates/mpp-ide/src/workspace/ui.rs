@@ -243,7 +243,7 @@ impl IdeApp {
             }
         }
         let src = d.editor.text();
-        let parsed = mpp_syntax::document::parse_document(src);
+        let parsed = d.parsed();
         let proof = d.proof_view();
         let items = crate::explorer::outline::outline_full(
             &parsed,

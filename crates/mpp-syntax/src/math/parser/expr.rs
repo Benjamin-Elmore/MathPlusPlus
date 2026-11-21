@@ -536,7 +536,8 @@ impl Parser<'_> {
         match self.peek()? {
             Tok::LBrace => {
                 let open = self.pos;
-                let close = self.matching_close(open);
+                // A label is one short word, so a long group is never one.
+                let close = self.matching_close_within(open, 64)?;
                 let close_tok = self.toks.get(close).filter(|_| close < self.stop)?;
                 if !matches!(close_tok.kind, Tok::RBrace) {
                     return None;

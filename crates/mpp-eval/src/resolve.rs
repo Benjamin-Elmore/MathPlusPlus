@@ -33,7 +33,7 @@ const MAX_CALL_DEPTH: usize = 1000;
 /// Most nodes visited for one statement.
 const MAX_WORK: usize = 400_000;
 /// Most terms of a sequence computed for one statement.
-const MAX_SEQUENCE_TERMS: i64 = 10_000;
+const MAX_SEQUENCE_TERMS: i64 = mpp_core::calc::recurrence::MAX_TERMS;
 /// Largest intermediate result kept from a call or sequence term.
 const MAX_SIZE: usize = 50_000;
 
@@ -132,6 +132,11 @@ impl<'a> Resolver<'a> {
 
     fn resolve(&mut self, e: &Expr) -> Result<Expr> {
         self.tick()?;
+        // A long list of plain numbers or quantities (a data column) has nothing to
+        // resolve; walking it entry by entry used to exhaust the work limit.
+        if is_plain_data(e) {
+            return Ok(e.clone());
+        }
         match e.node() {
             ExprNode::Num(_) | ExprNode::Const(_) | ExprNode::Bool(_) => Ok(e.clone()),
             ExprNode::Sym(s) => self.symbol(e, s),
@@ -179,6 +184,9 @@ impl<'a> Resolver<'a> {
                 let lower = self.resolve(lower)?.simplify();
                 let upper = self.resolve(upper)?.simplify();
                 let body = self.with_mask(std::slice::from_ref(var), |r| r.resolve(expr))?;
+                if let Some(v) = self.data_big_op(*kind, &body, var, &lower, &upper)? {
+                    return Ok(v);
+                }
                 self.holder(Expr::new(ExprNode::BigOp {
                     kind: *kind,
                     expr: body,
@@ -535,7 +543,7 @@ impl<'a> Resolver<'a> {
             )));
         }
         if k - first > MAX_SEQUENCE_TERMS {
-            return Err(EvalError::TooDeep(name.to_string()));
+            return Err(beyond_limit(name, k));
         }
         if self.computing.iter().any(|c| c == name) {
             return Err(EvalError::Invalid(format!(
@@ -561,7 +569,7 @@ impl<'a> Resolver<'a> {
             return Ok(None);
         }
         if k - rec.start() > MAX_SEQUENCE_TERMS {
-            return Err(EvalError::TooDeep(name.to_string()));
+            return Err(beyond_limit(name, k));
         }
         let value = rec.nth(k).map_err(EvalError::Math)?;
         if self.ctx.logging() {
@@ -846,6 +854,61 @@ impl Resolver<'_> {
 
     /// `Σ_{j=a}^{b} f(X_j, …)` over members of random families: a seeded Monte Carlo
     /// sum (`None` when the body uses no family).
+    /// `\sum_i m_i`, `\sum_{i=1}^{n} (x_i - \bar{x})^2`: a sum or product whose terms
+    /// pick entries of data columns by the index, term by term. Each entry is put in
+    /// directly, so a 100 000-row column costs one pass instead of copying the column
+    /// into every term. `None` when the body does not index a list by the variable or the
+    /// range leaves the lists.
+    fn data_big_op(
+        &mut self,
+        kind: BigOpKind,
+        body: &Expr,
+        var: &Name,
+        lower: &Expr,
+        upper: &Expr,
+    ) -> Result<Option<Expr>> {
+        let int = |e: &Expr| e.as_number().and_then(|n| n.as_i64());
+        let (Some(lo), Some(hi)) = (int(lower), int(upper)) else {
+            return Ok(None);
+        };
+        let mut lists: Vec<Expr> = Vec::new();
+        let template = pick_entries(body, var, &mut lists);
+        if lists.is_empty() || lo < 1 || hi < lo {
+            return Ok(None);
+        }
+        let len = |l: &Expr| match l.node() {
+            ExprNode::Tuple(items) => items.len(),
+            _ => 0,
+        };
+        if lists
+            .iter()
+            .any(|l| usize::try_from(hi).map_or(true, |h| h > len(l)))
+        {
+            return Ok(None);
+        }
+        let names: Vec<String> = (0..lists.len()).map(entry_name).collect();
+        let mut terms = Vec::with_capacity(usize::try_from(hi - lo + 1).unwrap_or(0));
+        for k in lo..=hi {
+            self.tick()?;
+            if k % 1024 == 0 {
+                mpp_core::budget::check().map_err(EvalError::Math)?;
+            }
+            let at = usize::try_from(k - 1).unwrap_or(0);
+            let mut pairs: Vec<(&str, Expr)> = vec![(&**var, Expr::int(k))];
+            for (name, list) in names.iter().zip(&lists) {
+                if let ExprNode::Tuple(items) = list.node() {
+                    pairs.push((name.as_str(), items[at].clone()));
+                }
+            }
+            terms.push(template.subs_all(&pairs));
+        }
+        let joined = match kind {
+            BigOpKind::Sum => mpp_core::add(terms),
+            BigOpKind::Product => mpp_core::mul(terms),
+        };
+        Ok(Some(joined.simplify()))
+    }
+
     fn random_sum(
         &mut self,
         kind: BigOpKind,
@@ -972,6 +1035,59 @@ fn replace_members(e: &Expr, f: &mut impl FnMut(&Expr) -> Option<Expr>) -> Expr 
 /// True when `e` still holds an unevaluated derivative somewhere.
 fn has_derivative(e: &Expr) -> bool {
     matches!(e.node(), ExprNode::Derivative { .. }) || e.children().into_iter().any(has_derivative)
+}
+
+/// The error for a term past the recurrence limit.
+fn beyond_limit(name: &str, k: i64) -> EvalError {
+    EvalError::Invalid(format!(
+        "{name}_{k} is beyond the {MAX_SEQUENCE_TERMS}-term limit for recurrences"
+    ))
+}
+
+/// True for a long list of numbers and quantities (`3`, `1.5 · m`): a data column.
+fn is_plain_data(e: &Expr) -> bool {
+    let ExprNode::Tuple(items) = e.node() else {
+        return false;
+    };
+    let plain = |i: &Expr| match i.node() {
+        ExprNode::Num(_) => true,
+        ExprNode::Mul(fs) => fs.iter().all(|f| match f.node() {
+            ExprNode::Num(_) => true,
+            ExprNode::Apply(name, args) => {
+                args.is_empty() && name.starts_with(crate::units_wire::UNIT_PREFIX)
+            }
+            _ => false,
+        }),
+        _ => false,
+    };
+    items.len() >= 64 && items.iter().all(plain)
+}
+
+/// The placeholder for the entries of the `j`-th list in [`pick_entries`].
+fn entry_name(j: usize) -> String {
+    format!("\u{0}entry{j}")
+}
+
+/// `body` with every `element(list, var)` replaced by a placeholder name; the lists go
+/// into `lists`, one per placeholder.
+fn pick_entries(body: &Expr, var: &str, lists: &mut Vec<Expr>) -> Expr {
+    if let ExprNode::Apply(name, args) = body.node() {
+        if &**name == crate::domains_wire::ELEMENT {
+            if let [list, index] = args.as_slice() {
+                if matches!(list.node(), ExprNode::Tuple(_)) && index.as_sym() == Some(var) {
+                    let j = match lists.iter().position(|l| l == list) {
+                        Some(j) => j,
+                        None => {
+                            lists.push(list.clone());
+                            lists.len() - 1
+                        }
+                    };
+                    return Expr::sym(&entry_name(j));
+                }
+            }
+        }
+    }
+    Expr::new(body.map_children(&mut |c| pick_entries(c, var, lists)))
 }
 
 #[cfg(test)]

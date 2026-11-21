@@ -27,6 +27,70 @@ fn placeholder(j: usize) -> String {
     format!("\u{1}{j}")
 }
 
+/// The value of `e` with the names in `pairs` as a whole number, when `e` is built from
+/// whole numbers, those names (with whole values), sums, products and non-negative
+/// whole powers. Big-integer arithmetic avoids the gcd a rational result costs on every
+/// step (quadratic in the number of digits).
+fn eval_integer(e: &Expr, pairs: &[(&str, Expr)]) -> Option<num_bigint::BigInt> {
+    use num_bigint::BigInt;
+    match e.node() {
+        ExprNode::Num(n) => n.as_integer(),
+        ExprNode::Sym(s) => {
+            let (_, v) = pairs.iter().find(|(name, _)| *name == &**s)?;
+            v.as_number()?.as_integer()
+        }
+        ExprNode::Add(ts) => ts
+            .iter()
+            .try_fold(BigInt::zero(), |acc, t| Some(acc + eval_integer(t, pairs)?)),
+        ExprNode::Mul(fs) => fs
+            .iter()
+            .try_fold(BigInt::one(), |acc, f| Some(acc * eval_integer(f, pairs)?)),
+        ExprNode::Pow(b, x) => {
+            let k = x.as_number()?.as_i64()?;
+            if !(0..=64).contains(&k) {
+                return None;
+            }
+            Some(num_traits::pow(
+                eval_integer(b, pairs)?,
+                usize::try_from(k).ok()?,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// The value of `e` with the names in `pairs`, in exact rational arithmetic, when `e`
+/// is built from numbers, those names, sums, products and whole powers. Much faster
+/// than substituting and simplifying when the terms are large integers.
+fn eval_rational(e: &Expr, pairs: &[(&str, Expr)]) -> Option<BigRational> {
+    match e.node() {
+        ExprNode::Num(n) => n.as_rational().cloned(),
+        ExprNode::Sym(s) => {
+            let (_, v) = pairs.iter().find(|(name, _)| *name == &**s)?;
+            v.as_number()?.as_rational().cloned()
+        }
+        ExprNode::Add(ts) => ts.iter().try_fold(BigRational::zero(), |acc, t| {
+            Some(acc + eval_rational(t, pairs)?)
+        }),
+        ExprNode::Mul(fs) => fs.iter().try_fold(BigRational::one(), |acc, f| {
+            Some(acc * eval_rational(f, pairs)?)
+        }),
+        ExprNode::Pow(b, x) => {
+            let k = x.as_number()?.as_i64()?;
+            if !(-64..=64).contains(&k) {
+                return None;
+            }
+            let b = eval_rational(b, pairs)?;
+            if k < 0 && b.is_zero() {
+                return None;
+            }
+            let p = num_traits::pow(b.clone(), usize::try_from(k.unsigned_abs()).ok()?);
+            Some(if k < 0 { p.recip() } else { p })
+        }
+        _ => None,
+    }
+}
+
 /// A sequence `name(index)` given by initial terms and a rule for the next one.
 pub struct Recurrence {
     name: String,
@@ -220,7 +284,13 @@ impl Recurrence {
                 pairs.push((self.index.clone(), Expr::int(at)));
                 let refs: Vec<(&str, Expr)> =
                     pairs.iter().map(|(s, v)| (s.as_str(), v.clone())).collect();
-                let v = simplify(&self.template.subs_all(&refs));
+                let v = if let Some(n) = eval_integer(&self.template, &refs) {
+                    Expr::bigint(n)
+                } else if let Some(q) = eval_rational(&self.template, &refs) {
+                    Expr::ratio(q)
+                } else {
+                    simplify(&self.template.subs_all(&refs))
+                };
                 if v.is_undefined() {
                     return Err(MathError::Undefined(format!("{}({at})", self.name)));
                 }
