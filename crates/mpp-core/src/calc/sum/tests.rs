@@ -274,21 +274,41 @@ fn numeric_sums_need_a_convergence_proof() {
         (k().pow(-3), 1.202_056_903_159_594_2),
         (i(-1).pow(k() + i(1)) / k().sqrt(), 0.604_898_643_421_630_4),
         ((k().pow(2) + i(1)).recip(), 1.076_674_047_468_581_2),
-        (k().pow(q(-3, 2)), 2.612_375_348_685_488),
-        (f("sin", k()) / k().pow(2), 1.013_959_132_360_768_5),
     ];
     for (t, want) in cases {
         let mut steps = Steps::new();
         let got =
             sum(&t, "k", &i(1), &inf(), Some(&mut steps)).unwrap_or_else(|e| panic!("Σ {t}: {e}"));
         let v = got.eval_f64(&crate::eval::EmptyEnv).unwrap_or(f64::NAN);
-        let tol = if t.to_string().contains("sin") {
-            1e-5
-        } else {
-            1e-9
-        };
-        assert!((v - want).abs() < tol, "Σ {t} ≈ {v}, want {want}");
+        assert!((v - want).abs() < 1e-10, "Σ {t} ≈ {v}, want {want}");
         assert!(steps.iter().any(|s| s.rule == "numeric summation"));
+    }
+}
+
+#[test]
+fn real_power_series_are_hurwitz_zeta_values() {
+    // Σ 1/k^(3/2) = ζ(3/2); Σ 1/(2k+1)^(3/2) = 2^(−3/2) ζ(3/2, 3/2).
+    let got = sum(&k().pow(q(-3, 2)), "k", &i(1), &inf(), None).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(got.to_string(), "zeta(3/2)");
+    let t = (i(2) * k() + i(1)).pow(q(-3, 2));
+    let got = sum(&t, "k", &i(1), &inf(), None).unwrap_or_else(|e| panic!("{e}"));
+    let Some(crate::hp::Approx::Value { value, .. }) = crate::hp::approx_closed(&got, 15) else {
+        panic!("{got} has no value");
+    };
+    assert_eq!(value.rounded(15).digits, "688761186655448", "{got}");
+}
+
+#[test]
+fn numeric_sums_refuse_digits_they_cannot_confirm() {
+    // Σ sin k / k² = 1.01395913236…: oscillating with slowly shrinking terms, so plain
+    // summation would print wrong digits; it is refused instead.
+    let t = f("sin", k()) / k().pow(2);
+    match sum(&t, "k", &i(1), &inf(), None) {
+        Ok(v) => {
+            let v = v.eval_f64(&crate::eval::EmptyEnv).unwrap_or(f64::NAN);
+            assert!((v - 1.013_959_132_360_768_5).abs() < 1e-10, "{v}");
+        }
+        Err(e) => assert!(e.to_string().contains("too slowly"), "{e}"),
     }
 }
 

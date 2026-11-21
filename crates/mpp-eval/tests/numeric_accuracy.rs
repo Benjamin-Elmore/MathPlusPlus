@@ -32,6 +32,15 @@ fn approx(src: &str) -> String {
     line.approx.clone().unwrap_or_default()
 }
 
+/// The error messages of a document.
+fn errors(src: &str) -> Vec<String> {
+    run(src)
+        .errors()
+        .iter()
+        .map(|d| d.message.clone())
+        .collect()
+}
+
 #[test]
 fn false_equalities_with_tiny_gaps_fail() {
     let rows = [
@@ -145,6 +154,63 @@ fn decimal_places_round_the_exact_value() {
     ];
     for (src, want) in rows {
         assert_eq!(approx(src), want, "{src}");
+    }
+}
+
+#[test]
+fn slowly_converging_sums_give_confirmed_digits() {
+    let rows = [
+        (
+            r"$$ \sum_{n=1}^{\infty} \frac{1}{n^{1.0001}} \approx ? $$",
+            "10000.57722",
+        ),
+        (
+            r"$$ \sum_{n=1}^{\infty} \frac{1}{n^{1.01}} \approx ? $$",
+            "100.5779433",
+        ),
+        (
+            r"$$ \sum_{n=1}^{\infty} \frac{1}{n^{1.1}} \approx ? $$",
+            "10.58444846",
+        ),
+        (
+            r"$$ \sum_{n=1}^{\infty} \frac{1}{n^{11/10}} \approx ? $$",
+            "10.58444846",
+        ),
+        (
+            r"$$ \sum_{n=1}^{\infty} \frac{1}{\sqrt{n^3}} \approx ? $$",
+            "2.612375349",
+        ),
+        (
+            r"$$ \sum_{n=1}^{\infty} \frac{\cos(n\pi)}{n} \approx ? $$",
+            "-0.6931471806",
+        ),
+        (
+            r"$$ \sum_{n=2}^{\infty} \frac{1}{n^{3/2}} \approx ? $$",
+            "1.612375349",
+        ),
+        (
+            r"$$ \sum_{n=1}^{\infty} \frac{2}{(2n+1)^{3/2}} \approx ? $$",
+            "1.377522373",
+        ),
+    ];
+    for (src, want) in rows {
+        assert_eq!(approx(src), want, "{src}");
+    }
+}
+
+#[test]
+fn a_sum_too_slow_to_confirm_is_refused_not_guessed() {
+    // Σ 1/(n (ln n)^1.1) = 10.82119596…: shown right, or refused, never wrong digits.
+    let src = r"$$ \sum_{n=2}^{\infty} \frac{1}{n (\ln n)^{1.1}} \approx ? $$";
+    let ev = run(src);
+    let (_, line) = ev.queries().next().expect("a query");
+    match &line.approx {
+        Some(a) => assert_eq!(a, "10.82119596", "{src}"),
+        None => assert!(
+            errors(src).iter().any(|e| e.contains("too slowly")),
+            "{:?}",
+            errors(src)
+        ),
     }
 }
 

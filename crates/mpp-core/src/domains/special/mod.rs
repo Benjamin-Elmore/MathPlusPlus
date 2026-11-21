@@ -208,6 +208,8 @@ pub fn has_numeric_value(name: &str) -> bool {
             | "H"
             | "dirac"
             | "delta"
+            | "zeta"
+            | "hurwitzzeta"
     )
 }
 
@@ -231,6 +233,10 @@ pub fn call_real(name: &str, args: &[f64]) -> Option<MathResult<f64>> {
         crate::expr::EULER_GAMMA if args.is_empty() => Ok(std::f64::consts::EULER_GAMMA),
         "polygamma" => two(&|n, x| polygamma_f64(order(name, n)?, x)),
         "erf" => one(|x| Ok(erf::erf(x))),
+        "zeta" => one(|s| crate::domains::nt_ext::zeta::zeta(Complex64::new(s, 0.0)).map(|z| z.re)),
+        "hurwitzzeta" => two(&|s, a| {
+            crate::domains::nt_ext::zeta::hurwitz(Complex64::new(s, 0.0), a).map(|z| z.re)
+        }),
         "erfc" => one(|x| Ok(erf::erfc(x))),
         "lambertw" => match args {
             [x] => lambert::lambert_w(*x, 0),
