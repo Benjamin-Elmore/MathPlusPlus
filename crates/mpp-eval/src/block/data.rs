@@ -372,7 +372,7 @@ impl Run<'_, '_> {
                     } else {
                         crate::numeric::approximate(r2).unwrap_or_else(|_| r2.to_string())
                     };
-                    self.warn(span, format!("{} fit, R² = {shown}", kind_name(&fit.kind)));
+                    self.info(span, format!("{} fit, R² = {shown}", kind_name(&fit.kind)));
                 }
                 Some(fit.model)
             }

@@ -18,10 +18,11 @@ fn errors(ev: &Evaluated) -> Vec<String> {
     ev.errors().iter().map(|d| d.message.clone()).collect()
 }
 
+/// Warnings and information (a fit's R² is information).
 fn notes(ev: &Evaluated) -> Vec<String> {
     ev.all_diagnostics()
         .iter()
-        .filter(|d| d.severity == Severity::Warning)
+        .filter(|d| matches!(d.severity, Severity::Warning | Severity::Info))
         .map(|d| d.message.clone())
         .collect()
 }

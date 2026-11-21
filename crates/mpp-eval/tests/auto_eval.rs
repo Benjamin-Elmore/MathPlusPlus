@@ -73,7 +73,7 @@ fn render(src: &str) -> String {
                 if d.span.start >= line.span.start && d.span.end <= line.span.end {
                     let kind = match d.severity {
                         Severity::Error => "error",
-                        Severity::Warning => "note",
+                        Severity::Warning | Severity::Info => "note",
                     };
                     let _ = writeln!(out, "    {kind}: {}", d.message);
                 }

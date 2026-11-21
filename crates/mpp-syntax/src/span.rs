@@ -55,6 +55,9 @@ impl fmt::Display for Span {
 pub enum Severity {
     Error,
     Warning,
+    /// Plain information about an answer (a fit's R², what a helper computed): not a
+    /// problem, so it never fails a check.
+    Info,
 }
 
 /// A problem found while reading the source, tied to the exact span it came from.
@@ -86,6 +89,14 @@ impl Diagnostic {
         }
     }
 
+    /// A piece of information with no expected list.
+    pub fn info(span: Span, message: impl Into<String>) -> Self {
+        Diagnostic {
+            severity: Severity::Info,
+            ..Diagnostic::error(span, message)
+        }
+    }
+
     /// Adds what was expected at this point.
     pub fn expecting<I, S>(mut self, items: I) -> Self
     where
@@ -102,6 +113,7 @@ impl fmt::Display for Diagnostic {
         let level = match self.severity {
             Severity::Error => "error",
             Severity::Warning => "warning",
+            Severity::Info => "info",
         };
         write!(f, "{level} at {}: {}", self.span, self.message)
     }

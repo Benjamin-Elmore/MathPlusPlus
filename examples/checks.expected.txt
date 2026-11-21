@@ -25,10 +25,10 @@
 35: \sum_{n=1}^{\infty} \frac{1}{2^n} \overset{?}{=} 1
     ✓ (proved symbolically)
 39: (x + 1)^2 \overset{?}{=} x^2 + 1
-    ✗ (at x = 2.15876: left side 9.977794586, right side 5.660265137)
+    ✗ (at x = 1: left side 4, right side 2)
 41: \sqrt{x^2} \overset{?}{=} x
-    ✗ (at x = -0.116473: left side 0.1164727557, right side -0.1164727557)
+    ✗ (at x = -1: left side 1, right side -1)
 43: \frac{d}{dx} \ln(2x) \overset{?}{=} \frac{2}{x}
-    ✗ (at x = 2.15876: left side 0.4632278768, right side 0.9264557537)
+    ✗ (at x = 1: left side 1, right side 2)
 45: \int_0^1 x^2 \, dx \overset{?}{=} \frac{1}{2}
     ✗ (left side 0.3333333333, right side 0.5)

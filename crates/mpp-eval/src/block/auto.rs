@@ -204,7 +204,7 @@ impl Run<'_, '_> {
             .iter()
             .filter(|n| !super::is_success_note(n) && !n.starts_with("solved in units"))
         {
-            self.warn(lr.span, note.clone());
+            self.note(lr.span, note.clone());
         }
         lr.auto = true;
         if let Kind::Solutions(unknowns) = kind {

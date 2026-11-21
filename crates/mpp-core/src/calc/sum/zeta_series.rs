@@ -1,6 +1,9 @@
-//! `Σ_{k≥a} c (αk + β)^(−s)` for a non-integer real `s > 1`: a Hurwitz ζ value,
+//! `Σ_{k≥a} c (αk + β)^(−s)` for a rational `s > 1`: a Hurwitz ζ value,
 //! `c α^(−s) ζ(s, a + β/α)` (plain `ζ(s)` when `a + β/α = 1`). Summing such a series
 //! term by term converges far too slowly to give its digits (`Σ 1/n^1.0001 = 10000.58`).
+//! An even whole `s` has a closed form in powers of π found before this; an odd one
+//! (`Σ 1/n³ = ζ(3)`) is written with ζ, the shift taken out when it is a whole or
+//! half-whole number (`Σ_{n≥2} 1/n³ = ζ(3) − 1`).
 
 use num_rational::BigRational;
 use num_traits::{One, Signed};
@@ -37,7 +40,7 @@ pub(super) fn hurwitz_series(t: &Expr, k: &str, a: &Expr) -> Option<Expr> {
     let start = BigRational::from_integer(int_value(a)?);
     let (c, rest) = split_constant(t, k);
     let (base, s) = power_of(&rest)?;
-    if s.is_integer() || s <= BigRational::one() {
+    if s <= BigRational::one() {
         return None;
     }
     let coeffs = as_poly(&base, k)?;
@@ -52,6 +55,8 @@ pub(super) fn hurwitz_series(t: &Expr, k: &str, a: &Expr) -> Option<Expr> {
     let s_expr = Expr::ratio(s.clone());
     let zeta = if shift.is_one() {
         Expr::apply("zeta", vec![s_expr.clone()])
+    } else if let Some(z) = whole_power_shifted(&s, &shift) {
+        z
     } else {
         Expr::apply("hurwitzzeta", vec![s_expr.clone(), Expr::ratio(shift)])
     };
@@ -62,4 +67,45 @@ pub(super) fn hurwitz_series(t: &Expr, k: &str, a: &Expr) -> Option<Expr> {
     };
     let value = simplify(&(c * scale * zeta));
     (!value.is_zero()).then_some(value)
+}
+
+/// `ζ(m, x)` for a whole `m` and a whole or half-whole `x > 0`, in terms of `ζ(m)`:
+/// `ζ(m, n) = ζ(m) − Σ_{i<n} i^(−m)` and `ζ(m, n + 1/2) = (2^m − 1) ζ(m) − 2^m Σ_{j<n}
+/// (2j + 1)^(−m)`.
+fn whole_power_shifted(s: &BigRational, x: &BigRational) -> Option<Expr> {
+    use num_bigint::BigInt;
+    use num_traits::{ToPrimitive, Zero};
+    if !s.is_integer() || !x.is_positive() {
+        return None;
+    }
+    let m = s.to_integer().to_u32()?;
+    let zeta = Expr::apply("zeta", vec![Expr::ratio(s.clone())]);
+    let two = BigInt::from(2);
+    let (scale, count, odd) = if x.is_integer() {
+        (BigInt::one(), x.to_integer() - 1, false)
+    } else if x.denom() == &two {
+        (
+            two.pow(m) - 1,
+            (x - BigRational::new(BigInt::one(), two.clone())).to_integer(),
+            true,
+        )
+    } else {
+        return None;
+    };
+    let count = count.to_i64().filter(|c| *c <= 10_000)?;
+    let mut acc = BigRational::zero();
+    for i in 1..=count {
+        let d = if odd {
+            BigInt::from(2 * i - 1)
+        } else {
+            BigInt::from(i)
+        };
+        acc += BigRational::new(BigInt::one(), d.pow(m));
+    }
+    if odd {
+        acc *= BigRational::from_integer(two.pow(m));
+    }
+    Some(simplify(
+        &(Expr::ratio(BigRational::from_integer(scale)) * zeta - Expr::ratio(acc)),
+    ))
 }

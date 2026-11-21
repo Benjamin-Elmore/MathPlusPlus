@@ -120,9 +120,62 @@ fn note_if_numeric(ctx: &Ctx<'_>, question: &Expr, answer: &Expr, what: &str) {
 fn derivative(expr: &Expr, vars: &[(Name, u32)], ctx: &Ctx<'_>) -> MathResult<Expr> {
     let mut current = expr.clone();
     for (var, order) in vars {
+        if let Some(note) = piecewise_derivative_note(&current, var) {
+            ctx.note(note);
+        }
         current = logged(ctx, |s| diff(&current, var, *order, s))?;
     }
     Ok(current)
+}
+
+/// The points a derivative formula does not cover when `e` holds a function that
+/// jumps or has a corner in `var`: `d/dx ⌊x⌋ = 0` holds except at the integers.
+fn piecewise_derivative_note(e: &Expr, var: &str) -> Option<String> {
+    use mpp_core::Func;
+    fn walk(e: &Expr, var: &str, out: &mut Vec<String>) {
+        let arg = match e.node() {
+            ExprNode::Func(_, args) | ExprNode::Apply(_, args) => args.first(),
+            _ => None,
+        };
+        let jumps = match e.node() {
+            ExprNode::Func(Func::Floor | Func::Ceil, _) => Some(true),
+            ExprNode::Func(Func::Abs | Func::Sign, _) => Some(false),
+            ExprNode::Apply(n, _) if matches!(&**n, "frac" | "round" | "nint" | "trunc") => {
+                Some(true)
+            }
+            ExprNode::Apply(n, _) if matches!(&**n, "heaviside" | "H" | "step") => Some(false),
+            _ => None,
+        };
+        if let (Some(jumps), Some(u)) = (jumps, arg) {
+            if u.contains_sym(var) {
+                let place = match (jumps, u.as_sym()) {
+                    (true, Some(_)) => "at the integers".to_string(),
+                    (true, None) => format!("where {} is a whole number", u.to_text()),
+                    (false, Some(_)) => format!("at {var} = 0"),
+                    (false, None) => format!("where {} = 0", u.to_text()),
+                };
+                let what = match e.node() {
+                    ExprNode::Func(Func::Floor, _) => format!("⌊{}⌋", u.to_text()),
+                    ExprNode::Func(Func::Ceil, _) => format!("⌈{}⌉", u.to_text()),
+                    _ => e.to_text(),
+                };
+                let line = if jumps {
+                    format!("{what} jumps {place}, so the derivative shown holds except there; at those points it does not exist")
+                } else {
+                    format!("{what} has a corner or jump {place}, so the derivative shown holds except there; at that point it does not exist")
+                };
+                if !out.contains(&line) {
+                    out.push(line);
+                }
+            }
+        }
+        for c in e.children() {
+            walk(c, var, out);
+        }
+    }
+    let mut out = Vec::new();
+    walk(e, var, &mut out);
+    (!out.is_empty()).then(|| out.join("; "))
 }
 
 // ---- integrals -------------------------------------------------------------

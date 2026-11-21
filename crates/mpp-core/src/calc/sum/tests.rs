@@ -271,7 +271,7 @@ fn convergence_reports_name_the_test() {
 #[test]
 fn numeric_sums_need_a_convergence_proof() {
     let cases: Vec<(Expr, f64)> = vec![
-        (k().pow(-3), 1.202_056_903_159_594_2),
+        ((k().pow(3) + i(2)).recip(), 0.507_160_669_571_458),
         (i(-1).pow(k() + i(1)) / k().sqrt(), 0.604_898_643_421_630_4),
         ((k().pow(2) + i(1)).recip(), 1.076_674_047_468_581_2),
     ];
@@ -296,6 +296,23 @@ fn real_power_series_are_hurwitz_zeta_values() {
         panic!("{got} has no value");
     };
     assert_eq!(value.rounded(15).digits, "688761186655448", "{got}");
+}
+
+#[test]
+fn odd_power_series_are_zeta_values() {
+    // Σ 1/k³ = ζ(3), Σ 1/k⁵ = ζ(5) exactly, like ζ(3/2) above; the even ones stay powers
+    // of π. A shifted start or an odd-number base takes the shift out.
+    let sum1 = |t: Expr, from: i64| {
+        sum(&t, "k", &i(from), &inf(), None)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .to_string()
+    };
+    assert_eq!(sum1(k().pow(-3), 1), "zeta(3)");
+    assert_eq!(sum1(k().pow(-5), 1), "zeta(5)");
+    assert_eq!(sum1(i(3) * k().pow(-7), 1), "3*zeta(7)");
+    assert_eq!(sum1(k().pow(-3), 2), "zeta(3) - 1");
+    assert_eq!(sum1((i(2) * k() + i(1)).pow(-3), 0), "7*zeta(3)/8");
+    assert_eq!(sum1(k().pow(-2), 1), "π^2/6");
 }
 
 #[test]

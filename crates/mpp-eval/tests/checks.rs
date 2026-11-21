@@ -187,3 +187,185 @@ $$ \frac{dE}{dt} \ge 0 \ \text{ for all } t \ge 0 \overset{?}{=} \text{true} $$"
         .collect();
     assert_eq!(verdicts, vec![Some(true), Some(false)]);
 }
+
+/// A check over a symbolic variable passes only when it holds for every value: random
+/// points never land on the integers or on 0, where piecewise functions change rule,
+/// so those are tried on purpose and a sampled piecewise identity is never ✓.
+#[test]
+fn false_identities_never_pass_by_sampling() {
+    for src in [
+        r"$$ \lfloor x \rfloor + \lfloor -x \rfloor \overset{?}{=} -1 $$",
+        r"$$ \lceil x \rceil - \lfloor x \rfloor \overset{?}{=} 1 $$",
+        r"$$ \lceil x \rceil \overset{?}{=} \lfloor x \rfloor + 1 $$",
+        r"$$ \lfloor x + y \rfloor \overset{?}{=} \lfloor x \rfloor + \lfloor y \rfloor $$",
+        r"$$ \lfloor 3x \rfloor \overset{?}{=} 3 \lfloor x \rfloor $$",
+        r"$$ \lfloor x \rfloor^2 \overset{?}{=} \lfloor x^2 \rfloor $$",
+        r"$$ \operatorname{sgn}(x)^2 \overset{?}{=} 1 $$",
+        r"$$ \operatorname{sgn}(x y) \overset{?}{=} \operatorname{sgn}(x) $$",
+        r"$$ |x| \overset{?}{=} x $$",
+        r"$$ |x + 1| \overset{?}{=} |x| + 1 $$",
+        r"$$ \frac{|x|}{x} \overset{?}{=} 1 $$",
+        r"$$ \max(x, 5) \overset{?}{=} 5 $$",
+        r"$$ \min(x, -x) \overset{?}{=} -x $$",
+        r"$$ \sqrt{x^2} \overset{?}{=} x $$",
+        r"$$ (x^a)^b \overset{?}{=} x^{a b} $$",
+        r"$$ \ln(x y) \overset{?}{=} \ln x + \ln y $$",
+        r"$$ \ln(x^2) \overset{?}{=} 2 \ln x $$",
+        r"$$ \sqrt{x y} \overset{?}{=} \sqrt{x} \sqrt{y} $$",
+        r"$$ \arcsin(\sin x) \overset{?}{=} x $$",
+        r"$$ \arctan x + \arctan \frac{1}{x} \overset{?}{=} \frac{\pi}{2} $$",
+        r"$$ \sqrt{x^2 - 16} \overset{?}{=} \sqrt{x - 4} \sqrt{x + 4} $$",
+        r"$$ x^2 > 0 \overset{?}{=} \text{true} $$",
+        r"$$ (x - 1)^2 > 0 \overset{?}{=} \text{true} $$",
+        r"$$ x^2 + y^2 > 0 \overset{?}{=} \text{true} $$",
+    ] {
+        let v = verdict(src);
+        assert_eq!(v.passed(), Some(false), "{src}: {v:?}");
+    }
+    // The reviewer's case: the counterexample is x = 0.
+    let v = verdict(r"$$ \lfloor x \rfloor + \lfloor -x \rfloor \overset{?}{=} -1 $$");
+    let Verdict::Fails { at, lhs, rhs } = &v else {
+        panic!("{v:?}");
+    };
+    assert_eq!(at, &[("x".to_string(), "0".to_string())]);
+    assert_eq!((lhs.as_str(), rhs.as_str()), ("0", "-1"));
+}
+
+/// True identities with `| |` and `sgn` are proved by cases on the signs of the
+/// variables; a true-looking piecewise identity that cannot be proved stays undecided.
+#[test]
+fn piecewise_identities_are_proved_or_left_undecided() {
+    for src in [
+        r"$$ |x|^2 \overset{?}{=} x^2 $$",
+        r"$$ |x y| \overset{?}{=} |x| |y| $$",
+        r"$$ \operatorname{sgn}(x) |x| \overset{?}{=} x $$",
+        r"$$ \frac{x}{|x|} \overset{?}{=} \operatorname{sgn}(x) $$",
+    ] {
+        assert_eq!(verdict(src), Verdict::Proved, "{src}");
+    }
+    let v = verdict(r"$$ \lfloor x \rfloor \le x \overset{?}{=} \text{true} $$");
+    assert_eq!(v.passed(), None, "{v:?}");
+    assert_eq!(v.mark(), "?");
+}
+
+/// d/dx ⌊x⌋ = 0 only away from the integers, and the answer says so.
+#[test]
+fn derivative_of_floor_notes_the_integers() {
+    let ev = run(r"$$ \frac{d}{dx} \lfloor x \rfloor = ? $$");
+    let (block, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.plain_answer().as_deref(), Some("= 0"));
+    assert!(
+        block
+            .diagnostics
+            .iter()
+            .any(|d| d.message.contains("except there") && d.message.contains("integers")),
+        "{:?}",
+        block.diagnostics
+    );
+}
+
+/// A displayed `=` between two closed sides is a statement that can be decided: a false
+/// one is an error like a failed check, and one with a typed decimal is a warning.
+#[test]
+fn false_numeric_statements_are_reported() {
+    let ev = run(r"$$ 2^{10} = 1000 $$
+
+$$ 2^{10} = 1024 $$
+
+$$ \pi = 3.14159 $$
+");
+    let errors: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("this statement is false"), "{errors:?}");
+    assert!(errors[0].contains("1024") && errors[0].contains("1000"));
+    let warnings: Vec<&str> = ev
+        .all_diagnostics()
+        .into_iter()
+        .filter(|d| d.severity == mpp_syntax::Severity::Warning)
+        .map(|d| d.message.as_str())
+        .collect();
+    assert!(
+        warnings.iter().any(|w| w.contains("write ≈")),
+        "{warnings:?}"
+    );
+    // Statements with unknowns are equations, not claims to decide.
+    assert!(run("$$ x^2 = 4 $$\n").errors().is_empty());
+}
+
+/// Congruences asked as queries are answered true or false, and a fraction modulo m
+/// uses the inverse of its denominator.
+#[test]
+fn congruences_and_inverses_modulo_m() {
+    let answer = |src: &str| {
+        let ev = run(src);
+        let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+        assert!(errs.is_empty(), "{src}: {errs:?}");
+        let (_, line) = ev.queries().next().expect("a query");
+        line.text.clone().unwrap_or_default()
+    };
+    assert_eq!(answer(r"$$ 17 \equiv 2 \pmod{5} = ? $$"), "true ✓");
+    assert!(answer(r"$$ 17 \equiv 3 \pmod{5} = ? $$").starts_with("false ✗"));
+    assert_eq!(answer(r"$$ 1 < 2 = ? $$"), "true ✓");
+    assert_eq!(answer(r"$$ 3^{-1} \bmod 7 = ? $$"), "5");
+}
+
+/// An interval whose ends are the wrong way round is empty.
+#[test]
+fn reversed_interval_is_empty() {
+    let ev = run("$$ [3, 1] = ? $$\n\n$$ [2, 2] = ? $$\n");
+    let texts: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.text.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(texts, ["∅", "{2}"]);
+    assert!(ev
+        .all_diagnostics()
+        .iter()
+        .any(|d| d.message.contains("holds no numbers")));
+}
+
+/// A long display format on a value only known in floating point says so instead of
+/// silently showing fewer digits; a ζ value has all of them.
+#[test]
+fn long_formats_mark_floating_point_values() {
+    let ev = run(r"%dp 30
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n^3} \approx ? $$
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n^2 + 1} \approx ? $$
+");
+    let shown: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.approx.clone().unwrap_or_default())
+        .collect();
+    assert_eq!(shown[0], "1.202056903159594285399738161511");
+    assert!(shown[1].ends_with('…'), "{shown:?}");
+    assert!(ev.all_diagnostics().iter().any(|d| d
+        .message
+        .contains("significant digits of this value are known")));
+}
+
+/// A fit's R² and what a helper's value means are information, not warnings.
+#[test]
+fn descriptive_notes_are_info() {
+    let ev = run(r"| $u$ | $v$ |
+|---|---|
+| 1 | 2 |
+| 2 | 4.1 |
+| 3 | 5.9 |
+| 10 | 30 |
+
+$$ \operatorname{linreg}(u, v) \approx ? $$
+
+$$ \operatorname{range}(u) = ? $$
+");
+    let notes: Vec<_> = ev
+        .all_diagnostics()
+        .into_iter()
+        .filter(|d| d.message.contains("R² = ") || d.message.contains("the range of data"))
+        .collect();
+    assert_eq!(notes.len(), 2, "{notes:?}");
+    assert!(notes
+        .iter()
+        .all(|d| d.severity == mpp_syntax::Severity::Info));
+}

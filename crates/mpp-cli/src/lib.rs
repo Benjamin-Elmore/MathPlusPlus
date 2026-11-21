@@ -230,6 +230,7 @@ fn format_diagnostic(file: &str, ev: &Evaluated, d: &Diagnostic) -> String {
     let level = match d.severity {
         Severity::Error => "error",
         Severity::Warning => "warning",
+        Severity::Info => "info",
     };
     let line = ev.line_of(d.span.start);
     let shown = to_unicode(&snippet(ev, d.span.start, d.span.end));

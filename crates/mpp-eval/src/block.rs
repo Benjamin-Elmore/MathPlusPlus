@@ -263,6 +263,45 @@ pub(super) fn is_success_note(note: &str) -> bool {
         || note.ends_with("is an arbitrary constant")
 }
 
+/// A remark that only describes the answer (a fit's R², what a helper's value means,
+/// a fact found on the way): information, not a problem with the line.
+pub(super) fn is_info_note(note: &str) -> bool {
+    note.contains(" fit, R² = ")
+        || note.starts_with("the range of data")
+        || note.starts_with("fitted to the values in")
+        || note.starts_with("the Jacobian factor is")
+        || note.starts_with("the origin is a")
+        || note == "f has no critical points"
+        || note.starts_with("on a closed and bounded constraint set")
+        || note.starts_with("the pieces' constants are chosen")
+        || note.starts_with("separation of variables with a Fourier sine series")
+}
+
+/// An interval with number ends that is empty or a single point, as the set it is
+/// (`[3, 1]` is ∅, `[2, 2]` is {2}), with a remark when it is empty.
+fn degenerate_interval(e: &Expr) -> Option<(Expr, Option<String>)> {
+    let ExprNode::Interval { lo, hi, .. } = e.node() else {
+        return None;
+    };
+    if !(lo.is_constant() && hi.is_constant()) {
+        return None;
+    }
+    let set = mpp_core::domains::sets::RealSet::from_expr(e).ok()?;
+    let out = set.to_expr();
+    if !matches!(out.node(), ExprNode::Set(_)) {
+        return None;
+    }
+    let why = set.is_empty().then(|| {
+        format!(
+            "{} holds no numbers: its lower end {} is not below its upper end {}",
+            e.to_text(),
+            lo.to_text(),
+            hi.to_text()
+        )
+    });
+    Some((out, why))
+}
+
 /// True when `e` asks to solve a differential equation.
 fn mentions_dsolve(e: &Expr) -> bool {
     match e.node() {
@@ -397,6 +436,26 @@ impl Run<'_, '_> {
 
     fn error(&mut self, span: Span, error: EvalError) {
         self.located(Located::new(span, error));
+    }
+
+    /// Information about an answer that is not a problem (`mpp check` lists it as
+    /// info, never as a warning).
+    fn info(&mut self, span: Span, message: impl Into<String>) {
+        self.result.diagnostics.push(Diagnostic::info(
+            span,
+            crate::error::readable(&message.into()),
+        ));
+    }
+
+    /// A note from an evaluator: information when it only describes the answer,
+    /// otherwise a warning.
+    fn note(&mut self, span: Span, message: impl Into<String>) {
+        let message = message.into();
+        if is_info_note(&message) {
+            self.info(span, message);
+        } else {
+            self.warn(span, message);
+        }
     }
 
     fn warn(&mut self, span: Span, message: impl Into<String>) {
@@ -650,7 +709,7 @@ impl Run<'_, '_> {
         let resolved =
             self.resolve_full(&input, &Locals::new(), &[], self.inputs.show_steps, false);
         for note in &resolved.notes {
-            self.warn(span, note.clone());
+            self.note(span, note.clone());
         }
         match resolved.value {
             Ok(v) => {
@@ -1313,6 +1372,49 @@ impl Run<'_, '_> {
         false
     }
 
+    /// The truth of a relation asked as a query when its sides hold no unknowns: a
+    /// congruence by exact integer arithmetic, any other relation by the checker.
+    /// `None` when the input is not such a relation or the checker cannot decide it;
+    /// the text in the answer explains a false one.
+    fn decide_closed_relation(&self, input: &Expr, s: &Scope) -> Option<(bool, Option<String>)> {
+        use mpp_core::RelOp;
+        let ExprNode::Relation(op, a, b) = input.node() else {
+            return None;
+        };
+        if !(a.free_symbols().is_empty() && b.free_symbols().is_empty()) {
+            return None;
+        }
+        let side = |x: &Expr| {
+            self.resolve_full(x, s.locals, &[], false, false)
+                .value
+                .and_then(|v| self.finish_logged(v, None))
+                .ok()
+        };
+        let verdict =
+            if let (RelOp::Eq, Some((x, y, n))) = (op, crate::congruence::as_congruence(a, b)) {
+                crate::congruence::check(&side(&x)?, &side(&y)?, &side(&n)?)
+            } else {
+                let (l, r) = (side(a)?, side(b)?);
+                match op {
+                    RelOp::Eq => check(&l, &r),
+                    RelOp::Ne | RelOp::Lt | RelOp::Le | RelOp::Gt | RelOp::Ge => {
+                        check(&Expr::relation(*op, l, r), &Expr::new(ExprNode::Bool(true)))
+                    }
+                    RelOp::Approx => return None,
+                }
+            };
+        match verdict {
+            crate::check::Verdict::Proved => Some((true, None)),
+            crate::check::Verdict::Fails { at, lhs, rhs } if at.is_empty() => {
+                // A relation other than = reports its truth value, not its sides.
+                let detail = (lhs != "false" && lhs != "true")
+                    .then(|| format!("(left side {lhs}, right side {rhs})"));
+                Some((false, detail))
+            }
+            _ => None,
+        }
+    }
+
     fn query(
         &mut self,
         line: &Line,
@@ -1353,11 +1455,24 @@ impl Run<'_, '_> {
             );
             return self.push(lr);
         }
+        // `17 \equiv 2 \pmod{5} = ?`, `1 < 2 = ?`: a relation between closed sides is
+        // answered true or false.
+        if let Some((holds, why)) = self.decide_closed_relation(&input, s) {
+            lr.set_value(Value::from_expr(Expr::new(ExprNode::Bool(holds))));
+            let mark = if holds { "✓" } else { "✗" };
+            let text = match why {
+                Some(w) => format!("{holds} {mark} {w}"),
+                None => format!("{holds} {mark}"),
+            };
+            lr.text = Some(text.clone());
+            lr.plain = Some(text);
+            return self.push(lr);
+        }
         let numeric = mode == QueryMode::Approx;
         let logging = steps || self.inputs.show_steps;
         let mut resolved = self.resolve_full(&input, s.locals, &[], logging, numeric);
         for note in resolved.notes.iter().filter(|n| !is_success_note(n)) {
-            self.warn(expr.span, note.clone());
+            self.note(expr.span, note.clone());
         }
         let raw = resolved.value.clone();
         if raw
@@ -1378,6 +1493,17 @@ impl Run<'_, '_> {
                 self.error(span, err);
                 return self.push(lr);
             }
+        };
+        // `[3, 1]`: an interval whose lower end is above its upper end holds no
+        // numbers (and `[2, 2]` holds just 2).
+        let value = match degenerate_interval(&value) {
+            Some((set, why)) => {
+                if let Some(why) = why {
+                    self.warn(expr.span, why);
+                }
+                set
+            }
+            None => value,
         };
         if crate::dispatch::unit_inside_function(&value, false) && mentions_dsolve(&input) {
             self.error(expr.span, EvalError::Math(crate::dispatch::partial_units()));
@@ -1693,6 +1819,64 @@ impl Run<'_, '_> {
         self.push(lr);
     }
 
+    /// A displayed `a = b` between two closed sides (no names: `2^{10} = 1000`) states
+    /// something that can be decided, so a false one is reported like a failed check
+    /// (`\overset{?}{=}`): an error when both sides are exact, a warning when a typed
+    /// decimal may mean an approximation (`\pi = 3.14159`, better written with ≈).
+    fn false_statement(&mut self, line: &Line, node: &Node, e: &Expr, s: &Scope) {
+        let pairs: Vec<(&Expr, &Expr)> = match e.node() {
+            ExprNode::Relation(mpp_core::RelOp::Eq, a, b) => vec![(a, b)],
+            ExprNode::Logic(mpp_core::LogicOp::And, items) => items
+                .iter()
+                .filter_map(|i| match i.node() {
+                    ExprNode::Relation(mpp_core::RelOp::Eq, a, b) => Some((a, b)),
+                    _ => None,
+                })
+                .collect(),
+            _ => return,
+        };
+        for (a, b) in pairs {
+            let closed = |x: &Expr| {
+                x.free_symbols().is_empty()
+                    && !matches!(
+                        x.node(),
+                        ExprNode::Bool(_) | ExprNode::Relation(..) | ExprNode::Logic(..)
+                    )
+            };
+            if !(closed(a) && closed(b)) {
+                continue;
+            }
+            let side = |run: &Self, x: &Expr| {
+                run.resolve_full(x, s.locals, &[], false, false)
+                    .value
+                    .and_then(|v| run.finish_logged(v, None))
+                    .ok()
+            };
+            let (Some(l), Some(r)) = (side(self, a), side(self, b)) else {
+                continue;
+            };
+            let verdict = check(&l, &r);
+            if verdict.passed() != Some(false) {
+                continue;
+            }
+            let why = verdict.describe();
+            let why = why.trim_start_matches("✗ ");
+            if a.has_float() || b.has_float() || self.uses_decimal(node) {
+                self.warn(
+                    line.span,
+                    format!(
+                        "the two sides are not equal {why}; write ≈ if an approximation is meant"
+                    ),
+                );
+            } else {
+                self.result.diagnostics.push(Diagnostic::error(
+                    line.span,
+                    format!("this statement is false {why}"),
+                ));
+            }
+        }
+    }
+
     fn relation(&mut self, line: &Line, node: &Node, s: &Scope, display: bool, noeval: bool) {
         let mut lr = LineResult::new(line.span, LineKind::Relation);
         lr.noeval = noeval;
@@ -1721,6 +1905,9 @@ impl Run<'_, '_> {
         }
         if let (Some(e), true) = (&lowered, lr.auto_eval) {
             self.auto_evaluate(&mut lr, node, e, s);
+        }
+        if let (Some(e), true) = (&lowered, display && !noeval) {
+            self.false_statement(line, node, e, s);
         }
         self.push(lr);
         // After the line's own preview, so it still sees the unknowns as unknowns.

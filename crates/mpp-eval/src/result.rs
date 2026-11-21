@@ -648,6 +648,7 @@ impl Evaluated {
             let level = match d.severity {
                 Severity::Error => "error",
                 Severity::Warning => "warning",
+                Severity::Info => "info",
             };
             let _ = writeln!(
                 out,

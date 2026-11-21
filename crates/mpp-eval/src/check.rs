@@ -536,22 +536,40 @@ fn check_truth(prop: &Expr, want: bool) -> Verdict {
             None => Verdict::Unknown("the relation could not be decided".into()),
         };
     }
+    // Special points first, then (for one variable) the points where the two sides of
+    // a relation meet: `x² > 0` fails only at x = 0, which random points never hit.
+    // Exact points are decided in exact arithmetic where possible, so that a touch
+    // (`x² = 0` at x = 0) counts as equality and not as "too close to tell".
+    let mut envs: Vec<TruthPoint> = special_points(&names, &[prop])
+        .into_iter()
+        .map(|p| {
+            use num_traits::ToPrimitive;
+            let f = p
+                .iter()
+                .map(|(n, q)| (n.clone(), q.to_f64().unwrap_or(f64::NAN)))
+                .collect();
+            (Some(p), f)
+        })
+        .collect();
+    if let [var] = names.as_slice() {
+        let mut meets = Vec::new();
+        relation_meets(prop, var, &mut meets);
+        envs.extend(
+            meets
+                .into_iter()
+                .map(|x| (None, HashMap::from([(var.clone(), x)]))),
+        );
+    }
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     let mut agreed = 0;
-    for attempt in 0..ATTEMPTS {
-        let env: HashMap<String, f64> = names
-            .iter()
-            .map(|n| {
-                let u = rng.next();
-                let x = if attempt % 2 == 0 {
-                    -3.0 + 6.0 * u
-                } else {
-                    0.1 + 2.9 * u
-                };
-                (n.clone(), x)
-            })
-            .collect();
-        let Some(holds) = truth_at(prop, &env) else {
+    let mut agreed_special = 0;
+    let randoms = (0..ATTEMPTS).map(|a| (false, (None, random_point(&names, &mut rng, a))));
+    for (special, (exact, env)) in envs.into_iter().map(|p| (true, p)).chain(randoms) {
+        let decided = exact
+            .as_ref()
+            .and_then(|q| truth_exact(prop, q))
+            .or_else(|| truth_at(prop, &env));
+        let Some(holds) = decided else {
             continue;
         };
         if holds != want {
@@ -561,6 +579,10 @@ fn check_truth(prop: &Expr, want: bool) -> Verdict {
                 .collect();
             return truth_verdict(holds, want, at);
         }
+        if special {
+            agreed_special += 1;
+            continue;
+        }
         agreed += 1;
         if agreed >= WANTED {
             break;
@@ -568,8 +590,72 @@ fn check_truth(prop: &Expr, want: bool) -> Verdict {
     }
     if agreed == 0 {
         Verdict::Unknown("the relation could not be decided at any point".into())
+    } else if let Some(name) = piecewise_name(prop) {
+        Verdict::Unknown(piecewise_unknown(
+            name,
+            agreed + agreed_special,
+            "the relation holds",
+        ))
     } else {
         Verdict::Holds { points: agreed }
+    }
+}
+
+/// A point a relation is tried at: exact when it is one of the special points.
+type TruthPoint = (Option<HashMap<String, BigRational>>, HashMap<String, f64>);
+
+/// The truth of a relation at an exact point, from the sign of the difference of its
+/// sides in high precision; `None` when that cannot be found.
+fn truth_exact(e: &Expr, vars: &HashMap<String, BigRational>) -> Option<bool> {
+    use mpp_core::hp::{approx, Approx};
+    use mpp_core::{LogicOp, RelOp};
+    use std::cmp::Ordering::{Equal, Greater, Less};
+    match e.node() {
+        ExprNode::Bool(b) => Some(*b),
+        ExprNode::Relation(op, a, b) => {
+            let sign = match approx(&raw_difference(a, b), vars, 20)? {
+                Approx::Zero { inexact: false, .. } => Equal,
+                Approx::Value { value, .. } if value.neg => Less,
+                Approx::Value { .. } => Greater,
+                Approx::Zero { .. } => return None,
+            };
+            Some(match op {
+                RelOp::Eq | RelOp::Approx => sign == Equal,
+                RelOp::Ne => sign != Equal,
+                RelOp::Lt => sign == Less,
+                RelOp::Le => sign != Greater,
+                RelOp::Gt => sign == Greater,
+                RelOp::Ge => sign != Less,
+            })
+        }
+        ExprNode::Logic(op, items) => {
+            let vals: Option<Vec<bool>> = items.iter().map(|i| truth_exact(i, vars)).collect();
+            let vals = vals?;
+            match op {
+                LogicOp::And => Some(vals.iter().all(|v| *v)),
+                LogicOp::Or => Some(vals.iter().any(|v| *v)),
+                LogicOp::Not => vals.first().map(|v| !v),
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Where the two sides of each relation in `prop` meet (`a = b`), for one variable.
+fn relation_meets(prop: &Expr, var: &str, out: &mut Vec<f64>) {
+    match prop.node() {
+        ExprNode::Relation(_, a, b) => {
+            let d = (a - b).simplify();
+            if let Ok(roots) = mpp_core::domains::solve::numeric::roots_in(&d, var, -20.0, 20.0) {
+                out.extend(roots.into_iter().take(40));
+            }
+        }
+        ExprNode::Logic(_, items) => {
+            for i in items {
+                relation_meets(i, var, out);
+            }
+        }
+        _ => {}
     }
 }
 
@@ -640,6 +726,271 @@ pub fn indefinite_variables(e: &Expr) -> Vec<String> {
     out
 }
 
+/// The first function in `e` that jumps or has a corner (`⌊x⌋`, `|x|`, `sgn x` …),
+/// by the name a reader knows it by. Random points almost never land where such a
+/// function changes rule, so agreement at random points proves nothing about it.
+pub(crate) fn piecewise_name(e: &Expr) -> Option<&'static str> {
+    use mpp_core::Func;
+    let own = match e.node() {
+        ExprNode::Func(f, _) => match f {
+            Func::Floor => Some("⌊ ⌋"),
+            Func::Ceil => Some("⌈ ⌉"),
+            Func::Abs => Some("| |"),
+            Func::Sign => Some("sgn"),
+            Func::Min => Some("min"),
+            Func::Max => Some("max"),
+            _ => None,
+        },
+        ExprNode::Apply(name, _) => match &**name {
+            "frac" => Some("frac"),
+            "round" | "nint" => Some("round"),
+            "mod" | "bmod" => Some("mod"),
+            "heaviside" | "H" | "step" => Some("H"),
+            "trunc" => Some("trunc"),
+            _ => None,
+        },
+        ExprNode::Piecewise { .. } => Some("a piecewise definition"),
+        _ => None,
+    };
+    own.or_else(|| e.children().into_iter().find_map(piecewise_name))
+}
+
+/// Values every variable is tried at before the random points: 0, the small integers
+/// and halves (where `⌊ ⌋`, `sgn` and `| |` change rule) and points far out (where
+/// square roots and logarithms of a difference change branch).
+const SPECIAL: &[(i64, i64)] = &[
+    (0, 1),
+    (1, 1),
+    (-1, 1),
+    (2, 1),
+    (-2, 1),
+    (1, 2),
+    (-1, 2),
+    (3, 1),
+    (-3, 1),
+    (3, 2),
+    (-5, 2),
+    (1, 3),
+    (10, 1),
+    (-10, 1),
+    (100, 1),
+    (-100, 1),
+];
+
+fn ratio(p: i64, q: i64) -> BigRational {
+    BigRational::new(BigInt::from(p), BigInt::from(q))
+}
+
+/// Where the argument `u` of a piecewise function reaches one of `targets`, when `u`
+/// is linear in one variable (`⌊2x + 1⌋` jumps at x = −1/2, 0, 1/2, …).
+fn linear_breaks(u: &Expr, targets: &[i64], out: &mut Vec<(String, BigRational)>) {
+    let names = u.free_symbols();
+    let [x] = names.iter().collect::<Vec<_>>()[..] else {
+        return;
+    };
+    let rat = |e: &Expr| {
+        e.simplify()
+            .as_number()
+            .and_then(|n| n.as_rational().cloned())
+    };
+    let Some(a) = mpp_core::calc::diff(u, x, 1, None)
+        .ok()
+        .and_then(|d| rat(&d))
+    else {
+        return;
+    };
+    let Some(b) = rat(&u.subs(x, &Expr::zero())) else {
+        return;
+    };
+    if a == BigRational::from_integer(BigInt::from(0)) {
+        return;
+    }
+    for k in targets {
+        let v = (BigRational::from_integer(BigInt::from(*k)) - &b) / &a;
+        out.push((x.to_string(), v));
+    }
+}
+
+/// The points where the piecewise functions in `e` change rule, as far as they can be
+/// found: integer values of a linear argument of `⌊ ⌋` and its kin, zeros of the
+/// argument of `| |`, `sgn` and `H`.
+fn break_points(e: &Expr, out: &mut Vec<(String, BigRational)>) {
+    use mpp_core::Func;
+    let jumps: Vec<i64> = (-3..=3).collect();
+    match e.node() {
+        ExprNode::Func(Func::Floor | Func::Ceil, args) => {
+            for a in args {
+                linear_breaks(a, &jumps, out);
+            }
+        }
+        ExprNode::Func(Func::Abs | Func::Sign, args) => {
+            for a in args {
+                linear_breaks(a, &[0], out);
+            }
+        }
+        ExprNode::Func(Func::Min | Func::Max, args) if args.len() == 2 => {
+            linear_breaks(&(&args[0] - &args[1]), &[0], out);
+        }
+        ExprNode::Apply(name, args)
+            if matches!(&**name, "frac" | "round" | "nint" | "trunc") && args.len() == 1 =>
+        {
+            linear_breaks(&args[0], &jumps, out);
+        }
+        ExprNode::Apply(name, args)
+            if matches!(&**name, "heaviside" | "H" | "step") && args.len() == 1 =>
+        {
+            linear_breaks(&args[0], &[0], out);
+        }
+        _ => {}
+    }
+    for c in e.children() {
+        break_points(c, out);
+    }
+}
+
+/// The exact points a check is tried at before the random ones.
+fn special_points(names: &[String], exprs: &[&Expr]) -> Vec<HashMap<String, BigRational>> {
+    let mut out: Vec<HashMap<String, BigRational>> = Vec::new();
+    if names.is_empty() {
+        return out;
+    }
+    // Every variable at the same value, then mixed so that two variables differ.
+    for (p, q) in SPECIAL {
+        out.push(names.iter().map(|n| (n.clone(), ratio(*p, *q))).collect());
+    }
+    if names.len() > 1 {
+        for k in 0..SPECIAL.len() {
+            out.push(
+                names
+                    .iter()
+                    .enumerate()
+                    .map(|(i, n)| {
+                        let (p, q) = SPECIAL[(k + 3 * i + 1) % SPECIAL.len()];
+                        (n.clone(), ratio(p, q))
+                    })
+                    .collect(),
+            );
+        }
+    }
+    let mut breaks = Vec::new();
+    for e in exprs {
+        break_points(e, &mut breaks);
+    }
+    for (var, at) in breaks {
+        // The other variables at an ordinary value.
+        let mut point: HashMap<String, BigRational> =
+            names.iter().map(|n| (n.clone(), ratio(7, 10))).collect();
+        point.insert(var, at);
+        if !out.contains(&point) {
+            out.push(point);
+        }
+    }
+    out
+}
+
+/// A random point, alternating between the whole range and positive values so square
+/// roots and logarithms get points inside their domain.
+fn random_point(names: &[String], rng: &mut Rng, attempt: usize) -> HashMap<String, f64> {
+    names
+        .iter()
+        .map(|n| {
+            let u = rng.next();
+            let x = if attempt.is_multiple_of(2) {
+                -3.0 + 6.0 * u
+            } else {
+                0.1 + 2.9 * u
+            };
+            (n.clone(), x)
+        })
+        .collect()
+}
+
+/// The result of trying a check at one point.
+enum PointResult {
+    Agree,
+    Differ(Verdict),
+    Skip,
+}
+
+fn try_point(
+    lhs: &Expr,
+    rhs: &Expr,
+    names: &[String],
+    exact: Option<&HashMap<String, BigRational>>,
+    float: &HashMap<String, f64>,
+) -> PointResult {
+    use num_traits::ToPrimitive;
+    let shown_at = || -> Vec<(String, String)> {
+        names
+            .iter()
+            .map(|n| {
+                let v = match exact {
+                    Some(q) if float.is_empty() => q[n].to_string(),
+                    _ => format_f64(float.get(n).copied().unwrap_or(0.0), 6),
+                };
+                (n.clone(), v)
+            })
+            .collect()
+    };
+    // High precision first: a gap far below f64's resolution still shows.
+    match exact.and_then(|q| point_check(lhs, rhs, q)) {
+        Some(true) => return PointResult::Agree,
+        Some(false) => {
+            if let Some((l, r)) = exact.and_then(|q| sides_shown(lhs, rhs, q)) {
+                return PointResult::Differ(Verdict::Fails {
+                    at: shown_at(),
+                    lhs: l,
+                    rhs: r,
+                });
+            }
+        }
+        None => {}
+    }
+    let env: HashMap<String, Complex64> = names
+        .iter()
+        .map(|n| {
+            let x = match exact {
+                Some(q) => q[n].to_f64().unwrap_or(f64::NAN),
+                None => float.get(n).copied().unwrap_or(0.0),
+            };
+            (n.clone(), Complex64::new(x, 0.0))
+        })
+        .collect();
+    let (Ok(l), Ok(r)) = (lhs.eval_complex(&env), rhs.eval_complex(&env)) else {
+        return PointResult::Skip;
+    };
+    if !(l.re.is_finite() && l.im.is_finite() && r.re.is_finite() && r.im.is_finite()) {
+        return PointResult::Skip;
+    }
+    let scale = l.norm().max(r.norm()).max(1.0);
+    if names.is_empty() {
+        // Two constants the high-precision evaluator cannot handle: agreement to
+        // floating-point resolution is ≈ (not a proof), a gap well above it is ✗,
+        // and a gap in between decides nothing.
+        let gap = (l - r).norm() / l.norm().max(r.norm()).max(f64::MIN_POSITIVE);
+        if gap <= 1e-12 {
+            return PointResult::Differ(Verdict::Agrees {
+                digits: FLOAT_DIGITS,
+            });
+        }
+        if gap <= 1e-8 {
+            return PointResult::Differ(Verdict::Unknown(format!(
+                "the two sides agree to only about {} digits in floating point, which cannot decide it",
+                (-gap.log10()).floor()
+            )));
+        }
+    }
+    if (l - r).norm() <= 1e-8 * scale {
+        PointResult::Agree
+    } else {
+        PointResult::Differ(Verdict::Fails {
+            at: shown_at(),
+            lhs: format_complex(l, DIGITS),
+            rhs: format_complex(r, DIGITS),
+        })
+    }
+}
+
 fn spot_check(lhs: &Expr, rhs: &Expr) -> Verdict {
     let mut names: Vec<String> = lhs
         .free_symbols()
@@ -647,100 +998,210 @@ fn spot_check(lhs: &Expr, rhs: &Expr) -> Verdict {
         .map(|s| s.to_string())
         .collect();
     names.sort();
+    // Special points first (0, the integers, far-out values, the points where a
+    // piecewise function changes rule): a false identity often fails only there.
+    let mut agreed_special = 0;
+    let none: HashMap<String, f64> = HashMap::new();
+    for point in special_points(&names, &[lhs, rhs]) {
+        match try_point(lhs, rhs, &names, Some(&point), &none) {
+            PointResult::Agree => agreed_special += 1,
+            PointResult::Differ(v) => return v,
+            PointResult::Skip => {}
+        }
+    }
     let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
     let mut agreed = 0;
     let attempts = if names.is_empty() { 1 } else { ATTEMPTS };
     for attempt in 0..attempts {
-        let env: HashMap<String, Complex64> = names
+        let float = random_point(&names, &mut rng, attempt);
+        let exact: Option<HashMap<String, BigRational>> = float
             .iter()
-            .map(|n| {
-                let u = rng.next();
-                // Alternate between the whole range and positive values, so
-                // square roots and logarithms get points inside their domain.
-                let x = if attempt % 2 == 0 {
-                    -3.0 + 6.0 * u
-                } else {
-                    0.1 + 2.9 * u
-                };
-                (n.clone(), Complex64::new(x, 0.0))
-            })
+            .map(|(n, x)| BigRational::from_float(*x).map(|q| (n.clone(), q)))
             .collect();
-        // High precision first: a gap far below f64's resolution still shows.
-        let exact: Option<HashMap<String, BigRational>> = env
-            .iter()
-            .map(|(n, z)| BigRational::from_float(z.re).map(|q| (n.clone(), q)))
-            .collect();
-        match exact.as_ref().and_then(|q| point_check(lhs, rhs, q)) {
-            Some(true) => {
+        match try_point(lhs, rhs, &names, exact.as_ref(), &float) {
+            PointResult::Agree => {
                 agreed += 1;
                 if agreed >= WANTED {
                     break;
                 }
-                continue;
             }
-            Some(false) => {
-                let q = exact.unwrap_or_default();
-                let at = names
-                    .iter()
-                    .map(|n| {
-                        let v = env.get(n).map_or(0.0, |z| z.re);
-                        (n.clone(), format_f64(v, 6))
-                    })
-                    .collect();
-                if let Some((l, r)) = sides_shown(lhs, rhs, &q) {
-                    return Verdict::Fails { at, lhs: l, rhs: r };
-                }
-            }
-            None => {}
-        }
-        let (Ok(l), Ok(r)) = (lhs.eval_complex(&env), rhs.eval_complex(&env)) else {
-            continue;
-        };
-        if !(l.re.is_finite() && l.im.is_finite() && r.re.is_finite() && r.im.is_finite()) {
-            continue;
-        }
-        let scale = l.norm().max(r.norm()).max(1.0);
-        if names.is_empty() {
-            // Two constants the high-precision evaluator cannot handle: agreement to
-            // floating-point resolution is ≈ (not a proof), a gap well above it is ✗,
-            // and a gap in between decides nothing.
-            let gap = (l - r).norm() / l.norm().max(r.norm()).max(f64::MIN_POSITIVE);
-            if gap <= 1e-12 {
-                return Verdict::Agrees {
-                    digits: FLOAT_DIGITS,
-                };
-            }
-            if gap <= 1e-8 {
-                return Verdict::Unknown(format!(
-                    "the two sides agree to only about {} digits in floating point, which cannot decide it",
-                    (-gap.log10()).floor()
-                ));
-            }
-        }
-        if (l - r).norm() <= 1e-8 * scale {
-            agreed += 1;
-            if agreed >= WANTED {
-                break;
-            }
-        } else {
-            let at = names
-                .iter()
-                .map(|n| {
-                    let v = env.get(n).map_or(0.0, |z| z.re);
-                    (n.clone(), format_f64(v, 6))
-                })
-                .collect();
-            return Verdict::Fails {
-                at,
-                lhs: format_complex(l, DIGITS),
-                rhs: format_complex(r, DIGITS),
-            };
+            PointResult::Differ(v) => return v,
+            PointResult::Skip => {}
         }
     }
     if agreed == 0 {
-        Verdict::Unknown("neither side could be evaluated".into())
-    } else {
-        Verdict::Holds { points: agreed }
+        return Verdict::Unknown("neither side could be evaluated".into());
+    }
+    if let Some(name) = piecewise_name(lhs).or_else(|| piecewise_name(rhs)) {
+        if prove_by_signs(lhs, rhs) {
+            return Verdict::Proved;
+        }
+        return Verdict::Unknown(piecewise_unknown(
+            name,
+            agreed + agreed_special,
+            "the two sides agree",
+        ));
+    }
+    Verdict::Holds { points: agreed }
+}
+
+/// Why a check with a piecewise function that agreed at every point tried is still
+/// undecided.
+pub(crate) fn piecewise_unknown(name: &str, points: usize, what: &str) -> String {
+    format!(
+        "{what} at the {points} points tried, including 0 and the integers, \
+         but {name} changes rule from point to point, so trying points cannot show it holds for every value"
+    )
+}
+
+/// A proof by cases for identities with `| |`, `sgn` and `H` whose arguments are
+/// products of powers of the variables (`|x y| = |x| |y|`, `sgn(x) |x| = x`): with the
+/// sign of every variable fixed (−, 0 or +), each such function is a fixed multiple of
+/// its argument, and the identity must then simplify to 0 = 0 in every case. A case
+/// where a side is undefined (`x/|x|` at x = 0) is outside the domain.
+fn prove_by_signs(lhs: &Expr, rhs: &Expr) -> bool {
+    let names: Vec<String> = lhs
+        .free_symbols()
+        .union(&rhs.free_symbols())
+        .map(|s| s.to_string())
+        .collect();
+    if names.is_empty() || names.len() > 3 {
+        return false;
+    }
+    if !sign_split_ok(lhs) || !sign_split_ok(rhs) {
+        return false;
+    }
+    let cases = 3usize.pow(names.len() as u32);
+    for case in 0..cases {
+        let mut signs: HashMap<String, i32> = HashMap::new();
+        let mut c = case;
+        for n in &names {
+            signs.insert(n.clone(), (c % 3) as i32 - 1);
+            c /= 3;
+        }
+        let zeros: Vec<(&str, Expr)> = names
+            .iter()
+            .filter(|n| signs[*n] == 0)
+            .map(|n| (n.as_str(), Expr::zero()))
+            .collect();
+        let fixed = |e: &Expr| -> Option<Expr> {
+            let e = if zeros.is_empty() {
+                e.clone()
+            } else {
+                e.subs_all(&zeros)
+            };
+            replace_by_sign(&e, &signs).map(|e| e.simplify())
+        };
+        let (Some(l), Some(r)) = (fixed(lhs), fixed(rhs)) else {
+            return false;
+        };
+        if has_undefined(&l) || has_undefined(&r) {
+            continue;
+        }
+        let d = (&l - &r).simplify();
+        if !(d.is_zero() || d.expand().is_ok_and(|d| d.is_zero())) {
+            return false;
+        }
+    }
+    true
+}
+
+fn has_undefined(e: &Expr) -> bool {
+    e.is_undefined() || e.children().into_iter().any(has_undefined)
+}
+
+/// True when the only piecewise functions in `e` are `| |`, `sgn` and `H` of a product
+/// of powers of variables.
+fn sign_split_ok(e: &Expr) -> bool {
+    use mpp_core::Func;
+    if piecewise_name(e).is_none() {
+        return true;
+    }
+    match e.node() {
+        ExprNode::Func(Func::Abs | Func::Sign, args) => args.len() == 1 && monomial(&args[0]),
+        ExprNode::Apply(name, args) if matches!(&**name, "heaviside" | "H" | "step") => {
+            args.len() == 1 && monomial(&args[0])
+        }
+        ExprNode::Func(Func::Floor | Func::Ceil | Func::Min | Func::Max, _)
+        | ExprNode::Piecewise { .. } => false,
+        ExprNode::Apply(name, _) if piecewise_name(&Expr::apply(name, vec![])).is_some() => false,
+        _ => e.children().into_iter().all(sign_split_ok),
+    }
+}
+
+/// A number times a product of variables raised to whole powers.
+fn monomial(e: &Expr) -> bool {
+    match e.node() {
+        ExprNode::Num(n) => n.is_exact(),
+        ExprNode::Sym(_) => true,
+        ExprNode::Pow(b, x) => {
+            b.as_sym().is_some()
+                && x.as_number()
+                    .and_then(mpp_core::Number::as_integer)
+                    .is_some()
+        }
+        ExprNode::Mul(items) => items.iter().all(monomial),
+        _ => false,
+    }
+}
+
+/// The sign of a monomial when each variable has the sign given (`None` if unknown).
+fn monomial_sign(e: &Expr, signs: &HashMap<String, i32>) -> Option<i32> {
+    use num_traits::Signed;
+    match e.node() {
+        ExprNode::Num(n) => Some(match n.sign()? {
+            std::cmp::Ordering::Less => -1,
+            std::cmp::Ordering::Equal => 0,
+            std::cmp::Ordering::Greater => 1,
+        }),
+        ExprNode::Sym(s) => signs.get(&**s).copied(),
+        ExprNode::Pow(b, x) => {
+            let s = monomial_sign(b, signs)?;
+            let k = x.as_number().and_then(mpp_core::Number::as_integer)?;
+            if s == 0 {
+                return if k.is_positive() { Some(0) } else { None };
+            }
+            Some(if (&k % 2u32) == BigInt::from(0) { 1 } else { s })
+        }
+        ExprNode::Mul(items) => items
+            .iter()
+            .try_fold(1, |acc, i| monomial_sign(i, signs).map(|s| acc * s)),
+        _ => None,
+    }
+}
+
+/// `e` with every `| |`, `sgn` and `H` replaced by its value for the signs given.
+fn replace_by_sign(e: &Expr, signs: &HashMap<String, i32>) -> Option<Expr> {
+    use mpp_core::Func;
+    let arg_sign = |args: &[Expr]| -> Option<(Expr, i32)> {
+        let u = args.first()?.simplify();
+        let s = monomial_sign(&u, signs)?;
+        Some((u, s))
+    };
+    match e.node() {
+        ExprNode::Func(Func::Abs, args) => {
+            let (u, s) = arg_sign(args)?;
+            Some(Expr::int(i64::from(s)) * u)
+        }
+        ExprNode::Func(Func::Sign, args) => Some(Expr::int(i64::from(arg_sign(args)?.1))),
+        ExprNode::Apply(name, args) if matches!(&**name, "heaviside" | "H" | "step") => {
+            match arg_sign(args)?.1 {
+                1 => Some(Expr::one()),
+                -1 => Some(Expr::zero()),
+                // The value at the jump depends on the convention.
+                _ => Some(Expr::undefined()),
+            }
+        }
+        _ => {
+            let mut failed = false;
+            let node = e.map_children(&mut |c| {
+                replace_by_sign(c, signs).unwrap_or_else(|| {
+                    failed = true;
+                    c.clone()
+                })
+            });
+            (!failed).then(|| Expr::new(node))
+        }
     }
 }
 

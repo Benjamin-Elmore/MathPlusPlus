@@ -171,6 +171,15 @@ pub(crate) fn check_claim(claim: &Claim, k: &Knowledge) -> ClaimOutcome {
                 other => other,
             }
         }
+        // The CAS tries every real value, but a name declared prime takes only primes:
+        // `0^p = 0` fails at p = 0, which is no prime. When the counterexample gives a
+        // prime name a value that is not a prime, the claim is tried again at primes.
+        Attempt::Fails(at) if claim.op == ClaimOp::Eq && outside_primes(&at, k) => {
+            match sample(claim, &last_defs, k, Domain::Integers) {
+                Attempt::Unknown(_) => Attempt::Fails(at),
+                other => other,
+            }
+        }
         other => other,
     };
     match last {
@@ -194,6 +203,28 @@ pub(crate) fn check_claim(claim: &Claim, k: &Knowledge) -> ClaimOutcome {
         }
         Attempt::Unknown(why) => ClaimOutcome::Unverified(why),
     }
+}
+
+/// True when a counterexample (`at p = 0, k = 1: left side …`) gives a name declared
+/// prime a value that is not a prime, so it lies outside the values the name takes.
+fn outside_primes(at: &str, k: &Knowledge) -> bool {
+    let Some(point) = at
+        .strip_prefix("(at ")
+        .or_else(|| at.strip_prefix("at "))
+        .and_then(|rest| rest.split_once(':'))
+        .map(|(p, _)| p)
+    else {
+        return false;
+    };
+    let is_prime = |v: &str| {
+        v.trim()
+            .parse::<u64>()
+            .is_ok_and(|n| n >= 2 && (2..).take_while(|d| d * d <= n).all(|d| n % d != 0))
+    };
+    point.split(", ").any(|pair| {
+        pair.split_once(" = ")
+            .is_some_and(|(n, v)| k.primes.contains(n.trim()) && !is_prime(v))
+    })
 }
 
 /// One attempt's result.

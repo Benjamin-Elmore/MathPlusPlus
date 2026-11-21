@@ -35,8 +35,8 @@
   73: \operatorname{laplace} t^2 e^{3t} = ?  = 2/(s - 3)³
   75: \operatorname{invlaplace} \frac{s + 1}{s^2 + 2s + 5} = ?  = e^(-t) cos(2t)
   79: \operatorname{lsolve}((2, -3, 1), 0, (0, 1)) = ?!  = y(t) = -e^t + e^(2t)
-  29: warning: on a closed and bounded constraint set the largest and smallest values are the absolute maximum and minimum
-  41: warning: the Jacobian factor is |∂(x, y)/∂(u, v)| = 2
+  29: info: on a closed and bounded constraint set the largest and smallest values are the absolute maximum and minimum
+  41: info: the Jacobian factor is |∂(x, y)/∂(u, v)| = 2
 
 working for line 79:
 Take the Laplace transform of both sides, putting in the initial conditions, and solve for Y(s). Laplace transform of the equation: lsolve((2, -3, 1), 0, (0, 1)) = Y(s) = 1/(s² - 3s + 2) (L{y′} = sY − y(0), L{y″} = s²Y − s·y(0) − y′(0))
