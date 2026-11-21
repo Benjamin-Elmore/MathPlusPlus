@@ -6,6 +6,7 @@
 //! the embedded standard library (`std/…`).
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -76,6 +77,9 @@ pub struct EvalWorker {
     sent: u64,
     received: u64,
     settings: EvalSettings,
+    /// Set while the thread reads the other files of the folder after sending a
+    /// result; an updated result may follow.
+    indexing: Arc<AtomicBool>,
 }
 
 impl std::fmt::Debug for EvalWorker {
@@ -94,12 +98,17 @@ impl EvalWorker {
         let (done_tx, rx) = channel::<Done>();
         let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
         let cancel = session.cancel_handle();
+        let indexing = Arc::new(AtomicBool::new(false));
+        let indexing_flag = indexing.clone();
         let handle = std::thread::Builder::new()
             .name("mpp-eval".into())
             .stack_size(256 * 1024 * 1024)
             .spawn(move || {
                 let mut base: Option<PathBuf> = None;
                 let mut files = FileCache::default();
+                // The last folder index, with the (folder, file) it was made for.
+                type Indexed = ((Option<PathBuf>, Option<PathBuf>), background::ProjectIndex);
+                let mut indexed: Option<Indexed> = None;
                 let mut applied: Option<EvalSettings> = None;
                 let Ok(mut job) = jobs.recv() else {
                     return;
@@ -127,22 +136,66 @@ impl EvalWorker {
                         continue 'jobs;
                     }
                     let eval = Arc::new(eval);
-                    let extras = Arc::new(background::compute(
-                        &eval,
-                        job.base.as_deref(),
-                        job.path.as_deref(),
-                        &mut files,
-                    ));
+                    // The open file's results go out first, with the folder index from
+                    // last time; the other files of the folder are indexed afterwards
+                    // (names only, never evaluated) and only while no newer edit waits.
+                    let imports =
+                        background::import_summaries(&eval, job.base.as_deref(), &mut files);
+                    let index_base = (job.base.clone(), job.path.clone());
+                    let stale_index = indexed.as_ref().filter(|(at, _)| *at == index_base);
+                    let mut extras = Arc::new(Background {
+                        imports,
+                        index: stale_index.map(|(_, i)| i.clone()).unwrap_or_default(),
+                    });
+                    indexing_flag.store(true, Ordering::SeqCst);
                     let done = Done {
                         generation: job.generation,
                         text: job.text.clone(),
-                        eval,
+                        eval: eval.clone(),
                         background: extras.clone(),
                         pending: session.has_pending(),
                     };
                     if done_tx.send(done).is_err() {
                         break;
                     }
+                    let mut newer: Option<Job> = None;
+                    let index = background::project_index(
+                        job.base.as_deref(),
+                        job.path.as_deref(),
+                        &mut files,
+                        &mut || {
+                            if newer.is_none() {
+                                newer = jobs.try_recv().ok();
+                            }
+                            newer.is_some()
+                        },
+                    );
+                    if let Some(next) = newer {
+                        indexing_flag.store(false, Ordering::SeqCst);
+                        job = next;
+                        continue 'jobs;
+                    }
+                    if let Some(index) = index {
+                        let changed = stale_index.is_none_or(|(_, old)| old.files != index.files);
+                        indexed = Some((index_base, index.clone()));
+                        if changed {
+                            extras = Arc::new(Background {
+                                imports: extras.imports.clone(),
+                                index,
+                            });
+                            let done = Done {
+                                generation: job.generation,
+                                text: job.text.clone(),
+                                eval,
+                                background: extras.clone(),
+                                pending: session.has_pending(),
+                            };
+                            if done_tx.send(done).is_err() {
+                                break;
+                            }
+                        }
+                    }
+                    indexing_flag.store(false, Ordering::SeqCst);
                     // Finish the automatic answers that were left pending, unless a
                     // newer edit arrives first.
                     while session.has_pending() {
@@ -184,6 +237,7 @@ impl EvalWorker {
             sent: 0,
             received: 0,
             settings: EvalSettings::default(),
+            indexing,
         }
     }
 
@@ -247,12 +301,31 @@ impl EvalWorker {
                 Err(_) => break,
             }
         }
+        // The folder index that follows the result (names only, so it is quick).
+        while self.received >= self.sent && self.indexing.load(Ordering::SeqCst) {
+            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            if left.is_zero() {
+                break;
+            }
+            if let Ok(d) = self.rx.recv_timeout(left.min(Duration::from_millis(5))) {
+                self.received = self.received.max(d.generation);
+                latest = Some(d);
+            }
+        }
+        if let Some(d) = self.poll() {
+            latest = Some(d);
+        }
         latest
     }
 
     /// True while a submitted job has not come back.
-    pub fn busy(&self) -> bool {
+    pub fn evaluating(&self) -> bool {
         self.received < self.sent
+    }
+
+    /// True while a submitted job has not come back or the folder is being indexed.
+    pub fn busy(&self) -> bool {
+        self.received < self.sent || self.indexing.load(Ordering::SeqCst)
     }
 }
 

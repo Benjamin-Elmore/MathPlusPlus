@@ -384,7 +384,7 @@ impl Doc {
 
     /// True while an evaluation is running or waiting to start.
     pub fn evaluating(&self) -> bool {
-        self.worker.busy() || self.submitted != Some(self.editor.revision())
+        self.worker.evaluating() || self.submitted != Some(self.editor.revision())
     }
 
     /// Runs the evaluation for the current text now and waits for it.

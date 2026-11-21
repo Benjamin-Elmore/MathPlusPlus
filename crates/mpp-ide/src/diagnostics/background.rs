@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use mpp_eval::{Evaluated, NoImports, Session};
+use mpp_eval::{Evaluated, Session};
 use mpp_syntax::document::parse_document;
 
 use super::{gather, Inputs, Problem};
@@ -156,7 +156,8 @@ impl FileCache {
         Some(found)
     }
 
-    /// The names a file defines (read without its imports).
+    /// The names a file defines, read from its syntax alone (never evaluated, so a slow
+    /// file in the folder cannot hold anything up).
     pub fn names_of(&mut self, path: &Path) -> Option<Arc<Vec<String>>> {
         let st = stamp(path)?;
         if let Some((s, n)) = self.names.get(path) {
@@ -168,23 +169,7 @@ impl FileCache {
             return None;
         }
         let text = std::fs::read_to_string(path).ok()?;
-        let mut session = Session::new().with_importer(Arc::new(NoImports));
-        let ev = session.run_str(&text);
-        let mut names: Vec<String> = ev
-            .blocks
-            .iter()
-            .flat_map(|b| b.defines.iter().cloned())
-            .filter_map(|n| {
-                if mpp_eval::random::is_random_key(&n) {
-                    n.split_once(':').map(|(_, v)| v.to_string())
-                } else {
-                    (!mpp_eval::is_internal_name(&n)).then_some(n)
-                }
-            })
-            .collect();
-        names.sort();
-        names.dedup();
-        let names = Arc::new(names);
+        let names = Arc::new(mpp_eval::defined_names(&text));
         self.names.insert(path.to_path_buf(), (st, names.clone()));
         Some(names)
     }
@@ -213,6 +198,18 @@ pub fn compute(
     this: Option<&Path>,
     cache: &mut FileCache,
 ) -> Background {
+    Background {
+        imports: import_summaries(ev, base, cache),
+        index: project_index(base, this, cache, &mut || false).unwrap_or_default(),
+    }
+}
+
+/// The problems of every file `ev` imports.
+pub fn import_summaries(
+    ev: &Evaluated,
+    base: Option<&Path>,
+    cache: &mut FileCache,
+) -> Vec<ImportSummary> {
     let mut imports = vec![];
     for b in &ev.blocks {
         for i in b.imports.iter().filter(|i| i.loaded) {
@@ -231,9 +228,23 @@ pub fn compute(
             });
         }
     }
+    imports
+}
+
+/// The names the other `.mpp` files of the folder define, read without evaluating
+/// them. `None` when `stop` asked to give up (a newer edit arrived) part way.
+pub fn project_index(
+    base: Option<&Path>,
+    this: Option<&Path>,
+    cache: &mut FileCache,
+    stop: &mut dyn FnMut() -> bool,
+) -> Option<ProjectIndex> {
     let mut index = ProjectIndex::default();
     if let Some(dir) = base {
         for p in mpp_files(dir) {
+            if stop() {
+                return None;
+            }
             if this.is_some_and(|t| t == p) {
                 continue;
             }
@@ -244,7 +255,7 @@ pub fn compute(
             }
         }
     }
-    Background { imports, index }
+    Some(index)
 }
 
 #[cfg(test)]
