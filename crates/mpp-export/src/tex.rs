@@ -282,6 +282,46 @@ pub(crate) fn neutralise_file_commands(src: &str) -> String {
     o
 }
 
+/// A Latin letter with an accent as a LaTeX accent command (`ô` → `\^{o}`).
+fn accented(c: char) -> Option<String> {
+    const TABLE: &[(&str, char, &str)] = &[
+        ("àèìòùÀÈÌÒÙ", '`', "aeiouAEIOU"),
+        ("áéíóúýÁÉÍÓÚÝćńśźĆŃŚŹ", '\'', "aeiouyAEIOUYcnszCNSZ"),
+        ("âêîôûÂÊÎÔÛ", '^', "aeiouAEIOU"),
+        ("äëïöüÿÄËÏÖÜ", '"', "aeiouyAEIOU"),
+        ("ãñõÃÑÕ", '~', "anoANO"),
+    ];
+    for (from, accent, to) in TABLE {
+        if let Some(i) = from.chars().position(|x| x == c) {
+            let base = to.chars().nth(i)?;
+            let base = match base {
+                'i' => r"\i".to_string(),
+                b => b.to_string(),
+            };
+            return Some(format!("\\{accent}{{{base}}}"));
+        }
+    }
+    let special = match c {
+        'ç' => r"\c{c}",
+        'Ç' => r"\c{C}",
+        'ß' => r"\ss{}",
+        'ø' => r"\o{}",
+        'Ø' => r"\O{}",
+        'å' => r"\aa{}",
+        'Å' => r"\AA{}",
+        'æ' => r"\ae{}",
+        'Æ' => r"\AE{}",
+        'š' => r"\v{s}",
+        'Š' => r"\v{S}",
+        'č' => r"\v{c}",
+        'Č' => r"\v{C}",
+        'ł' => r"\l{}",
+        'Ł' => r"\L{}",
+        _ => return None,
+    };
+    Some(special.to_string())
+}
+
 /// A character with no LaTeX symbol: a raised or lowered letter or digit, or a visible `?`.
 fn unicode_fallback(c: char, math: bool, o: &mut String) {
     use mpp_syntax::symbols::{subscript_value, superscript_value};
@@ -291,6 +331,14 @@ fn unicode_fallback(c: char, math: bool, o: &mut String) {
         (n, '_')
     } else if c.is_ascii() {
         o.push(c);
+        return;
+    } else if let Some(t) = accented(c) {
+        // `L'Hôpital`, `Poincaré`, `Gödel`: the letter with its accent, not `?`.
+        if math {
+            let _ = write!(o, "\\text{{{t}}}");
+        } else {
+            o.push_str(&t);
+        }
         return;
     } else {
         o.push('?');
@@ -923,6 +971,12 @@ fn is_reference_list(b: &Block) -> bool {
 #[cfg(test)]
 mod neutralise_tests {
     use super::*;
+
+    #[test]
+    fn accented_letters_keep_their_accents() {
+        assert_eq!(escape_text("L'Hôpital's rule"), r"L'H\^{o}pital's rule");
+        assert_eq!(escape_text("Poincaré, Gödel"), r#"Poincar\'{e}, G\"{o}del"#);
+    }
 
     #[test]
     fn file_commands_become_plain_text() {

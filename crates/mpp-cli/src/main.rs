@@ -218,7 +218,7 @@ fn check(files: &[PathBuf], limit: Option<std::time::Duration>) -> ExitCode {
                     println!("{name}: proofs");
                     print!("{proofs}");
                 }
-                if !ev.errors().is_empty() {
+                if !ev.errors().is_empty() || !mpp_cli::failed_checks(&ev).is_empty() {
                     bad = true;
                 }
             }

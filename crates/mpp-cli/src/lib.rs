@@ -208,7 +208,22 @@ pub fn check_report(file: &str, ev: &Evaluated) -> String {
     for d in ev.all_diagnostics() {
         let _ = write!(out, "{}", format_diagnostic(file, ev, d));
     }
+    for d in failed_checks(ev) {
+        let _ = write!(out, "{}", format_diagnostic(file, ev, &d));
+    }
     out
+}
+
+/// A `\overset{?}{=}` check that came out ✗, as an error: a false statement in a
+/// document is a mistake `mpp check` must report (and fail on).
+pub fn failed_checks(ev: &Evaluated) -> Vec<Diagnostic> {
+    ev.queries()
+        .filter_map(|(_, l)| {
+            let v = l.verdict.as_ref()?;
+            (v.passed() == Some(false))
+                .then(|| Diagnostic::error(l.span, format!("the check fails {}", v.describe())))
+        })
+        .collect()
 }
 
 fn format_diagnostic(file: &str, ev: &Evaluated, d: &Diagnostic) -> String {
