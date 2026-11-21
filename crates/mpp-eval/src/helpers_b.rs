@@ -967,7 +967,95 @@ mod ode {
         }
     }
 
+    /// The unknown function whose derivative `e` holds (`ẍ`, `d²x/dt²`), with the
+    /// variable.
+    fn differentiated_unknowns(e: &Expr, out: &mut Vec<String>) {
+        if let ExprNode::Derivative { expr, .. } = e.node() {
+            let name = match expr.node() {
+                ExprNode::Sym(s) => Some(s.to_string()),
+                ExprNode::Apply(f, args) if args.len() == 1 => Some(f.to_string()),
+                _ => None,
+            };
+            if let Some(n) = name {
+                if !out.contains(&n) {
+                    out.push(n);
+                }
+            }
+        }
+        for c in e.children() {
+            differentiated_unknowns(c, out);
+        }
+    }
+
+    /// True when `e` uses the function `u` (as a name, a call, a primed call or a
+    /// derivative).
+    fn uses(e: &Expr, u: &str) -> bool {
+        match e.node() {
+            ExprNode::Sym(s) => &**s == u,
+            ExprNode::Apply(f, _) if f.trim_end_matches(['′', '\'']) == u => true,
+            _ => e.children().into_iter().any(|c| uses(c, u)),
+        }
+    }
+
+    /// The unknown a condition is about: `x(0) = 0`, `x′(0) = v`, or `subs(ẋ, t = 0) = v`.
+    fn condition_unknown(c: &Expr, unknowns: &[String]) -> Option<String> {
+        let ExprNode::Relation(RelOp::Eq, l, _) = c.node() else {
+            return None;
+        };
+        let mut found: Vec<&String> = unknowns.iter().filter(|u| uses(l, u)).collect();
+        match (found.pop(), found.is_empty()) {
+            (Some(u), true) => Some(u.clone()),
+            _ => None,
+        }
+    }
+
+    /// A system whose equations do not couple (`ẍ = −k ẋ`, `ÿ = −g − k ẏ`): each
+    /// equation is solved alone with its own conditions. `None` when an equation
+    /// involves another unknown, or a condition cannot be given to one unknown.
+    fn decoupled(eqs: &[Expr], rest: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+        let mut unknowns = Vec::with_capacity(eqs.len());
+        for eq in eqs {
+            let mut own = Vec::new();
+            differentiated_unknowns(eq, &mut own);
+            let [u] = own.as_slice() else {
+                return None;
+            };
+            if unknowns.contains(u) {
+                return None;
+            }
+            unknowns.push(u.clone());
+        }
+        if eqs
+            .iter()
+            .zip(&unknowns)
+            .any(|(eq, u)| unknowns.iter().any(|v| v != u && uses(eq, v)))
+        {
+            return None;
+        }
+        let mut per: Vec<Vec<Expr>> = vec![Vec::new(); eqs.len()];
+        for c in rest {
+            let u = condition_unknown(c, &unknowns)?;
+            let i = unknowns.iter().position(|v| *v == u)?;
+            per[i].push(c.clone());
+        }
+        let mut solutions = Vec::with_capacity(eqs.len());
+        for (eq, conds) in eqs.iter().zip(per) {
+            let mut args = vec![eq.clone()];
+            args.extend(conds);
+            let one = Expr::apply("dsolve", args);
+            match crate::holders::evaluate_holder(&one, ctx) {
+                Ok(v) if matches!(v.node(), ExprNode::Relation(RelOp::Eq, ..)) => solutions.push(v),
+                Ok(_) => return None,
+                Err(e) => return Some(Err(e)),
+            }
+        }
+        Some(Ok(Expr::new(ExprNode::Tuple(solutions))))
+    }
+
     fn system(eqs: &[Expr], rest: &[Expr], ctx: &Ctx<'_>) -> MathResult<Expr> {
+        if let Some(r) = decoupled(eqs, rest, ctx) {
+            return r;
+        }
         let mut initial: Option<Vec<Expr>> = rest.iter().find_map(|a| match a.node() {
             ExprNode::Tuple(v) if v.iter().all(Expr::is_constant) => Some(v.clone()),
             _ => None,

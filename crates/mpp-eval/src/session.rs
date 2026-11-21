@@ -631,6 +631,10 @@ fn called_names(doc: &Document) -> (BTreeSet<String>, BTreeSet<String>) {
         }
         if equation {
             unknowns.extend(diffs.iter().cloned());
+        } else if matches!(line.statement, Statement::Definition { .. }) {
+            // `E(t) := ½ m ẋ² + ½ k x²`: a definition that differentiates x uses it
+            // as a function.
+            out.extend(diffs.iter().cloned());
         }
         out.extend(calls.into_iter().filter(|c| !diffs.contains(c)));
     }

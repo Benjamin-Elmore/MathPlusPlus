@@ -661,6 +661,13 @@ fn callable(node: &Node) -> bool {
     match &node.kind {
         NodeKind::Name(_) => true,
         NodeKind::Prime { base, .. } => matches!(base.kind, NodeKind::Name(_)),
+        // `\dot x(0)`, `\ddot\theta(t)`: the time derivative of a function, at a point.
+        NodeKind::Derivative(d) => {
+            matches!(d.notation, DerivNotation::Dot(_))
+                && d.of
+                    .as_ref()
+                    .is_some_and(|of| matches!(of.kind, NodeKind::Name(_)))
+        }
         _ => false,
     }
 }

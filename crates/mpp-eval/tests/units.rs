@@ -258,3 +258,67 @@ $$ -\log_{10} c = ? \qquad -\log_{10}(1\,\mathrm{mmol/mL}) = ? $$";
     let (msg, _) = failure(r"$$ \ln(2\,\mathrm{m}) = ? $$");
     assert!(msg.contains("dimensionless"), "{msg}");
 }
+
+#[test]
+fn differential_equations_with_units() {
+    // A damped spring: m ẍ + c ẋ + k x = 0 with SI coefficients.
+    let src = r"Let $m := 0.5\,\mathrm{kg}$, $k := 20\,\mathrm{N/m}$, $c := 0.4\,\mathrm{N\,s/m}$ and $x_0 := 10\,\mathrm{cm}$.
+
+$$ m\ddot x + c\dot x + kx = 0, \quad x(0) = x_0, \ \dot x(0) = 0 $$
+
+$$ x(0) = ? \qquad x(1\,\mathrm s) \approx ? \qquad x(500\,\mathrm{ms}) \approx ? $$";
+    let ev = run(src);
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+    let approx: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.approx.clone().or(l.plain.clone()).unwrap_or_default())
+        .collect();
+    // x(t) = x₀ e^{−0.4t}(cos ω_d t + (0.4/ω_d) sin ω_d t), ω_d = √39.84 rad/s, in the
+    // centimetres x₀ is written in.
+    let wd = 39.84f64.sqrt();
+    let x = |t: f64| 10.0 * (-0.4 * t).exp() * ((wd * t).cos() + 0.4 / wd * (wd * t).sin());
+    assert_eq!(approx[0], "10 cm", "{approx:?}");
+    for (shown, t) in approx[1..].iter().zip([1.0, 0.5]) {
+        let v: f64 = shown.trim_end_matches(" cm").parse().unwrap_or(f64::NAN);
+        assert!((v - x(t)).abs() < 1e-8, "{shown} vs {}", x(t));
+        assert!(shown.ends_with(" cm"), "{shown}");
+    }
+}
+
+#[test]
+fn uncoupled_systems_with_units_and_dotted_conditions() {
+    let src = r"Let $g \equiv 9.81\,\mathrm{m/s^2}$, $v_0 := 20\,\mathrm{m/s}$ and $k := 0.1\,\mathrm{s^{-1}}$.
+
+$$ \ddot x = -k\dot x, \quad \ddot y = -g - k\dot y, \quad x(0) = 0,\ y(0) = 0,\ \dot x(0) = v_0,\ \dot y(0) = v_0 $$
+
+$$ x(1\,\mathrm s) \approx ? \qquad y(1\,\mathrm s) \approx ? \qquad \dot y(0) = ? $$";
+    let ev = run(src);
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+    let shown: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.approx.clone().or(l.plain.clone()).unwrap_or_default())
+        .collect();
+    let e = (-0.1f64).exp();
+    let x1 = 200.0 * (1.0 - e);
+    let y1 = (20.0 + 98.1) * 10.0 * (1.0 - e) - 98.1;
+    for (s, want) in shown.iter().zip([x1, y1]) {
+        let v: f64 = s.trim_end_matches(" m").parse().unwrap_or(f64::NAN);
+        assert!((v - want).abs() < 1e-8, "{s} vs {want}");
+    }
+    assert_eq!(shown[2], "20 m/s");
+}
+
+#[test]
+fn units_that_do_not_fit_a_differential_equation_are_not_solved() {
+    // ẋ = −k x with k in metres: no unit for t makes the two sides agree.
+    let src = r"Let $k := 2\,\mathrm m$.
+
+$$ \dot x = -k x, \quad x(0) = 1 $$
+
+$$ x(1) = ? $$";
+    let ev = run(src);
+    assert!(
+        ev.queries().all(|(_, l)| l.plain.is_none()),
+        "no value may be given"
+    );
+}

@@ -41,6 +41,7 @@ pub mod resolve;
 pub mod result;
 mod session;
 pub mod stdlib;
+pub mod units_ode;
 pub mod units_wire;
 pub mod value;
 #[cfg(feature = "watch")]

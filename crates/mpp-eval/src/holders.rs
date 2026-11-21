@@ -219,6 +219,8 @@ impl Default for Holders {
         h.register(crate::fields_wire::evaluate);
         // Registered last, so asked first: an equation with units, before any solver.
         h.register(crate::units_wire::evaluate_solve);
+        // A differential equation with units, before the plain ODE solver.
+        h.register(crate::units_ode::evaluate);
         h
     }
 }

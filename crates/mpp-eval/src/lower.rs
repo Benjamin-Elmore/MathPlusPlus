@@ -599,6 +599,19 @@ impl<'a> Lowerer<'a> {
             return Ok(t.apply(self.lower_all(args)?));
         }
         let inner = callee.ungrouped();
+        // `(\dot x)(0)` read as a call of the derivative: `x′(0)`.
+        if let NodeKind::Derivative(d) = &inner.kind {
+            if let (DerivNotation::Dot(n), Some(of)) = (d.notation, d.of.as_ref()) {
+                if let Some(key) = node_key(of.ungrouped()) {
+                    if let Some(params) = self.function_params(&key) {
+                        return self.prime_call(&key, &params, n, args, span);
+                    }
+                    if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
+                        return self.unknown_fn_call(&key, n, arg);
+                    }
+                }
+            }
+        }
         if let NodeKind::Prime { base, count } = &inner.kind {
             if let Some(key) = node_key(base) {
                 if let Some(params) = self.function_params(&key) {
@@ -1114,6 +1127,19 @@ impl<'a> Lowerer<'a> {
                 EvalError::Invalid("there is nothing to differentiate".into()),
             )
         })?;
+        // `\dot x(0)`: the time derivative of the function x at 0, like `x′(0)`.
+        if let DerivNotation::Dot(n) = d.notation {
+            if let NodeKind::Call { callee, args, .. } = &of.ungrouped().kind {
+                if let Some(key) = node_key(callee.ungrouped()) {
+                    if let Some(params) = self.function_params(&key) {
+                        return self.prime_call(&key, &params, n, args, span);
+                    }
+                    if let ([arg], true) = (args.as_slice(), self.is_unknown_fn(&key)) {
+                        return self.unknown_fn_call(&key, n, arg);
+                    }
+                }
+            }
+        }
         let mut vars: Vec<(String, u32)> = Vec::new();
         for v in &d.vars {
             let name = node_key(&v.var).ok_or_else(|| {
