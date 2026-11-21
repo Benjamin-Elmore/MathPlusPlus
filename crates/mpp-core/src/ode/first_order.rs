@@ -397,7 +397,7 @@ fn bernoulli(ode: &Ode, f: &Expr, c: &str, steps: &mut Steps) -> Option<MathResu
         )),
     );
     let mut cand = Candidate::explicit(sol, "Bernoulli");
-    if crate::tools_b::util::value(&n).is_some_and(|k| k > 0.0) {
+    if crate::calc_support::value(&n).is_some_and(|k| k > 0.0) {
         cand.notes.push(format!("{y} = 0 is also a solution"));
     }
     Some(Ok(cand))

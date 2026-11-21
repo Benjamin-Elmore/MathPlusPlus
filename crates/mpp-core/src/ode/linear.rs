@@ -22,7 +22,7 @@ use crate::steps::Steps;
 
 use super::parse::Ode;
 use super::{linsys, tidy, Candidate};
-use crate::tools_b::util::{pythagorean_tidy, value};
+use crate::calc_support::{pythagorean_tidy, value};
 
 fn neg(e: Expr) -> Expr {
     mul(vec![Expr::int(-1), e])

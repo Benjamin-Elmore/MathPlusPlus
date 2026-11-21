@@ -20,7 +20,7 @@ use crate::poly::as_poly;
 use crate::simplify::{add, mul, pow, simplify};
 use crate::steps::Steps;
 
-use super::util::value;
+use crate::calc_support::value;
 
 /// What one named test says about a series.
 #[derive(Clone, Debug, PartialEq, Eq)]

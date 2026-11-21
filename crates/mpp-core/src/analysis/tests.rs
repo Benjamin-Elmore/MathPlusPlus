@@ -1,7 +1,7 @@
 //! Textb∞k curve-sketching problems with known answers.
 
 use super::*;
-use crate::tools::testkit::p;
+use crate::testkit::p;
 
 fn an(f: &str) -> Analysis {
     Analysis::new(&p(f), "x", None).unwrap()

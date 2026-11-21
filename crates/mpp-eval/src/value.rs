@@ -239,14 +239,14 @@ pub enum Value {
     /// An equation or inequality.
     Relation(Expr),
     /// A labelled table (`table((label, value), …)`), such as a curve-sketch summary;
-    /// [`mpp_core::tools::table::rows`] reads its rows.
+    /// [`mpp_core::table::rows`] reads its rows.
     Table(Expr),
 }
 
 impl Value {
     /// Classifies an expression.
     pub fn from_expr(e: Expr) -> Value {
-        if mpp_core::tools::table::rows(&e).is_some() {
+        if mpp_core::table::rows(&e).is_some() {
             return Value::Table(e);
         }
         match e.node() {

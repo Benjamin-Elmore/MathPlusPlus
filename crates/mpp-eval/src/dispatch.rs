@@ -329,8 +329,8 @@ fn transform_vars(call: &Call) -> (String, String) {
 /// `\mathcal L\{f\}`, `\mathcal L^{-1}\{F\}`, `\mathcal F\{f\}`, `\mathcal F^{-1}\{F\}` and the
 /// operator forms `laplace`, `invlaplace`, `fourier`, `invfourier`.
 fn transform(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
-    use mpp_core::tools_b::fourier;
-    use mpp_core::tools_b::ode::laplace as lt;
+    use mpp_core::transforms::fourier;
+    use mpp_core::transforms::laplace as lt;
     let [f] = call.args.as_slice() else {
         return Err(MathError::WrongArity {
             function: call.name.clone(),

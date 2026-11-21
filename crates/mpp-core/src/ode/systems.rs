@@ -10,10 +10,10 @@ use crate::expr::{Expr, ExprNode};
 use crate::simplify::{add, mul, simplify};
 use crate::steps::Steps;
 
-use super::laplace::{inverse, transform};
 use super::parse::{parse, placeholder};
 use super::{linsys, tidy};
-use crate::tools_b::util::value;
+use crate::calc_support::value;
+use crate::transforms::laplace::{inverse, transform};
 
 /// Most unknowns in a system.
 pub const MAX_SYSTEM: usize = 6;

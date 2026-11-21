@@ -1,8 +1,8 @@
 //! The registry's form of the classical Runge–Kutta method: `rk4(f, x, y, x₀, y₀, x₁, n)`
 //! (`y(x₁)`) and `rk4table` (every point), for a first-order equation `y' = f(x, y)` in
 //! any arrangement, plus RK4 for systems. The steps are taken by the one RK4 stepper,
-//! [`rk4_march`](crate::tools_b::numerics::rk4_march). Equations are solved exactly by the
-//! differential-equations toolkit (`tools_b::ode`), the only `dsolve`.
+//! [`rk4_march`](crate::numerics::rk4_march). Equations are solved exactly by the
+//! differential-equations toolkit (`ode`), the only `dsolve`.
 
 use crate::domains::util::{expect_args_between, is_zero, real_arg, sym_arg};
 use crate::domains::{Ctx, Domain, Value};
@@ -133,7 +133,7 @@ fn check_steps(steps: usize) -> MathResult<()> {
 
 /// RK4 for `y' = f(x, y)` from `(x0, y0)` to `x1` in `steps` equal steps; returns every
 /// point, the initial one included. The steps are taken by
-/// [`rk4_march`](crate::tools_b::numerics::rk4_march), the one RK4 stepper.
+/// [`rk4_march`](crate::numerics::rk4_march), the one RK4 stepper.
 pub fn rk4(
     f: &Expr,
     x: &str,
@@ -151,7 +151,7 @@ pub fn rk4(
             values: [xv, yv],
         })
     };
-    crate::tools_b::numerics::rk4_march(
+    crate::numerics::rk4_march(
         eval,
         x0,
         y0,

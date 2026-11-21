@@ -11,7 +11,7 @@
 //! without units and without sines or cosines of x (whose coefficients could hit a
 //! removable singularity at some n).
 
-use mpp_core::tools_b::ode::pde as core_pde;
+use mpp_core::ode::pde as core_pde;
 use mpp_core::{EmptyEnv, Expr, ExprNode, Func, LogicOp, MathError, MathResult, RelOp};
 
 /// The kinds of equation recognised.

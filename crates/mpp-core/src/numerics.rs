@@ -17,7 +17,7 @@ use crate::number::format_f64;
 use crate::simplify::{add, mul, simplify};
 use crate::steps::Steps;
 
-use super::util::{at, integral_holder, max_abs, value};
+use crate::calc_support::{at, integral_holder, max_abs, value};
 
 /// Most subintervals a quadrature rule may use.
 pub const MAX_SUBINTERVALS: usize = 1_000_000;

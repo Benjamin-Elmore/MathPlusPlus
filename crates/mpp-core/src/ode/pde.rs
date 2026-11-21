@@ -63,7 +63,7 @@ fn sine_coefficient(f: &Expr, x: &str, l: &Expr) -> MathResult<Expr> {
     ]);
     let integrand = mul(vec![f.clone(), func(Func::Sin, vec![mode])]);
     let i = integrate_definite(&integrand, x, &Expr::zero(), l, None)?;
-    if crate::tools_b::util::value(&i).is_some() && !i.contains_sym(N) {
+    if crate::calc_support::value(&i).is_some() && !i.contains_sym(N) {
         // A numeric fallback means the integral had no closed form in n.
         return Err(MathError::NoClosedForm(format!(
             "the Fourier coefficients of {f}"

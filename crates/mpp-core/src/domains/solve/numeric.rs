@@ -87,7 +87,7 @@ pub fn bisect(f: &Expr, var: &str, mut a: f64, mut b: f64) -> Option<f64> {
 
 /// Newton's method from `x0` with a central-difference derivative (so it works for any
 /// function the evaluator can compute), run by the one Newton iteration,
-/// [`newton_iterate`](crate::tools_b::numerics::newton_iterate).
+/// [`newton_iterate`](crate::numerics::newton_iterate).
 pub fn newton(f: &Expr, var: &str, x0: f64) -> Option<f64> {
     let undefined = || MathError::Undefined(format!("{f} near {var} = {x0}"));
     let value = |x: f64| eval_at(f, var, x).ok_or_else(undefined);
@@ -100,7 +100,7 @@ pub fn newton(f: &Expr, var: &str, x0: f64) -> Option<f64> {
             Err(undefined())
         }
     };
-    crate::tools_b::numerics::newton_iterate(value, slope, x0, 1e-12, |_| {})
+    crate::numerics::newton_iterate(value, slope, x0, 1e-12, |_| {})
         .ok()
         .map(|(x, _)| x)
 }

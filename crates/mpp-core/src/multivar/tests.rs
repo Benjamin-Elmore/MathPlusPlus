@@ -1,7 +1,7 @@
 //! Textbook multivariable and vector calculus problems with known answers.
 
 use super::*;
-use crate::tools::testkit::p;
+use crate::testkit::p;
 
 fn s(e: &Expr) -> String {
     e.to_string()

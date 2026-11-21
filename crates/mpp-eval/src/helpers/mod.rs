@@ -1,7 +1,7 @@
 //! The maths helpers as holders: function analysis (`\operatorname{crit} f = ?`,
 //! "Find the critical points of $f$ on $[0, 4]$.") answered by
-//! [`mpp_core::tools::analysis`], and the multivariable and vector calculus helpers
-//! (see [`multivar`]) answered by [`mpp_core::tools::multivar`].
+//! [`mpp_core::analysis`], and the multivariable and vector calculus helpers
+//! (see [`multivar`]) answered by [`mpp_core::multivar`].
 //!
 //! Both forms meet here as `Apply` holders: `crit(f)` (or `crit(f, [0, 4])`) for an
 //! operator without scripts, and `operatorname(crit, sub, sup, (f, …))` with them. The
@@ -9,7 +9,7 @@
 //! theorem the superscript is the value (`\operatorname{ivt}_{[0,1]}^{0} f`). Helper
 //! sentences are turned into the same holder by [`sentence_holder`].
 
-use mpp_core::tools::analysis::{interval_of, variable_of, Analysis};
+use mpp_core::analysis::{interval_of, variable_of, Analysis};
 use mpp_core::{Expr, ExprNode, MathError, MathResult, Name, RelOp};
 use mpp_syntax::document::HelperName;
 

@@ -1,7 +1,7 @@
 //! Multivariable and vector calculus helpers: partial derivatives and the tools built on
 //! them ([`differential`]), integrals in other coordinates, over surfaces and the
 //! integral theorems ([`integrals`]) and the vector operators ([`vector`]). Laplace
-//! transforms live with the differential equations (`tools_b::ode::laplace`).
+//! transforms live with the differential equations (`transforms::laplace`).
 //!
 //! Vectors and points are tuples of expressions; a vector field is a list of components
 //! in the order of its variables.

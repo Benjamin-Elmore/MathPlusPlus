@@ -14,7 +14,7 @@ use crate::steps::Steps;
 
 use super::parse::Ode;
 use super::Condition;
-use crate::tools_b::util::value;
+use crate::calc_support::value;
 
 /// Most accepted steps.
 pub const MAX_STEPS: usize = 200_000;
@@ -432,7 +432,7 @@ fn ros2_step(sys: &System, x: f64, y: &[f64], h: f64) -> Option<(Vec<f64>, Vec<f
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools_b::ode::parse::parse;
+    use crate::ode::parse::parse;
 
     fn ode(src: Expr) -> Ode {
         parse(&src, Some("y"), Some("x")).unwrap()

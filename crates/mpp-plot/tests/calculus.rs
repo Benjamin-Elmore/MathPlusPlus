@@ -5,7 +5,8 @@
 use std::collections::BTreeMap;
 use std::f64::consts::{E, PI};
 
-use mpp_core::tools_b::{self, Axis, QuadratureRule};
+use mpp_core::applications::{self, Axis};
+use mpp_core::numerics::{self, QuadratureRule};
 use mpp_core::{pow, Expr};
 use mpp_eval::Session;
 use mpp_plot::helpers::FieldKind;
@@ -70,8 +71,8 @@ fn riemann_strips_sum_to_the_numeric_rule() {
         ));
         let (count, sum) = bars_sum(&fig);
         assert_eq!(count, 8, "{word}");
-        let q =
-            tools_b::quadrature_rule(&f, "x", &Expr::int(0), &Expr::int(2), 8, rule, None).unwrap();
+        let q = numerics::quadrature_rule(&f, "x", &Expr::int(0), &Expr::int(2), 8, rule, None)
+            .unwrap();
         assert!((sum - number(&q.value)).abs() < 1e-9, "{word}: {sum}");
         assert!(
             fig.readouts()
@@ -98,7 +99,7 @@ fn the_strip_slider_rebuilds_the_strips() {
     fig.rebuild(&values);
     let (count, sum) = bars_sum(&fig);
     assert_eq!(count, 16);
-    let q = tools_b::quadrature_rule(
+    let q = numerics::quadrature_rule(
         &x_squared(),
         "x",
         &Expr::int(0),
@@ -177,7 +178,7 @@ fn shaded_area(fig: &Figure) -> f64 {
 fn the_area_between_curves_matches_the_c3_value_and_finds_the_crossings() {
     let fig = build("Figure: $x$, $x^2$, area between.\n");
     let exact =
-        tools_b::area_between(&Expr::sym("x"), Some(&x_squared()), "x", None, None).unwrap();
+        applications::area_between(&Expr::sym("x"), Some(&x_squared()), "x", None, None).unwrap();
     assert!((number(&exact) - 1.0 / 6.0).abs() < 1e-12);
     assert!((shaded_area(&fig) - number(&exact)).abs() < 1e-4);
     let crossings: Vec<[f64; 2]> = flat(&fig)
@@ -223,7 +224,7 @@ fn solids_of_revolution_report_the_c3_volume() {
     // A washer: the region between y = x and y = x^2 on [0, 1] about the x axis.
     let fig = build("Figure: $x$, $x^2$, revolve about $y = 0$, $x \\in [0, 1]$.\n");
     assert!(fig.is_3d());
-    let exact = tools_b::volume(
+    let exact = applications::volume(
         &Expr::sym("x"),
         Some(&x_squared()),
         "x",
@@ -245,7 +246,7 @@ fn solids_of_revolution_report_the_c3_volume() {
     let shell = build("Figure: $x^2$, revolve about $x = 0$, $x \\in [0, 2]$.\n");
     assert!(shell.readouts()[0].contains("shell") && shell.readouts()[0].contains("25.13"));
     // Same volume (8 pi) by shells as the disk figure above, within the sampling.
-    let exact_shell = tools_b::volume(
+    let exact_shell = applications::volume(
         &x_squared(),
         None,
         "x",
@@ -453,7 +454,7 @@ fn newton_iterations_match_the_c3_table() {
         .flatten()
         .collect();
     let f = mpp_core::add(vec![x_squared(), Expr::int(-2)]);
-    let (_, table) = tools_b::newton(&f, "x", 2.0, 1e-12, None).unwrap();
+    let (_, table) = numerics::newton(&f, "x", 2.0, 1e-12, None).unwrap();
     assert_eq!(iterates.len(), 5);
     for (p, row) in iterates.iter().zip(&table) {
         assert!((p[0] - row.x).abs() < 1e-12 && (p[1] - row.fx).abs() < 1e-12);

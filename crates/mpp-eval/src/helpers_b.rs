@@ -12,8 +12,10 @@
 //! recognised whether they arrive as one name (`\mathrm{shell}`) or as the product of their
 //! letters (`shell` typed plainly).
 
+use mpp_core::applications::{self, Axis, VolumeMethod};
+use mpp_core::convergence;
 use mpp_core::number::format_f64;
-use mpp_core::tools_b::{self, Axis, QuadratureRule, VolumeMethod};
+use mpp_core::numerics::{self, QuadratureRule};
 use mpp_core::{Expr, ExprNode, Func, MathError, MathResult, RelOp, Steps};
 
 use crate::holders::Ctx;
@@ -354,7 +356,7 @@ fn area(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
     let bounds = p.intervals.first().cloned();
     let run = |g: Option<&Expr>| {
         logged(ctx, |s| {
-            tools_b::area_between(&f, g, &var, bounds.as_ref().map(|(a, b)| (a, b)), s)
+            applications::area_between(&f, g, &var, bounds.as_ref().map(|(a, b)| (a, b)), s)
         })
     };
     let v = match run(g.as_ref()) {
@@ -408,7 +410,7 @@ fn volume(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
             _ => VolumeMethod::Disk,
         });
     let v = logged(ctx, |s| {
-        tools_b::volume(&f, g.as_ref(), &var, &a, &b, &axis, method, s)
+        applications::volume(&f, g.as_ref(), &var, &a, &b, &axis, method, s)
     })?;
     note_numeric(ctx, &v, "this volume");
     Ok(v)
@@ -431,7 +433,7 @@ fn arc_length(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
             }
         };
         logged(ctx, |s| {
-            tools_b::arc_length_parametric(xt, yt, &t, &a, &b, s)
+            applications::arc_length_parametric(xt, yt, &t, &a, &b, s)
         })?
     } else {
         let var = p.variable("arc length")?;
@@ -439,7 +441,7 @@ fn arc_length(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
             .functions
             .first()
             .ok_or_else(|| missing("arc length", "a curve"))?;
-        logged(ctx, |s| tools_b::arc_length(f, &var, &a, &b, s))?
+        logged(ctx, |s| applications::arc_length(f, &var, &a, &b, s))?
     };
     note_numeric(ctx, &v, "this arc length");
     Ok(v)
@@ -454,7 +456,9 @@ fn surface(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
         .first()
         .ok_or_else(|| missing("surface area", "a curve"))?;
     let axis = axis_of(&p)?.unwrap_or_else(Axis::x_axis);
-    let v = logged(ctx, |s| tools_b::surface_area(f, &var, &a, &b, &axis, s))?;
+    let v = logged(ctx, |s| {
+        applications::surface_area(f, &var, &a, &b, &axis, s)
+    })?;
     note_numeric(ctx, &v, "this surface area");
     Ok(v)
 }
@@ -480,9 +484,9 @@ fn single_integral(call: &Call, ctx: &Ctx<'_>, which: Single) -> MathResult<Expr
         .or(p.numbers.first())
         .ok_or_else(|| missing(name, "a function"))?;
     let v = logged(ctx, |s| match which {
-        Single::Average => tools_b::average_value(f, &var, &a, &b, s),
-        Single::Work => tools_b::work(f, &var, &a, &b, s),
-        Single::Rod => tools_b::centre_of_mass_rod(f, &var, &a, &b, s),
+        Single::Average => applications::average_value(f, &var, &a, &b, s),
+        Single::Work => applications::work(f, &var, &a, &b, s),
+        Single::Rod => applications::centre_of_mass_rod(f, &var, &a, &b, s),
     })?;
     note_numeric(ctx, &v, name);
     Ok(v)
@@ -497,7 +501,9 @@ fn centroid(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
         [f, g] => (f.clone(), Some(g.clone())),
         _ => return Err(missing("centroid", "one or two curves")),
     };
-    let (cx, cy) = logged(ctx, |s| tools_b::centroid(&f, g.as_ref(), &var, &a, &b, s))?;
+    let (cx, cy) = logged(ctx, |s| {
+        applications::centroid(&f, g.as_ref(), &var, &a, &b, s)
+    })?;
     let v = Expr::new(ExprNode::Tuple(vec![cx, cy]));
     note_numeric(ctx, &v, "this centroid");
     Ok(v)
@@ -516,7 +522,7 @@ fn accumulate(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
         .cloned()
         .or_else(|| p.intervals.first().map(|(a, _)| a.clone()))
         .unwrap_or_else(Expr::zero);
-    logged(ctx, |s| tools_b::accumulation(f, &var, &a, s))
+    logged(ctx, |s| applications::accumulation(f, &var, &a, s))
 }
 
 // ---- numerical methods -------------------------------------------------------
@@ -558,7 +564,7 @@ fn quadrature(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
         .ok_or_else(|| missing(rule.name(), "the number of subintervals n"))?;
     let n = to_count(n, rule.name())?;
     let q = logged(ctx, |s| {
-        tools_b::quadrature_rule(f, &var, &a, &b, n, rule, s)
+        numerics::quadrature_rule(f, &var, &a, &b, n, rule, s)
     })?;
     if let Some(bound) = q.error_bound {
         ctx.note(format!(
@@ -587,7 +593,7 @@ fn newton(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
         Some(t) => to_f64(t, "the tolerance")?,
         None => 1e-12,
     };
-    let (root, table) = logged(ctx, |s| tools_b::newton(&f, &var, x0, tol, s))?;
+    let (root, table) = logged(ctx, |s| numerics::newton(&f, &var, x0, tol, s))?;
     ctx.note(format!(
         "Newton's method from x₀ = {} converged in {} iterations",
         format_f64(x0, 10),
@@ -632,9 +638,9 @@ fn stepper(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
     let n = to_count(n, what)?;
     let table = logged(ctx, |s| {
         if rk {
-            tools_b::rk4(&rhs, x, y, x0, y0, h, n, s)
+            numerics::rk4(&rhs, x, y, x0, y0, h, n, s)
         } else {
-            tools_b::euler(&rhs, x, y, x0, y0, h, n, s)
+            numerics::euler(&rhs, x, y, x0, y0, h, n, s)
         }
     })?;
     let (xn, yn) = table.rows.last().copied().unwrap_or((x0, y0));
@@ -693,7 +699,7 @@ fn taylor_bound(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
     };
     let n = to_count(&mpp_core::simplify(&(n + Expr::one())), "the degree")? - 1;
     let n = u32::try_from(n).map_err(|_| MathError::TooLarge("the degree".into()))?;
-    let tb = logged(ctx, |s| tools_b::taylor_bound(&f, &var, &a, &x, n, s))?;
+    let tb = logged(ctx, |s| numerics::taylor_bound(&f, &var, &a, &x, n, s))?;
     Ok(Expr::float(tb.bound))
 }
 
@@ -701,7 +707,7 @@ fn taylor_terms(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
     let (f, var, a, x, eps) = taylor_parts(call, "Taylor terms")?;
     let eps = to_f64(&eps, "ε")?;
     let tb = logged(ctx, |s| {
-        tools_b::taylor_terms_needed(&f, &var, &a, &x, eps, s)
+        numerics::taylor_terms_needed(&f, &var, &a, &x, eps, s)
     })?;
     ctx.note(format!(
         "degree {} (the Lagrange bound is {} < {})",
@@ -732,7 +738,7 @@ fn tests(call: &Call, ctx: &Ctx<'_>) -> MathResult<Expr> {
         .first()
         .ok_or_else(|| missing("convergence tests", "the general term aₖ"))?;
     let k = index_of(&p, term);
-    let (verdict, outcomes) = logged(ctx, |s| tools_b::series_tests(term, &k, s))?;
+    let (verdict, outcomes) = logged(ctx, |s| convergence::series_tests(term, &k, s))?;
     for o in &outcomes {
         ctx.note(o.to_string());
     }
@@ -763,7 +769,7 @@ fn power_series(call: &Call, ctx: &Ctx<'_>, radius: bool) -> MathResult<Expr> {
                 .find(|s| *s != k)
         })
         .ok_or_else(|| missing("interval of convergence", "the variable x"))?;
-    let r = logged(ctx, |s| tools_b::power_series_interval(term, &k, &x, s))?;
+    let r = logged(ctx, |s| convergence::power_series_interval(term, &k, &x, s))?;
     for (end, report) in &r.endpoints {
         ctx.note(format!("at {x} = {end}: {report}"));
     }
@@ -790,9 +796,9 @@ fn unknown_function_derivative(e: &Expr) -> Option<Expr> {
 pub(crate) fn is_differential_equation_or_system(e: &Expr) -> bool {
     match e.node() {
         ExprNode::Tuple(items) => {
-            !items.is_empty() && items.iter().all(tools_b::ode::is_differential_equation)
+            !items.is_empty() && items.iter().all(mpp_core::ode::is_differential_equation)
         }
-        _ => tools_b::ode::is_differential_equation(e),
+        _ => mpp_core::ode::is_differential_equation(e),
     }
 }
 
@@ -818,9 +824,8 @@ pub(crate) use ode::FUNCTION_MARKER;
 /// The differential-equation operators: `dsolve`, `laplace`, `invlaplace` and the PDE
 /// helpers.
 mod ode {
-    use mpp_core::tools_b::ode::{
-        self as core_ode, laplace as lt, pde as core_pde, systems, Condition, Form, Options,
-    };
+    use mpp_core::ode::{self as core_ode, pde as core_pde, systems, Condition, Form, Options};
+    use mpp_core::transforms::laplace as lt;
     use mpp_core::{Expr, ExprNode, MathError, MathResult, RelOp};
 
     use super::{keyword, logged, missing, to_f64, Call};

@@ -3,8 +3,9 @@
 //! `H(t − a)` and the delta `δ(t − a)`), the inverse transform of rational functions by
 //! partial fractions (with the shift `e^{−as} F(s) ↔ H(t − a) f(t − a)`, and `cosh`/`sinh`
 //! for a quadratic with real irrational roots), and the transform method for
-//! constant-coefficient initial value problems, given either as a parsed equation
-//! ([`solve_ivp`]) or as a list of coefficients ([`solve_coefficients`]).
+//! constant-coefficient initial value problems given as a list of coefficients
+//! ([`solve_coefficients`]; the differential-equations solver uses the same algebra for
+//! a parsed equation, in `ode::laplace_method`).
 //!
 //! `H(t − a)` is written `H(t - a)` (also `heaviside`, `step`, `u`, `theta`) and the delta
 //! `delta(t - a)` (also `dirac`, `δ`).
@@ -18,11 +19,9 @@ use crate::expr::{Constant, Expr, ExprNode};
 use crate::functions::{func, Func};
 use crate::poly::Poly;
 use crate::simplify::{add, mul, pow, simplify};
-use crate::steps::Steps;
 
-use super::parse::Ode;
-use super::{tidy, Candidate, Condition};
-use crate::tools_b::util::value;
+use crate::calc_support::value;
+use crate::ode::tidy;
 
 /// Names accepted for the Heaviside step.
 const STEP_NAMES: &[&str] = &["H", "heaviside", "Heaviside", "step", "u", "theta", "θ"];
@@ -374,7 +373,12 @@ fn piece(factor: &Poly, k: u32, numer: &Poly, t: &Expr) -> Option<Expr> {
 
 /// The transformed equation `Σ aₖ (sᵏ Y − Σ_{j<k} s^{k−1−j} y⁽ʲ⁾(0)) = G` solved for `Y`:
 /// returns `(P(s), Y(s))` with `P(s) = Σ aₖ sᵏ`.
-fn transformed_solution(a: &[Expr], big_g: &Expr, init: &[Expr], s: &str) -> (Expr, Expr) {
+pub(crate) fn transformed_solution(
+    a: &[Expr],
+    big_g: &Expr,
+    init: &[Expr],
+    s: &str,
+) -> (Expr, Expr) {
     let ss = Expr::sym(s);
     let mut p_s = Vec::new();
     let mut ic = Vec::new();
@@ -464,65 +468,6 @@ fn check_coefficients(
     }
 }
 
-/// The transform method for `Σ aₖ y⁽ᵏ⁾ = g` (constant `aₖ`) with `y⁽ʲ⁾(0)` given for
-/// `j < n` (missing ones become constants).
-pub(crate) fn solve_ivp(
-    ode: &Ode,
-    conditions: &[Condition],
-    steps: &mut Steps,
-) -> MathResult<Candidate> {
-    let (a, g) = ode.linear_coefficients().ok_or_else(|| {
-        MathError::Unsupported("the Laplace transform method for a non-linear equation".into())
-    })?;
-    if a.iter()
-        .any(|c| c.contains_sym(&ode.x) || value(c).is_none())
-    {
-        return Err(MathError::Unsupported(
-            "the Laplace transform method for variable coefficients".into(),
-        ));
-    }
-    let t = ode.x.as_str();
-    let s = if t == "s" { "p" } else { "s" };
-    let n = ode.order;
-    let mut init = Vec::new();
-    for j in 0..n {
-        let c = conditions
-            .iter()
-            .find(|c| c.order == j && c.at.is_zero())
-            .ok_or_else(|| MathError::Domain {
-                function: "the Laplace transform method".into(),
-                detail: format!(
-                    "it needs the initial values y(0), …, y^({})(0); y^({j})(0) is missing",
-                    n - 1
-                ),
-            })?;
-        init.push(c.value.clone());
-    }
-    let big_g = transform(&g, t, s)?;
-    let (p_s, y_s) = transformed_solution(&a, &big_g, &init, s);
-    let y_t = inverse(&y_s, s, t)?;
-    steps.push(
-        "Laplace transform",
-        ode.original.clone(),
-        Expr::equation(Expr::sym(&ode.y), y_t.clone()),
-        Some(format!(
-            "transform both sides (L{{y⁽ᵏ⁾}} = sᵏY − sᵏ⁻¹y(0) − …): ({p_s})·Y − (initial terms) = {big_g}, so Y(s) = {y_s}; partial fractions and the table (with e^(−as)F(s) ↔ H(t − a)f(t − a)) give y(t) = {y_t}"
-        )),
-    );
-    let mut cand = Candidate::explicit(y_t, "Laplace transform");
-    if has_step_or_delta(&cand_expr(&cand)) {
-        cand.notes.push("H is the Heaviside step function".into());
-    }
-    Ok(cand)
-}
-
-fn cand_expr(c: &Candidate) -> Expr {
-    match &c.form {
-        super::Form::Explicit(e) => e.clone(),
-        _ => Expr::zero(),
-    }
-}
-
 /// One interval between jumps: `(lo, hi, solution there, residual there)`.
 pub(crate) type Piece = (f64, f64, Expr, Expr);
 
@@ -579,7 +524,7 @@ fn replace_steps(e: &Expr, t: &str, at: f64) -> Expr {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tools::testkit::p;
+    use crate::testkit::p;
 
     fn s(e: &Expr) -> String {
         e.to_string()
@@ -619,7 +564,7 @@ mod tests {
             let back = inverse(&big, "s", "t").unwrap();
             let d = simplify(&add(vec![back.clone(), neg(f.clone())]));
             assert!(
-                super::super::verify::vanishes(&d, std::slice::from_ref(&f), "t", None),
+                crate::ode::verify::vanishes(&d, std::slice::from_ref(&f), "t", None),
                 "{f} → {big} → {back}"
             );
         }
@@ -693,7 +638,7 @@ mod tests {
         let want = p("sinh(sqrt(2)*t)/sqrt(2)");
         let d = simplify(&add(vec![back.clone(), neg(want.clone())]));
         assert!(
-            super::super::verify::vanishes(&d, std::slice::from_ref(&want), "t", None),
+            crate::ode::verify::vanishes(&d, std::slice::from_ref(&want), "t", None),
             "{back}"
         );
     }

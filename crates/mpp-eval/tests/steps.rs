@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use mpp_core::tools::StepTree;
+use mpp_core::step_tree::StepTree;
 use mpp_eval::{Evaluated, LineResult, NoImports, Session};
 
 fn session() -> Session {

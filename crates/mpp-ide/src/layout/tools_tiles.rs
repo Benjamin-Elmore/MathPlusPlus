@@ -110,7 +110,7 @@ impl IdeApp {
             .id_salt("steps-tile")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                let mut stack: Vec<(usize, &mpp_core::tools::StepNode)> =
+                let mut stack: Vec<(usize, &mpp_core::step_tree::StepNode)> =
                     tree.roots.iter().rev().map(|n| (0, n)).collect();
                 while let Some((depth, n)) = stack.pop() {
                     ui.horizontal(|ui| {
