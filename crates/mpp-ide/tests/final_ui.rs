@@ -8,6 +8,9 @@ use mpp_ide::{theme, IdeApp};
 
 const SIZE: Vec2 = Vec2::new(1000.0, 900.0);
 
+/// Rendering is done one test at a time (the GPU device is shared).
+static RENDER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn scratch(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("mpp-final-{tag}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
@@ -73,7 +76,12 @@ $$ @sum_{n=1}^{@infty} x + 1 $$
         );
         assert!(b.height > 40.0, "the note adds a line of its own");
     }
-    let shot = h.render().expect("render");
+    let shot = {
+        let _one = RENDER
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        h.render().expect("render")
+    };
     shot.save(std::env::temp_dir().join("final-sum-note.png"))
         .expect("png");
 }
@@ -178,7 +186,12 @@ $$ @sum_{n=1}^{@infty} x + 1 $$
             assert!(lines.len() >= 2, "the note wraps at {width}: {lines:?}");
         }
     }
-    let shot = h.render().expect("render");
+    let shot = {
+        let _one = RENDER
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        h.render().expect("render")
+    };
     let dir = std::env::var_os("MPP_SHOT_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir);

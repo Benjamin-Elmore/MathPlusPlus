@@ -56,7 +56,13 @@ fn doc_text(h: &Harness<'static, IdeApp>) -> String {
         .unwrap_or_default()
 }
 
+/// Rendering is done one test at a time (the GPU device is shared).
+static RENDER: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn save_png(h: &mut Harness<'static, IdeApp>, name: &str) {
+    let _one = RENDER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let img = h.render().expect("render");
     let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/ide-snapshots");
     std::fs::create_dir_all(&dir).expect("create dir");
