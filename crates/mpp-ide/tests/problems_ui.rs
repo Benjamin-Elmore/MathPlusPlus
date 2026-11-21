@@ -523,3 +523,16 @@ fn problems_panel_dark() {
     save_png(&mut h, "problems-panel-dark.png");
     let _ = std::fs::remove_dir_all(dir);
 }
+
+/// The status bar counts the file on screen and says so, so it never seems to
+/// disagree with the Problems tile, which lists the whole project.
+#[test]
+fn the_status_bar_says_its_count_is_for_this_file() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = settled("$$ speed + 1 = ? $$\n", theme::ThemeChoice::Light);
+    settle(&mut h);
+    assert!(
+        h.query_by_label_contains("in this file").is_some(),
+        "the status bar names what it counts"
+    );
+}

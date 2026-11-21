@@ -1570,14 +1570,11 @@ pub(crate) fn prose_latex(note: &str) -> String {
     }
     fn flush_text(out: &mut String, text: &mut String) {
         if !text.is_empty() {
-            // `\text` drops spaces at its ends: they are written as spaces of maths.
-            if text.starts_with(' ') {
-                out.push_str("\\;");
-            }
-            out.push_str(&format!("\\text{{{}}}", plain_text(text)));
-            if text.ends_with(' ') {
-                out.push_str("\\;");
-            }
+            // The spaces at the ends stay inside `\text` (maths spacing commands
+            // are not drawn), so "with u" never runs together as "withu".
+            let lead = if text.starts_with(' ') { " " } else { "" };
+            let trail = if text.ends_with(' ') { " " } else { "" };
+            out.push_str(&format!("\\text{{{lead}{}{trail}}}", plain_text(text)));
             text.clear();
         }
     }
@@ -2057,15 +2054,45 @@ mod tests {
     #[test]
     fn step_notes_are_words_with_maths_in_them() {
         let tex = prose_latex("derivative of sin with u = 3·x");
-        assert!(tex.starts_with(r"\text{derivative of sin with}"), "{tex}");
+        assert!(tex.starts_with(r"\text{derivative of sin with }"), "{tex}");
         assert!(tex.contains("u = 3·x"), "{tex}");
         let dl = mpp_render::layout_latex(&tex, &mpp_render::LayoutOptions::display(18.0));
         // The words are upright Latin letters, not maths italics.
         assert!(dl.text().contains("derivativeofsinwith"), "{}", dl.text());
+        // A visible space between the last word and the maths ("with u", not "withu").
+        let glyphs: Vec<(char, f32, f32)> = dl
+            .items
+            .iter()
+            .filter_map(|p| match p {
+                mpp_render::Primitive::Glyph { ch, x, size, .. } => Some((*ch, *x, *size)),
+                _ => None,
+            })
+            .collect();
+        let h = glyphs.iter().rposition(|g| g.0 == 'h').expect("h of with");
+        let (_, hx, size) = glyphs[h];
+        let (_, ux, _) = glyphs[h + 1];
+        assert!(ux - hx > 0.75 * size, "gap {} at size {size}", ux - hx);
         assert_eq!(
             prose_latex("power rule on u^2 with u = x + 1"),
-            r"\text{power rule on}\; u^{2} \;\text{with}\; u = x + 1"
+            r"\text{power rule on } u^{2} \text{ with } u = x + 1"
         );
+    }
+
+    /// The Insert menu's proof puts the caret between the heading and the ∎; it
+    /// is drawn there, not back at the start of the block.
+    #[test]
+    fn the_caret_of_an_empty_proof_sits_after_its_heading() {
+        let src = "# P\n\n**Proof.**  ∎";
+        let page = page_for(src);
+        let at = page.caret_stop(16).expect("a stop");
+        let heading_end = page
+            .stops
+            .iter()
+            .filter(|s| s.offset == 17)
+            .map(|s| s.x)
+            .fold(f32::MIN, f32::max);
+        assert!(at.x > 20.0, "{at:?}");
+        assert_eq!(at.x, heading_end, "{:?}", page.stops);
     }
 
     fn page_for(src: &str) -> Page {

@@ -693,6 +693,19 @@ const TABLE: &[(&str, OpDisplay)] = &[
     ),
     ("lagrange", OpDisplay::Words("Lagrange multipliers")),
     // Linear algebra.
+    // Number theory.
+    (
+        "contfrac",
+        OpDisplay::Phrase(&[Text("Continued fraction of"), Args], "Continued fraction"),
+    ),
+    (
+        "convergents",
+        OpDisplay::Sentence(
+            &[Text("The first"), Arg(1), Text("convergents of"), Arg(0)],
+            2,
+            "Convergents",
+        ),
+    ),
     (
         "eig",
         OpDisplay::Phrase(&[Text("Eigenvalues of"), Args], "Eigenvalues"),

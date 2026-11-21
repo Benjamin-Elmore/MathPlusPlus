@@ -10,7 +10,7 @@ use crate::suggest::Suggester;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Replacement {
     pub range: Range<usize>,
-    pub with: &'static str,
+    pub with: String,
 }
 
 /// The ASCII letters just before `end`, as a byte range.
@@ -50,6 +50,25 @@ pub fn live_replacement(text: &str, caret: usize, typed: &str) -> Option<Replace
     }
     let last = typed.chars().next_back()?;
     if last.is_ascii_alphabetic() {
+        // A letter straight after a Greek letter that starts a word: the name was
+        // the start of a longer word ("alphabet", "pin"), so the name comes back.
+        let before = caret.checked_sub(last.len_utf8())?;
+        if let Some(g) = text[..before].chars().next_back() {
+            let start = before - g.len_utf8();
+            let word_start = text[..start]
+                .chars()
+                .next_back()
+                .is_none_or(|c| !c.is_alphanumeric() && c != '\\');
+            if let Some(sym) = lookup_char(g).filter(|s| s.kind == SymbolKind::Letter) {
+                if !g.is_ascii() && word_start && sym.name.chars().all(|c| c.is_ascii_alphabetic())
+                {
+                    return Some(Replacement {
+                        range: start..caret,
+                        with: format!("{}{last}", sym.name),
+                    });
+                }
+            }
+        }
         let w = word_before(text, caret);
         let word = &text[w.clone()];
         if word.len() < 2 || text[..w.start].ends_with('\\') {
@@ -59,7 +78,7 @@ pub fn live_replacement(text: &str, caret: usize, typed: &str) -> Option<Replace
         if sym.kind == SymbolKind::Letter && !has_longer_name(word) {
             return Some(Replacement {
                 range: w,
-                with: sym.unicode,
+                with: sym.unicode.to_string(),
             });
         }
         None
@@ -77,7 +96,7 @@ pub fn live_replacement(text: &str, caret: usize, typed: &str) -> Option<Replace
         if replaceable(sym.kind) && sym.unicode != word {
             return Some(Replacement {
                 range: w,
-                with: sym.unicode,
+                with: sym.unicode.to_string(),
             });
         }
         None
@@ -202,7 +221,7 @@ mod tests {
         for c in text.chars() {
             s.push(c);
             if let Some(r) = live_replacement(&s, s.len(), &c.to_string()) {
-                s.replace_range(r.range, r.with);
+                s.replace_range(r.range, &r.with);
             }
         }
         Some(s)
@@ -212,6 +231,13 @@ mod tests {
     fn alpha_becomes_a_letter() {
         assert_eq!(typed("alpha").as_deref(), Some("α"));
         assert_eq!(typed("2 alpha + beta").as_deref(), Some("2 α + β"));
+    }
+
+    #[test]
+    fn a_word_that_starts_with_a_greek_name_stays_a_word() {
+        assert_eq!(typed("alphabet").as_deref(), Some("alphabet"));
+        assert_eq!(typed("pin").as_deref(), Some("pin"));
+        assert_eq!(typed("2 pi r").as_deref(), Some("2 π r"));
     }
 
     #[test]

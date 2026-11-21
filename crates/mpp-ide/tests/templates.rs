@@ -1778,9 +1778,16 @@ fn empty_required_boxes_give_a_fill_in_hint_and_no_answer() {
         insert::fill_in_hint(&ed, &page, &(b.span.start..b.span.end)),
         None
     );
-    // An improper integral needs its bounds.
+    // An improper integral needs its bounds; while the caret is in the empty
+    // integrand, the hint names the integrand.
     let mut ed = Editor::new("");
     insert_into(&mut ed, "int.improper", None);
+    let page = page_of(&ed);
+    let b = &page.blocks[0];
+    assert_eq!(
+        insert::fill_in_hint(&ed, &page, &(b.span.start..b.span.end)).as_deref(),
+        Some("fill in: integrand")
+    );
     ed.insert_text("x");
     let page = page_of(&ed);
     let b = &page.blocks[0];

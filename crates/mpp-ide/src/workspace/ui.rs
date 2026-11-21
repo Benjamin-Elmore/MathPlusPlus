@@ -548,10 +548,12 @@ impl IdeApp {
                             Some(crate::diagnostics::Level::Warning) => c32(theme.warning),
                             _ => c32(theme.text),
                         };
+                        // The count is for the file on screen; the Problems tile
+                        // lists the whole project, so the bar says which it counts.
                         let text = if counts.problems() == 0 {
                             "No problems".to_string()
                         } else {
-                            counts.summary()
+                            format!("{} in this file", counts.summary())
                         };
                         // Clicking the count opens the Problems tile, like Ctrl+Shift+M.
                         if ui

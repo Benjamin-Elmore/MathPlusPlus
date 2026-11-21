@@ -152,7 +152,7 @@ fn fragment(code: &str) -> Seg {
 /// Rewrites a parser or evaluator message (with backticked source fragments)
 /// as a sentence of words and typeset maths. Line numbers are dropped.
 pub fn from_message(msg: &str) -> Rich {
-    let msg = strip_line_numbers(msg);
+    let msg = maths_after_colon(&strip_line_numbers(msg));
     let mut out = Rich::default();
     let mut rest = msg.as_str();
     while let Some(open) = rest.find('`') {
@@ -180,6 +180,28 @@ pub fn from_message(msg: &str) -> Rich {
     }
     out = prose(out, rest);
     sentence(out)
+}
+
+/// "these assumptions can't all hold: x > 0 and x < 0": the facts after the colon
+/// are maths (italic x), so they are marked as code for [`from_message`].
+fn maths_after_colon(msg: &str) -> String {
+    const HEAD: &str = "assumptions can't all hold: ";
+    let Some(at) = msg.find(HEAD) else {
+        return msg.to_string();
+    };
+    let (head, tail) = msg.split_at(at + HEAD.len());
+    if tail.contains('`') || tail.contains('$') {
+        return msg.to_string();
+    }
+    let (tail, stop) = match tail.strip_suffix('.') {
+        Some(t) => (t, "."),
+        None => (tail, ""),
+    };
+    let facts: Vec<String> = tail
+        .split(" and ")
+        .map(|f| format!("`{}`", f.trim()))
+        .collect();
+    format!("{head}{}{stop}", facts.join(" and "))
 }
 
 /// Words with inline maths between dollar signs (`Assume $n \neq -1$.`), the way
@@ -537,6 +559,20 @@ mod tests {
             "{r:?}"
         );
         assert_eq!(r.plain(), "θ has no value, so there is no number to give.");
+    }
+
+    #[test]
+    fn conflicting_assumptions_are_typeset_as_maths() {
+        let r = from_message("these assumptions can't all hold: x > 0 and x < -1");
+        let maths: Vec<&str> =
+            r.0.iter()
+                .filter_map(|s| match s {
+                    Seg::Math(m) => Some(m.as_str()),
+                    _ => None,
+                })
+                .collect();
+        assert_eq!(maths.len(), 2, "{r:?}");
+        assert!(maths[0].contains('x') && maths[1].contains('x'), "{r:?}");
     }
 
     #[test]

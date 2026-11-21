@@ -1,6 +1,6 @@
 # Checking identities and answers
 
-Write `\overset{?}{=}` (or `≟`, or `?=`) between two sides to check them. Math++ tries a
+Put ≟ (typed as `?=`) between two sides to check them. Math++ tries a
 symbolic proof first, then compares the sides at random points, and marks the line ✓ or ✗;
 a ✗ shows a point where the sides differ.
 

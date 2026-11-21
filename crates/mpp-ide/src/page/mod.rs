@@ -303,12 +303,27 @@ impl Page {
     /// greatest offset not past it (the first stop when there is none).
     pub fn caret_stop(&self, offset: usize) -> Option<CaretStop> {
         let mut best: Option<&CaretStop> = None;
+        let mut after: Option<&CaretStop> = None;
         for s in &self.stops {
             if s.offset <= offset {
                 match best {
                     Some(b) if b.offset > s.offset => {}
                     _ => best = Some(s),
                 }
+            } else if after
+                .is_none_or(|a| s.offset < a.offset || (s.offset == a.offset && s.x > a.x))
+            {
+                // Of the stops at the next offset, the one right before what
+                // follows (a heading's end and the ∎ after it share an offset).
+                after = Some(s);
+            }
+        }
+        // Spaces that are not drawn (between a proof's heading and its ∎) have no
+        // stop of their own: the caret goes to the nearer drawn neighbour, not
+        // back to the start of the block.
+        if let (Some(b), Some(a)) = (best, after) {
+            if b.offset < offset && a.offset - offset < offset - b.offset {
+                return Some(*a);
             }
         }
         best.or_else(|| self.stops.first()).copied()

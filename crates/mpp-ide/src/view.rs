@@ -1019,7 +1019,7 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
         if in_math {
             let caret = doc.editor.caret();
             if let Some(r) = live_replacement(doc.editor.text(), caret, &s) {
-                doc.editor.replace_inline(r.range, r.with);
+                doc.editor.replace_inline(r.range, &r.with);
             }
         }
     }

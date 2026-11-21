@@ -1,6 +1,6 @@
 # Applications of the integral
 
-A worksheet of the standard applications. Each operator is written `\operatorname{name}(…)`; an interval $[a, b]$ gives the bounds and $x = c$ or $y = c$ gives an axis.
+A worksheet of the standard applications. Each one is inserted from the Helpers group of the Insert menu; an interval $[a, b]$ gives the bounds and $x = c$ or $y = c$ gives an axis.
 
 ## Area between curves
 

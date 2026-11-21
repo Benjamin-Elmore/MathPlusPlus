@@ -643,7 +643,9 @@ pub fn readout_latex(r: &str) -> String {
 fn split_words(s: &str) -> (&str, &str) {
     let mut end = 0;
     for w in s.split(' ') {
-        if w.chars().count() >= 2 && w.chars().all(char::is_alphabetic) {
+        // A word may end a phrase with a comma ("Midpoint rule, n = 8").
+        let core = w.strip_suffix(',').unwrap_or(w);
+        if core.chars().count() >= 2 && core.chars().all(char::is_alphabetic) {
             end += w.len() + 1;
         } else {
             break;
@@ -673,4 +675,15 @@ pub fn export(st: &FigureState, path: &Path, mode: Mode) -> Result<(), String> {
         mpp_plot::to_png(&scene, 2.0).map_err(|e| e.to_string())?
     };
     std::fs::write(path, bytes).map_err(|e| format!("The figure could not be saved: {e}."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::readout_latex;
+
+    #[test]
+    fn readout_words_stay_words_before_a_comma() {
+        let tex = readout_latex("Midpoint rule, n = 8: 2.656");
+        assert!(tex.starts_with(r"\text{Midpoint rule, }n = 8"), "{tex}");
+    }
 }
