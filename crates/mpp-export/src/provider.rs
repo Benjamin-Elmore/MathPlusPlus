@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use mpp_eval::{Evaluated, Importer, LineKind, QueryMode};
 use mpp_plot::{Figure, PlotTheme};
-use mpp_render::{DataRows, LineResult, ResultKind, ResultProvider, ResultValue};
+use mpp_render::{DataRows, LineResult, ResultKind, ResultProvider, ResultValue, StepLine};
 use mpp_syntax::document::{Block, BlockId, DataImport, DisplayMath, Figure as FigureBlock};
 use mpp_syntax::math::{MathAst, RelOp};
 
@@ -203,6 +203,46 @@ impl ResultProvider for EvalProvider<'_> {
             .read_data(self.base_dir.as_deref(), path)
             .ok()?;
         Some(text)
+    }
+
+    fn display_steps(&self, block: &Block) -> Vec<Vec<StepLine>> {
+        let Some(br) = self.ev.block(block.id) else {
+            return vec![];
+        };
+        br.steps
+            .iter()
+            .map(|(_, steps)| {
+                steps
+                    .iter()
+                    .map(|st| StepLine {
+                        rule: st.rule.clone(),
+                        before: st.before.to_latex(),
+                        after: st.after.to_latex(),
+                        note: st.note.clone(),
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn display_errors(&self, block: &Block) -> Vec<String> {
+        if !self.results {
+            return vec![];
+        }
+        let Some(br) = self.ev.block(block.id) else {
+            return vec![];
+        };
+        br.diagnostics
+            .iter()
+            .filter(|d| {
+                // Errors, and the warnings that say a question has no real answer.
+                d.severity == mpp_syntax::Severity::Error
+                    || ["kept as written", "not evaluated", "got no answer"]
+                        .iter()
+                        .any(|w| d.message.contains(w))
+            })
+            .map(|d| d.message.clone())
+            .collect()
     }
 }
 

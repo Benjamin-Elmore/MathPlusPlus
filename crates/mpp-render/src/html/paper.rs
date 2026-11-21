@@ -41,20 +41,11 @@ impl Paper {
             style: doc.cite_style(),
             ..Paper::default()
         };
-        let mut h1 = 0;
-        let mut deeper = false;
         doc.walk(&mut |b: &Block| match &b.kind {
             BlockKind::Directive(Directive {
                 kind: DirectiveKind::NumberSections,
                 ..
             }) => p.number_sections = true,
-            BlockKind::Heading { level, .. } => {
-                if *level == 1 {
-                    h1 += 1;
-                } else {
-                    deeper = true;
-                }
-            }
             BlockKind::FootnoteDef { name, content } => {
                 p.notes.insert(name.clone(), plain_text(content));
             }
@@ -71,7 +62,7 @@ impl Paper {
         });
         // `- [@key] …` items under a References heading define keys too.
         p.refs.extend(doc.reference_list_entries());
-        p.base_level = if h1 == 1 && deeper { 2 } else { 1 };
+        p.base_level = doc.section_base_level();
         p.titles = doc
             .blocks
             .iter()

@@ -182,6 +182,49 @@ fn read_item(item: &ListItem, src: &str) -> ProofStep {
     }
 }
 
+/// A proof body without the `∎` / `\qed` typed at its end (in a closing paragraph or
+/// the last item of a closing list), for renderers that set the end mark themselves:
+/// the mark is automatic, and a typed one is absorbed into it.
+pub fn without_closing_qed(body: &[Block]) -> Vec<Block> {
+    let mut out = body.to_vec();
+    while let Some(last) = out.last_mut() {
+        match &mut last.kind {
+            BlockKind::Comment(_) | BlockKind::Directive(_) => {
+                // Look past trailing comments for the mark.
+                let n = out.len();
+                if n < 2 {
+                    break;
+                }
+                let mut head = without_closing_qed(&out[..n - 1]);
+                head.extend(out[n - 1..].iter().cloned());
+                return head;
+            }
+            BlockKind::Paragraph(p) if is_only_qed(p) => {
+                out.pop();
+            }
+            BlockKind::Paragraph(p) => {
+                *p = strip_qed(p);
+                break;
+            }
+            BlockKind::List(list) => {
+                strip_list_qed(list);
+                break;
+            }
+            _ => break,
+        }
+    }
+    out
+}
+
+fn strip_list_qed(list: &mut List) {
+    if let Some(item) = list.items.last_mut() {
+        match item.children.last_mut() {
+            Some(child) => strip_list_qed(child),
+            None => item.content = strip_qed(&item.content),
+        }
+    }
+}
+
 /// The item's inlines without a closing `∎` / `\qed` (and the line break before it).
 fn strip_qed(content: &[Inline]) -> Vec<Inline> {
     let mut out: Vec<Inline> = content.to_vec();

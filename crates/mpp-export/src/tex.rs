@@ -203,7 +203,6 @@ fn bib_key(k: &str) -> String {
 impl Writer<'_> {
     fn scan(&mut self) {
         let doc = &self.ev.document;
-        let (mut h1, mut deeper) = (0, false);
         let mut refs: Vec<Reference> = vec![];
         let mut files: Vec<String> = vec![];
         let mut number_sections = false;
@@ -212,13 +211,6 @@ impl Writer<'_> {
                 kind: DirectiveKind::NumberSections,
                 ..
             }) => number_sections = true,
-            BlockKind::Heading { level, .. } => {
-                if *level == 1 {
-                    h1 += 1;
-                } else {
-                    deeper = true;
-                }
-            }
             BlockKind::References(r) => {
                 refs.extend(r.entries.iter().cloned());
                 if let Some((p, _)) = &r.from {
@@ -235,7 +227,7 @@ impl Writer<'_> {
             }
         }
         self.refs = refs;
-        self.base_level = if h1 == 1 && deeper { 2 } else { 1 };
+        self.base_level = doc.section_base_level();
         let mut defs: Vec<(String, Vec<Inline>)> = vec![];
         doc.walk(&mut |b: &Block| {
             if let BlockKind::FootnoteDef { name, content } = &b.kind {
@@ -289,7 +281,7 @@ impl Writer<'_> {
         head.push_str("\\newtheorem{example}[theorem]{Example}\n");
         head.push_str("\\theoremstyle{remark}\n\\newtheorem*{remark}{Remark}\n");
         head.push_str("\\setlength{\\parindent}{0pt}\\setlength{\\parskip}{0.6em}\n");
-        let first_h1 = if self.base_level == 2 && !has_title {
+        let first_h1 = if self.base_level >= 2 && !has_title {
             self.ev.document.blocks.iter().find_map(|b| match &b.kind {
                 BlockKind::Heading { level: 1, content } => Some(content.clone()),
                 _ => None,
@@ -308,12 +300,33 @@ impl Writer<'_> {
         }
         let blocks = self.ev.document.blocks.clone();
         let mut skip_h1 = first_h1.is_some();
-        for b in &blocks {
+        let mut refs_done = false;
+        for (i, b) in blocks.iter().enumerate() {
             if skip_h1 {
                 if let BlockKind::Heading { level: 1, .. } = &b.kind {
                     skip_h1 = false;
                     continue;
                 }
+            }
+            // A `References` heading over a `- [@key] …` list becomes the
+            // bibliography itself, so every \cite resolves to a \bibitem.
+            match &b.kind {
+                BlockKind::Heading { content, .. }
+                    if mpp_syntax::document::is_references_heading(content)
+                        && blocks.get(i + 1).is_some_and(is_reference_list) =>
+                {
+                    continue;
+                }
+                BlockKind::List(_) if is_reference_list(b) && i > 0 => {
+                    if !refs_done {
+                        refs_done = true;
+                        self.references();
+                    }
+                    continue;
+                }
+                BlockKind::References(_) if refs_done => continue,
+                BlockKind::References(_) => refs_done = true,
+                _ => {}
             }
             self.block(b);
         }
@@ -405,15 +418,13 @@ impl Writer<'_> {
                     TheoremKind::Proof => "proof",
                 };
                 let _ = writeln!(self.out, "\\begin{{{env}}}");
-                self.blocks(&t.body);
                 if t.kind == TheoremKind::Proof {
-                    // amsthm adds the ∎ itself; drop a written one.
-                    let trimmed = self.out.trim_end().to_string();
-                    for end in ["$\\blacksquare$", "\\qed"] {
-                        if let Some(s) = trimmed.strip_suffix(end) {
-                            self.out = format!("{}\n", s.trim_end());
-                        }
-                    }
+                    // amsthm adds the ∎ itself; drop a written one, wherever it ends
+                    // (a closing paragraph or the last step of a list).
+                    let body = mpp_syntax::document::proof::without_closing_qed(&t.body);
+                    self.blocks(&body);
+                } else {
+                    self.blocks(&t.body);
                 }
                 let _ = writeln!(self.out, "\\end{{{env}}}");
             }
@@ -503,11 +514,16 @@ impl Writer<'_> {
         }
         let _ = writeln!(self.out, "\\begin{{thebibliography}}{{99}}");
         for r in &list {
-            let mut line = format!(
-                "{}. \\emph{{{}}}",
-                escape_text(r.author.trim_end_matches('.')),
-                escape_text(&r.title)
-            );
+            // An entry from a `- [@key] …` list keeps its text as written.
+            let mut line = if r.author.is_empty() && r.year.is_none() {
+                escape_text(r.title.trim_end_matches('.'))
+            } else {
+                format!(
+                    "{}. \\emph{{{}}}",
+                    escape_text(r.author.trim_end_matches('.')),
+                    escape_text(&r.title)
+                )
+            };
             if let Some(y) = &r.year {
                 let _ = write!(line, ", {}", escape_text(y));
             }
@@ -738,5 +754,18 @@ impl Writer<'_> {
             }
         }
         out
+    }
+}
+
+/// True for a list whose items are all reference entries (`- [@key] …`).
+fn is_reference_list(b: &Block) -> bool {
+    match &b.kind {
+        BlockKind::List(l) => {
+            !l.items.is_empty()
+                && l.items
+                    .iter()
+                    .all(|i| mpp_syntax::document::list_item_reference(i).is_some())
+        }
+        _ => false,
     }
 }

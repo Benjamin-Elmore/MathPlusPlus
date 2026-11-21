@@ -23,7 +23,9 @@ pub use display::{
     CaretStop, Color, DisplayList, HitBox, HitKind, NodePath, PathCmd, Primitive, Rect,
 };
 pub use font::{FontId, Fonts};
-pub use html::{render_html, render_html_with, DataRows, HtmlOptions, NoResults, ResultProvider};
+pub use html::{
+    render_html, render_html_with, DataRows, HtmlOptions, NoResults, ResultProvider, StepLine,
+};
 pub use layout::{
     layout_latex, layout_math, layout_node, IntegralLimits, LayoutOptions, LineResult, MathStyle,
     ResultKind, ResultValue,

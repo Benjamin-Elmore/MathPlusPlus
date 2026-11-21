@@ -1,0 +1,45 @@
+Title: A note on odd squares
+Author: K. Student
+Date: November 2026
+Abstract: We show that the square of an odd integer is odd, and check a classical sum.
+
+%number sections
+
+## Introduction
+
+Parity arguments are among the first proofs students meet [@hardy]. This note proves one and checks a closed form for the sum of the first $n$ odd numbers, equation \eqref{oddsum}.
+
+% Reminder to self: add the converse (if n² is odd then n is odd) next week.
+
+## The result
+
+**Definition.** An integer $p$ is *odd* if $p = 2m + 1$ for some integer $m$.
+
+**Theorem.** If $p$ is an odd integer, then $p^2$ is odd.
+
+**Proof.**
+1. $p = 2m + 1$ — by assumption.
+2. $p^2 = 4m^2 + 4m + 1$ — by algebra.
+3. $p^2 = 2(2m^2 + 2m) + 1$ — by algebra.
+4. $p^2$ is odd — by definition. ∎
+
+## A sum
+
+The sum of the first $n$ odd numbers is a perfect square:
+
+$$ \sum_{k=1}^{n} (2k - 1) = n^2 \label{oddsum} $$
+
+We can let Math++ check it:
+
+$$ \sum_{k=1}^{n} (2k - 1) \overset{?}{=} n^2 $$
+
+$$ \sum_{k=1}^{10} (2k - 1) = ? $$
+
+**Lemma.** For every $n \ge 1$, $\sum_{k=1}^{n} k = \frac{n(n+1)}{2}$.
+
+**Proof.** This is Gauss's formula — *(cited: the triangular-number formula [@knuth])*. ∎
+
+## References
+
+- [@hardy] G. H. Hardy and E. M. Wright, *An Introduction to the Theory of Numbers*, Oxford, 1938.
+- [@knuth] D. E. Knuth, *The Art of Computer Programming*, Vol. 1, Addison-Wesley, 1968.
