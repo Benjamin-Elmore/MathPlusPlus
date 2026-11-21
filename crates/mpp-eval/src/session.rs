@@ -226,6 +226,19 @@ impl Session {
         Arc::make_mut(&mut self.holders)
     }
 
+    /// Adds a field of maths whose operators documents can then call; the standard
+    /// domains stay (forgets cached results).
+    pub fn register_domain(&mut self, domain: Box<dyn mpp_core::Domain>) {
+        self.holders_mut().register_domain(domain);
+    }
+
+    /// Replaces the whole domain registry ([`mpp_core::Registry::standard`] is the
+    /// default; forgets cached results).
+    pub fn with_registry(mut self, registry: mpp_core::Registry) -> Self {
+        self.holders_mut().set_domains(registry);
+        self
+    }
+
     /// Replaces the importer (and forgets cached results).
     pub fn with_importer(mut self, importer: Arc<dyn Importer>) -> Self {
         self.importer = importer;

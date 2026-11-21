@@ -21,6 +21,13 @@ fn main() {
         })
         .unwrap_or_default();
     files.sort();
+    if files.is_empty() {
+        // A packaged crate without std/ would silently ship an empty standard library.
+        println!(
+            "cargo:warning=no .mpp files found in {}: the embedded standard library is empty",
+            std_dir.display()
+        );
+    }
 
     let mut out = String::from(
         "/// The embedded standard library: (import path, text), in name order.\n\

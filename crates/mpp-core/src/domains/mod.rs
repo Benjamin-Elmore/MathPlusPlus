@@ -128,8 +128,9 @@ pub trait Domain: Send + Sync {
 }
 
 /// Dispatches named operators to the registered domains, in registration order.
+#[derive(Clone)]
 pub struct Registry {
-    domains: Vec<Box<dyn Domain>>,
+    domains: Vec<std::sync::Arc<dyn Domain>>,
 }
 
 impl Default for Registry {
@@ -169,7 +170,7 @@ impl Registry {
 
     /// Adds a domain; later domains are tried after earlier ones.
     pub fn register(&mut self, domain: Box<dyn Domain>) {
-        self.domains.push(domain);
+        self.domains.push(domain.into());
     }
 
     /// True when some domain lists `op`.

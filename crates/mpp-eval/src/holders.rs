@@ -195,6 +195,9 @@ where
 #[derive(Clone)]
 pub struct Holders {
     evals: Vec<Arc<dyn HolderEval>>,
+    /// The fields of maths behind the named operators (`det`, `mean` …); a new field
+    /// registers here without any change to the core or the evaluator.
+    domains: Arc<mpp_core::Registry>,
 }
 
 impl fmt::Debug for Holders {
@@ -236,7 +239,25 @@ impl Holders {
 
     /// A registry with no evaluators: every holder stays as written.
     pub fn empty() -> Self {
-        Holders { evals: Vec::new() }
+        Holders {
+            evals: Vec::new(),
+            domains: Arc::new(mpp_core::Registry::standard()),
+        }
+    }
+
+    /// The domain registry the named operators are looked up in.
+    pub fn domains(&self) -> &mpp_core::Registry {
+        &self.domains
+    }
+
+    /// Replaces the domain registry ([`mpp_core::Registry::standard`] by default).
+    pub fn set_domains(&mut self, registry: mpp_core::Registry) {
+        self.domains = Arc::new(registry);
+    }
+
+    /// Adds a field of maths; it is asked after the domains already registered.
+    pub fn register_domain(&mut self, domain: Box<dyn mpp_core::Domain>) {
+        Arc::make_mut(&mut self.domains).register(domain);
     }
 
     /// Adds an evaluator; it is asked before the ones registered earlier.

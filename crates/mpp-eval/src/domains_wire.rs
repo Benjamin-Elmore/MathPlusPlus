@@ -62,7 +62,9 @@ const UNKNOWN_OPS: &[&str] = &["solve", "nsolve", "roots", "linsolve"];
 /// Deepest chain of definitions followed when deciding whether a name is a matrix.
 const MAX_LOOKUP_DEPTH: usize = 16;
 
-/// The standard registry, built once.
+/// The standard registry, built once. Only code with no evaluation context (the
+/// matrix arithmetic of [`finish`]) uses it; operators called in a document go through
+/// the session's own registry, [`crate::holders::Holders::domains`].
 pub fn registry() -> &'static Registry {
     static REGISTRY: OnceLock<Registry> = OnceLock::new();
     REGISTRY.get_or_init(Registry::standard)
@@ -122,7 +124,7 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
             [list] => Some(list_extreme(list, &**name == LIST_MAX)),
             _ => None,
         },
-        op if registry().handles(op) => {
+        op if ctx.holders.domains().handles(op) => {
             if args.iter().any(crate::holders::contains_holder) {
                 return None;
             }
@@ -144,7 +146,7 @@ fn call(op: &str, args: &[Expr], ctx: &Ctx<'_>) -> MathResult<Expr> {
         if ctx.logging() {
             dctx.steps = Some(&mut steps);
         }
-        let out = registry().call(op, args, &mut dctx);
+        let out = ctx.holders.domains().call(op, args, &mut dctx);
         notes.append(&mut dctx.notes);
         out
     };
@@ -161,7 +163,7 @@ fn operatorname(args: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
         return None;
     };
     let op = which.as_sym()?;
-    if !registry().handles(op) || !is_empty_tuple(sup) {
+    if !ctx.holders.domains().handles(op) || !is_empty_tuple(sup) {
         return None;
     }
     let ExprNode::Tuple(items) = body.node() else {
