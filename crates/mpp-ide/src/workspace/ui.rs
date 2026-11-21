@@ -437,7 +437,7 @@ impl IdeApp {
                                 .and_then(|r| h.file.strip_prefix(r).ok())
                                 .unwrap_or(&h.file);
                             ui.label(
-                                egui::RichText::new(rel.to_string_lossy().into_owned())
+                                egui::RichText::new(explorer::search::file_label(rel))
                                     .strong()
                                     .size(14.0),
                             );

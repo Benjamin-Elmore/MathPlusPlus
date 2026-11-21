@@ -165,6 +165,21 @@ $$ R(2) = ? $$
     );
 }
 
+/// The Insert menu's title block before it is filled in: no `Title:`, `Author:` or
+/// `Date:` keyword is drawn, only grey labels, and a filled title hides the others.
+#[test]
+fn an_empty_title_block_shows_no_keywords() {
+    let path = root().join("examples/title-fixture.mpp");
+    for src in [
+        "Title: \nAuthor: \nDate: \n",
+        "Title: Waves\nAuthor: \nDate: \n",
+    ] {
+        let (doc, ev) = evaluate(src, &path);
+        let text = page_text(src, &doc, &ev);
+        assert!(!text.contains(':'), "{src:?} shows {text:?}");
+    }
+}
+
 /// Transforms and helpers are typeset in textbook notation, never by operator name.
 #[test]
 fn helpers_and_transforms_show_no_operator_names() {

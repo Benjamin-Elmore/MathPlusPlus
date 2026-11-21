@@ -727,7 +727,7 @@ fn layout_block(
                 &mut c,
             )
         }
-        BlockKind::Title(t) => layout_title(input, cx, t, x0, w, &mut c),
+        BlockKind::Title(t) => layout_title(input, cx, t, b.span.end, x0, w, &mut c),
         BlockKind::References(r) => layout_references(input, cx, b, r, x0, w, &mut c)?,
         BlockKind::Comment(_) => return None,
         BlockKind::Paragraph(content) => flow(
@@ -1000,11 +1000,15 @@ fn layout_title(
     input: &PageInput<'_>,
     cx: &Cx<'_>,
     t: &TitleField,
+    end: usize,
     x0: f32,
     w: f32,
     c: &mut Canvas,
 ) -> f32 {
     let size = input.size;
+    if t.is_empty() && t.kind != TitleKind::Abstract {
+        return layout_empty_title_field(input, cx, t.kind, end, x0, w, c);
+    }
     match t.kind {
         TitleKind::Title => {
             size * 0.3
@@ -1062,6 +1066,56 @@ fn layout_title(
             size * 0.4 + h1 + h2 + size * 0.4
         }
     }
+}
+
+/// A title-block field with nothing written yet: a grey label naming it, like an
+/// empty box ("Author"), and the caret stop to type there. The file's keyword
+/// (`Author:`) is never drawn, and the paper and the exports leave the field out.
+fn layout_empty_title_field(
+    input: &PageInput<'_>,
+    cx: &Cx<'_>,
+    kind: TitleKind,
+    end: usize,
+    x0: f32,
+    w: f32,
+    c: &mut Canvas,
+) -> f32 {
+    let size = input.size;
+    let scale = match kind {
+        TitleKind::Title => 1.75,
+        TitleKind::Author => 1.1,
+        _ => 1.0,
+    };
+    let label = [Inline {
+        kind: InlineKind::Text(kind.as_str().into()),
+        span: Span::new(0, 0),
+    }];
+    let mut st = style(input, FontId::TextItalic, scale);
+    st.color = input.theme.muted;
+    let top = if kind == TitleKind::Title {
+        size * 0.3
+    } else {
+        0.0
+    };
+    let mut lc = Canvas::default();
+    let h = flow_center(cx, &label, st, x0, top, w, &mut lc);
+    // Generated words: drawn, with one caret stop where the text goes.
+    let left = lc
+        .items
+        .iter()
+        .filter_map(|p| match p {
+            Primitive::Glyph { x, .. } => Some(*x),
+            _ => None,
+        })
+        .fold(f32::INFINITY, f32::min);
+    c.items.extend(lc.items);
+    c.stops.push(CaretStop {
+        x: if left.is_finite() { left } else { x0 + w / 2.0 },
+        top,
+        bottom: top + h,
+        offset: end,
+    });
+    top + h
 }
 
 /// The reference list, drawn at the first `References` block: a "References"

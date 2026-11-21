@@ -180,6 +180,17 @@ fn block_at_line(
         if let Some((kind, offset)) = title_start(t) {
             return title_field(ctx, lines, i, kind, ts, ts + offset, out);
         }
+        // An empty `Author:` next to other title lines is a field still to fill in
+        // (the Insert menu's title block), not a sentence.
+        if let Some((kind, offset)) = title_keyword(t) {
+            let after_title = matches!(out.last().map(|b| &b.kind), Some(BlockKind::Title(_)));
+            let before_title = lines
+                .get(i + 1)
+                .is_some_and(|&l| title_keyword(trimmed(ctx, l).0).is_some());
+            if after_title || before_title {
+                return title_field(ctx, lines, i, kind, ts, ts + offset, out);
+            }
+        }
     }
     if let Some(head) = super::refs::head(t, ts) {
         return references(ctx, lines, i, head, ts, out);
@@ -1027,6 +1038,15 @@ fn title_start(t: &str) -> Option<(TitleKind, usize)> {
         if kind != TitleKind::Abstract && after.trim().is_empty() {
             return None;
         }
+        let gap = after.len() - after.trim_start().len();
+        Some((kind, kind.as_str().len() + 1 + gap))
+    })
+}
+
+/// `Title:`, `Author:` … with or without words after the colon.
+fn title_keyword(t: &str) -> Option<(TitleKind, usize)> {
+    TitleKind::ALL.iter().find_map(|&kind| {
+        let after = t.strip_prefix(kind.as_str())?.strip_prefix(':')?;
         let gap = after.len() - after.trim_start().len();
         Some((kind, kind.as_str().len() + 1 + gap))
     })

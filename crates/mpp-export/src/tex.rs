@@ -404,7 +404,7 @@ impl Writer<'_> {
             .document
             .blocks
             .iter()
-            .any(|b| matches!(&b.kind, BlockKind::Title(t) if t.kind == TitleKind::Title));
+            .any(|b| matches!(&b.kind, BlockKind::Title(t) if t.kind == TitleKind::Title && !t.is_empty()));
         let mut head = String::new();
         head.push_str("% Exported from Math++. Compile with pdflatex.\n");
         head.push_str("\\documentclass[11pt,a4paper]{article}\n");
@@ -606,7 +606,7 @@ impl Writer<'_> {
             .blocks
             .iter()
             .filter_map(|b| match &b.kind {
-                BlockKind::Title(t) => Some(t.clone()),
+                BlockKind::Title(t) if !t.is_empty() => Some(t.clone()),
                 _ => None,
             })
             .collect();
