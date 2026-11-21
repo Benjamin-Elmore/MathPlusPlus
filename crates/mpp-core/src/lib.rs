@@ -11,6 +11,7 @@ pub mod eval;
 pub mod expand;
 pub mod expr;
 pub mod factor;
+pub mod family;
 pub mod functions;
 pub mod number;
 pub mod poly;

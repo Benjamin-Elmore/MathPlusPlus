@@ -463,6 +463,7 @@ fn plain(e: &Expr) -> (String, Prec) {
                 .join(" ∪ "),
             Prec::Add,
         ),
+        ExprNode::Apply(..) if crate::family::as_member(e).is_some() => plain_member(e),
         ExprNode::Apply(name, args) if args.is_empty() && &**name == EULER_GAMMA => {
             ("γ".into(), Prec::Atom)
         }
@@ -1030,6 +1031,7 @@ fn latex(e: &Expr) -> (String, Prec) {
                 .join(" \\cup "),
             Prec::Add,
         ),
+        ExprNode::Apply(..) if crate::family::as_member(e).is_some() => latex_member(e),
         ExprNode::Apply(name, args) if args.is_empty() && &**name == EULER_GAMMA => {
             ("\\gamma".into(), Prec::Atom)
         }
@@ -1556,6 +1558,39 @@ pub fn readable(text: &str) -> String {
             }
         })
         .collect()
+}
+
+/// A family member as a subscript: `a_1` (plain), `a₁` (Unicode) or `a_(i + 1)`.
+fn plain_member(e: &Expr) -> (String, Prec) {
+    let Some((base, index)) = crate::family::as_member(e) else {
+        return plain(e);
+    };
+    let base = if unicode() {
+        unicode_name(base)
+    } else {
+        base.to_string()
+    };
+    let (s, p) = plain(index);
+    if unicode() {
+        if let Some(sub) = s.chars().map(subscript).collect::<Option<String>>() {
+            if p == Prec::Atom && !sub.is_empty() {
+                return (format!("{base}{sub}"), Prec::Atom);
+            }
+        }
+    }
+    let sub = if p == Prec::Atom { s } else { format!("({s})") };
+    (format!("{base}_{sub}"), Prec::Atom)
+}
+
+/// A family member in LaTeX: `a_{1}`.
+fn latex_member(e: &Expr) -> (String, Prec) {
+    let Some((base, index)) = crate::family::as_member(e) else {
+        return latex(e);
+    };
+    (
+        format!("{}_{{{}}}", latex_name(base), latex(index).0),
+        Prec::Atom,
+    )
 }
 
 #[cfg(test)]

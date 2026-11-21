@@ -671,8 +671,8 @@ impl Resolver<'_> {
     /// The families (`X_j ∼ D`) whose members `e` uses, with their distributions.
     fn families_in(&mut self, e: &Expr) -> Result<Vec<(String, Dist)>> {
         fn walk(e: &Expr, out: &mut Vec<String>) {
-            if let ExprNode::Apply(name, args) = e.node() {
-                if args.len() == 1 && !out.iter().any(|n| **n == **name) {
+            if let Some((name, _)) = mpp_core::family::as_member(e) {
+                if !out.iter().any(|n| n == name) {
                     out.push(name.to_string());
                 }
             }
@@ -742,7 +742,12 @@ impl Resolver<'_> {
         let lo = bound(self, lower, "start")?;
         let hi = bound(self, upper, "end")?;
         let mut masked: Vec<Name> = vec![var.clone()];
-        masked.extend(families.iter().map(|(n, _)| Name::from(n.as_str())));
+        masked.extend(families.iter().flat_map(|(n, _)| {
+            [
+                Name::from(n.as_str()),
+                Name::from(format!("{n}{}", mpp_core::family::MARK).as_str()),
+            ]
+        }));
         let body = self.with_mask(&masked, |r| r.resolve(expr))?.simplify();
         let seed = self.document_seed();
         let v = crate::random::mc_sum(&crate::random::McSum {
@@ -788,7 +793,12 @@ impl Resolver<'_> {
         }
         let families = self.families_in(arg)?;
         let mut masked: Vec<Name> = rvs.iter().map(|(n, _)| Name::from(n.as_str())).collect();
-        masked.extend(families.iter().map(|(n, _)| Name::from(n.as_str())));
+        masked.extend(families.iter().flat_map(|(n, _)| {
+            [
+                Name::from(n.as_str()),
+                Name::from(format!("{n}{}", mpp_core::family::MARK).as_str()),
+            ]
+        }));
         let resolved = self.with_mask(&masked, |r| r.resolve(arg))?.simplify();
         // Each family member is its own variable (members are independent).
         let mut members: Vec<(Expr, String)> = Vec::new();

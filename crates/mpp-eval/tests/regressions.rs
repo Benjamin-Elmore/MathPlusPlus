@@ -526,21 +526,19 @@ fn definitions_after_a_comma_and_numbers_that_are_not_numbers() {
 
 #[test]
 fn sums_over_an_indexed_family_keep_each_member() {
-    // `a_i` used to be one name, so Σ_{i=1}^3 a_i came back as 3 a_i.
-    assert_eq!(
-        answer(r"$$ \sum_{i=1}^{3} a_i = ? $$"),
-        "a(1) + a(2) + a(3)"
-    );
+    // `a_i` used to be one name, so Σ_{i=1}^3 a_i came back as 3 a_i; the members
+    // print as subscripts, never as calls a(1).
+    assert_eq!(answer(r"$$ \sum_{i=1}^{3} a_i = ? $$"), "a_1 + a_2 + a_3");
     assert_eq!(
         answer(r"$$ \sum_{j=1}^{2} x_j y_j = ? $$"),
-        "x(1)*y(1) + x(2)*y(2)"
+        "x_1*y_1 + x_2*y_2"
     );
     // A bare sum takes its index from the subscript, over i = 1, …, n.
     let src = r"Let $A := \sum a_i^2$ and $C := \sum a_i b_i$.
 
 $$ A = ? $$";
     assert!(errors(src).is_empty(), "{:?}", errors(src));
-    assert!(answer(src).contains("a(i)^2"), "{}", answer(src));
+    assert!(answer(src).contains("a_i^2"), "{}", answer(src));
     // A defined member is still that name.
     let src = r"Let $a_i := 2$.
 
@@ -554,7 +552,7 @@ fn sums_and_products_written_with_an_ellipsis() {
     assert_eq!(answer(r"$$ n + (n-1) + \dots + 1 = ? $$"), "n*(n + 1)/2");
     assert_eq!(answer(r"$$ 1 + 3 + 5 + \dots + 9 = ? $$"), "25");
     assert_eq!(answer(r"$$ 1 \cdot 2 \cdots 5 = ? $$"), "120");
-    assert!(answer(r"$$ p_1 p_2 \cdots p_k = ? $$").contains("p(j)"));
+    assert!(answer(r"$$ p_1 p_2 \cdots p_k = ? $$").contains("p_j"));
     // A decimal expansion with symbolic digits is prose, not a syntax error.
     let src = r"Write $f(n) = 0.d_{n1} d_{n2} d_{n3} \dots$ and $x = 0.e_1 e_2 \dots$ here.";
     assert!(errors(src).is_empty(), "{:?}", errors(src));

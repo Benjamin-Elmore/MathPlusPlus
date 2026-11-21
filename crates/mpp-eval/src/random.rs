@@ -93,17 +93,12 @@ pub struct McSum<'a> {
     pub product: bool,
 }
 
-/// A family member inside a resolved expression: `X(j)` for the family X.
+/// A family member inside a resolved expression (`X_j` for the family X).
 pub fn member_of(e: &Expr, families: &[(String, Dist)]) -> Option<(String, Expr)> {
-    let ExprNode::Apply(name, args) = e.node() else {
-        return None;
-    };
-    let [index] = args.as_slice() else {
-        return None;
-    };
+    let (name, index) = mpp_core::family::as_member(e)?;
     families
         .iter()
-        .any(|(n, _)| **n == **name)
+        .any(|(n, _)| n == name)
         .then(|| (name.to_string(), index.clone()))
 }
 

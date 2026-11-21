@@ -666,7 +666,7 @@ impl<'a> Lowerer<'a> {
                 let upper = self.lower(&sl)?;
                 return Ok(Some(Expr::new(ExprNode::BigOp {
                     kind,
-                    expr: Expr::apply(&b1, vec![Expr::sym(&var)]),
+                    expr: mpp_core::family::member(&b1, Expr::sym(&var)),
                     var: var.as_str().into(),
                     lower: i1,
                     upper,
@@ -734,7 +734,7 @@ impl<'a> Lowerer<'a> {
     }
 
     /// `a_i` inside a sum over i, with neither `a_i` nor `a` defined: the i-th member
-    /// of the family a, written `a(i)` so that each term of the sum is its own value
+    /// of the family a (see [`mpp_core::family`]), so that each term of the sum is its own value
     /// (never `a_i` as one name repeated n times).
     fn indexed_member(&mut self, n: &Name) -> Result<Option<Expr>, Located> {
         let Some(sub) = &n.sub else {
@@ -758,7 +758,7 @@ impl<'a> Lowerer<'a> {
             return Ok(None);
         }
         let i = self.lower(sub)?;
-        Ok(Some(Expr::apply(&base, vec![i])))
+        Ok(Some(mpp_core::family::member(&base, i)))
     }
 
     fn data_bounds(&self, index: &str, body: &Node) -> Option<(Expr, Expr)> {
