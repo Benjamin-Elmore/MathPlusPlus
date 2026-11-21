@@ -146,14 +146,18 @@ impl LineResult {
         let unicode = match v {
             Value::Function { params, body } => (*t == format!("({}) ↦ {body}", params.join(", ")))
                 .then(|| format!("({}) ↦ {}", params.join(", "), body.to_text())),
-            Value::Table(_) => None,
+            Value::Table(table) => mpp_core::tools::table::rows(table)
+                .filter(|rows| *t == mpp_core::tools::table::to_text(rows))
+                .map(|rows| mpp_core::tools::table::to_unicode(&rows)),
             other => {
                 let e = other.expr();
                 (*t == e.to_string()).then(|| e.to_text())
             }
         };
-        if let Some(u) = unicode {
-            self.text = Some(u);
+        match unicode {
+            Some(u) => self.text = Some(u),
+            // A presentation of its own made from plain printing: never the `*` sign.
+            None => self.text = Some(crate::error::readable(t)),
         }
     }
 

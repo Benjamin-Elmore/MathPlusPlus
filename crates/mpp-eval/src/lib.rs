@@ -54,7 +54,7 @@ pub mod watch;
 
 pub use calc::{calc_line, CalcError};
 pub use check::Verdict;
-pub use error::{EvalError, Located};
+pub use error::{internal_marker, EvalError, Located};
 pub use files::{
     EmbeddedSources, FileImporter, FsSource, LayeredSource, Location, SourceProvider, Stamp,
 };

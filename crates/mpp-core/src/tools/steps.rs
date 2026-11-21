@@ -66,7 +66,12 @@ impl StepNode {
 
     /// The step as one line of text: `rule: before = after (note)`.
     pub fn line(&self) -> String {
-        let mut out = format!("{}: {} = {}", self.rule, self.before, self.after);
+        let mut out = format!(
+            "{}: {} = {}",
+            self.rule,
+            self.before.to_text(),
+            self.after.to_text()
+        );
         if let Some(n) = &self.note {
             let _ = write!(out, " ({n})");
         }
@@ -503,7 +508,7 @@ mod tests {
         assert_eq!(tree.roots.len(), 1, "{}", tree.to_text());
         let sub = &tree.roots[0];
         assert_eq!(sub.rule, "substitution");
-        assert_eq!(sub.note.as_deref(), Some("u = x^2, du = 2*x dx"));
+        assert_eq!(sub.note.as_deref(), Some("u = x^2, du = 2·x dx"));
         assert_eq!(
             sub.children.last().map(|c| c.rule.as_str()),
             Some("substitute back")

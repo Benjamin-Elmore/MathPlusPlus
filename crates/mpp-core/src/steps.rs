@@ -37,7 +37,7 @@ impl Steps {
             rule: rule.into(),
             before,
             after,
-            note,
+            note: note.map(|n| crate::printer::readable(&n)),
         });
     }
 

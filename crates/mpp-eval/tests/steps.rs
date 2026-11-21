@@ -65,7 +65,7 @@ fn substitution_shows_u_and_du() {
         .find(|(_, n)| n.rule == "substitution")
         .map(|(_, n)| n.clone())
         .expect("a substitution step");
-    assert_eq!(sub.note.as_deref(), Some("u = x^2, du = 2*x dx"));
+    assert_eq!(sub.note.as_deref(), Some("u = x^2, du = 2·x dx"));
     assert_eq!(
         sub.children.last().map(|c| c.rule.as_str()),
         Some("substitute back")

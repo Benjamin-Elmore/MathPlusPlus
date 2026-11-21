@@ -62,6 +62,23 @@ pub fn to_text(rows: &[(String, Expr)]) -> String {
     out
 }
 
+/// Unicode text: [`to_text`] with each value as [`Expr::to_text`] reads it.
+pub fn to_unicode(rows: &[(String, Expr)]) -> String {
+    let mut out = String::new();
+    for (i, (label, value)) in rows.iter().enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        let shown = match value.node() {
+            ExprNode::Set(items) if items.is_empty() => "none".into(),
+            ExprNode::Bool(_) => show_plain(value),
+            _ => value.to_text(),
+        };
+        let _ = write!(out, "{label}: {shown}");
+    }
+    out
+}
+
 /// LaTeX: a two-column `array` with the labels as text.
 pub fn to_latex(rows: &[(String, Expr)]) -> String {
     let body: Vec<String> = rows

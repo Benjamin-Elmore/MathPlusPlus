@@ -674,12 +674,12 @@ $$ g = ? \qquad k = ? \qquad 2k = ? $$";
         .filter(|l| matches!(l.kind, mpp_eval::LineKind::Definition { .. }))
         .map(|l| l.text.clone())
         .collect();
-    assert_eq!(defs, vec![Some("9.81 m/s^2".into()), Some("0.1".into())]);
+    assert_eq!(defs, vec![Some("9.81 m/s²".into()), Some("0.1".into())]);
     let shown: Vec<(Option<String>, Option<String>)> = ev
         .queries()
         .map(|(_, l)| (l.text.clone(), l.latex.clone()))
         .collect();
-    assert_eq!(shown[0].0.as_deref(), Some("9.81 m/s^2"));
+    assert_eq!(shown[0].0.as_deref(), Some("9.81 m/s²"));
     assert!(shown[0]
         .1
         .as_deref()

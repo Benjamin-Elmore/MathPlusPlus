@@ -110,6 +110,8 @@ struct Presented {
     text: Option<String>,
     latex: Option<String>,
     approx: Option<String>,
+    /// The plain form, when `text` is a Unicode reading of its own.
+    plain: Option<String>,
 }
 
 const ANGLE_FUNCTIONS: &[&str] = &[
@@ -193,6 +195,7 @@ fn present(lr: &LineResult, fmt: Option<&NumberFormat>) -> Option<Presented> {
                     body.to_latex()
                 )),
                 approx: lr.approx.clone(),
+                plain: None,
             })
         });
     }
@@ -221,6 +224,7 @@ fn shown(
             text: Some(format!("{deg}°")),
             latex: Some(format!("{}^\\circ", deg.to_latex())),
             approx,
+            plain: None,
         });
     }
     // Units.
@@ -231,9 +235,10 @@ fn shown(
                 _ => p.approx,
             };
             return Some(Presented {
-                text: Some(p.text),
+                text: Some(p.unicode),
                 latex: Some(p.latex),
                 approx,
+                plain: Some(p.text),
             });
         }
         Ok(None) => {}
@@ -244,6 +249,7 @@ fn shown(
             text: Some(text),
             latex: Some(latex),
             approx: None,
+            plain: None,
         });
     }
     let Some(mode) = mode else {
@@ -252,6 +258,7 @@ fn shown(
             text: Some(e.to_string()),
             latex: Some(e.to_latex()),
             approx: lr.approx.clone(),
+            plain: None,
         });
     };
     let mut approx = None;
@@ -301,6 +308,7 @@ fn shown(
         text,
         latex,
         approx,
+        plain: None,
     })
 }
 
@@ -367,12 +375,32 @@ impl LineResult {
         &self,
         fmt: &NumberFormat,
     ) -> (Option<String>, Option<String>, Option<String>) {
+        let (text, latex, approx, _) = self.reformat_full(fmt);
+        (text, latex, approx)
+    }
+
+    /// [`LineResult::reformat_all`] with the plain form, when the shown text is a
+    /// Unicode reading of its own (a quantity with units).
+    fn reformat_full(
+        &self,
+        fmt: &NumberFormat,
+    ) -> (
+        Option<String>,
+        Option<String>,
+        Option<String>,
+        Option<String>,
+    ) {
         if self.is_derived() {
             if let Some(p) = present(self, Some(fmt)) {
-                return (p.text, p.latex, p.approx);
+                return (p.text, p.latex, p.approx, p.plain);
             }
         }
-        (self.text.clone(), self.latex.clone(), self.approx.clone())
+        (
+            self.text.clone(),
+            self.latex.clone(),
+            self.approx.clone(),
+            self.plain.clone(),
+        )
     }
 
     /// The text and LaTeX of the result under `fmt`, without changing the line. The
@@ -396,13 +424,13 @@ impl LineResult {
             angle,
         });
         if derived {
-            let (text, latex, approx) = self.reformat_all(fmt);
+            let (text, latex, approx, plain) = self.reformat_full(fmt);
             self.text = text;
             self.latex = latex;
             if matches!(self.kind, LineKind::Query { .. }) {
                 self.approx = approx;
             }
-            self.plain = None;
+            self.plain = plain;
             self.present_text();
         }
     }

@@ -648,6 +648,8 @@ fn integral(
 #[derive(Debug, Clone, PartialEq)]
 pub struct Presented {
     pub text: String,
+    /// The Unicode reading of `text` (`3t m/s²` for `3*t m/s^2`).
+    pub unicode: String,
     pub latex: String,
     /// The decimal value with its unit, when the exact value is not a plain fraction.
     pub approx: Option<String>,
@@ -714,6 +716,7 @@ pub fn present(e: &Expr) -> MathResult<Option<Presented>> {
             let t = truth.to_string();
             return Ok(Some(Presented {
                 text: t.clone(),
+                unicode: t.clone(),
                 latex: format!("\\text{{{t}}}"),
                 approx: None,
             }));
@@ -729,14 +732,16 @@ pub fn present(e: &Expr) -> MathResult<Option<Presented>> {
             let approx = approx_of(&q);
             Presented {
                 text: q.to_string(),
+                unicode: q.to_text(),
                 latex: q.latex(),
                 approx,
             }
         }
         Folded::Unknown => {
-            let (text, latex) = show_raw(e);
+            let (text, unicode, latex) = show_raw(e);
             Presented {
                 text,
+                unicode,
                 latex,
                 approx: None,
             }
@@ -747,10 +752,10 @@ pub fn present(e: &Expr) -> MathResult<Option<Presented>> {
 
 /// Entries of a tuple, set or interval shown one by one: `(150 cm, 160 cm)`.
 fn present_each(e: &Expr) -> MathResult<Option<Presented>> {
-    let one = |x: &Expr| -> MathResult<(String, String)> {
+    let one = |x: &Expr| -> MathResult<(String, String, String)> {
         Ok(match present(x)? {
-            Some(p) => (p.text, p.latex),
-            None => (x.to_string(), x.to_latex()),
+            Some(p) => (p.text, p.unicode, p.latex),
+            None => (x.to_string(), x.to_text(), x.to_latex()),
         })
     };
     let (parts, open, close, lopen, lclose): (Vec<&Expr>, &str, &str, &str, &str) = match e.node() {
@@ -771,14 +776,17 @@ fn present_each(e: &Expr) -> MathResult<Option<Presented>> {
         _ => return Ok(None),
     };
     let mut text = Vec::with_capacity(parts.len());
+    let mut unicode = Vec::with_capacity(parts.len());
     let mut latex = Vec::with_capacity(parts.len());
     for p in parts {
-        let (t, l) = one(p)?;
+        let (t, u, l) = one(p)?;
         text.push(t);
+        unicode.push(u);
         latex.push(l);
     }
     Ok(Some(Presented {
         text: format!("{open}{}{close}", text.join(", ")),
+        unicode: format!("{open}{}{close}", unicode.join(", ")),
         latex: format!("{lopen}{}{lclose}", latex.join(", ")),
         approx: None,
     }))
@@ -869,18 +877,20 @@ pub fn approximate(e: &Expr) -> MathResult<Option<String>> {
 }
 
 /// Text and LaTeX of an expression with unit factors written as units.
-fn show_raw(e: &Expr) -> (String, String) {
+fn show_raw(e: &Expr) -> (String, String, String) {
     let mut units: Vec<Unit> = Vec::new();
     let replaced = replace_factors(e, &mut units);
     let mut text = replaced.to_string();
+    let mut unicode = replaced.to_text();
     let mut latex = replaced.to_latex();
     for (i, u) in units.iter().enumerate() {
         let key = placeholder(i);
         text = text.replace(&key, &u.text());
+        unicode = unicode.replace(&key, &u.unicode_text());
         latex = latex.replace(&format!("\\mathrm{{{key}}}"), &u.latex());
         latex = latex.replace(&key, &u.latex());
     }
-    (text, latex)
+    (text, unicode, latex)
 }
 
 fn placeholder(i: usize) -> String {

@@ -366,7 +366,11 @@ fn plain_number(n: &Number) -> (String, Prec) {
     if let Some((s, h)) = crate::display::render_active(n, false) {
         return (s, hint_prec(h));
     }
-    let s = n.to_string();
+    let mut s = n.to_string();
+    if unicode() && matches!(n, Number::Complex(..) | Number::ComplexFloat(..)) {
+        // `2i`, not `2*i`.
+        s = s.replace("*i", "i");
+    }
     let prec = match n {
         Number::Rational(r) if r.is_negative() => Prec::Neg,
         Number::Rational(r) if !r.is_integer() => Prec::Mul,
@@ -380,6 +384,9 @@ fn plain_number(n: &Number) -> (String, Prec) {
 }
 
 fn plain(e: &Expr) -> (String, Prec) {
+    if let Some(u) = plain_units(e) {
+        return u;
+    }
     match e.node() {
         ExprNode::Num(n) => plain_number(n),
         ExprNode::Sym(s) if unicode() => (unicode_name(s), Prec::Atom),
@@ -948,6 +955,9 @@ fn lparen(s: String, prec: Prec, min: Prec) -> String {
 }
 
 fn latex(e: &Expr) -> (String, Prec) {
+    if let Some(u) = latex_units(e) {
+        return u;
+    }
     match e.node() {
         ExprNode::Num(n) => latex_number(n),
         ExprNode::Sym(s) => (latex_name(s), Prec::Atom),
@@ -1371,6 +1381,181 @@ impl Expr {
         let _restore = UnicodeGuard(UNICODE.with(|u| u.replace(true)));
         plain(self).0
     }
+}
+
+// ---- unit factors --------------------------------------------------------------------
+
+/// Name prefix of a unit factor (`unit:m/s^2()`, see `mpp_eval::units_wire`).
+pub const UNIT_FACTOR_PREFIX: &str = "unit:";
+/// `unit as(value, ⟨unit⟩)`: a value in exactly this unit.
+pub const UNIT_AS: &str = "unit as";
+/// `unit convert(expr, ⟨unit⟩)`: `expr in unit` before evaluation.
+pub const UNIT_CONVERT: &str = "unit convert";
+
+/// The unit of a unit factor `⟨u⟩`, or of a power `⟨u⟩^k` with a rational k.
+fn unit_factor(e: &Expr) -> Option<crate::units::Unit> {
+    match e.node() {
+        ExprNode::Apply(name, args) if args.is_empty() => {
+            crate::units::parse_unit(name.strip_prefix(UNIT_FACTOR_PREFIX)?).ok()
+        }
+        ExprNode::Pow(b, x) => {
+            let u = unit_factor(b)?;
+            let r = x.as_number()?.as_rational()?;
+            let k = num_rational::Rational64::new(
+                num_traits::ToPrimitive::to_i64(r.numer())?,
+                num_traits::ToPrimitive::to_i64(r.denom())?,
+            );
+            u.powr(k).ok()
+        }
+        _ => None,
+    }
+}
+
+/// A product split into its unit factors (combined into one unit) and the rest, when
+/// it has any unit factor.
+fn split_units(e: &Expr) -> Option<(Expr, crate::units::Unit)> {
+    if let Some(u) = unit_factor(e) {
+        return Some((Expr::one(), u));
+    }
+    let ExprNode::Mul(fs) = e.node() else {
+        return None;
+    };
+    let mut unit = crate::units::Unit::one();
+    let mut rest = Vec::with_capacity(fs.len());
+    let mut any = false;
+    for f in fs {
+        match unit_factor(f) {
+            Some(u) => {
+                unit = unit.mul(&u).ok()?;
+                any = true;
+            }
+            None => rest.push(f.clone()),
+        }
+    }
+    any.then(|| (crate::simplify::mul(rest), unit))
+}
+
+/// A unit as text: `m/s^2` (plain) or `m/s²` (Unicode).
+fn unit_text(u: &crate::units::Unit) -> String {
+    if unicode() {
+        u.unicode_text()
+    } else {
+        u.text()
+    }
+}
+
+/// `value unit` in plain or Unicode text.
+fn plain_with_unit(rest: &Expr, u: &crate::units::Unit) -> (String, Prec) {
+    let unit = unit_text(u);
+    if u.is_one() {
+        return plain(rest);
+    }
+    if rest.is_one() {
+        return (unit, Prec::Atom);
+    }
+    let (s, p) = plain(rest);
+    let value = paren(s, p, Prec::Mul);
+    if unit == "°" {
+        return (format!("{value}°"), Prec::Mul);
+    }
+    (format!("{value} {unit}"), Prec::Mul)
+}
+
+/// `value\,\mathrm{unit}` in LaTeX.
+fn latex_with_unit(rest: &Expr, u: &crate::units::Unit) -> (String, Prec) {
+    if u.is_one() {
+        return latex(rest);
+    }
+    let unit = if u.text() == "°" {
+        "^\\circ".to_string()
+    } else {
+        u.latex()
+    };
+    if rest.is_one() {
+        return (unit, Prec::Atom);
+    }
+    let (s, p) = latex(rest);
+    let value = lparen(s, p, Prec::Mul);
+    if u.text() == "°" {
+        return (format!("{value}{unit}"), Prec::Mul);
+    }
+    (format!("{value}\\,{unit}"), Prec::Mul)
+}
+
+/// The plain or Unicode text of the unit operators (`None` for anything else).
+fn plain_units(e: &Expr) -> Option<(String, Prec)> {
+    if let Some((rest, u)) = split_units(e) {
+        return Some(plain_with_unit(&rest, &u));
+    }
+    match e.node() {
+        ExprNode::Apply(name, args) if &**name == UNIT_AS && args.len() == 2 => {
+            let (rest, u) =
+                split_units(&args[1]).unwrap_or((args[1].clone(), crate::units::Unit::one()));
+            Some(plain_with_unit(
+                &crate::simplify::mul(vec![args[0].clone(), rest]),
+                &u,
+            ))
+        }
+        ExprNode::Apply(name, args) if &**name == UNIT_CONVERT && args.len() == 2 => {
+            let (a, pa) = plain(&args[0]);
+            let (b, _) = plain(&args[1]);
+            Some((format!("{} in {b}", paren(a, pa, Prec::Mul)), Prec::Rel))
+        }
+        _ => None,
+    }
+}
+
+/// The LaTeX of the unit operators (`None` for anything else).
+fn latex_units(e: &Expr) -> Option<(String, Prec)> {
+    if let Some((rest, u)) = split_units(e) {
+        return Some(latex_with_unit(&rest, &u));
+    }
+    match e.node() {
+        ExprNode::Apply(name, args) if &**name == UNIT_AS && args.len() == 2 => {
+            let (rest, u) =
+                split_units(&args[1]).unwrap_or((args[1].clone(), crate::units::Unit::one()));
+            Some(latex_with_unit(
+                &crate::simplify::mul(vec![args[0].clone(), rest]),
+                &u,
+            ))
+        }
+        ExprNode::Apply(name, args) if &**name == UNIT_CONVERT && args.len() == 2 => {
+            let (a, pa) = latex(&args[0]);
+            let (b, _) = latex(&args[1]);
+            Some((
+                format!("{} \\text{{ in }} {b}", lparen(a, pa, Prec::Mul)),
+                Prec::Rel,
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Text made for reading: a `*` between two factors (`2*x`, `(a+1)*b`, as plain
+/// printing writes products) becomes `·`, so no message or answer shows the ASCII
+/// product sign.
+pub fn readable(text: &str) -> String {
+    if !text.contains('*') {
+        return text.to_string();
+    }
+    let chars: Vec<char> = text.chars().collect();
+    let factor_end = |c: char| c.is_alphanumeric() || matches!(c, ')' | ']' | '}' | '!' | '′');
+    let factor_start = |c: char| c.is_alphanumeric() || matches!(c, '(' | '[' | '√' | '|');
+    chars
+        .iter()
+        .enumerate()
+        .map(|(i, &c)| {
+            let between = c == '*'
+                && i > 0
+                && chars.get(i + 1).is_some_and(|&n| factor_start(n))
+                && factor_end(chars[i - 1]);
+            if between {
+                '·'
+            } else {
+                c
+            }
+        })
+        .collect()
 }
 
 #[cfg(test)]

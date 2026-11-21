@@ -155,7 +155,12 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
             .iter()
             .flat_map(|s| s.iter())
             .map(|st| {
-                let mut t = format!("{}: {} → {}", st.rule, st.before, st.after);
+                let mut t = format!(
+                    "{}: {} → {}",
+                    st.rule,
+                    st.before.to_text(),
+                    st.after.to_text()
+                );
                 if let Some(n) = &st.note {
                     t.push_str(&format!(" ({n})"));
                 }

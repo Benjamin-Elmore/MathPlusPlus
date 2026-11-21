@@ -33,7 +33,8 @@ impl Run<'_, '_> {
             }
             Ok(Some(p)) => {
                 lr.set_value(Value::from_expr(value.clone()));
-                lr.text = Some(p.text);
+                lr.plain = Some(p.text);
+                lr.text = Some(p.unicode);
                 lr.latex = Some(p.latex);
                 lr.approx = match mode {
                     QueryMode::Approx => units_wire::approximate(value).ok().flatten(),

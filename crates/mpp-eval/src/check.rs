@@ -167,8 +167,8 @@ fn fails_whole(lhs: &Expr, rhs: &Expr) -> Verdict {
 /// A side as text, with its units when it has them.
 fn shown(e: &Expr) -> String {
     match crate::units_wire::present(e) {
-        Ok(Some(p)) => p.text,
-        _ => e.to_string(),
+        Ok(Some(p)) => p.unicode,
+        _ => e.to_text(),
     }
 }
 

@@ -218,12 +218,12 @@ fn written_decimal(body: &Node) -> Option<String> {
 /// Shows an exact value as the decimal it was typed as: `9.81 m/s^2`, not
 /// `981/100 m/s^2` (the value itself stays exact).
 fn show_decimal(lr: &mut LineResult, decimal: &str) {
-    if let Some(t) = &lr.text {
-        lr.text = Some(match t.split_once(' ') {
-            Some((_, unit)) => format!("{decimal} {unit}"),
-            None => decimal.to_string(),
-        });
-    }
+    let typed = |t: &String| match t.split_once(' ') {
+        Some((_, unit)) => format!("{decimal} {unit}"),
+        None => decimal.to_string(),
+    };
+    lr.text = lr.text.as_ref().map(typed);
+    lr.plain = lr.plain.as_ref().map(typed);
     if let Some(l) = &lr.latex {
         lr.latex = Some(match l.split_once("\\,") {
             Some((_, unit)) => format!("{decimal}\\,{unit}"),
@@ -308,9 +308,10 @@ impl Run<'_, '_> {
     }
 
     fn warn(&mut self, span: Span, message: impl Into<String>) {
-        self.result
-            .diagnostics
-            .push(Diagnostic::warning(span, message));
+        self.result.diagnostics.push(Diagnostic::warning(
+            span,
+            crate::error::readable(&message.into()),
+        ));
     }
 
     fn push(&mut self, mut line: LineResult) {

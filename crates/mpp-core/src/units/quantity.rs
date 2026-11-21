@@ -218,6 +218,19 @@ impl Quantity {
         }
     }
 
+    /// Unicode text: the value as [`Expr::to_text`] shows it, then the unit with
+    /// superscript powers (`3t m/s²`).
+    pub fn to_text(&self) -> String {
+        let v = self.value.to_text();
+        if self.unit.is_one() {
+            v
+        } else if self.unit.text() == "°" {
+            format!("{v}°")
+        } else {
+            format!("{v} {}", self.unit.unicode_text())
+        }
+    }
+
     /// LaTeX: the value, a thin space and the upright unit.
     pub fn latex(&self) -> String {
         if self.unit.is_one() {

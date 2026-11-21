@@ -394,7 +394,7 @@ fn steps_show_the_technique() {
     assert!(
         all.iter().any(|s| s.starts_with("substitution")
             && s.contains("u = x^2")
-            && s.contains("du = 2*x dx")),
+            && s.contains("du = 2·x dx")),
         "{all:#?}"
     );
 

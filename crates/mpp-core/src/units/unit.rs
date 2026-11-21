@@ -197,6 +197,37 @@ impl Unit {
         self.render(|a| a.symbol.clone(), "·", |b, e| format!("{b}^{e}"))
     }
 
+    /// The unit as Unicode text, with superscript powers (`kg·m/s²`, `m^(1/2)`).
+    pub fn unicode_text(&self) -> String {
+        self.render(
+            |a| a.symbol.clone(),
+            "·",
+            |b, e| {
+                let sup: Option<String> = e
+                    .chars()
+                    .map(|c| match c {
+                        '0' => Some('⁰'),
+                        '1' => Some('¹'),
+                        '2' => Some('²'),
+                        '3' => Some('³'),
+                        '4' => Some('⁴'),
+                        '5' => Some('⁵'),
+                        '6' => Some('⁶'),
+                        '7' => Some('⁷'),
+                        '8' => Some('⁸'),
+                        '9' => Some('⁹'),
+                        '-' => Some('⁻'),
+                        _ => None,
+                    })
+                    .collect();
+                match sup {
+                    Some(s) => format!("{b}{s}"),
+                    None => format!("{b}^{e}"),
+                }
+            },
+        )
+    }
+
     /// The unit as LaTeX, upright: `\mathrm{kg\,m/s^{2}}`.
     pub fn latex(&self) -> String {
         if self.is_one() {

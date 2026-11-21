@@ -5,6 +5,47 @@ use std::fmt;
 use mpp_core::MathError;
 use mpp_syntax::{Diagnostic, Span};
 
+pub use mpp_core::printer::readable;
+
+/// Internal representations that must never reach a reader: unit factors written as
+/// `unit:m()`, core node names, hidden environment keys, sampling placeholders and the
+/// ASCII product sign between factors. Returns the first one found in `text` (used by
+/// the tests that scan every page, answer and export).
+pub fn internal_marker(text: &str) -> Option<String> {
+    const MARKERS: &[&str] = &[
+        "unit:",
+        "unit as",
+        "unit convert",
+        "zzunit",
+        "Apply(",
+        "Sym(",
+        "Num(",
+        "Func(",
+        "BigOp {",
+        "Piecewise {",
+        "document seed",
+        "#rv",
+        "#ind",
+        "denominators:",
+        "seed:",
+        "rv:",
+        "rvs:",
+        "operatorname(",
+    ];
+    if let Some(m) = MARKERS.iter().find(|m| text.contains(**m)) {
+        return Some((*m).to_string());
+    }
+    let chars: Vec<char> = text.chars().collect();
+    chars
+        .windows(3)
+        .find(|w| {
+            w[1] == '*'
+                && (w[0].is_alphanumeric() || w[0] == ')')
+                && (w[2].is_alphanumeric() || w[2] == '(')
+        })
+        .map(|w| w.iter().collect())
+}
+
 /// Every way evaluating a statement can fail.
 #[derive(Debug, Clone, PartialEq)]
 pub enum EvalError {
@@ -47,7 +88,7 @@ pub enum EvalError {
 impl fmt::Display for EvalError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            EvalError::Math(e) => write!(f, "{e}"),
+            EvalError::Math(e) => write!(f, "{}", readable(&e.to_string())),
             EvalError::Unbound(names) => {
                 let list: Vec<String> = names.iter().map(|n| format!("`{n}`")).collect();
                 if names.len() == 1 {
