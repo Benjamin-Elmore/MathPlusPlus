@@ -281,9 +281,10 @@ fn place_block(
             laid
         }
     };
-    let Some((canvas, h, tag)) = laid else {
+    let Some((mut canvas, h, tag)) = laid else {
         return;
     };
+    super::answers::inline_chips(input, b, &mut canvas);
     push_block(page, b, *y, h, canvas, tag, input);
     *y += h + gap;
 }
@@ -1573,6 +1574,17 @@ fn layout_display(
         let bad = crate::diagnostics::lines_with_letter_runs(m, &known);
         extras.results.retain(|r| !bad.contains(&r.line));
     }
+    // Answers with a slot of their own (U16, U17) are drawn after the formula.
+    let slots = super::answers::slots(input, b, &m.ast);
+    extras
+        .results
+        .retain(|r| !super::answers::takes(&slots, r.line));
+    extras.results.extend(
+        slots
+            .iter()
+            .filter(|s| s.open)
+            .map(|s| super::answers::placeholder(s.line)),
+    );
     let opts = LayoutOptions {
         style: MathStyle::Display,
         font_size: size * 1.1,
@@ -1639,7 +1651,18 @@ fn layout_display(
             false,
         );
     }
-    let mut y = dl.total_height() + 2.0 * pad;
+    let below = super::answers::place(
+        input,
+        &m.ast,
+        m.number.is_some(),
+        &slots,
+        &dl,
+        x0,
+        pad,
+        w,
+        c,
+    );
+    let mut y = dl.total_height() + 2.0 * pad + below;
     for note in &extras.notes {
         y += layout_note(input, note, x0, y, w, c);
     }
@@ -1838,6 +1861,7 @@ pub(crate) fn eval_view(doc: &Document, eval: Option<&Evaluated>, show: &ShowSta
             _ => {}
         }
     });
+    super::answers::view_hash(doc, ev, &mut h);
     h.finish()
 }
 

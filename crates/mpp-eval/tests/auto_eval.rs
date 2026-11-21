@@ -275,3 +275,78 @@ fn keep_result_writes_ordinary_maths() {
     assert!(errs.is_empty(), "{edited}: {errs:?}");
     assert!(ev.blocks.iter().all(|b| b.values.iter().all(|l| !l.auto)));
 }
+
+/// The only query (or check) line of `src`, with its answer as `mpp run` prints it.
+fn query(src: &str) -> (mpp_eval::LineResult, String) {
+    let ev = run(src);
+    let lines: Vec<_> = ev.queries().map(|(_, l)| l.clone()).collect();
+    assert_eq!(lines.len(), 1, "{src}: {lines:?}");
+    let answer = lines[0].plain_answer().unwrap_or_default();
+    (lines[0].clone(), answer)
+}
+
+#[test]
+fn a_line_ending_in_equals_asks_for_its_answer() {
+    // Ben's video: no `?` needed.
+    let (line, answer) = query("$$ 1.321321312 + 5 = $$");
+    assert!(line.open, "{line:?}");
+    assert_eq!(answer, "= 6.321321312");
+    let (line, answer) = query("$$ x := 5 $$\n\n$$ 2x + 5 = $$");
+    assert!(line.open);
+    assert_eq!(answer, "= 15");
+    // `= ?`, `≈ ?` and `= ?!` keep their meaning, and are not "open".
+    let (line, answer) = query("$$ 1 + 2 = ? $$");
+    assert!(!line.open);
+    assert_eq!(answer, "= 3");
+    let (line, answer) = query(r"$$ \sqrt{2} \approx ? $$");
+    assert!(!line.open);
+    assert_eq!(answer, "≈ 1.414213562");
+    let (line, _) = query(r"$$ \frac{d}{dx} x^2 = ?! $$");
+    assert!(line.steps.is_some() && !line.open);
+    // Inline maths in a sentence asks the same way.
+    let (line, answer) = query("The sum $2 + 3 =$ is small.");
+    assert!(line.open);
+    assert_eq!(answer, "= 5");
+    // A definition ending in `=` shows the value it defined.
+    let src = "$$ a := 3 $$\n\n$$ b := a^2 + 1 = $$";
+    let ev = run(src);
+    let asked: Vec<String> = ev.queries().filter_map(|(_, l)| l.plain_answer()).collect();
+    assert_eq!(asked, ["= 10"]);
+    // A name with no value is an error in the slot, not a crash.
+    let ev = run("$$ q + 1 = $$\n\n$$ 2 \\cdot w = $$");
+    assert!(ev.errors().is_empty(), "{:?}", ev.errors());
+    // Nothing in an old file means something else now: no error appears.
+    let ev = run(r"$$ \int_0^1 x \, dx = ? $$");
+    assert!(ev.errors().is_empty());
+}
+
+#[test]
+fn a_definition_from_other_names_shows_its_value_but_a_plain_number_does_not() {
+    let ev = run(
+        "$$ x := 5 $$\n\n$$ E := 2x + 5 $$\n\n$$ g := 9.81 $$\n\n$$ h := -2 $$\n\n$$ k := 1/2 $$",
+    );
+    let defs: Vec<(String, bool, Option<String>)> = ev
+        .blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .filter_map(|l| match &l.kind {
+            LineKind::Definition { name, .. } => {
+                Some((name.clone(), l.shows_value, l.plain.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        defs,
+        [
+            ("x".into(), false, Some("5".into())),
+            ("E".into(), true, Some("15".into())),
+            ("g".into(), false, Some("9.81".into())),
+            ("h".into(), false, Some("-2".into())),
+            ("k".into(), false, Some("1/2".into())),
+        ]
+    );
+    // A value with a free name is not a number: nothing to show.
+    let ev = run("$$ F := m a $$");
+    assert!(ev.blocks[0].values.iter().all(|l| !l.shows_value));
+}

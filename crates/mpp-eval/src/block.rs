@@ -1088,6 +1088,11 @@ impl Run<'_, '_> {
                 kind: def_kind,
             },
         );
+        lr.shows_value = !auto::is_literal(body)
+            && shown.is_constant()
+            && !contains_holder(&shown)
+            && shown.to_latex() != value.to_latex()
+            && approximate(&shown).is_ok();
         lr.input = Some(value);
         lr.decimal_input = decimal_input;
         if self.present_units(&mut lr, &shown, QueryMode::Exact, body.span) {
@@ -1488,6 +1493,7 @@ impl Run<'_, '_> {
     ) {
         let mut lr = LineResult::new(line.span, LineKind::Query { mode, steps });
         lr.noeval = noeval;
+        lr.open = mode == QueryMode::Exact && self.ends_open(line.span);
         lr.decimal_input = mode == QueryMode::Exact && self.uses_decimal(expr);
         let input = match self.lower(expr, s.names) {
             Ok(e) => e,
@@ -2028,6 +2034,15 @@ impl Run<'_, '_> {
                 ));
             }
         }
+    }
+
+    /// True when the line's text ends in a lone `=` (`1.32 + 5 =`, not `= ?`).
+    fn ends_open(&self, span: Span) -> bool {
+        self.inputs
+            .source
+            .get(span.start..span.end)
+            .map(str::trim_end)
+            .is_some_and(|t| t.ends_with('=') && !t.ends_with("=="))
     }
 
     fn relation(&mut self, line: &Line, node: &Node, s: &Scope, display: bool, noeval: bool) {

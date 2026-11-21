@@ -273,7 +273,7 @@ fn equation_count(e: &Expr) -> usize {
 
 /// True for a line that is already a value as written: a number, a constant,
 /// a matrix or a list (it is shown as it is, with no result after it).
-fn is_literal(node: &Node) -> bool {
+pub(super) fn is_literal(node: &Node) -> bool {
     match &node.ungrouped().kind {
         NodeKind::Number(_)
         | NodeKind::Constant(_)

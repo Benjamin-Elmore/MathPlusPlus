@@ -100,6 +100,13 @@ pub struct LineResult {
     /// `g \equiv 9.81`): unless the file asks for `%exact`, its answer is shown as a
     /// decimal too (10.81, not 1081/100).
     pub decimal_input: bool,
+    /// Asked with an `=` at the end of the line and no `?` (`1.32 + 5 =`): the editor
+    /// shows the answer in the line's answer slot.
+    pub open: bool,
+    /// A definition whose value is a number worked out from other names
+    /// (`E := 2x + 5` → 15): the editor shows it in grey after the line. Never set for
+    /// a plain number (`x := 5`).
+    pub shows_value: bool,
 }
 
 impl LineResult {
@@ -125,6 +132,8 @@ impl LineResult {
             pending: false,
             hint: None,
             decimal_input: false,
+            open: false,
+            shows_value: false,
         }
     }
 
