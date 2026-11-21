@@ -688,3 +688,13 @@ $$ g = ? \qquad k = ? \qquad 2k = ? $$";
     // A computed value is exact as usual.
     assert_eq!(shown[2].0.as_deref(), Some("1/5"));
 }
+
+#[test]
+fn an_accented_pi_is_a_name() {
+    // `\hat\pi` is an estimate, never the constant π with an accent.
+    let src = r"$$ \hat\pi := 3.1 $$
+
+$$ \hat\pi - \pi \approx ? $$";
+    let v: f64 = approx(src).parse().unwrap_or(f64::NAN);
+    assert!((v - (3.1 - std::f64::consts::PI)).abs() < 1e-9, "{v}");
+}

@@ -3,8 +3,8 @@
 use super::{Ctx, Parser};
 use crate::lexer::{Delim, Op, Tok};
 use crate::math::ast::{
-    Accent, BinOp, Bracket, DerivNotation, Derivative, FracStyle, MulStyle, Name, Node, NodeKind,
-    RelOp, UnaryOp, UnitText,
+    Accent, BinOp, Bracket, Constant, DerivNotation, Derivative, FracStyle, MulStyle, Name, Node,
+    NodeKind, RelOp, UnaryOp, UnitText,
 };
 use crate::span::Span;
 use crate::symbols::{Font, SymbolKind};
@@ -792,6 +792,12 @@ pub(super) fn make_accent(accent: Accent, arg: Node, span: Span) -> Node {
             })),
             span,
         );
+    }
+    // `\hat\pi`: an estimate of π is a name of its own, never the constant.
+    if let NodeKind::Constant(Constant::Pi) = &arg.ungrouped().kind {
+        let mut name = Name::simple("π");
+        name.accent = Some(accent);
+        return Node::new(NodeKind::Name(name), span);
     }
     if let NodeKind::Name(name) = &arg.ungrouped().kind {
         if name.accent.is_none() {
