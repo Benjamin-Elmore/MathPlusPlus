@@ -20,7 +20,7 @@ use mpp_core::display::{
 use mpp_core::{Expr, ExprNode, Number};
 use mpp_syntax::document::display::{parse_display_directive, DisplayOption};
 use mpp_syntax::document::{BlockId, BlockKind, DirectiveKind};
-use mpp_syntax::Diagnostic;
+use mpp_syntax::{Diagnostic, Span};
 
 use crate::holders::contains_holder;
 use crate::numeric::{approximate, is_exact_rational, scalar};
@@ -71,13 +71,27 @@ pub(crate) fn apply(ev: &mut Evaluated, base: &NumberFormat) {
     let mut problems: Vec<Diagnostic> = Vec::new();
     let mut current = *base;
     let mut pending: Vec<DisplayOption> = Vec::new();
-    let mut flat = Vec::new();
-    ev.document
-        .walk(&mut |b| flat.push((b.id, b.span, b.kind.clone())));
-    for (id, span, kind) in flat {
-        if let BlockKind::Directive(d) = &kind {
-            if d.kind == DirectiveKind::Display {
-                match parse_display_directive(&d.text) {
+    // Only the directives are needed from the blocks (cloning every block's syntax
+    // tree here used to cost more than the evaluation of an edit).
+    type Entry = (BlockId, Span, Option<(DirectiveKind, String)>);
+    let mut flat: Vec<Entry> = Vec::new();
+    ev.document.walk(&mut |b| {
+        let directive = match &b.kind {
+            BlockKind::Directive(d) => Some((d.kind, d.text.clone())),
+            _ => None,
+        };
+        flat.push((b.id, b.span, directive));
+    });
+    let with_values: std::collections::HashSet<BlockId> = ev
+        .blocks
+        .iter()
+        .filter(|r| !r.values.is_empty())
+        .map(|r| r.id)
+        .collect();
+    for (id, span, directive) in flat {
+        if let Some((kind, text)) = &directive {
+            if *kind == DirectiveKind::Display {
+                match parse_display_directive(text) {
                     Some(Ok(dir)) if dir.block_only => pending.push(dir.option),
                     Some(Ok(dir)) => apply_option(&mut current, dir.option),
                     Some(Err(message)) => problems.push(Diagnostic::error(span, message)),
@@ -86,7 +100,7 @@ pub(crate) fn apply(ev: &mut Evaluated, base: &NumberFormat) {
             }
             continue;
         }
-        let has_values = ev.blocks.iter().any(|r| r.id == id && !r.values.is_empty());
+        let has_values = with_values.contains(&id);
         let mut fmt = current;
         if has_values {
             for option in pending.drain(..) {
@@ -416,8 +430,15 @@ impl LineResult {
     }
 
     fn refresh(&mut self, fmt: &NumberFormat, angle: Option<bool>) {
-        let derived = self.is_derived();
         let angle = angle.unwrap_or_else(|| self.number_format.is_some_and(|s| s.angle));
+        // Already shown under this format (a block the session reused): nothing to do.
+        if self
+            .number_format
+            .is_some_and(|s| s.format == *fmt && s.angle == angle)
+        {
+            return;
+        }
+        let derived = self.is_derived();
         self.number_format = Some(Shown {
             format: *fmt,
             derived,

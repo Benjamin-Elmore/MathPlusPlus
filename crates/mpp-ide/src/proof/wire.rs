@@ -14,7 +14,7 @@ impl IdeApp {
     /// The result (`Theorem 2`) at the caret, or the first one in the file.
     pub fn result_at_caret(&self) -> Option<String> {
         let d = self.doc()?;
-        let doc = parse_document(d.editor.text());
+        let doc = d.parsed();
         super::result_at(&doc, d.editor.caret())
             .or_else(|| super::result_names(&doc).into_iter().next())
     }

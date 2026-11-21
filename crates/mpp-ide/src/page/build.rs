@@ -3,8 +3,8 @@
 use egui::{Pos2, Rect, Vec2};
 use mpp_eval::{BlockResult, Evaluated, LineKind, Value};
 use mpp_render::{
-    layout_latex, layout_math, CaretStop, DisplayList, FontId, IntegralLimits, LayoutOptions,
-    LineResult, MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
+    layout_latex, CaretStop, DisplayList, FontId, IntegralLimits, LayoutOptions, LineResult,
+    MathStyle, Primitive, Rect as RRect, ResultKind, Theme,
 };
 use mpp_syntax::document::{
     Align, Block, BlockKind, Comment, DirectiveKind, DisplayMath, Document, Inline, InlineKind,
@@ -50,6 +50,7 @@ pub fn column_width(avail: f32, size: f32) -> f32 {
 
 /// Lays the document out.
 pub fn build_page(input: &PageInput<'_>) -> Page {
+    super::mathcache::begin();
     let col = column_width(input.width, input.size);
     let paper = PaperInfo::scan(input.doc, input.src, input.extra_refs);
     let cx = Cx {
@@ -156,11 +157,66 @@ fn place_block(
         }
         return;
     }
-    let Some((canvas, h, tag)) = layout_block(input, cx, b, x0, w) else {
+    let key = prose_key(input, b, x0, w);
+    let cached = key
+        .as_deref()
+        .and_then(|k| super::mathcache::cached_block(k, b.span.start));
+    let laid = match cached {
+        Some(found) => Some(found),
+        None => {
+            let laid = layout_block(input, cx, b, x0, w);
+            if let (Some(k), Some((canvas, h, tag))) = (key, &laid) {
+                super::mathcache::store_block(k, b.span.start, canvas, *h, *tag);
+            }
+            laid
+        }
+    };
+    let Some((canvas, h, tag)) = laid else {
         return;
     };
     push_block(page, b, *y, h, canvas, tag, input);
     *y += h + gap;
+}
+
+/// The layout cache key of a plain prose block (a paragraph or `Let` sentence of text,
+/// emphasis, code and inline maths): its text and everything its layout reads, with
+/// offsets relative to the block. `None` for blocks whose layout depends on the rest
+/// of the document (citations, footnotes, numbering, results).
+fn prose_key(input: &PageInput<'_>, b: &Block, x0: f32, w: f32) -> Option<String> {
+    fn plain(items: &[Inline]) -> bool {
+        items.iter().all(|i| match &i.kind {
+            InlineKind::Text(_)
+            | InlineKind::SoftBreak
+            | InlineKind::Code(_)
+            | InlineKind::Math(_) => true,
+            InlineKind::Emphasis(inner) | InlineKind::Strong(inner) => plain(inner),
+            _ => false,
+        })
+    }
+    let content = match &b.kind {
+        BlockKind::Paragraph(content) => content,
+        BlockKind::Let(l) => &l.content,
+        _ => return None,
+    };
+    if !plain(content) {
+        return None;
+    }
+    let text = input.src.get(b.span.start..b.span.end)?;
+    let labels: Vec<(usize, &String)> = input
+        .slot_labels
+        .iter()
+        .filter(|(o, _)| b.span.start <= *o && *o <= b.span.end)
+        .map(|(o, l)| (o - b.span.start, l))
+        .collect();
+    let tag = if matches!(b.kind, BlockKind::Let(_)) {
+        'L'
+    } else {
+        'P'
+    };
+    Some(format!(
+        "{tag}\u{0}{text}\u{0}{x0}/{w}/{}/{:?}/{labels:?}/{:?}",
+        input.size, input.theme, input.integral_limits
+    ))
 }
 
 /// A theorem-like block: a bold run-in label (`Theorem 2.1.`) before the first
@@ -1261,7 +1317,8 @@ fn layout_display(
         ..LayoutOptions::default()
     }
     .with_integral_limits(input.integral_limits);
-    let dl = layout_math(&m.ast, &opts);
+    let text = input.src.get(m.raw.start..m.raw.end).unwrap_or("");
+    let dl = super::mathcache::layout(text, m.raw, &m.ast, &opts);
     let pad = size * 0.35;
     let before = c.stops.len();
     c.merge(&dl, x0, pad, true);

@@ -421,6 +421,15 @@ impl Session {
             lines,
         };
         crate::numfmt::apply(&mut evaluated, &self.number_format);
+        // Keep the lines as shown, so a block reused on the next edit is not formatted
+        // again.
+        for b in &evaluated.blocks {
+            if let Some(c) = self.cache.get_mut(&b.id) {
+                if c.outcome.result.values.len() == b.values.len() {
+                    c.outcome.result.values.clone_from(&b.values);
+                }
+            }
+        }
         self.evaluated = evaluated;
         &self.evaluated
     }

@@ -79,3 +79,93 @@ fn a_second_window_never_takes_the_first_windows_recovery_copies() {
     assert_eq!(offered(&c), 1);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// About 3000 lines: the long worksheet ten times over, with a shared definition.
+fn long_document() -> String {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let src = std::fs::read_to_string(root.join("examples/long-worksheet.mpp")).expect("read");
+    let mut out = String::from("# Big worksheet\n\nLet $K := 2$.\n\n");
+    for r in 0..10 {
+        out.push_str(&src.replace("# ", &format!("## Part {r} ")));
+        out.push_str(&format!("\n$$ K + {r} = ? $$\n\n"));
+    }
+    out
+}
+
+fn harness(app: IdeApp) -> egui_kittest::Harness<'static, IdeApp> {
+    egui_kittest::Harness::builder()
+        .with_size(egui::Vec2::new(1180.0, 1500.0))
+        .with_max_steps(40)
+        .with_context_setup(mpp_ide::theme::install_fonts)
+        .build_ui_state(|ui, app: &mut IdeApp| app.ui(ui), app)
+}
+
+#[test]
+fn typing_in_a_long_document_stays_quick() {
+    let d = scratch("latency");
+    let path = d.join("big.mpp");
+    let src = long_document();
+    std::fs::write(&path, &src).expect("write");
+    let mut app = IdeApp::empty();
+    app.open_file(&path, false).expect("open");
+    let mut h = harness(app);
+    h.run_steps(3);
+    h.state_mut().settle();
+    h.run_steps(3);
+    let rounds = if cfg!(debug_assertions) { 2 } else { 6 };
+    for at in [2, src.len() / 2, src.len()] {
+        if let Some(doc) = h.state_mut().doc_mut() {
+            let len = doc.editor.text().len();
+            doc.editor.move_caret(at.min(len), false);
+        }
+        h.run_steps(2);
+        let mut times = Vec::new();
+        for _ in 0..rounds {
+            h.event(egui::Event::Text("1".to_string()));
+            let start = Instant::now();
+            h.run_steps(1);
+            h.state_mut().settle();
+            h.run_steps(1);
+            times.push(start.elapsed());
+        }
+        times.sort();
+        let median = times[times.len() / 2];
+        // Keystroke to evaluated and laid out (was 150-243 ms before layouts were
+        // reused between edits).
+        if !cfg!(debug_assertions) {
+            assert!(median < Duration::from_millis(100), "at {at}: {times:?}");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn reused_layouts_match_a_fresh_layout_after_an_edit_above_them() {
+    let src = long_document();
+    let mut doc = mpp_ide::Doc::with_text(&src, None);
+    let width = 900.0;
+    let size = 18.0;
+    let mode = mpp_ide::theme::Mode::Light;
+    let _ = doc.page(width, size, mode);
+    doc.editor.move_caret(2, false);
+    doc.editor.insert_text("inserted words ");
+    let edited = doc.editor.text().to_string();
+    let reused = doc.page(width, size, mode);
+    // The same text laid out on a thread whose caches are empty.
+    let fresh = std::thread::spawn(move || {
+        let mut d = mpp_ide::Doc::with_text(&edited, None);
+        let p = d.page(width, size, mode);
+        (p.page.stops.clone(), p.page.chars.clone(), p.page.height)
+    })
+    .join()
+    .expect("thread");
+    assert_eq!(reused.page.chars, fresh.1);
+    assert_eq!(reused.page.stops.len(), fresh.0.len());
+    assert!(reused
+        .page
+        .stops
+        .iter()
+        .zip(&fresh.0)
+        .all(|(a, b)| a.offset == b.offset && (a.x - b.x).abs() < 0.01));
+    assert!((reused.page.height - fresh.2).abs() < 0.01);
+}

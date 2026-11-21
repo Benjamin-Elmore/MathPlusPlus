@@ -49,7 +49,7 @@ impl PageCache {
 pub struct PageCache {
     key: CacheKey,
     pub page: Page,
-    pub doc: Document,
+    pub doc: Arc<Document>,
     pub problems: Vec<Problem>,
     /// Slider rows under each figure, as laid out.
     rows: Vec<(mpp_syntax::document::BlockId, usize)>,
@@ -101,9 +101,29 @@ pub struct Doc {
     pub proof: Option<Arc<mpp_proof::DocumentCheck>>,
     proof_text: String,
     proof_id: u64,
+    /// The parse of the text at a revision, shared by the page, the outline and the
+    /// proof view (a 3000-line file takes milliseconds to parse).
+    parsed: std::sync::Mutex<Option<(u64, Arc<Document>)>>,
 }
 
 impl Doc {
+    /// The parse of the current text (parsed once per revision).
+    pub fn parsed(&self) -> Arc<Document> {
+        let rev = self.editor.revision();
+        let mut memo = self
+            .parsed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some((r, d)) = memo.as_ref() {
+            if *r == rev {
+                return d.clone();
+            }
+        }
+        let d = Arc::new(parse_document(self.editor.text()));
+        *memo = Some((rev, d.clone()));
+        d
+    }
+
     /// A document with the given text.
     pub fn with_text(text: &str, path: Option<PathBuf>) -> Self {
         let mut d = Doc {
@@ -133,6 +153,7 @@ impl Doc {
             proof_worker: crate::proof::ProofWorker::new(),
             proof: None,
             proof_text: String::new(),
+            parsed: std::sync::Mutex::new(None),
             proof_id: 0,
         };
         d.submit_now();
@@ -221,7 +242,7 @@ impl Doc {
     pub fn proof_view(&self) -> crate::proof::ProofView {
         match &self.proof {
             Some(c) => {
-                let doc = parse_document(self.editor.text());
+                let doc = self.parsed();
                 crate::proof::ProofView::new(&doc, c, self.proof_fresh())
             }
             None => crate::proof::ProofView::default(),
@@ -483,10 +504,15 @@ impl Doc {
         let base = self.path.as_deref().and_then(Path::parent);
         let proof = self.proof.clone();
         let proof_fresh = self.proof.is_some() && self.proof_text == editor.text();
+        let parsed = if self.cache.is_none() {
+            Some(self.parsed())
+        } else {
+            None
+        };
         self.cache
             .get_or_insert_with(|| {
                 let src = editor.text();
-                let doc = parse_document(src);
+                let doc = parsed.unwrap_or_else(|| Arc::new(parse_document(src)));
                 let proof_view = proof
                     .as_deref()
                     .map(|c| crate::proof::ProofView::new(&doc, c, proof_fresh))

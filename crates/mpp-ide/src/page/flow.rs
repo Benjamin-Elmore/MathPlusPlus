@@ -1,8 +1,6 @@
 //! Flowing running text: words, spaces and inline maths broken into lines.
 
-use mpp_render::{
-    layout_math, CaretStop, Color, DisplayList, FontId, Fonts, LayoutOptions, Primitive, Theme,
-};
+use mpp_render::{CaretStop, Color, DisplayList, FontId, Fonts, LayoutOptions, Primitive, Theme};
 use mpp_syntax::document::{Inline, InlineKind};
 use mpp_syntax::math::MathAst;
 use mpp_syntax::Span;
@@ -331,7 +329,12 @@ fn math_atom(cx: &Cx<'_>, ast: &MathAst, raw: Span, size: f32) -> Atom {
         ..LayoutOptions::inline(size)
     };
     Atom::Math {
-        dl: layout_math(ast, &opts),
+        dl: super::mathcache::layout(
+            cx.src.get(raw.start..raw.end).unwrap_or(""),
+            raw,
+            ast,
+            &opts,
+        ),
         span: raw,
     }
 }
