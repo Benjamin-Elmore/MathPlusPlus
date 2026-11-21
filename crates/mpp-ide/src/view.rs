@@ -807,8 +807,14 @@ fn template_toolbar(
     else {
         return;
     };
+    // The box being typed in, which the toolbar must not cover (an empty box in a
+    // line of prose is not inside the template's own boxes).
+    let r = match pc.page.rect_of_span(mpp_syntax::Span::point(caret)) {
+        Some(c) if (c.center().y - r.center().y).abs() < r.height() => r.union(c),
+        _ => r,
+    };
     let rect = r.translate(origin.to_vec2());
-    if let Some(i) = insert::menu::toolbar(ui.ctx(), &controls, rect) {
+    if let Some(i) = insert::menu::toolbar(ui.ctx(), &controls, rect, ui.clip_rect()) {
         let bcx = cx.insert.settings.build_cx(doc.editor.text(), caret);
         insert::apply(&mut doc.editor, id, &controls[i].action, &bcx);
         doc.touched();

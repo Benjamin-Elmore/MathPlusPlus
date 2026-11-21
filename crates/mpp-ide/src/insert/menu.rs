@@ -574,18 +574,62 @@ pub fn insert_button(ui: &mut Ui) -> egui::Response {
     resp
 }
 
-/// The template toolbar, a small column to the left of the template `beside`
-/// (screen), where a centred equation leaves room and nothing is covered.
-/// Returns the index of a clicked control.
-pub fn toolbar(ctx: &Context, controls: &[Control], beside: Rect) -> Option<usize> {
+/// Where the template toolbar goes: to the left of the template `beside` when a
+/// centred equation leaves room there, else to its right (a figure line starts at
+/// the left margin), so it never covers the box being typed in. `width` is the
+/// toolbar's width and `bounds` the visible page.
+pub fn toolbar_anchor(beside: Rect, width: f32, bounds: Rect) -> (Pos2, egui::Align2) {
+    const GAP: f32 = 18.0;
+    if beside.left() - GAP - width >= bounds.left() {
+        (
+            Pos2::new(beside.left() - GAP, beside.top()),
+            egui::Align2::RIGHT_TOP,
+        )
+    } else if beside.right() + GAP + width <= bounds.right() {
+        (
+            Pos2::new(beside.right() + GAP, beside.top()),
+            egui::Align2::LEFT_TOP,
+        )
+    } else {
+        // No room at either side: under the template.
+        (
+            Pos2::new(beside.left(), beside.bottom() + 6.0),
+            egui::Align2::LEFT_TOP,
+        )
+    }
+}
+
+/// The template toolbar, a small column beside the template `beside` (screen),
+/// where nothing is covered (see [`toolbar_anchor`]). Returns the index of a
+/// clicked control.
+pub fn toolbar(ctx: &Context, controls: &[Control], beside: Rect, bounds: Rect) -> Option<usize> {
     if controls.is_empty() {
         return None;
     }
     let mut clicked = None;
-    let at = Pos2::new(beside.left() - 18.0, beside.top());
+    let ink = ctx.global_style().visuals.text_color();
+    let widest = ctx.fonts_mut(|f| {
+        controls
+            .iter()
+            .map(|c| {
+                f.layout_no_wrap(c.label.clone(), theme::sans(13.0), ink)
+                    .size()
+                    .x
+            })
+            .fold(0.0, f32::max)
+    });
+    // Label, button padding and the frame's margins.
+    let width = widest + 40.0;
+    let (at, pivot) = toolbar_anchor(beside, width, bounds);
+    // Placed by its top-left corner: an area's own pivot needs the size of the
+    // frame before, and a first frame drawn over the template is what this avoids.
+    let at = if pivot == egui::Align2::RIGHT_TOP {
+        Pos2::new(at.x - width, at.y)
+    } else {
+        at
+    };
     Area::new(Id::unique("mpp-template-toolbar"))
         .order(Order::Foreground)
-        .pivot(egui::Align2::RIGHT_TOP)
         .fixed_pos(at)
         .constrain(true)
         .show(ctx, |ui| {
@@ -612,6 +656,21 @@ pub fn toolbar(ctx: &Context, controls: &[Control], beside: Rect) -> Option<usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_toolbar_never_covers_a_template_at_the_left_margin() {
+        let bounds = Rect::from_min_max(Pos2::new(0.0, 0.0), Pos2::new(900.0, 700.0));
+        // A figure line starting at the margin: the toolbar goes to its right.
+        let figure = Rect::from_min_max(Pos2::new(40.0, 100.0), Pos2::new(400.0, 130.0));
+        let (at, pivot) = toolbar_anchor(figure, 90.0, bounds);
+        assert_eq!(pivot, egui::Align2::LEFT_TOP);
+        assert!(at.x >= figure.right());
+        // A centred equation keeps it on the left.
+        let eq = Rect::from_min_max(Pos2::new(380.0, 100.0), Pos2::new(520.0, 130.0));
+        let (at, pivot) = toolbar_anchor(eq, 90.0, bounds);
+        assert_eq!(pivot, egui::Align2::RIGHT_TOP);
+        assert!(at.x <= eq.left());
+    }
 
     #[test]
     fn recent_items_come_first_and_search_filters() {
