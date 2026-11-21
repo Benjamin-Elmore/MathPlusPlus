@@ -41,6 +41,8 @@ pub struct Session {
     sequences: BTreeSet<String>,
     /// Names called with an argument somewhere they are not differentiated.
     called: BTreeSet<String>,
+    /// Names differentiated in an equation somewhere in the document.
+    ode_unknowns: BTreeSet<String>,
     number_format: mpp_core::display::NumberFormat,
     evaluated: Evaluated,
     /// "Show steps": every `= ?` query records its working, as if written `= ?!`.
@@ -78,6 +80,7 @@ impl Session {
             cache: HashMap::new(),
             sequences: BTreeSet::new(),
             called: BTreeSet::new(),
+            ode_unknowns: BTreeSet::new(),
             number_format: mpp_core::display::NumberFormat::default(),
             evaluated: Evaluated::empty(),
             show_steps: false,
@@ -272,17 +275,20 @@ impl Session {
         let doc = parse_document(src);
         let lines = LineIndex::new(src);
         let sequences = sequence_names(&doc);
-        let called = called_names(&doc);
-        if sequences != self.sequences || called != self.called {
+        let (called, ode_unknowns) = called_names(&doc);
+        if sequences != self.sequences || called != self.called || ode_unknowns != self.ode_unknowns
+        {
             // Whether `a_1` is an initial term, and whether a differential equation
             // defines its unknown, depend on the whole document.
             self.cache.clear();
             self.sequences = sequences;
             self.called = called;
+            self.ode_unknowns = ode_unknowns;
         }
         let inputs = Inputs {
             sequences: &self.sequences,
             called: &self.called,
+            ode_unknowns: &self.ode_unknowns,
             holders: &self.holders,
             importer: self.importer.as_ref(),
             base_dir: self.base_dir.as_deref(),
@@ -497,7 +503,10 @@ fn sequence_names(doc: &Document) -> BTreeSet<String> {
 /// or figure where the same name is not differentiated: a differential equation in
 /// such a name defines it for those uses. A name only ever met inside differential
 /// equations (with their conditions `y(0) = 1`) stays an unknown of each equation.
-fn called_names(doc: &Document) -> BTreeSet<String> {
+///
+/// Also returns the names differentiated in a line that holds an equation: the
+/// unknowns of the document's differential equations.
+fn called_names(doc: &Document) -> (BTreeSet<String>, BTreeSet<String>) {
     use mpp_syntax::math::{visit, Accent, Clause, Line, Node, NodeKind};
     fn walk(n: &Node, calls: &mut Vec<String>, diffs: &mut Vec<String>) {
         match &n.kind {
@@ -523,7 +532,12 @@ fn called_names(doc: &Document) -> BTreeSet<String> {
         }
         visit::children(n, &mut |c| walk(c, calls, diffs));
     }
-    fn line_calls(line: &Line, out: &mut BTreeSet<String>) {
+    fn has_equation(n: &Node) -> bool {
+        let mut found = matches!(n.kind, NodeKind::Relation { .. });
+        visit::children(n, &mut |c| found = found || has_equation(c));
+        found
+    }
+    fn line_calls(line: &Line, out: &mut BTreeSet<String>, unknowns: &mut BTreeSet<String>) {
         let (mut calls, mut diffs) = (Vec::new(), Vec::new());
         let mut nodes: Vec<&Node> = Vec::new();
         match &line.statement {
@@ -540,15 +554,20 @@ fn called_names(doc: &Document) -> BTreeSet<String> {
                 nodes.push(n);
             }
         }
+        let equation = nodes.iter().any(|n| has_equation(n));
         for n in nodes {
             walk(n, &mut calls, &mut diffs);
+        }
+        if equation {
+            unknowns.extend(diffs.iter().cloned());
         }
         out.extend(calls.into_iter().filter(|c| !diffs.contains(c)));
     }
     let mut names = BTreeSet::new();
+    let mut unknowns = BTreeSet::new();
     let mut scan = |ast: &MathAst| {
         for line in &ast.lines {
-            line_calls(line, &mut names);
+            line_calls(line, &mut names, &mut unknowns);
         }
     };
     doc.walk(&mut |b| {
@@ -561,7 +580,7 @@ fn called_names(doc: &Document) -> BTreeSet<String> {
             }
         }
     });
-    names
+    (names, unknowns)
 }
 
 /// Calls `f` on every maths span directly inside `block`.

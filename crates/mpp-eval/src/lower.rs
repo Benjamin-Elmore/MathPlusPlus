@@ -33,6 +33,11 @@ pub trait LowerScope {
     fn binding(&self, name: &str) -> Option<Arc<Binding>>;
     /// True when the document defines a recurrence for the sequence `base`.
     fn is_sequence(&self, base: &str) -> bool;
+    /// True when `name` is an unknown function of a differential equation of the
+    /// document, so `x(t)` elsewhere is that function at `t`, not `x · t`.
+    fn is_ode_unknown(&self, _name: &str) -> bool {
+        false
+    }
 }
 
 /// Result of lowering one node.
@@ -626,6 +631,20 @@ impl<'a> Lowerer<'a> {
                 if let ([arg], Some(special)) = (args, special_function(&key)) {
                     if !self.is_bound_letter(&key) {
                         return Ok(Expr::apply(special, vec![self.lower(arg)?]));
+                    }
+                }
+                // `V(x(t), y(t))` with x, y the unknowns of the document's differential
+                // equations: the functions at the variable t (their derivatives stay
+                // symbolic). Anything else in the brackets (`x (1 - x)`) is a product.
+                if let [arg] = args {
+                    let var = node_key(arg.ungrouped())
+                        .filter(|v| v != &key && self.scope.binding(v).is_none() && arg.is_name());
+                    if var.is_some()
+                        && self.scope.is_ode_unknown(&key)
+                        && self.scope.binding(&key).is_none()
+                        && !self.is_local(&key)
+                    {
+                        return Ok(Expr::apply(&key, vec![self.lower(arg)?]));
                     }
                 }
             }

@@ -43,6 +43,8 @@ pub(crate) struct Inputs<'a> {
     /// Names called with an argument where they are not differentiated (see
     /// `Run::define_ode_solution`).
     pub called: &'a BTreeSet<String>,
+    /// Names differentiated in an equation somewhere in the document.
+    pub ode_unknowns: &'a BTreeSet<String>,
     pub holders: &'a Arc<Holders>,
     pub importer: &'a dyn Importer,
     pub base_dir: Option<&'a Path>,
@@ -127,6 +129,7 @@ struct View<'v> {
     reads: &'v RefCell<BTreeMap<String, Option<Arc<Binding>>>>,
     uses: &'v RefCell<BTreeSet<String>>,
     sequences: &'v BTreeSet<String>,
+    ode_unknowns: &'v BTreeSet<String>,
 }
 
 impl View<'_> {
@@ -154,6 +157,9 @@ impl LowerScope for View<'_> {
     }
     fn is_sequence(&self, base: &str) -> bool {
         self.sequences.contains(base)
+    }
+    fn is_ode_unknown(&self, name: &str) -> bool {
+        self.ode_unknowns.contains(name)
     }
 }
 
@@ -212,6 +218,7 @@ impl Run<'_, '_> {
             reads: &self.reads,
             uses: &self.uses,
             sequences: self.inputs.sequences,
+            ode_unknowns: self.inputs.ode_unknowns,
         }
     }
 

@@ -385,3 +385,52 @@ fn a_differential_equation_statement_defines_its_solution_for_later_use() {
     );
     assert_eq!(approx_all(src), vec!["= y(x) = 2*e^(3*x)"]);
 }
+
+#[test]
+fn conditions_in_solve_filter_the_solutions() {
+    // x > 0 used to be ignored, so −2 came back too.
+    assert_eq!(
+        answer(r"$$ \operatorname{solve}_x (x^2 = 4, x > 0) = ? $$"),
+        "{2}"
+    );
+    assert_eq!(
+        answer(r"$$ \operatorname{solve}(x^2 = 4, x > 0) = ? $$"),
+        "{2}"
+    );
+    assert_eq!(
+        answer(r"$$ \operatorname{solve}_{x, y} (x y = 0, x + y = 1, x > 0) = ? $$"),
+        "{(x = 1, y = 0)}"
+    );
+}
+
+#[test]
+fn one_equation_of_a_coupled_system_is_not_solved_alone() {
+    // With y an unknown function too, solving ẋ = x − xy for x alone (y as a
+    // constant) gave a wrong x(t); now nothing is defined from it.
+    let src = concat!(
+        r"$$ \dot x = x - x y, \quad \dot y = x y - y, \quad x(0) = 2, \ y(0) = 1 $$",
+        "\n\n",
+        r"$$ x(1) \approx ? $$",
+    );
+    let errs = errors(src);
+    assert!(errs.iter().any(|e| e.contains("`x`")), "{errs:?}");
+    // The unknowns of the document's equations are functions where they are called
+    // at the variable: the chain rule keeps their derivatives.
+    let src = concat!(
+        r"$$ \dot x = x - x y, \quad \dot y = x y - y $$",
+        "\n\n",
+        r"$$ V(x, y) := x + \ln y $$",
+        "\n\n",
+        r"$$ \frac{d}{dt} V\big(x(t), y(t)\big) = ? $$",
+    );
+    let ev = run(src);
+    let line = ev.queries().last().and_then(|(_, l)| l.plain.clone());
+    assert_eq!(line.as_deref(), Some("d/dt(y(t))/y(t) + d/dt(x(t))"));
+    // A product in brackets stays a product.
+    let src = concat!(
+        r"$$ \dot x = -x $$",
+        "\n\n",
+        r"$$ x (1 - x) = ?, \quad x = 3 $$",
+    );
+    assert_eq!(approx_all(src), vec!["= -6"]);
+}
