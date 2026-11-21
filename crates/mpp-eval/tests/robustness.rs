@@ -296,11 +296,13 @@ $$ \operatorname{var}(m) = ? $$
 
 $$ p(u) := \operatorname{linreg}(h, m) $$
 
+$$ p(1) = ? $$
+
 $$ \frac{d}{dx} x^2 = ? $$
 ";
     let ev = session_in(dir.path()).run_str(doc).clone();
     let errs = errors(&ev);
-    assert_eq!(errs.len(), 5, "{errs:?}");
+    assert_eq!(errs.len(), 6, "{errs:?}");
     assert!(errs[0].contains("missing.csv"), "{errs:?}");
     for e in &errs[1..] {
         assert!(
@@ -359,4 +361,32 @@ fn a_bad_byte_is_flagged_and_the_rest_of_the_file_still_runs() {
     let ev = s.run_file(&main).expect("run").clone();
     let (_, line) = ev.queries().next().expect("a query");
     assert_eq!(line.plain.as_deref(), Some("5"));
+}
+
+#[test]
+fn a_huge_exact_angle_is_named_in_a_short_message() {
+    let ev = Session::new()
+        .run_str(r"$$ \tan(10^{100000}) \approx ? $$")
+        .clone();
+    let errs = errors(&ev);
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    assert!(errs[0].contains("too large"), "{errs:?}");
+    assert!(errs[0].len() < 400, "{} bytes", errs[0].len());
+}
+
+#[test]
+fn bar_over_a_subscripted_data_column_is_its_mean() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    std::fs::write(dir.path().join("d.csv"), "c_1, c_2\n1, 10\n6, 20\n").expect("write");
+    let doc = r"Data: $D$ from [[d.csv]].
+
+$$ \bar{c_1} = ? $$
+
+$$ \operatorname{mean}(c_1) = ? $$
+";
+    let ev = session_in(dir.path()).run_str(doc).clone();
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+    let q: Vec<_> = ev.queries().map(|q| q.1.plain.clone()).collect();
+    assert_eq!(q[0], q[1], "{q:?}");
+    assert_eq!(q[0].as_deref(), Some("7/2"));
 }

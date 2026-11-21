@@ -61,6 +61,17 @@ pub struct PageCache {
     pub proof: crate::proof::ProofView,
 }
 
+/// Modification time and size of a file (`None` when it cannot be read).
+type FileStamp = Option<(Option<std::time::SystemTime>, u64)>;
+
+/// How often the imported files are looked at on disk.
+const IMPORT_POLL: Duration = Duration::from_secs(1);
+
+fn stamp_of(path: &Path) -> FileStamp {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.modified().ok(), m.len()))
+}
+
 static NEXT_DOC_ID: AtomicU64 = AtomicU64::new(1);
 
 /// Frees a large value (the old page, parse or evaluation of a long file) on a thread
@@ -87,6 +98,10 @@ pub struct Doc {
     eval_text: String,
     eval_id: u64,
     submitted: Option<u64>,
+    /// The files the last evaluation imported, with how they looked when it started
+    /// (checked about once a second, so a file saved from another tab shows here).
+    imports: Vec<(PathBuf, FileStamp)>,
+    imports_checked: Instant,
     last_edit: Instant,
     cache: Option<Arc<PageCache>>,
     /// The page at the other width, for a second view of this file.
@@ -226,6 +241,8 @@ impl Doc {
             eval_text: String::new(),
             eval_id: 0,
             submitted: None,
+            imports: Vec::new(),
+            imports_checked: Instant::now(),
             last_edit: Instant::now(),
             cache: None,
             spare: None,
@@ -319,6 +336,19 @@ impl Doc {
             .as_ref()
             .filter(|(rev, _)| *rev == self.editor.revision())
             .map(|(_, d)| d.clone());
+        // The imported files as they are before this run reads them.
+        self.imports = self
+            .eval
+            .as_ref()
+            .map(|ev| ev.imported_files())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|f| {
+                let st = stamp_of(&f);
+                (f, st)
+            })
+            .collect();
+        self.imports_checked = Instant::now();
         self.worker
             .submit_parsed(&text, base.as_deref(), path.as_deref(), parsed);
         self.proof_worker.submit(&text, base.as_deref());
@@ -366,6 +396,17 @@ impl Doc {
             self.eval_id += 1;
             self.took_eval();
         }
+        if self.submitted == Some(self.editor.revision())
+            && !self.worker.busy()
+            && self.imports_checked.elapsed() >= IMPORT_POLL
+        {
+            self.imports_checked = Instant::now();
+            if self.imports.iter().any(|(f, st)| stamp_of(f) != *st) {
+                // An imported file changed on disk: run the file again.
+                self.submitted = None;
+                self.last_edit = Instant::now() - Duration::from_millis(DEBOUNCE_MS);
+            }
+        }
         if self.submitted != Some(self.editor.revision()) {
             let wait = Duration::from_millis(DEBOUNCE_MS);
             let since = self.last_edit.elapsed();
@@ -375,8 +416,27 @@ impl Doc {
                 return Some(wait - since);
             }
         }
-        (self.worker.busy() || self.pending || self.proof_worker.busy())
-            .then_some(Duration::from_millis(30))
+        if self.worker.busy() || self.pending || self.proof_worker.busy() {
+            return Some(Duration::from_millis(30));
+        }
+        (!self.imports.is_empty())
+            .then(|| IMPORT_POLL.saturating_sub(self.imports_checked.elapsed()))
+    }
+
+    /// After an evaluation: the files it imported that were not looked at yet are
+    /// stamped now.
+    fn watch_imports(&mut self) {
+        let Some(ev) = self.eval.clone() else {
+            return;
+        };
+        let files = ev.imported_files();
+        self.imports.retain(|(f, _)| files.contains(f));
+        for f in files {
+            if !self.imports.iter().any(|(g, _)| *g == f) {
+                let st = stamp_of(&f);
+                self.imports.push((f, st));
+            }
+        }
     }
 
     /// The evaluated line whose span holds `offset`: its block and index.
@@ -484,6 +544,7 @@ impl Doc {
 
     /// A new evaluation arrived: rebuild the figures and their slider rows.
     fn took_eval(&mut self) {
+        self.watch_imports();
         if let Some(ev) = self.eval.clone() {
             self.figures.sync(&ev);
             let rows = self.figures.rows();

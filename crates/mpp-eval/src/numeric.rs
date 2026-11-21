@@ -76,6 +76,18 @@ fn approx_closed(e: &Expr) -> Result<String, EvalError> {
     }
 }
 
+/// `text` cut to a readable length (an exact angle can have 100000 digits).
+fn short_text(text: &str) -> String {
+    const KEEP: usize = 24;
+    let n = text.chars().count();
+    if n <= 3 * KEEP {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(KEEP).collect();
+    let tail: String = text.chars().skip(n - KEEP).collect();
+    format!("{head}\u{2026}{tail}")
+}
+
 /// A trigonometric function whose angle is too large for the high-precision evaluator to
 /// reduce modulo π (`sin(2^{1000000})`), as text: it has no honest float value either.
 fn huge_angle(e: &Expr) -> Option<String> {
@@ -89,7 +101,7 @@ fn huge_angle(e: &Expr) -> Option<String> {
         if trig {
             if let Some(v) = args.first().and_then(huge::magnitude) {
                 if v.sign != 0.0 && v.log10 > limit {
-                    return Some(e.to_string());
+                    return Some(short_text(&e.to_string()));
                 }
             }
         }

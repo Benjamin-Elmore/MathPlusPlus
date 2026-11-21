@@ -575,6 +575,19 @@ impl<'a> Lowerer<'a> {
             && matches!(n.accent, Some(Accent::Bar | Accent::Overline))
             && self.scope.binding(&n.base).is_none()
             && self.scope.binding(crate::block::FAILED_DATA).is_some();
+        // `ar{c_1}` for a column whose header is `c_1`: the mean of that column.
+        if n.sub.is_some() && matches!(n.accent, Some(Accent::Bar | Accent::Overline)) {
+            let plain = Name {
+                accent: None,
+                ..n.clone()
+            };
+            if let Some(col) = name_key(&plain) {
+                let own = name_key(n).is_some_and(|k| self.scope.binding(&k).is_some());
+                if self.is_column(&col) && !own {
+                    return Ok(Some(Expr::apply("mean", vec![Expr::sym(&col)])));
+                }
+            }
+        }
         if !self.is_column(&n.base) && !failed_mean {
             return Ok(None);
         }
