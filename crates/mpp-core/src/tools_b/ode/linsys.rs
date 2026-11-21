@@ -77,6 +77,90 @@ pub fn solve(mut a: Vec<Vec<Expr>>, mut b: Vec<Expr>) -> Option<Vec<Expr>> {
     Some(out)
 }
 
+/// What a square-or-not linear system allows.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Outcome {
+    /// Exactly one solution.
+    Unique(Vec<Expr>),
+    /// Infinitely many: the unknowns at these indices in terms of the free ones (named
+    /// by `names`), which do not appear in the list.
+    Many(Vec<(usize, Expr)>),
+    /// No solution.
+    Inconsistent,
+}
+
+/// Solves `A u = b` and says whether it has one, many or no solutions. `None` when the
+/// system is too large.
+pub fn classify(mut a: Vec<Vec<Expr>>, mut b: Vec<Expr>, names: &[String]) -> Option<Outcome> {
+    let rows = a.len();
+    let cols = a.first().map_or(0, Vec::len);
+    if cols == 0 || cols > MAX_UNKNOWNS || b.len() != rows || names.len() != cols {
+        return None;
+    }
+    let mut pivot_cols = Vec::new();
+    let mut r = 0;
+    for c in 0..cols {
+        if r == rows {
+            break;
+        }
+        let Some(p) = (r..rows).find(|&i| !is_zero(&a[i][c])) else {
+            continue;
+        };
+        a.swap(r, p);
+        b.swap(r, p);
+        let inv = pow(a[r][c].clone(), Expr::int(-1));
+        for v in a[r][c..].iter_mut() {
+            *v = simplify(&mul(vec![v.clone(), inv.clone()]));
+        }
+        b[r] = simplify(&mul(vec![b[r].clone(), inv]));
+        for i in 0..rows {
+            if i == r || is_zero(&a[i][c]) {
+                continue;
+            }
+            let f = a[i][c].clone();
+            for j in c..cols {
+                a[i][j] = simplify(&add(vec![
+                    a[i][j].clone(),
+                    mul(vec![Expr::int(-1), f.clone(), a[r][j].clone()]),
+                ]));
+            }
+            b[i] = simplify(&add(vec![
+                b[i].clone(),
+                mul(vec![Expr::int(-1), f, b[r].clone()]),
+            ]));
+        }
+        pivot_cols.push(c);
+        r += 1;
+    }
+    if b.iter().skip(r).any(|v| !is_zero(v)) {
+        return Some(Outcome::Inconsistent);
+    }
+    let free: Vec<usize> = (0..cols).filter(|c| !pivot_cols.contains(c)).collect();
+    let mut solved = Vec::with_capacity(pivot_cols.len());
+    for (row, &c) in pivot_cols.iter().enumerate() {
+        let mut terms = vec![b[row].clone()];
+        for &j in &free {
+            if !is_zero(&a[row][j]) {
+                terms.push(mul(vec![
+                    Expr::int(-1),
+                    a[row][j].clone(),
+                    Expr::sym(&names[j]),
+                ]));
+            }
+        }
+        solved.push((c, simplify(&add(terms))));
+    }
+    Some(if free.is_empty() {
+        let mut out = vec![Expr::zero(); cols];
+        for (c, v) in solved {
+            out[c] = v;
+        }
+        Outcome::Unique(out)
+    } else {
+        Outcome::Many(solved)
+    })
+}
+
 /// The coefficients of `e` as a linear form in `unknowns`: `(rows of A, b)` with
 /// `Σ Aⱼ uⱼ = b`. `None` when `e` is not linear in them.
 pub fn linear_form(e: &Expr, unknowns: &[String]) -> Option<(Vec<Expr>, Expr)> {

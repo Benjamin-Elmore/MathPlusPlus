@@ -34,7 +34,9 @@ Checked against the harmonic sum with its Euler–Maclaurin correction, which at
 
 $$ \left| \left(\sum_{k=1}^{1000} \frac{1}{k} - \ln 1000 - \frac{1}{2000} + \frac{1}{12000000}\right) - \gamma \right| < 10^{-14} \overset{?}{=} \text{true} $$
 
-$$ \gamma \overset{?}{=} -\mathrm{digamma}(1) $$
+The 60 digits agree with $-\psi(1)$ worked out in high precision (a 60-digit decimal cannot equal it exactly, so the check bounds the gap).
+
+$$ \left| \gamma + \mathrm{digamma}(1) \right| < 10^{-59} \overset{?}{=} \text{true} $$
 
 ## Catalan's constant G
 
@@ -52,7 +54,7 @@ $\zeta(3) = \sum 1/n^3$, irrational (Apéry, 1979), to 60 digits (OEIS A002117).
 
 $$ \zeta_3 \equiv 1.20205690315959428539973816151144999076498629234049888179227 $$
 
-$$ \zeta(3) \overset{?}{=} \zeta_3 $$
+$$ \left| \zeta(3) - \zeta_3 \right| < 10^{-59} \overset{?}{=} \text{true} $$
 
 ## Square roots and logarithms
 

@@ -291,6 +291,8 @@ pub fn solve_parsed(
                 steps.0.extend(local.0);
                 return Ok(sol);
             }
+            // The conditions contradict every solution: no other method can help.
+            Err(e @ MathError::Contradiction(_)) => return Err(e),
             Err(e) => failures.push(format!("{} ({e})", cand.method)),
         }
     }
@@ -346,9 +348,13 @@ fn accept(
         .cloned()
         .collect();
     let mut verified = verified;
+    let mut notes = cand.notes.clone();
     if !conditions.is_empty() && !matches!(form, Form::Series { .. }) {
         if !remaining.is_empty() {
             let fixed = apply_conditions(ode, &form, conditions, &remaining)?;
+            if let Some(i) = fixed.1.find("infinitely many solutions") {
+                notes.push(fixed.1[i..].to_string());
+            }
             let shown: Vec<String> = conditions.iter().map(|c| c.to_string()).collect();
             steps.push(
                 "apply the conditions",
@@ -389,7 +395,7 @@ fn accept(
         method: cand.method.to_string(),
         constants: remaining,
         verified,
-        notes: cand.notes.clone(),
+        notes,
     })
 }
 
@@ -459,7 +465,10 @@ fn apply_conditions(
                     mul(vec![Expr::int(-1), c.value.clone()]),
                 ])));
             }
-            let values = solve_constants(&equations, consts).ok_or_else(not_enough)?;
+            let values = match solve_constants(&equations, consts) {
+                Some(v) => v,
+                None => return classify_conditions(ode, sol, &equations, conditions, consts),
+            };
             let pairs: Vec<(&str, Expr)> = consts
                 .iter()
                 .map(String::as_str)
@@ -496,6 +505,75 @@ fn apply_conditions(
             ))
         }
         Form::Series { .. } => Ok((form.clone(), String::new())),
+    }
+}
+
+/// Conditions whose linear system for the constants is singular (a boundary value
+/// problem such as `y″ + y = 0, y(0) = 0, y(π) = 0`): infinitely many solutions (some
+/// constants stay free) or none at all.
+fn classify_conditions(
+    ode: &Ode,
+    sol: &Expr,
+    equations: &[Expr],
+    conditions: &[Condition],
+    consts: &[String],
+) -> MathResult<(Form, String)> {
+    let shown: Vec<String> = conditions.iter().map(|c| c.to_string()).collect();
+    let mut rows = Vec::new();
+    let mut rhs = Vec::new();
+    for e in equations {
+        let (row, b) = linsys::linear_form(e, consts).ok_or_else(|| MathError::Domain {
+            function: "dsolve".into(),
+            detail: format!(
+                "the conditions do not fix the constants {}",
+                consts.join(", ")
+            ),
+        })?;
+        rows.push(row);
+        rhs.push(b);
+    }
+    match linsys::classify(rows, rhs, consts) {
+        Some(linsys::Outcome::Inconsistent) => Err(MathError::Contradiction(format!(
+            "the problem has no solution: no choice of {} in the general solution {} = {} meets {}",
+            consts.join(", "),
+            ode.y,
+            tidy(sol).to_text(),
+            shown.join(" and ")
+        ))),
+        Some(linsys::Outcome::Many(pairs)) => {
+            let subs: Vec<(&str, Expr)> = pairs
+                .iter()
+                .map(|(i, v)| (consts[*i].as_str(), v.clone()))
+                .collect();
+            let fixed = tidy(&sol.subs_all(&subs));
+            let free: Vec<&str> = consts
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| pairs.iter().all(|(j, _)| j != i))
+                .map(|(_, c)| c.as_str())
+                .collect();
+            let mut text: Vec<String> = subs.iter().map(|(c, v)| format!("{c} = {v}")).collect();
+            text.push(format!(
+                "infinitely many solutions: {} can be any number",
+                free.join(", ")
+            ));
+            Ok((Form::Explicit(fixed), text.join("; ")))
+        }
+        Some(linsys::Outcome::Unique(values)) => {
+            let pairs: Vec<(&str, Expr)> = consts
+                .iter()
+                .map(String::as_str)
+                .zip(values.iter().cloned())
+                .collect();
+            Ok((Form::Explicit(tidy(&sol.subs_all(&pairs))), String::new()))
+        }
+        None => Err(MathError::Domain {
+            function: "dsolve".into(),
+            detail: format!(
+                "the conditions do not fix the constants {}",
+                consts.join(", ")
+            ),
+        }),
     }
 }
 

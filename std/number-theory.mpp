@@ -80,7 +80,7 @@ $$ \zeta(4) \overset{?}{=} \frac{\pi^4}{90} $$
 
 $$ \sum_{n=1}^{\infty} \frac{1}{n^4} \overset{?}{=} \zeta(4) $$
 
-$$ \zeta(3) \overset{?}{=} 1.2020569031595942854 $$
+$$ \left| \zeta(3) - 1.2020569031595942854 \right| < 10^{-18} \overset{?}{=} \text{true} $$
 
 $$ \zeta(-1) \overset{?}{=} -\frac{1}{12} $$
 

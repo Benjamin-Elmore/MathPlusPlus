@@ -365,6 +365,86 @@ fn quadratic_note(f: &Poly, num: &Poly, var: &str) -> String {
     )
 }
 
+/// `√q` for a rational square, else `None`.
+fn rational_sqrt(q: &BigRational) -> Option<BigRational> {
+    if q.is_negative() {
+        return None;
+    }
+    let (n, d) = (q.numer().sqrt(), q.denom().sqrt());
+    (&n * &n == *q.numer() && &d * &d == *q.denom()).then(|| BigRational::new(n, d))
+}
+
+/// `∫ rem/den` for an even quartic `den = c (x⁴ + a x² + b)` that is irreducible over Q
+/// but splits over Q(√m) as `(x² + s x + t)(x² − s x + t)` with `t = √b` rational and
+/// `s = √m`, `m = 2t − a` (`x⁴ + 1 = (x² + √2 x + 1)(x² − √2 x + 1)`). The numerators
+/// over the two factors are conjugate, `A x + B` and `Ā x + B̄`, found from four
+/// linear equations in closed form.
+fn biquadratic(rem: &Poly, den: &Poly, var: &str) -> Option<Expr> {
+    if den.degree()? != 4 || rem.degree().is_some_and(|d| d > 3) {
+        return None;
+    }
+    let lead = den.leading();
+    let c = |p: &Poly, i: usize| p.coeffs().get(i).cloned().unwrap_or_else(BigRational::zero);
+    let monic = den.scale(&lead.recip());
+    let num = rem.scale(&lead.recip());
+    if !c(&monic, 1).is_zero() || !c(&monic, 3).is_zero() {
+        return None;
+    }
+    let (a, b) = (c(&monic, 2), c(&monic, 0));
+    let t = rational_sqrt(&b).filter(|t| t.is_positive())?;
+    let m = q(2) * &t - &a;
+    if !m.is_positive() || rational_sqrt(&m).is_some() {
+        return None;
+    }
+    // Each quadratic is (x ± s/2)² + D with D = t − m/4 > 0 (no real roots).
+    let dd = &t - &m / q(4);
+    if !dd.is_positive() {
+        return None;
+    }
+    let (n0, n1, n2, n3) = (c(&num, 0), c(&num, 1), c(&num, 2), c(&num, 3));
+    let a1 = &n3 / q(2);
+    let b1 = &n0 / (q(2) * &t);
+    let a2 = (q(2) * &b1 - &n2) / (q(2) * &m);
+    let b2 = (q(2) * &t * &a1 - &n1) / (q(2) * &m);
+    let s = Expr::ratio(m.clone()).sqrt();
+    let x = Expr::sym(var);
+    let r = |v: &BigRational| Expr::ratio(v.clone());
+    let lin = |p: &BigRational, qv: &BigRational, sign: i64| {
+        add(vec![r(p), mul(vec![Expr::int(sign), r(qv), s.clone()])])
+    };
+    let root_d = Expr::ratio(dd).sqrt();
+    let mut parts = Vec::new();
+    for sign in [1i64, -1] {
+        let big_a = lin(&a1, &a2, sign);
+        let big_b = lin(&b1, &b2, sign);
+        let shift = mul(vec![Expr::int(sign), s.clone(), Expr::rational(1, 2)]);
+        let quad = add(vec![
+            pow(x.clone(), Expr::int(2)),
+            mul(vec![Expr::int(sign), s.clone(), x.clone()]),
+            r(&t),
+        ]);
+        // (A/2) ln(quad) + (B − A·(±s)/2)/√D · atan((x ± s/2)/√D).
+        parts.push(mul(vec![
+            big_a.clone(),
+            Expr::rational(1, 2),
+            func(Func::Ln, vec![quad]),
+        ]));
+        let k = add(vec![big_b, mul(vec![Expr::int(-1), big_a, shift.clone()])]);
+        parts.push(mul(vec![
+            k,
+            pow(root_d.clone(), Expr::int(-1)),
+            func(
+                Func::Atan,
+                vec![simplify(&add(vec![
+                    div(x.clone(), root_d.clone()),
+                    div(shift, root_d.clone()),
+                ]))],
+            ),
+        ]));
+    }
+    Some(simplify(&add(parts)))
+}
+
 /// Integrates a rational function with rational coefficients.
 pub(crate) fn partial_fractions(eng: &mut Integrator, e: &Expr, steps: &mut Steps) -> Option<Expr> {
     let var = eng.var.clone();
@@ -402,7 +482,20 @@ pub(crate) fn partial_fractions(eng: &mut Integrator, e: &Expr, steps: &mut Step
     }
     let mut pieces = vec![int_poly(&quot, &var)];
     if !rem.is_zero() {
-        let terms = decompose(&rem, &den)?;
+        let Some(terms) = decompose(&rem, &den) else {
+            let r = biquadratic(&rem, &den, &var)?;
+            steps.push(
+                "factor over a quadratic field",
+                holder(&proper, &var),
+                r.clone(),
+                Some(format!(
+                    "{} splits into two quadratics with irrational coefficients; partial fractions over them give logarithms and arctangents",
+                    den.to_expr(&var)
+                )),
+            );
+            pieces.push(r);
+            return Some(simplify(&add(pieces)));
+        };
         let shown: Vec<Expr> = terms
             .iter()
             .map(|(f, k, n)| term_expr(f, *k, n, &var))

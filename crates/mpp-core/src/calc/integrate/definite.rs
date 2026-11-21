@@ -240,6 +240,11 @@ fn numeric_bounds(
                 );
                 return Ok(result);
             }
+            if let Some((v, err, note)) = super::improper::convergent(e, var, &points) {
+                let result = Expr::float(certified(v, err));
+                Steps::record(&mut log, "comparison test", &holder, &result, Some(note));
+                return Ok(result);
+            }
             Err(MathError::Undetermined(format!(
                 "whether ∫ {e} d{var} from {a} to {b} converges ({})",
                 why.strip_prefix("whether the integral converges: ")
