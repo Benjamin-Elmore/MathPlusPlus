@@ -282,6 +282,41 @@ fn user_functions_recurse_thousands_of_levels_with_a_clear_limit_past_that() {
         "{errs:?}"
     );
 }
+
+#[test]
+fn queries_on_a_data_file_that_did_not_load_say_so_instead_of_echoing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let doc = r"Data: $D$ from [[missing.csv]].
+
+$$ \bar{h} = ? $$
+
+$$ \operatorname{median}(m) = ? $$
+
+$$ \operatorname{var}(m) = ? $$
+
+$$ p(u) := \operatorname{linreg}(h, m) $$
+
+$$ \frac{d}{dx} x^2 = ? $$
+";
+    let ev = session_in(dir.path()).run_str(doc).clone();
+    let errs = errors(&ev);
+    assert_eq!(errs.len(), 5, "{errs:?}");
+    assert!(errs[0].contains("missing.csv"), "{errs:?}");
+    for e in &errs[1..] {
+        assert!(
+            e.contains("no data, because missing.csv did not load"),
+            "{errs:?}"
+        );
+    }
+    // Maths that does not use the data is answered as usual.
+    let last = ev.queries().last().expect("query").1;
+    assert_eq!(last.plain.as_deref(), Some("2*x"));
+    // Once the file is there, the same queries are answered.
+    std::fs::write(dir.path().join("missing.csv"), "h, m\n1, 2\n3, 5\n").expect("write");
+    let ev = session_in(dir.path()).run_str(doc).clone();
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+}
+
 #[test]
 fn a_bad_byte_is_flagged_and_the_rest_of_the_file_still_runs() {
     let dir = tempfile::tempdir().expect("temp dir");

@@ -9,6 +9,7 @@ mod random;
 mod seed;
 mod sentences;
 mod units;
+pub(crate) use data::FAILED_DATA;
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -1335,6 +1336,10 @@ impl Run<'_, '_> {
             }
         };
         lr.input = Some(input.clone());
+        if let Some(err) = self.missing_data(&input) {
+            self.error(expr.span, err);
+            return self.push(lr);
+        }
         let input = self.catalan_numbers(input, expr.span);
         // `y'' + y = 0 = ?`: a differential equation goes to the solver with the
         // line's conditions.

@@ -569,7 +569,13 @@ impl<'a> Lowerer<'a> {
     /// `\bar{x}` (the mean) and `x_i` (an entry) for a data column `x`, unless the
     /// decorated name is defined on its own.
     fn data_name(&mut self, n: &Name) -> Result<Option<Expr>, Located> {
-        if !self.is_column(&n.base) {
+        // After a data file failed to load, `ar{h}` with no `h` is still read as a
+        // mean, so it is reported as missing data rather than echoed.
+        let failed_mean = n.sub.is_none()
+            && matches!(n.accent, Some(Accent::Bar | Accent::Overline))
+            && self.scope.binding(&n.base).is_none()
+            && self.scope.binding(crate::block::FAILED_DATA).is_some();
+        if !self.is_column(&n.base) && !failed_mean {
             return Ok(None);
         }
         if let Some(key) = name_key(n) {

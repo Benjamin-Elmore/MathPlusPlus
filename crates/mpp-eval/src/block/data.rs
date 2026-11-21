@@ -24,6 +24,47 @@ use crate::value::{Binding, Value, VarKind};
 /// Regression operators that can define a function.
 const FITS: &[&str] = &["linreg", "polyreg", "expreg", "powreg", "logreg"];
 
+/// Hidden key holding the name of a data file that did not load (see
+/// [`Run::missing_data`]).
+pub(crate) const FAILED_DATA: &str = "data:failed";
+
+/// Operators whose arguments are data columns.
+const DATA_OPS: &[&str] = &[
+    "mean",
+    "median",
+    "mode",
+    "var",
+    "pvar",
+    "std",
+    "pstd",
+    "quartiles",
+    "corr",
+    "cov",
+    "linreg",
+    "polyreg",
+    "expreg",
+    "powreg",
+    "logreg",
+];
+
+/// The names `e` uses as data: arguments of [`DATA_OPS`].
+fn data_names(e: &Expr, out: &mut Vec<String>) {
+    if let ExprNode::Apply(op, args) = e.node() {
+        if DATA_OPS.contains(&&**op) {
+            for a in args {
+                if let ExprNode::Sym(name) = a.node() {
+                    if !out.iter().any(|n| **n == **name) {
+                        out.push(name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    for c in e.children() {
+        data_names(c, out);
+    }
+}
+
 impl Run<'_, '_> {
     /// A table whose header row names variables and whose cells are numbers defines one
     /// data column per header. Returns false for any other table (it stays prose).
@@ -171,6 +212,7 @@ impl Run<'_, '_> {
             Ok(found) => found,
             Err(msg) => {
                 self.result.imports.push(info);
+                self.note_failed_data(&d.path, d.path_span);
                 return self.error(d.path_span, EvalError::Invalid(msg));
             }
         };
@@ -184,6 +226,7 @@ impl Run<'_, '_> {
                 let file = Path::new(&d.path)
                     .file_name()
                     .map_or(d.path.clone(), |f| f.to_string_lossy().into_owned());
+                self.note_failed_data(&d.path, d.path_span);
                 return self.error(d.path_span, EvalError::Invalid(format!("{file}: {msg}")));
             }
         };
@@ -204,6 +247,52 @@ impl Run<'_, '_> {
         }
     }
 
+    /// Remembers that a data file did not load, so the columns it would have defined
+    /// are reported as missing instead of being read as unknowns.
+    fn note_failed_data(&mut self, path: &str, span: Span) {
+        let file = Path::new(path)
+            .file_name()
+            .map_or(path.to_string(), |f| f.to_string_lossy().into_owned());
+        self.define(
+            FAILED_DATA,
+            Binding::Variable {
+                kind: VarKind::Variable,
+                value: Expr::sym(&file),
+                origin: self.origin(span),
+            },
+        );
+    }
+
+    /// When a data file did not load and `e` uses names without values as data
+    /// (`\bar{h}`, `\operatorname{median}(m)`), the error to show instead of an
+    /// answer that echoes the question.
+    pub(super) fn missing_data(&self, e: &Expr) -> Option<EvalError> {
+        let mut names = Vec::new();
+        data_names(e, &mut names);
+        if names.is_empty() {
+            return None;
+        }
+        let view = self.view();
+        let failed = view.get(FAILED_DATA, false)?;
+        let Binding::Variable { value, .. } = &*failed else {
+            return None;
+        };
+        let missing: Vec<String> = names
+            .into_iter()
+            .filter(|n| view.get(n, true).is_none())
+            .map(|n| format!("`{n}`"))
+            .collect();
+        let (first, rest) = missing.split_first()?;
+        let (list, verb) = if rest.is_empty() {
+            (first.clone(), "has")
+        } else {
+            (missing.join(", "), "have")
+        };
+        Some(EvalError::Invalid(format!(
+            "{list} {verb} no data, because {value} did not load"
+        )))
+    }
+
     /// `f(x) := \operatorname{linreg}(t, d)`: the fitted model as the body of `f`, in
     /// its own parameter, with R² noted. `None` when the body is not a fit.
     pub(super) fn fitted_body(
@@ -217,6 +306,10 @@ impl Run<'_, '_> {
         };
         if !FITS.contains(&&**op) {
             return None;
+        }
+        if let Some(err) = self.missing_data(body) {
+            self.error(span, err);
+            return Some(body.clone());
         }
         let [param] = params else {
             self.error(
