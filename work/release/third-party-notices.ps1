@@ -35,16 +35,48 @@ while ($queue.Count) {
     }
 }
 
+# The standard text of each licence a crate names but ships no file for, with its authors as
+# the copyright holders (MIT, BSL and zlib require the notice; the templates are in spdx\).
+$spdxDir = Join-Path $PSScriptRoot 'spdx'
+function Get-SpdxText($p, [switch]$Known) {
+    $holders = if ($p.authors) { ($p.authors | ForEach-Object { $_ -replace '\s*<[^>]*>', '' }) -join ', ' } else { "the $($p.name) authors" }
+    $ids = [regex]::Matches($p.license, '[A-Za-z0-9.\-]+') | ForEach-Object { $_.Value } |
+        Where-Object { $_ -notin 'OR', 'AND', 'WITH' } | Select-Object -Unique
+    $parts = foreach ($id in $ids) {
+        $file = if ($id -eq 'Apache-2.0') { Join-Path $root 'LICENSE-APACHE' } else { Join-Path $spdxDir "$id.txt" }
+        if (-not (Test-Path $file)) {
+            if ($Known) { continue }
+            throw "$($p.name) $($p.version) ships no licence file and there is no standard text for $id in $spdxDir"
+        }
+        $body = ((Get-Content $file -Raw) -replace "`r`n", "`n").Trim().Replace('{copyright}', $holders)
+        "--- $id (standard text; the crate ships no licence file) ---`n$body"
+    }
+    $parts -join "`n`n"
+}
+
 $sha = [Security.Cryptography.SHA256]::Create()
 $groups = @{}
 foreach ($id in $seen) {
     if ($members.Contains($id)) { continue }
     $p = $byId[$id]
     $dir = Split-Path $p.manifest_path
-    $files = Get-ChildItem $dir -File -ErrorAction SilentlyContinue |
-        Where-Object { $_.Name -match '^(LICEN[CS]E|COPYING|NOTICE|UNLICENSE)' } | Sort-Object Name
+    $files = @(Get-ChildItem $dir -File -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -match '^(LICEN[CS]E|COPYING|NOTICE|UNLICENSE)' } | Sort-Object Name)
+    if (-not $files) {
+        # Licences kept beside what they cover, one folder down (fonts/OFL.txt, fonts/UFL.txt …).
+        $files = @(Get-ChildItem $dir -Directory -ErrorAction SilentlyContinue | ForEach-Object {
+                Get-ChildItem $_.FullName -File -ErrorAction SilentlyContinue |
+                    Where-Object { $_.Name -match '(?i)(^(OFL|UFL)\b|licen[cs]e|copying)' }
+            } | Sort-Object Name)
+    }
     $text = ($files | ForEach-Object { "--- $($_.Name) ---`n" + ((Get-Content $_.FullName -Raw) -replace "`r`n", "`n").Trim() }) -join "`n`n"
-    if (-not $text) { $text = "(this crate ships no licence file; its licence is $($p.license))" }
+    if (-not $text) {
+        $text = Get-SpdxText $p
+    } elseif ($files[0].DirectoryName -ne $dir) {
+        # Only the licences of bundled files were found: add the crate's own licence.
+        $own = Get-SpdxText $p -Known
+        if ($own) { $text = "$own`n`n$text" }
+    }
     $key = [BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($text)))
     if (-not $groups.ContainsKey($key)) { $groups[$key] = @{ Text = $text; Crates = [Collections.Generic.List[object]]::new() } }
     $groups[$key].Crates.Add($p)
