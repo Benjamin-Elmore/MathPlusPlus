@@ -27,15 +27,19 @@ pub enum SideView {
     Search,
     Outline,
     Variables,
+    Problems,
+    Tutorial,
 }
 
 impl SideView {
     /// The views in activity-bar order.
-    pub const ALL: [SideView; 4] = [
+    pub const ALL: [SideView; 6] = [
         SideView::Explorer,
         SideView::Search,
         SideView::Outline,
         SideView::Variables,
+        SideView::Problems,
+        SideView::Tutorial,
     ];
 
     /// The name on the icon's tooltip and the panel's header.
@@ -45,6 +49,8 @@ impl SideView {
             SideView::Search => "Search",
             SideView::Outline => "Outline",
             SideView::Variables => "Definitions",
+            SideView::Problems => "Problems",
+            SideView::Tutorial => "Tutorial",
         }
     }
 }

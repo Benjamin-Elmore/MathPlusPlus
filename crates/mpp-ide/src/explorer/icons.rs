@@ -143,3 +143,39 @@ pub fn activity_outline(painter: &Painter, rect: Rect, color: Color32) {
         );
     }
 }
+
+/// Activity bar: problems (a warning triangle with a mark).
+pub fn activity_problems(painter: &Painter, rect: Rect, color: Color32) {
+    let r = rect.shrink(rect.width() * 0.27);
+    let st = Stroke::new(1.7, color);
+    let top = Pos2::new(r.center().x, r.top());
+    let (bl, br) = (r.left_bottom(), r.right_bottom());
+    painter.line_segment([top, br], st);
+    painter.line_segment([br, bl], st);
+    painter.line_segment([bl, top], st);
+    let x = r.center().x;
+    painter.line_segment(
+        [
+            Pos2::new(x, r.top() + r.height() * 0.38),
+            Pos2::new(x, r.top() + r.height() * 0.68),
+        ],
+        st,
+    );
+    painter.circle_filled(Pos2::new(x, r.top() + r.height() * 0.84), 1.2, color);
+}
+
+/// Activity bar: the tutorial (an open book).
+pub fn activity_tutorial(painter: &Painter, rect: Rect, color: Color32) {
+    let r = rect.shrink(rect.width() * 0.26);
+    let st = Stroke::new(1.6, color);
+    let mid_top = Pos2::new(r.center().x, r.top() + r.height() * 0.12);
+    let mid_bottom = Pos2::new(r.center().x, r.bottom());
+    for side in [r.left(), r.right()] {
+        let outer_top = Pos2::new(side, r.top());
+        let outer_bottom = Pos2::new(side, r.bottom() - r.height() * 0.12);
+        painter.line_segment([outer_top, mid_top], st);
+        painter.line_segment([outer_top, outer_bottom], st);
+        painter.line_segment([outer_bottom, mid_bottom], st);
+    }
+    painter.line_segment([mid_top, mid_bottom], st);
+}

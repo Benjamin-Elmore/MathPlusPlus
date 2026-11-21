@@ -118,38 +118,34 @@ fn assert_shows(h: &Harness<'static, IdeApp>, want: Option<SideView>, step: &str
     }
 }
 
-fn permutations(items: &[SideView]) -> Vec<Vec<SideView>> {
-    if items.len() <= 1 {
-        return vec![items.to_vec()];
-    }
-    let mut out = vec![];
-    for i in 0..items.len() {
-        let mut rest = items.to_vec();
-        let first = rest.remove(i);
-        for mut p in permutations(&rest) {
-            p.insert(0, first);
-            out.push(p);
+/// A click sequence that goes from every view to every view (itself
+/// included) at least once: each ordered pair of views appears as two
+/// consecutive clicks.
+fn every_pair(items: &[SideView]) -> Vec<SideView> {
+    let mut seq = vec![];
+    for a in items {
+        for b in items {
+            seq.push(*a);
+            seq.push(*b);
         }
     }
-    out
+    seq
 }
 
 #[test]
-fn every_icon_in_every_order_shows_its_panel_and_the_lit_icon_hides_it() {
+fn every_icon_after_every_other_shows_its_panel_and_the_lit_icon_hides_it() {
     let d = project("orders");
     let mut h = harness(app_in(&d));
     frames(&mut h);
     assert_shows(&h, Some(SideView::Explorer), "start");
     let mut shown = Some(SideView::Explorer);
-    let orders = permutations(&SideView::ALL);
-    assert_eq!(orders.len(), 24);
-    for order in orders {
-        for v in order {
-            click_icon(&mut h, v);
-            // VS Code: clicking the lit icon hides the column; any other shows its panel.
-            shown = if shown == Some(v) { None } else { Some(v) };
-            assert_shows(&h, shown, &format!("clicking {v:?}"));
-        }
+    let seq = every_pair(&SideView::ALL);
+    assert_eq!(seq.len(), 2 * SideView::ALL.len() * SideView::ALL.len());
+    for (i, v) in seq.into_iter().enumerate() {
+        click_icon(&mut h, v);
+        // VS Code: clicking the lit icon hides the column; any other shows its panel.
+        shown = if shown == Some(v) { None } else { Some(v) };
+        assert_shows(&h, shown, &format!("click {i}: {v:?}"));
     }
     let _ = std::fs::remove_dir_all(&d);
 }
@@ -397,4 +393,98 @@ fn click_label(h: &mut Harness<'static, IdeApp>, label: &str) {
         .min_by(|a, b| a.x.total_cmp(&b.x))
         .expect(label);
     click_at(h, pos);
+}
+
+/// Labels that only one side panel shows.
+fn marker(view: SideView) -> Option<&'static str> {
+    match view {
+        SideView::Explorer => Some("OPEN FILES"),
+        SideView::Tutorial => Some("01 Typing maths"),
+        SideView::Variables => Some("x slider"),
+        _ => None,
+    }
+}
+
+#[test]
+fn each_icon_shows_its_own_panel_and_nothing_of_the_others() {
+    let d = project("ownpanel");
+    let mut h = harness(app_in(&d));
+    frames(&mut h);
+    h.state_mut().settle();
+    frames(&mut h);
+    for v in SideView::ALL {
+        if h.state().ws.side_view != v || !h.state().ws.side_visible {
+            click_icon(&mut h, v);
+        }
+        assert_shows(&h, Some(v), &format!("{v:?}"));
+        for other in SideView::ALL {
+            let Some(m) = marker(other) else { continue };
+            let seen = h.query_all_by_label(m).next().is_some();
+            assert_eq!(seen, other == v, "{m} on screen with {v:?} showing");
+        }
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn a_lesson_opens_from_the_tutorial_panel() {
+    let d = project("lesson");
+    let mut h = harness(app_in(&d));
+    frames(&mut h);
+    click_icon(&mut h, SideView::Tutorial);
+    assert_shows(&h, Some(SideView::Tutorial), "Tutorial");
+    click_label(&mut h, "02 Greek letters");
+    assert_eq!(
+        h.state().doc().expect("doc").title(),
+        "02 Greek letters",
+        "the lesson is the file on screen"
+    );
+    // The project folder stays as it was.
+    assert_eq!(h.state().project_root(), Some(d.as_path()));
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn right_click_on_a_file_offers_rename_delete_and_reveal_and_delete_asks_first() {
+    let d = project("menu");
+    let mut h = harness(app_in(&d));
+    frames(&mut h);
+    let pos = h
+        .query_all_by_label("main.mpp")
+        .map(|n| n.rect().center())
+        .min_by(|a, b| a.x.total_cmp(&b.x))
+        .expect("main.mpp row");
+    h.event(Event::PointerMoved(pos));
+    h.step();
+    for pressed in [true, false] {
+        h.event(Event::PointerButton {
+            pos,
+            button: PointerButton::Secondary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+        h.step();
+    }
+    frames(&mut h);
+    for item in ["Rename", "Delete", "Reveal in File Explorer"] {
+        assert!(
+            h.query_all_by_label_contains(item).next().is_some(),
+            "{item} in the menu"
+        );
+    }
+    click_label(&mut h, "Delete");
+    assert!(
+        h.query_all_by_label_contains("recycle bin")
+            .next()
+            .is_some(),
+        "Delete asks first"
+    );
+    assert!(d.join("main.mpp").is_file(), "nothing deleted yet");
+    click_label(&mut h, "Cancel");
+    assert!(h
+        .query_all_by_label_contains("recycle bin")
+        .next()
+        .is_none());
+    assert!(d.join("main.mpp").is_file(), "Cancel keeps the file");
+    let _ = std::fs::remove_dir_all(&d);
 }

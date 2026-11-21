@@ -30,6 +30,7 @@ pub enum Pane {
     Variables,
     Steps,
     Library,
+    Tutorial,
 }
 
 impl Pane {
@@ -45,7 +46,12 @@ impl Pane {
     pub fn is_side(&self) -> bool {
         matches!(
             self,
-            Pane::Explorer | Pane::Search | Pane::Outline | Pane::Variables
+            Pane::Explorer
+                | Pane::Search
+                | Pane::Outline
+                | Pane::Variables
+                | Pane::Problems
+                | Pane::Tutorial
         )
     }
 
@@ -56,6 +62,8 @@ impl Pane {
             Pane::Search => Some(SideView::Search),
             Pane::Outline => Some(SideView::Outline),
             Pane::Variables => Some(SideView::Variables),
+            Pane::Problems => Some(SideView::Problems),
+            Pane::Tutorial => Some(SideView::Tutorial),
             _ => None,
         }
     }
@@ -67,6 +75,8 @@ impl Pane {
             SideView::Search => Pane::Search,
             SideView::Outline => Pane::Outline,
             SideView::Variables => Pane::Variables,
+            SideView::Problems => Pane::Problems,
+            SideView::Tutorial => Pane::Tutorial,
         }
     }
 
@@ -82,17 +92,19 @@ impl Pane {
             Pane::Variables => "Definitions",
             Pane::Steps => "Steps",
             Pane::Library => "Standard library",
+            Pane::Tutorial => "Tutorial",
         }
     }
 }
 
 /// The panels that can be opened and closed from the View menu.
-pub const MENU_PANES: [Pane; 7] = [
+pub const MENU_PANES: [Pane; 8] = [
     Pane::Explorer,
     Pane::Search,
     Pane::Outline,
     Pane::Variables,
     Pane::Problems,
+    Pane::Tutorial,
     Pane::Steps,
     Pane::Library,
 ];
@@ -169,8 +181,11 @@ pub fn build(preset: Preset, docs: &[u64], active: Option<u64>) -> Tree<Pane> {
             binary(&mut tiles, LinearDir::Horizontal, side, mid, 0.24)
         }
         Preset::Review => {
-            let side = group(&mut tiles, vec![Pane::Explorer, Pane::Search]);
-            let bottom = group(&mut tiles, vec![Pane::Problems, Pane::Outline]);
+            let side = group(
+                &mut tiles,
+                vec![Pane::Explorer, Pane::Search, Pane::Outline],
+            );
+            let bottom = group(&mut tiles, vec![Pane::Problems]);
             let mid = binary(&mut tiles, LinearDir::Vertical, editor, bottom, 0.72);
             binary(&mut tiles, LinearDir::Horizontal, side, mid, 0.24)
         }
@@ -419,10 +434,8 @@ pub fn open_pane(tree: &mut Tree<Pane>, pane: Pane) -> TileId {
     let target = if pane.is_side() {
         side_group(tree)
     } else {
-        find_by(tree, |p| {
-            matches!(p, Pane::Problems | Pane::Steps | Pane::Library)
-        })
-        .and_then(|t| tree.tiles.parent_of(t))
+        find_by(tree, |p| matches!(p, Pane::Steps | Pane::Library))
+            .and_then(|t| tree.tiles.parent_of(t))
     };
     match target {
         Some(g) => add_to_group(tree, g, id),

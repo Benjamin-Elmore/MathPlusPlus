@@ -125,7 +125,7 @@ impl IdeApp {
     fn activity_bar(&mut self, ui: &mut Ui, theme: &Theme) {
         // The only way to switch side panels: click an icon to show its panel,
         // click the lit icon to hide the side column.
-        let items: [(SideView, &str, IconFn); 4] = [
+        let items: [(SideView, &str, IconFn); 6] = [
             (
                 SideView::Explorer,
                 "Explorer (Ctrl+Shift+E)",
@@ -145,6 +145,16 @@ impl IdeApp {
                 SideView::Variables,
                 "Definitions: names, values and imports",
                 icons::activity_variables,
+            ),
+            (
+                SideView::Problems,
+                "Problems (Ctrl+Shift+M)",
+                icons::activity_problems,
+            ),
+            (
+                SideView::Tutorial,
+                "Tutorial: the lessons",
+                icons::activity_tutorial,
             ),
         ];
         // Clicks first, painting after: every icon is drawn with the state the

@@ -1,5 +1,6 @@
-//! The Steps tile (the working of the line under the caret) and the Standard
-//! library tile (every formula of `std/`, typeset, with insert and import).
+//! The Steps tile (the working of the line under the caret), the Standard
+//! library tile (every formula of `std/`, typeset, with insert and import) and
+//! the Tutorial tile (the lessons, one click each).
 
 use egui::{RichText, Ui};
 use mpp_render::Theme;
@@ -15,6 +16,60 @@ use crate::typeset;
 pub enum LibAction {
     Insert,
     Import,
+}
+
+impl IdeApp {
+    /// The Tutorial: every lesson, a click opens it (the lesson on screen is lit).
+    pub(crate) fn tutorial_tile(&mut self, ui: &mut Ui, theme: &Theme) {
+        let dir = crate::tutorial::tutorial_dir(self.ws.settings_dir.as_deref());
+        let current = self.doc().and_then(|d| d.path.clone());
+        let mut open = None;
+        let mut whole = false;
+        egui::ScrollArea::vertical()
+            .id_salt("tutorial-tile")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.add_space(4.0);
+                for (name, _) in crate::tutorial::lessons::FILES {
+                    let title = name.trim_end_matches(".mpp");
+                    let lit = current.as_deref() == Some(dir.join(name).as_path());
+                    ui.horizontal(|ui| {
+                        ui.add_space(10.0);
+                        let text = if lit {
+                            RichText::new(title).color(c32(theme.link))
+                        } else {
+                            RichText::new(title)
+                        };
+                        let r = ui.add(egui::Button::selectable(lit, text));
+                        if r.clicked() {
+                            open = Some(name);
+                        }
+                    });
+                }
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(10.0);
+                    if ui
+                        .button("Open the tutorial folder")
+                        .on_hover_text("Shows the lessons in the Explorer")
+                        .clicked()
+                    {
+                        whole = true;
+                    }
+                });
+            });
+        if whole {
+            self.open_tutorial(Some(ui.ctx()));
+        } else if let Some(name) = open {
+            let made = crate::tutorial::install(&dir)
+                .map_err(|e| format!("Could not set up the tutorial: {e}"))
+                .and_then(|d| self.open_file(&d.join(name), false));
+            if let Err(m) = made {
+                self.message = Some(m);
+            }
+            ui.ctx().request_repaint();
+        }
+    }
 }
 
 fn heading(ui: &mut Ui, theme: &Theme, title: &str) {
