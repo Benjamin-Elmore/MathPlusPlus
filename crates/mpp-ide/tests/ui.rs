@@ -378,3 +378,39 @@ fn copy_gives_unicode_maths() {
         mpp_ide::copy::clipboard_text("\\int_0^1 x^2 dx", true, mpp_ide::copy::CopyFormat::Unicode);
     assert_eq!(out, "\u{222b}\u{2080}\u{b9} x\u{b2} dx");
 }
+
+#[test]
+fn autocomplete_offers_the_files_own_multi_letter_names() {
+    let mut app = IdeApp::empty();
+    app.new_file();
+    app.doc_mut()
+        .expect("doc")
+        .editor
+        .set_text("$$ velocity := 3 $$\n\n$$ x = ? $$\n");
+    let mut h = settled(app);
+    let at = doc_text(&h).rfind("x = ?").expect("query");
+    // Where it is used, the word is set as it is where it is defined: upright.
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .set_text("$$ velocity := 3 $$\n\n$$ 2 velocity + 1 = ? $$\n\n$$ x = ? $$\n");
+    h.state_mut().settle();
+    let shown = page_text(&mut h);
+    assert_eq!(shown.matches("velocity").count(), 2, "{shown}");
+    let at = at + doc_text(&h).len() - "$$ velocity := 3 $$\n\n$$ x = ? $$\n".len();
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .move_caret(at, false);
+    h.run_steps(2);
+    type_text(&mut h, "vel");
+    let items = h.state().completion_items();
+    let first = items.first().expect("a completion");
+    assert_eq!(first.1, "velocity", "{items:?}");
+    // Shown upright, as it is on the page, never as italic letters.
+    assert!(first.0.contains(r"\mathrm{velocity}"), "{items:?}");
+    // No LaTeX command names are shown as labels.
+    assert!(!items.iter().any(|i| i.1 == "lor"), "{items:?}");
+}

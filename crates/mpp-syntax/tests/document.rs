@@ -477,3 +477,30 @@ fn a_letter_after_a_number_is_a_variable_where_it_is_one() {
     assert_eq!(out.matches("quantity m").count(), 2, "{out}");
     assert!(out.contains("quantity t"), "{out}");
 }
+
+/// A word defined with `velocity := 3` is one name wherever it is written, so it is
+/// set the same way (upright) at its definition and at every use.
+#[test]
+fn a_defined_word_is_one_name_where_it_is_used() {
+    use mpp_syntax::math::{NodeKind, Statement};
+    let src = "$$ velocity := 3 $$\n\n$$ 2 velocity^2 + xy = ? $$\n";
+    let doc = parse_document(src);
+    let BlockKind::DisplayMath(m) = &doc.blocks[1].kind else {
+        panic!("{}", dump(&doc));
+    };
+    let Statement::Query { expr, .. } = &m.ast.lines[0].statement else {
+        panic!("{}", dump(&doc));
+    };
+    let mut names = vec![];
+    fn walk(n: &mpp_syntax::math::Node, out: &mut Vec<String>) {
+        if let NodeKind::Name(name) = &n.kind {
+            out.push(name.base.clone());
+        }
+        mpp_syntax::math::visit::children(n, &mut |c| walk(c, out));
+    }
+    walk(expr, &mut names);
+    assert!(names.contains(&"velocity".to_string()), "{names:?}");
+    // Letters that spell no defined name still multiply.
+    assert!(names.contains(&"x".to_string()) && names.contains(&"y".to_string()));
+    assert!(!names.contains(&"v".to_string()), "{names:?}");
+}

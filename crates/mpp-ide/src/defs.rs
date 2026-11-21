@@ -17,10 +17,12 @@ pub struct DefInfo {
     pub span: Span,
 }
 
-fn name_latex(name: &str) -> String {
+/// A name as the page sets it: a symbol by its command, a word such as
+/// `velocity` upright, a letter in italic.
+pub fn name_latex(name: &str) -> String {
     match lookup_name(name) {
         Some(s) if s.unicode == name => s.latex.to_string(),
-        _ => name.to_string(),
+        _ => mpp_core::Expr::sym(name).to_latex(),
     }
 }
 
