@@ -256,6 +256,16 @@ fn layout_block(
                 &mut c,
             )
         }
+        BlockKind::Title(t) => flow(
+            cx,
+            &t.content,
+            style(input, FontId::TextBold, 1.2),
+            x0,
+            0.0,
+            w,
+            &mut c,
+        ),
+        BlockKind::Comment(_) | BlockKind::References(_) => return None,
         BlockKind::Paragraph(content) => flow(
             cx,
             content,

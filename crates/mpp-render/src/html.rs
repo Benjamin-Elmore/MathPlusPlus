@@ -19,11 +19,19 @@ use crate::layout::{
 use crate::svg::{glyph_defs, num, svg_body};
 use crate::theme::Theme;
 
+mod paper;
+use paper::Paper;
+
 /// Supplies evaluated results and figures to [`render_html`]. Every method has
 /// a default that adds nothing, so `mpp-eval` and `mpp-plot` can plug in later.
 pub trait ResultProvider {
     /// Results to fill into a display maths block, by statement line.
     fn display_results(&self, _block: &Block, _math: &DisplayMath) -> Vec<LineResult> {
+        vec![]
+    }
+
+    /// Results to fill into inline maths (`$\int_0^1 x^2 dx = ?$`), by statement line.
+    fn inline_results(&self, _ast: &MathAst) -> Vec<LineResult> {
         vec![]
     }
 
@@ -74,6 +82,9 @@ pub struct HtmlOptions {
     /// Colours used when the reader's system asks for a dark page
     /// (`prefers-color-scheme: dark`) or the page root has the `dark` class.
     pub dark_theme: Option<Theme>,
+    /// Show formatted comments (`% note`, `%{ … %}`) as notes. Off by default:
+    /// an export is the finished page, without the author's notes.
+    pub include_comments: bool,
 }
 
 impl Default for HtmlOptions {
@@ -85,6 +96,7 @@ impl Default for HtmlOptions {
             integral_limits: IntegralLimits::AboveBelow,
             theme: Theme::LIGHT,
             dark_theme: Some(Theme::DARK),
+            include_comments: false,
         }
     }
 }
@@ -108,6 +120,8 @@ pub fn render_html_with(
         footnote_order: vec![],
         footnote_defs: HashMap::new(),
         theorem_count: 0,
+        paper: Paper::scan(doc, results),
+        in_comment: false,
     };
     let mut body = String::new();
     r.blocks(&doc.blocks, &mut body);
@@ -115,6 +129,7 @@ pub fn render_html_with(
     let title = opts
         .title
         .clone()
+        .or_else(|| r.paper.title_text())
         .or_else(|| first_heading(doc))
         .unwrap_or_else(|| "Math++ document".to_string());
     let mut out = String::new();
@@ -154,6 +169,10 @@ struct Renderer<'a> {
     footnote_order: Vec<String>,
     footnote_defs: HashMap<String, String>,
     theorem_count: usize,
+    /// What the whole document says about sections, citations and the title block.
+    paper: Paper,
+    /// Inside a comment: nothing is numbered, evaluated or collected.
+    in_comment: bool,
 }
 
 impl Renderer<'_> {
@@ -186,7 +205,11 @@ impl Renderer<'_> {
     }
 
     fn inline_math(&mut self, ast: &MathAst) -> String {
-        let dl = layout_math(ast, &self.math_opts(MathStyle::Text));
+        let mut opts = self.math_opts(MathStyle::Text);
+        if !self.in_comment {
+            opts.results = self.results.inline_results(ast);
+        }
+        let dl = layout_math(ast, &opts);
         self.svg(&dl, "m")
     }
 
@@ -205,7 +228,8 @@ impl Renderer<'_> {
         match &b.kind {
             BlockKind::Heading { level, content } => {
                 let l = (*level).clamp(1, 6);
-                let _ = writeln!(out, "<h{l}>{}</h{l}>", self.inlines(content));
+                let number = self.heading_number(l);
+                let _ = writeln!(out, "<h{l}>{number}{}</h{l}>", self.inlines(content));
             }
             BlockKind::Paragraph(content) => {
                 let _ = writeln!(out, "<p>{}</p>", self.inlines(content));
@@ -276,12 +300,16 @@ impl Renderer<'_> {
                 }
                 let _ = writeln!(out, "<p class=\"helper\">{s}.</p>");
             }
+            BlockKind::FootnoteDef { .. } if self.in_comment => {}
             BlockKind::FootnoteDef { name, content } => {
                 let html = self.inlines(content);
                 self.footnote_defs.insert(name.clone(), html);
                 self.footnote_number(name);
             }
             BlockKind::Directive(_) => {}
+            BlockKind::Comment(c) => self.comment(c, out),
+            BlockKind::Title(_) => self.title_block(out),
+            BlockKind::References(r) => self.references_block(r, out),
             BlockKind::Assume(a) => {
                 let mut s = String::from("Assume ");
                 let n = a.conditions.len();
@@ -299,8 +327,7 @@ impl Renderer<'_> {
                 let head = if proof || t.kind == TheoremKind::Remark {
                     format!("{}.", t.kind.as_str())
                 } else {
-                    self.theorem_count += 1;
-                    format!("{} {}.", t.kind.as_str(), self.theorem_count)
+                    self.theorem_label(t.kind)
                 };
                 let class = match t.kind {
                     TheoremKind::Theorem
@@ -373,7 +400,9 @@ impl Renderer<'_> {
 
     fn display(&mut self, b: &Block, m: &DisplayMath, out: &mut String) {
         let mut opts = self.math_opts(MathStyle::Display);
-        opts.results = self.results.display_results(b, m);
+        if !self.in_comment {
+            opts.results = self.results.display_results(b, m);
+        }
         let dl = layout_math(&m.ast, &opts);
         let svg = self.svg(&dl, "dm");
         let id = m
@@ -593,12 +622,20 @@ impl Renderer<'_> {
                         self.inlines(text)
                     );
                 }
+                InlineKind::FootnoteRef(name) if self.in_comment => {
+                    let _ = write!(out, "<sup class=\"fnref\">[^{}]</sup>", esc(name));
+                }
+                InlineKind::Cite(cites) => out.push_str(&self.cite(cites)),
                 InlineKind::FootnoteRef(name) => {
                     let n = self.footnote_number(name);
                     let id = esc(&slug(name));
+                    let hover = match self.paper.note_text(name) {
+                        Some(t) => format!(" title=\"{}\"", esc(t)),
+                        None => String::new(),
+                    };
                     let _ = write!(
                         out,
-                        "<sup class=\"fnref\" id=\"fnref-{id}\"><a href=\"#fn-{id}\">{n}</a></sup>"
+                        "<sup class=\"fnref\" id=\"fnref-{id}\"{hover}><a href=\"#fn-{id}\">{n}</a></sup>"
                     );
                 }
                 InlineKind::EqRef { number, .. } => match number {
@@ -804,6 +841,27 @@ figcaption {{ font-size: 0.92em; margin-top: 0.4em; }}
 .fig-spec {{ border: 1px dashed var(--mpp-placeholder); padding: 1.5em; color: var(--mpp-muted); }}
 hr {{ border: none; border-top: 1px solid var(--mpp-rule); opacity: 0.35; margin: 1.5em 0; }}
 ol.footnotes {{ font-size: 0.88em; }}
+.title-block {{ text-align: center; margin: 0 0 2em; }}
+.doc-title {{ font-size: 1.9em; margin: 0.2em 0 0.5em; }}
+.doc-author {{ margin: 0.1em 0; font-size: 1.1em; }}
+.doc-date {{ margin: 0.1em 0; color: var(--mpp-muted); }}
+.abstract {{ margin: 1.4em 2.5em 0; font-size: 0.92em; text-align: justify; }}
+.abstract-head {{ text-align: center; font-weight: bold; margin: 0 0 0.3em; }}
+.sec-num {{ margin-right: 0.5em; }}
+.cite-missing {{ color: var(--mpp-error); font-weight: bold; }}
+.references h2 {{ margin-top: 2em; }}
+ol.refs {{ list-style: none; padding-left: 0; font-size: 0.95em; }}
+ol.refs li {{ margin: 0.35em 0; padding-left: 2.6em; text-indent: -2.6em; text-align: left; }}
+ol.refs.author-year li {{ padding-left: 1.6em; text-indent: -1.6em; }}
+.ref-num {{ display: inline-block; width: 2.6em; text-indent: 0; }}
+.note {{ display: flex; gap: 0.7em; align-items: flex-start; margin: 0.9em 0; padding: 0.55em 0.9em; background: var(--mpp-note-background); border-left: 3px solid var(--mpp-note-accent); border-radius: 0 6px 6px 0; font-size: 0.86em; line-height: 1.4; color: var(--mpp-muted); text-align: left; }}
+.note-mark {{ color: var(--mpp-note-accent); font-size: 1.1em; line-height: 1.2; }}
+.note-body {{ flex: 1; min-width: 0; }}
+.note-body > :first-child {{ margin-top: 0; }}
+.note-body > :last-child {{ margin-bottom: 0; }}
+.note.off {{ border-left-style: dashed; }}
+.note .eq {{ opacity: 0.6; }}
+.eq + .note {{ margin-top: -0.4em; }}
 a {{ color: var(--mpp-link); text-decoration: none; }}
 a:hover {{ text-decoration: underline; }}
 "#

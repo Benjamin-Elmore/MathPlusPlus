@@ -1,0 +1,115 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Applications of the integral}
+\date{}
+\begin{document}
+\maketitle
+A worksheet of the standard applications. Each operator is written \texttt{\textbackslash{}operatorname\{name\}($\ldots$)}; an interval $[a, b]$ gives the bounds and $x = c$ or $y = c$ gives an axis.
+
+\section*{Area between curves}
+
+The line $y = x$ and the parabola $y = x^2$ cross at $x = 0$ and $x = 1$; without an interval the region they enclose is used.
+
+\begin{equation*}
+  \operatorname{area}(x, x^2) = \frac{1}{6}
+\end{equation*}
+Over a whole period of $\sin x$ both humps count as area.
+
+\begin{equation*}
+  \operatorname{area}(\sin x, [0, 2\pi]) = 4
+\end{equation*}
+Curves in $y$: $x = y + 2$ and $x = y^2$.
+
+\begin{equation*}
+  \operatorname{area}(y + 2, y^2) = \frac{9}{2}
+\end{equation*}
+\section*{Volumes of revolution}
+
+Disks: $y = \sqrt{x}$ on $[0, 4]$ about the $x$-axis.
+
+\begin{equation*}
+  \operatorname{volume}(\sqrt{x}, [0, 4]) = 8 \pi
+\end{equation*}
+Washers about $y = -1$, then shells about the $y$-axis and about $x = 2$, for the region between $y = x$ and $y = x^2$.
+
+\begin{equation*}
+  \operatorname{volume}(x, x^2, [0, 1], y = -1) = \frac{7 \pi}{15}
+\end{equation*}
+\begin{equation*}
+  \operatorname{volume}_{shell}(x, x^2, [0, 1], x = 0) = \frac{\pi}{6}
+\end{equation*}
+\begin{equation*}
+  \operatorname{volume}(x, x^2, [0, 1], x = 2) = \frac{\pi}{2}
+\end{equation*}
+A sphere of radius $2$ from the upper half circle.
+
+\begin{equation*}
+  \operatorname{volume}_{disk}(\sqrt{4 - x^2}, [-2, 2]) = \frac{32 \pi}{3}
+\end{equation*}
+\section*{Lengths and surfaces}
+
+\begin{equation*}
+  \operatorname{arclength}(x^{3/2}, [0, 4]) = \frac{80 \sqrt{10}}{27} - \frac{8}{27}
+\end{equation*}
+\begin{equation*}
+  \operatorname{arclength}((\cos t, \sin t), t, [0, 2\pi]) = 2 \pi
+\end{equation*}
+\begin{equation*}
+  \operatorname{surfacearea}(x, [0, 1]) = \pi \sqrt{2}
+\end{equation*}
+\section*{Average value, work and centres of mass}
+
+\begin{equation*}
+  \operatorname{average}(x^2, [0, 3]) = 3
+\end{equation*}
+Stretching a spring with $k = 5$ from $0$ to $0.2$ by Hooke's law $F = kx$.
+
+\begin{equation*}
+  \operatorname{work}(5x, [0, 0.2]) = \frac{1}{10}
+\end{equation*}
+\begin{equation*}
+  \operatorname{centroid}(x, x^2, [0, 1]) = \left(\frac{1}{2}, \frac{2}{5}\right)
+\end{equation*}
+A rod on $[0, 2]$ with density $1 + x$.
+
+\begin{equation*}
+  \operatorname{centreofmass}(1 + x, [0, 2]) = \frac{7}{6}
+\end{equation*}
+\section*{The accumulation function}
+
+\begin{equation*}
+  \operatorname{accumulate}(2x, 1) = x^{2} - 1
+\end{equation*}
+\section*{Improper integrals}
+
+\begin{equation*}
+  \int_0^{\infty} \frac{\sin x}{x}\,dx = \frac{\pi}{2}
+\end{equation*}
+\begin{equation*}
+  \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+\end{equation*}
+\begin{equation*}
+  \int_0^{\infty} \sin(x^2)\,dx = 0.6266570687
+\end{equation*}
+\begin{equation*}
+  \int_1^{\infty} \frac{1}{x}\,dx = ?
+\end{equation*}
+\end{document}

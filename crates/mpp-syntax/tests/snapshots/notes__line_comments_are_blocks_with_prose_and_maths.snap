@@ -1,0 +1,14 @@
+---
+source: crates/mpp-syntax/tests/notes.rs
+expression: "clean(concat!(\"% A *note* with $x^2$ maths.\\n\",\n\"% second line of the same note\\n\", \"\\n\", \"$$ y = x $$\\n\",\n\"% a note straight after the maths\\n\", \"\\n\",\n\"$$ z = 1 $$ (4) % trailing note\\n\",))"
+---
+[0..59] Comment braces=false closed=true
+  [2..59] Paragraph "A " (em "note") " with " (math (^ x 2)) " maths." <br> "  second line of the same note"
+[61..72] DisplayMath number=None label=None noeval=false closed=true raw=63..70
+  (rel y = x)
+[73..106] Comment braces=false closed=true
+  [75..106] Paragraph "a note straight after the maths"
+[108..139] DisplayMath number=Some(4) label=None noeval=false closed=true raw=110..117
+  (rel z = 1)
+[125..139] Comment braces=false closed=true
+  [126..139] Paragraph "trailing note"

@@ -1,0 +1,33 @@
+# Comments in a worksheet
+
+% A one-line comment is a note for the reader. It supports *emphasis*, **bold** and maths such as $v = d / t$, which is typeset but never evaluated.
+
+A car covers $d := 120$ in $t := 1.5$, so its speed is
+
+$$ v := \frac{d}{t} $$
+
+$$ v = ? $$
+% The answer is in km/h if $d$ is in km and $t$ in hours: a note can sit right after a maths line.
+
+%{ A longer note can run over several lines and hold a list:
+
+- check the units first
+- then compare with $v_c = 90$
+
+Nothing inside, such as $w := 5$ or the equation below, ever takes effect.
+
+$$ w = ? $$
+%}
+
+Doubling the time halves the speed:
+
+%{
+$$ v_2 := \frac{d}{2 t} $$
+
+$$ v_2 = ? $$
+%}
+
+$$ \frac{d}{2 t} = ? $$
+
+% Several comment lines in a row
+% are one note.

@@ -68,7 +68,7 @@ fn push_inlines(inlines: &[Inline], src: &str, out: &mut String) {
             }
             InlineKind::Link { text, .. } => push_inlines(text, src, out),
             InlineKind::Escape(c) => text_piece(out, &c.to_string()),
-            InlineKind::FootnoteRef(_) | InlineKind::EqRef { .. } => {}
+            InlineKind::FootnoteRef(_) | InlineKind::EqRef { .. } | InlineKind::Cite(_) => {}
         }
     }
 }

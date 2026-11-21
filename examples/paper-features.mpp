@@ -1,0 +1,40 @@
+Title: Projectile motion on a slope
+Author: Ben Elmore
+Date: 20 November 2026
+Abstract: We find how far a projectile launched at speed $v_0$ and angle $\theta$ travels, following the classical treatment [@halliday14] and the numerical study of [@lee20; @knuth84].
+
+%number sections
+%cite numbered
+
+# Introduction
+
+Every worksheet works without any of this: the title block, numbered theorems, citations and notes are all optional.
+
+# Range on flat ground
+
+Let $g \equiv 9.81$ and $v_0 \equiv 20$. The range is given in \eqref{range}.
+
+$$ R(\theta) := \frac{v_0^2 \sin 2\theta}{g} \label{range} $$
+
+$$ R(\pi / 4) = ? $$
+
+**Definition.** The *range* of a launch is the horizontal distance to the point where the projectile lands again.
+
+**Theorem.** For a fixed launch speed the range is largest when $\theta = \pi/4$.
+
+**Proof.** By \eqref{range} the range is proportional to $\sin 2\theta$, which is at most $1$ and equals $1$ exactly when $2\theta = \pi/2$.[^max] ∎
+
+**Remark.** Air resistance is ignored throughout.
+
+[^max]: Strictly, for $0 \le \theta \le \pi/2$.
+
+# Slopes
+
+**Lemma.** A slope shortens the range of an uphill launch.
+
+**Corollary.** The best angle on a slope is below $\pi/4$.
+
+References
+[@knuth84] Knuth, D. E. | The TeXbook | 1984 | https://example.org/texbook
+[@lee20] Lee, K. and Park, H. | Slopes and projectiles | 2020
+[@halliday14] Halliday, D.; Resnick, R.; Walker, J. | Fundamentals of Physics | 2014

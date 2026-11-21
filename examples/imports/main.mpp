@@ -1,0 +1,16 @@
+# Using files together
+
+A document can use what other files define. These two names come from the
+`lib` folder next to this file.
+
+Using $g, A$ from [[lib/physics.mpp]].
+
+$$ g = ? $$
+
+$$ A(3) = ? $$
+
+Everything from another file, with `![[…]]`:
+
+![[lib/shapes.mpp]]
+
+$$ P(3) = ? $$

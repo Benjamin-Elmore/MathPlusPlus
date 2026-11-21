@@ -187,6 +187,14 @@ fn collect(cx: &Cx<'_>, inlines: &[Inline], style: Style, out: &mut Vec<Atom>) {
                 };
                 push_text(out, name, s, inl.span, false);
             }
+            InlineKind::Cite(cites) => {
+                let keys: Vec<&str> = cites.iter().map(|c| c.key.as_str()).collect();
+                let s = Style {
+                    color: cx.theme.link,
+                    ..style
+                };
+                push_text(out, &format!("[{}]", keys.join("; ")), s, inl.span, false);
+            }
             InlineKind::EqRef { number, label } => {
                 let t = match number {
                     Some(n) => format!("({n})"),

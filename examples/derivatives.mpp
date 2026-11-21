@@ -1,0 +1,25 @@
+# Derivatives
+
+The derivative of a function, written as you would write it.
+
+$$ \frac{d}{dx} x^3 \sin x = ? $$
+
+$$ \frac{d}{dx} e^{x^2} = ? $$
+
+$$ \frac{d}{dx} \ln(\cos x) = ? $$
+
+Define a function, then differentiate it:
+
+$$ f(x) := x^2 \ln x $$
+
+$$ \frac{d}{dx} f(x) = ? $$
+
+$$ f'(1) = ? $$
+
+A second derivative:
+
+$$ \frac{d^2}{dx^2} \sin(3 x) = ? $$
+
+A partial derivative:
+
+$$ \frac{\partial}{\partial y} (x^2 y^3) = ? $$

@@ -37,6 +37,10 @@ pub struct Theme {
     /// Eight curve colours that stay readable (3:1 or better) on this theme's
     /// `background`, in the order series use them.
     pub series: [Color; 8],
+    /// Formatted comments: the tinted box behind a note.
+    pub note_background: Color,
+    /// Formatted comments: the ✎ marker and the bar down the box's edge.
+    pub note_accent: Color,
 }
 
 impl Theme {
@@ -67,6 +71,8 @@ impl Theme {
             Color::rgb(0x6d, 0x28, 0xd9),
             Color::rgb(0x5b, 0x5b, 0x5b),
         ],
+        note_background: Color::rgb(0xf6, 0xf1, 0xdc),
+        note_accent: Color::rgb(0xa8, 0x82, 0x1c),
     };
 
     /// Light ink on a dark grey page.
@@ -96,10 +102,12 @@ impl Theme {
             Color::rgb(0xb7, 0x94, 0xf6),
             Color::rgb(0xb8, 0xb8, 0xb8),
         ],
+        note_background: Color::rgb(0x2c, 0x2a, 0x20),
+        note_accent: Color::rgb(0xd9, 0xb8, 0x4a),
     };
 
     /// Each colour with its CSS custom property name (`--mpp-text` …).
-    pub fn css_vars(&self) -> [(&'static str, Color); 12] {
+    pub fn css_vars(&self) -> [(&'static str, Color); 14] {
         [
             ("--mpp-text", self.text),
             ("--mpp-result", self.result),
@@ -113,6 +121,8 @@ impl Theme {
             ("--mpp-muted", self.muted),
             ("--mpp-error", self.error),
             ("--mpp-warning", self.warning),
+            ("--mpp-note-background", self.note_background),
+            ("--mpp-note-accent", self.note_accent),
         ]
     }
 

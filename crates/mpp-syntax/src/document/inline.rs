@@ -5,7 +5,7 @@
 //! delimiter without a partner is plain text (with an error for the ones that
 //! must close) and nothing needs backtracking.
 
-use super::ast::{Inline, InlineKind, InlineMath};
+use super::ast::{Cite, Inline, InlineKind, InlineMath};
 use crate::math::parse_math;
 use crate::span::{Diagnostic, Span};
 
@@ -222,6 +222,11 @@ impl Parser<'_> {
         if self.starts(i, "[[") {
             return self.wiki_link(i, end);
         }
+        if self.starts(i, "[@") {
+            if let Some(found) = self.citation(i, end) {
+                return Some(found);
+            }
+        }
         if self.starts(i, "[^") {
             let close = self.src.get(i + 2..end)?.find(']')? + i + 2;
             let name = &self.src[i + 2..close];
@@ -268,6 +273,27 @@ impl Parser<'_> {
             k += 1;
         }
         None
+    }
+
+    /// `[@key]`, `[@a; @b]`: a citation. Anything else after `[@` is plain text.
+    fn citation(&self, i: usize, end: usize) -> Option<(InlineKind, usize)> {
+        let close = self.src.get(i + 2..end)?.find(']')? + i + 2;
+        let mut cites = Vec::new();
+        let mut at = i + 1;
+        for part in self.src[i + 1..close].split([';', ',']) {
+            let lead = part.len() - part.trim_start().len();
+            let key = part.trim().strip_prefix('@')?;
+            if key.is_empty() || !key.chars().all(super::refs::is_key_char) {
+                return None;
+            }
+            let start = at + lead;
+            cites.push(Cite {
+                key: key.to_string(),
+                span: Span::new(start, start + 1 + key.len()),
+            });
+            at += part.len() + 1;
+        }
+        Some((InlineKind::Cite(cites), close + 1))
     }
 
     fn wiki_link(&mut self, i: usize, end: usize) -> Option<(InlineKind, usize)> {

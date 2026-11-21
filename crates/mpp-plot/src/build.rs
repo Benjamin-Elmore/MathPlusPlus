@@ -243,7 +243,7 @@ fn inline_text(ev: &Evaluated, inlines: &[Inline]) -> String {
             InlineKind::WikiLink { path, alias } => {
                 out.push_str(alias.as_deref().unwrap_or(path));
             }
-            InlineKind::FootnoteRef(_) | InlineKind::EqRef { .. } => {}
+            InlineKind::FootnoteRef(_) | InlineKind::EqRef { .. } | InlineKind::Cite(_) => {}
         }
     }
     out.trim().to_string()

@@ -38,6 +38,23 @@ pub use app::IdeApp;
 pub use doc::{Doc, PageCache};
 pub use sample::WELCOME;
 
+/// Opens the editor window with `paths` (or the welcome page) and runs until it is
+/// closed. `mathpp-ide` and `mpp ide` both start here.
+pub fn run(paths: Vec<std::path::PathBuf>) -> eframe::Result {
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_title("Math++")
+            .with_inner_size([1280.0, 860.0])
+            .with_min_inner_size([640.0, 420.0]),
+        ..eframe::NativeOptions::default()
+    };
+    eframe::run_native(
+        "Math++",
+        options,
+        Box::new(move |cc| Ok(Box::new(EframeApp::new(cc, &paths)))),
+    )
+}
+
 /// The eframe wrapper around [`IdeApp`].
 pub struct EframeApp(pub IdeApp);
 
