@@ -116,12 +116,12 @@ fn snippet(ev: &Evaluated, start: usize, end: usize) -> String {
 
 fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
     let n = ev.line_of(line.span.start);
-    if let Some(v) = &line.verdict {
+    if let Some(v) = line.verdict_text() {
         return RunLine {
             line: n,
             asked: to_unicode(src),
-            answer: v.describe(),
-            plain: v.describe(),
+            answer: v.clone(),
+            plain: v,
             error: false,
             steps: vec![],
         };
@@ -162,6 +162,13 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
     if numeric_fallback {
         if let Some(eq) = asked.trim_end().strip_suffix('=') {
             asked = format!("{} ≈", eq.trim_end());
+        }
+    }
+    // An answer that is an equation of its own follows the question with an arrow:
+    // `… = y(t) = …` would say "=" twice.
+    if !numeric_fallback && matches!(line.value, Some(mpp_eval::Value::Relation(_))) {
+        if let Some(eq) = asked.trim_end().strip_suffix('=') {
+            asked = format!("{} →", eq.trim_end());
         }
     }
     RunLine {

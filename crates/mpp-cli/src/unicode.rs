@@ -215,6 +215,12 @@ impl Parser {
                 };
                 format!("{}/{}", paren(&a), paren(&b))
             }
+            // `\binom{n}{k}` reads as the usual C(n, k), never as the letters run together.
+            "binom" | "dbinom" | "tbinom" => {
+                let n = self.operand();
+                let k = self.operand();
+                format!("C({n}, {k})")
+            }
             "sqrt" => {
                 self.skip_space();
                 let mut index = String::new();
@@ -561,6 +567,15 @@ mod tests {
         );
         // Not a helper: the name is shown as written.
         assert_eq!(to_unicode(r"\operatorname{foo}(x)"), "foo(x)");
+    }
+
+    #[test]
+    fn binomials_read_as_c_of_n_and_k() {
+        assert_eq!(to_unicode(r"\binom{50}{25} = ?"), "C(50, 25) = ?");
+        assert_eq!(
+            to_unicode(r"\binom{n}{k} = \binom{n}{n-k}"),
+            "C(n, k) = C(n, n-k)"
+        );
     }
 
     #[test]

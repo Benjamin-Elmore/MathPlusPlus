@@ -61,8 +61,8 @@ pub fn calc_line(input: &str) -> Result<String, CalcError> {
     if let Some(hint) = &line.hint {
         return Err(CalcError(hint.clone()));
     }
-    if let Some(v) = &line.verdict {
-        return Ok(v.describe());
+    if let Some(v) = line.verdict_text() {
+        return Ok(v);
     }
     if matches!(line.kind, LineKind::Definition { .. }) {
         return Err(CalcError(

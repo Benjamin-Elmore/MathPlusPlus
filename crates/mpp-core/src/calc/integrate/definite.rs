@@ -330,6 +330,16 @@ fn numeric_bounds(
                 Steps::record(&mut log, "comparison test", &holder, &result, Some(note));
                 return Ok(result);
             }
+            // A finite range whose value would not settle is an integral that could not
+            // be computed reliably (a wildly oscillating integrand), not one whose
+            // convergence is in doubt.
+            if !a.is_infinite() && !b.is_infinite() && why.contains("did not settle") {
+                return Err(MathError::Undetermined(format!(
+                    "∫ {e} d{var} from {a} to {b} reliably ({})",
+                    why.strip_prefix("whether the integral converges: ")
+                        .unwrap_or(&why)
+                )));
+            }
             Err(MathError::Undetermined(format!(
                 "whether {} converges ({})",
                 maths(&definite_holder(e, var, a, b)),

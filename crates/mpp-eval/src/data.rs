@@ -64,6 +64,8 @@ impl Column {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct DataTable {
     pub columns: Vec<Column>,
+    /// Lines (counting from 1) left out because a byte in them was not valid UTF-8.
+    pub skipped: Vec<usize>,
 }
 
 impl DataTable {
@@ -220,6 +222,7 @@ fn parse_csv_text(text: &str) -> Result<DataTable, String> {
         });
     }
     let mut fields: Vec<String> = Vec::with_capacity(columns.len());
+    let mut skipped = Vec::new();
     for (line_no, line) in lines {
         fields.clear();
         if line.contains('"') {
@@ -234,10 +237,16 @@ fn parse_csv_text(text: &str) -> Result<DataTable, String> {
                 columns.len()
             ));
         }
-        for (c, f) in columns.iter_mut().zip(&fields) {
-            let v = csv_cell(f)
-                .ok_or_else(|| format!("line {line_no}: `{}` is not a number", f.trim()))?;
-            c.values.push(v);
+        let cells: Vec<Option<Expr>> = fields.iter().map(|f| csv_cell(f)).collect();
+        // A bad byte (shown as U+FFFD) spoils its row, not the file: the row is left out
+        // and the line is reported.
+        if cells.iter().any(Option::is_none) && line.contains('\u{FFFD}') {
+            skipped.push(line_no);
+            continue;
+        }
+        for ((c, f), v) in columns.iter_mut().zip(&fields).zip(cells) {
+            c.values
+                .push(v.ok_or_else(|| format!("line {line_no}: `{}` is not a number", f.trim()))?);
         }
         if columns.first().is_some_and(|c| c.values.len() > MAX_ROWS) {
             return Err(format!("the file has more than {MAX_ROWS} rows"));
@@ -246,7 +255,7 @@ fn parse_csv_text(text: &str) -> Result<DataTable, String> {
     if columns.first().is_none_or(|c| c.values.is_empty()) {
         return Err("the file has a header but no rows".into());
     }
-    Ok(DataTable { columns })
+    Ok(DataTable { columns, skipped })
 }
 
 /// A CSV file read and turned into values, ready to define.
@@ -519,6 +528,10 @@ mod tests {
         assert!(parse_csv("x,x\n1,2\n").is_err());
         assert!(parse_csv("1+,y\n1,2\n").is_err());
         assert!(parse_csv("").is_err());
+        // One bad byte spoils its row, not the file.
+        let t = parse_csv("x,y\n1,2\n3,4\u{FFFD}5\n5,6\n").unwrap();
+        assert_eq!(t.rows(), 2);
+        assert_eq!(t.skipped, vec![3]);
         assert_eq!(split_fields("\"a,b\",c", ','), vec!["a,b", "c"]);
     }
 
@@ -534,8 +547,12 @@ mod tests {
 
     #[test]
     fn a_bad_byte_in_a_data_file_is_named_in_the_error() {
-        let e = parse_csv("x\n1\n2\u{FFFD}\n").unwrap_err();
-        assert!(e.contains("line 3") && e.contains("UTF-8"), "{e}");
+        // The row is left out, and the line is kept to report.
+        let t = parse_csv("x\n1\n2\u{FFFD}\n").unwrap();
+        assert_eq!((t.rows(), t.skipped.as_slice()), (1, [3].as_slice()));
+        // With nothing else in the file, the error says why.
+        let e = parse_csv("x\n2\u{FFFD}\n").unwrap_err();
+        assert!(e.contains("UTF-8"), "{e}");
     }
 
     #[test]

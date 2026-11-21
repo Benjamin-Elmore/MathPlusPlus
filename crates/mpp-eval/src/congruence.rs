@@ -116,6 +116,23 @@ fn points(count: usize, names: usize) -> Vec<Vec<i64>> {
         .collect()
 }
 
+/// Why two whole numbers are not congruent: `17 mod 5 = 2, but 3 mod 5 = 3`.
+pub fn residues(a: &Expr, b: &Expr, n: &Expr) -> Option<String> {
+    let m = integer(n).filter(|m| m.is_positive())?;
+    let (x, y) = (integer(a)?, integer(b)?);
+    let (rx, ry) = (residue(&x, &m), residue(&y, &m));
+    if rx == ry {
+        return None;
+    }
+    Some(format!(
+        "{} mod {} = {rx}, but {} mod {} = {ry}",
+        a.to_text(),
+        n.to_text(),
+        b.to_text(),
+        n.to_text()
+    ))
+}
+
 /// Checks `a ≡ b (mod n)` by exact integer arithmetic.
 pub fn check(a: &Expr, b: &Expr, n: &Expr) -> Verdict {
     let Some(m) = integer(n).filter(|m| m.is_positive()) else {

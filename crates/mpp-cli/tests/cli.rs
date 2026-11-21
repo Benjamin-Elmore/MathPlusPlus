@@ -236,3 +236,24 @@ fn an_exact_query_without_a_closed_form_shows_its_number() {
     // A closed form stays exact.
     assert!(s.contains("ζ(2) = π"), "{s}");
 }
+
+#[test]
+fn run_marks_relations_and_uses_an_arrow_for_equation_answers() {
+    let dir = std::env::temp_dir().join(format!("mpp-cli-arrow-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("a.mpp");
+    std::fs::write(
+        &file,
+        r"$$ 3\,\mathrm{m} < 5\,\mathrm{m} = ? $$
+
+$$ \operatorname{dsolve}(y' = -2y, y, t) = ? $$
+",
+    )
+    .unwrap();
+    let out = mpp().arg("run").arg(&file).output().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+    let s = text(&out.stdout);
+    assert!(s.contains("3 m < 5 m = true ✓"), "{s}");
+    assert!(s.contains("→ y(t)"), "{s}");
+    assert!(!s.contains("= y(t)"), "{s}");
+}

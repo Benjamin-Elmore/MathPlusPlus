@@ -225,6 +225,13 @@ const ALIASES: &[(&str, &str)] = &[
     ("eigenvectors", "eigenvects"),
 ];
 
+/// Whether this module routes `op` (a form, an area-style helper or an alias).
+pub fn knows_operator(op: &str) -> bool {
+    FROM_TO.contains(&op)
+        || ALIASES.iter().any(|(a, _)| *a == op)
+        || FORMS.iter().any(|f| f.ops.contains(&op))
+}
+
 /// The argument forms `op` accepts here, in the order they are tried (empty for an
 /// operator this module does not route).
 pub fn accepted_forms(op: &str) -> Vec<&'static str> {

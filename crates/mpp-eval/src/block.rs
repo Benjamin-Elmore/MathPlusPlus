@@ -337,6 +337,40 @@ fn unit_word(letter: &str) -> String {
 
 /// The warning for a call nothing evaluated, with the spelling Math++ reads when the
 /// name is a common one from other systems.
+/// The answer to a relation between closed sides: `true ✓` or `false ✗`, with the
+/// reason after a false one. The typeset form carries the mark too.
+fn mark_relation(lr: &mut LineResult, holds: bool, why: Option<String>) {
+    lr.set_value(Value::from_expr(Expr::new(ExprNode::Bool(holds))));
+    let mark = if holds { "✓" } else { "✗" };
+    let text = match why {
+        Some(w) => format!("{holds} {mark} {w}"),
+        None => format!("{holds} {mark}"),
+    };
+    lr.latex = Some(format!(r"\text{{{holds}}} \quad {mark}"));
+    lr.text = Some(text.clone());
+    lr.plain = Some(text);
+}
+
+/// Whether `e` has a derivative of an absolute value in it.
+fn derives_abs(e: &Expr) -> bool {
+    if let ExprNode::Derivative { expr, .. } = e.node() {
+        if matches!(expr.node(), ExprNode::Func(mpp_core::Func::Abs, _)) {
+            return true;
+        }
+    }
+    e.children().iter().any(|c| derives_abs(c))
+}
+
+/// Whether `e` still holds `\operatorname{name}` unevaluated.
+fn has_operator_holder(e: &Expr, name: &str) -> bool {
+    if let ExprNode::Apply(f, args) = e.node() {
+        if &**f == "operatorname" && args.first().and_then(Expr::as_sym) == Some(name) {
+            return true;
+        }
+    }
+    e.children().iter().any(|c| has_operator_holder(c, name))
+}
+
 fn unknown_call_message(name: &str) -> String {
     let hint = match name {
         "taylor" | "maclaurin" | "series" | "taylorseries" => Some(
@@ -1390,9 +1424,12 @@ impl Run<'_, '_> {
                 .and_then(|v| self.finish_logged(v, None))
                 .ok()
         };
+        let mut reason = None;
         let verdict =
             if let (RelOp::Eq, Some((x, y, n))) = (op, crate::congruence::as_congruence(a, b)) {
-                crate::congruence::check(&side(&x)?, &side(&y)?, &side(&n)?)
+                let (x, y, n) = (side(&x)?, side(&y)?, side(&n)?);
+                reason = crate::congruence::residues(&x, &y, &n);
+                crate::congruence::check(&x, &y, &n)
             } else {
                 let (l, r) = (side(a)?, side(b)?);
                 match op {
@@ -1407,8 +1444,10 @@ impl Run<'_, '_> {
             crate::check::Verdict::Proved => Some((true, None)),
             crate::check::Verdict::Fails { at, lhs, rhs } if at.is_empty() => {
                 // A relation other than = reports its truth value, not its sides.
-                let detail = (lhs != "false" && lhs != "true")
-                    .then(|| format!("(left side {lhs}, right side {rhs})"));
+                let detail = reason.map(|r| format!("({r})")).or_else(|| {
+                    (lhs != "false" && lhs != "true")
+                        .then(|| format!("(left side {lhs}, right side {rhs})"))
+                });
                 Some((false, detail))
             }
             _ => None,
@@ -1458,14 +1497,7 @@ impl Run<'_, '_> {
         // `17 \equiv 2 \pmod{5} = ?`, `1 < 2 = ?`: a relation between closed sides is
         // answered true or false.
         if let Some((holds, why)) = self.decide_closed_relation(&input, s) {
-            lr.set_value(Value::from_expr(Expr::new(ExprNode::Bool(holds))));
-            let mark = if holds { "✓" } else { "✗" };
-            let text = match why {
-                Some(w) => format!("{holds} {mark} {w}"),
-                None => format!("{holds} {mark}"),
-            };
-            lr.text = Some(text.clone());
-            lr.plain = Some(text);
+            mark_relation(&mut lr, holds, why);
             return self.push(lr);
         }
         let numeric = mode == QueryMode::Approx;
@@ -1514,12 +1546,19 @@ impl Run<'_, '_> {
             .source
             .get(expr.span.start..expr.span.end)
             .unwrap_or("");
+        let mut unknown_operator = false;
         for name in self.echoed_calls(&input, &value) {
             // Only a name the reader wrote as an operator (`\operatorname{taylor}`);
             // `\cup` and friends lower to calls that may rightly stay as they are.
             if written.contains(&format!("{{{name}}}")) {
                 self.warn(expr.span, unknown_call_message(&name));
+                unknown_operator |= has_operator_holder(&value, &name);
             }
+        }
+        // A scripted operator Math++ does not know has no answer to show: its
+        // letters would be read back as a product.
+        if unknown_operator {
+            return self.push(lr);
         }
         if let Some(mut log) = resolved.steps {
             // The first step puts in the known values; the evaluators' own working
@@ -1550,6 +1589,18 @@ impl Run<'_, '_> {
             .then(|| self.typed_decimal(expr, &value))
             .flatten();
         if self.present_units(&mut lr, &value, mode, expr.span) {
+            // `v < 5 m/s = ?` is a true or false answer, marked like any other.
+            if let ExprNode::Relation(op, ..) = input.node() {
+                let holds = match lr.plain.as_deref() {
+                    Some("true") => Some(true),
+                    Some("false") => Some(false),
+                    _ => None,
+                };
+                if let (false, Some(holds)) = (matches!(op, mpp_core::RelOp::Approx), holds) {
+                    mark_relation(&mut lr, holds, None);
+                    return self.push(lr);
+                }
+            }
             if let Some(d) = &typed {
                 show_decimal(&mut lr, d);
             }
@@ -1658,10 +1709,27 @@ impl Run<'_, '_> {
         calls(value, &mut given);
         let mut out: Vec<String> = Vec::new();
         for c in given {
-            let ExprNode::Apply(name, _) = c.node() else {
+            let ExprNode::Apply(name, args) = c.node() else {
                 continue;
             };
-            let name = name.to_string();
+            // A scripted operator keeps its name in the first place:
+            // `\operatorname{fit}_{linear}(…)` is `operatorname(fit, …)`.
+            let name = match (&**name, args.first().and_then(Expr::as_sym)) {
+                ("operatorname", Some(which)) => {
+                    if crate::dispatch::knows_operator(which)
+                        || crate::lower::is_builtin(which)
+                        || mpp_core::domains::special::has_numeric_value(which)
+                        || crate::domains_wire::registry().handles(which)
+                        || matches!(which, "series" | "taylor")
+                        || self.view().get(which, false).is_some()
+                        || self.inputs.sequences.contains(which)
+                    {
+                        continue;
+                    }
+                    which.to_string()
+                }
+                _ => name.to_string(),
+            };
             let known = name.contains(':')
                 || name.chars().count() == 1
                 || crate::lower::is_builtin(&name)
@@ -1811,12 +1879,74 @@ impl Run<'_, '_> {
                         verdict = v;
                     }
                 }
+                if verdict == crate::check::Verdict::Proved {
+                    lr.caveat = self.removable_points(lhs, rhs, &l, &r, s);
+                }
                 lr.verdict = Some(verdict);
             }
             (Err(err), _) => self.error(lhs.span, err),
             (_, Err(err)) => self.error(rhs.span, err),
         }
         self.push(lr);
+    }
+
+    /// `for x ≠ 0`: the points a symbolic proof of `l = r` leaves out. Cancelling
+    /// (`(x² − 1)/(x − 1) = x + 1`, `1/(1/x) = x`) or rewriting (`sign x = x/|x|`) can
+    /// prove two sides equal that are not both defined at one point; this finds the
+    /// whole-number and half-number points where a written denominator vanishes and
+    /// the two sides (as simplified) disagree about being defined, or a derivative of
+    /// `|x|` is written.
+    fn removable_points(
+        &self,
+        lhs: &Node,
+        rhs: &Node,
+        l: &Expr,
+        r: &Expr,
+        s: &Scope,
+    ) -> Option<String> {
+        let view = self.view();
+        let mut lowerer = Lowerer::new(&view)
+            .with_locals(s.names.iter().cloned())
+            .with_unknown_functions(self.unknown_fns.iter().cloned());
+        let (a, b) = (lowerer.lower(lhs).ok()?, lowerer.lower(rhs).ok()?);
+        let denominators = lowerer.take_denominators();
+        let mut names: Vec<String> = a
+            .free_symbols()
+            .union(&b.free_symbols())
+            .map(|n| n.to_string())
+            .filter(|n| self.view().get(n, false).is_none())
+            .collect();
+        names.dedup();
+        let [var] = names.as_slice() else {
+            return None;
+        };
+        // Only a side with the one name in it can be judged point by point.
+        let only_var =
+            |e: &Expr| !contains_holder(e) && e.free_symbols().iter().all(|n| &**n == var.as_str());
+        if !(only_var(l) && only_var(r)) {
+            return None;
+        }
+        let defined = |e: &Expr, c: &Expr| -> bool {
+            let at = e.subs(var, c).simplify();
+            !at.is_undefined() && crate::numeric::approximate(&at).is_ok()
+        };
+        let candidates: Vec<Expr> = (-6..=6)
+            .map(Expr::int)
+            .chain([1, -1].map(|k| Expr::int(k) / Expr::int(2)))
+            .collect();
+        // `d/dx |x|` has no derivative at 0, whatever `sign 0` is taken to be.
+        let kink = derives_abs(&a) || derives_abs(&b);
+        let mut points: Vec<String> = Vec::new();
+        for c in &candidates {
+            let vanishes = denominators
+                .iter()
+                .any(|d| d.subs(var, c).simplify().is_zero());
+            let (dl, dr) = (defined(l, c), defined(r, c));
+            if dl != dr || (vanishes && dl && dr) || (kink && c.is_zero()) {
+                points.push(c.to_text());
+            }
+        }
+        (!points.is_empty()).then(|| format!("for {var} ≠ {}", points.join(", ")))
     }
 
     /// A displayed `a = b` between two closed sides (no names: `2^{10} = 1000`) states

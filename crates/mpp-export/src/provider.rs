@@ -166,7 +166,14 @@ impl<'a> EvalProvider<'a> {
                             line: i,
                             value: ResultValue::Latex(latex),
                             kind: ResultKind::Filled,
-                            relation: approx.then_some(RelOp::Approx),
+                            // An answer that is an equation of its own (`y(t) = …`)
+                            // follows the question with an arrow, not a second `=`.
+                            relation: if approx {
+                                Some(RelOp::Approx)
+                            } else {
+                                matches!(r.value, Some(mpp_eval::Value::Relation(_)))
+                                    .then_some(RelOp::To)
+                            },
                         });
                     }
                 }
