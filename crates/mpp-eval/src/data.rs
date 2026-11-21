@@ -113,11 +113,27 @@ pub fn parse_cell(text: &str) -> Option<Expr> {
 }
 
 /// The name key of a header such as `t`, `v_0`, `theta`, `\theta`, `x_{max}`.
+/// A name followed by digits, as spreadsheets write them (`c0`, `x12`, `theta2`),
+/// means the subscripted name (`c_0`, `x_{12}`, `θ_2`).
 pub fn header_key(text: &str) -> Option<String> {
     let src = text.trim().trim_matches('$').trim();
     if src.is_empty() {
         return None;
     }
+    let stem = src.trim_end_matches(|c: char| c.is_ascii_digit());
+    if !stem.is_empty()
+        && stem.len() < src.len()
+        && stem.chars().all(|c| c.is_alphabetic() || c == '\\')
+    {
+        let digits = &src[stem.len()..];
+        if let Some(key) = name_key(&format!("{stem}_{{{digits}}}")) {
+            return Some(key);
+        }
+    }
+    name_key(src)
+}
+
+fn name_key(src: &str) -> Option<String> {
     let (node, diags) = mpp_syntax::math::parse_expr(src, 0);
     if !diags.is_empty() {
         return None;
@@ -504,6 +520,16 @@ mod tests {
         assert!(parse_csv("1+,y\n1,2\n").is_err());
         assert!(parse_csv("").is_err());
         assert_eq!(split_fields("\"a,b\",c", ','), vec!["a,b", "c"]);
+    }
+
+    #[test]
+    fn spreadsheet_headers_with_digits_are_subscripted_names() {
+        let t = parse_csv("c0, c1 (m), x12, theta2\n1, 2, 3, 4\n").unwrap();
+        let names: Vec<&str> = t.columns.iter().map(|c| c.name.as_str()).collect();
+        assert_eq!(names, ["c_0", "c_1", "x_12", "θ_2"]);
+        assert!(parse_csv("c0, c_0\n1, 2\n")
+            .unwrap_err()
+            .contains("two columns"));
     }
 
     #[test]
