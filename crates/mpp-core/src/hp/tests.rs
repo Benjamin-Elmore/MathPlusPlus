@@ -192,3 +192,29 @@ proptest! {
         }
     }
 }
+
+/// A cancelled query stops the evaluator at once instead of finishing a huge reduction,
+/// and a deadline stops it soon after it passes.
+#[test]
+fn honours_the_query_budget() {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+    let big = f(Func::Sin, Expr::int(2).pow(Expr::int(100_000)));
+    let flag = Arc::new(AtomicBool::new(true));
+    {
+        let _g = crate::budget::install(crate::budget::Budget::new(flag, None));
+        let start = Instant::now();
+        assert_eq!(approx_closed(&big, 10), None);
+        assert!(start.elapsed() < Duration::from_secs(2));
+    }
+    let flag = Arc::new(AtomicBool::new(false));
+    let _g = crate::budget::install(crate::budget::Budget::new(
+        flag,
+        Some(Duration::from_millis(1)),
+    ));
+    std::thread::sleep(Duration::from_millis(5));
+    let start = Instant::now();
+    assert_eq!(approx_closed(&big, 10), None);
+    assert!(start.elapsed() < Duration::from_secs(2));
+}

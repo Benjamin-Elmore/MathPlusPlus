@@ -169,7 +169,13 @@ fn render() -> String {
     for (label, op, args) in cases() {
         let mut ctx = Ctx::new();
         let shown = match reg.call(op, &args, &mut ctx) {
-            Ok(v) => v.to_string(),
+            // An exact special value (`ζ(3)`, `J₀(1)`) is kept exact: shown by its decimal.
+            Ok(v) => match v.eval_f64(&mpp_core::EmptyEnv) {
+                Ok(x) if v.as_number().is_none() && matches!(v.node(), ExprNode::Apply(..)) => {
+                    mpp_core::number::format_f64(x, 10)
+                }
+                _ => v.to_string(),
+            },
             Err(e) => e.to_string(),
         };
         out.push_str(&format!("{label} = ? → {shown}\n"));

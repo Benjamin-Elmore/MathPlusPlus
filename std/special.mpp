@@ -30,7 +30,7 @@ $$ \operatorname{erf}(0) \overset{?}{=} 0 $$
 
 $$ \operatorname{erf}(1) \overset{?}{=} \frac{2}{\sqrt{\pi}} \int_0^1 e^{-t^2} \, dt $$
 
-$$ \operatorname{erf}(\tfrac{1}{2}) \overset{?}{=} 0.520499877813046537682746653892 $$
+$$ \left| \operatorname{erf}(\tfrac{1}{2}) - 0.520499877813046537682746653892 \right| < 10^{-29} \overset{?}{=} \text{true} $$
 
 $$ \operatorname{erf}(1) + \operatorname{erfc}(1) \overset{?}{=} 1 $$
 
@@ -46,17 +46,17 @@ $$ W(e) \overset{?}{=} 1 $$
 
 $$ W_{-1}(-0.1) e^{W_{-1}(-0.1)} \overset{?}{=} -0.1 $$
 
-$$ W(1) \overset{?}{=} 0.567143290409783872999968662210 $$
+$$ \left| W(1) - 0.567143290409783872999968662210 \right| < 10^{-29} \overset{?}{=} \text{true} $$
 
 ## Bessel functions
 
-$J_0(x) = \sum_{k \ge 0} (-1)^k (x^2/4)^k/(k!)^2$, with $J_0(0) = 1$. Twenty terms are plenty at $x = 1$.
+$J_0(x) = \sum_{k \ge 0} (-1)^k (x^2/4)^k/(k!)^2$, with $J_0(0) = 1$. Twenty-one terms agree with it to about 55 digits at $x = 1$.
 
 $$ J_0(0) \overset{?}{=} 1 $$
 
-$$ J_0(1) \overset{?}{=} \sum_{k=0}^{20} \frac{(-1)^k (1/4)^k}{(k!)^2} $$
+$$ \left| J_0(1) - \sum_{k=0}^{20} \frac{(-1)^k (1/4)^k}{(k!)^2} \right| < 10^{-50} \overset{?}{=} \text{true} $$
 
-$$ J_1(1) \overset{?}{=} 0.440050585744933515959682203719 $$
+$$ \left| J_1(1) - 0.440050585744933515959682203719 \right| < 10^{-29} \overset{?}{=} \text{true} $$
 
 The recurrence $J_{n-1}(x) + J_{n+1}(x) = \frac{2n}{x} J_n(x)$, at $n = 1$, $x = 2$.
 
@@ -94,7 +94,7 @@ $$ K(0) \overset{?}{=} \frac{\pi}{2} $$
 
 $$ E(0) \overset{?}{=} \frac{\pi}{2} $$
 
-$$ K(\sin\tfrac{\pi}{12}) \overset{?}{=} 1.598142002112540 $$
+$$ \left| K(\sin\tfrac{\pi}{12}) - 1.598142002112540 \right| < 10^{-14} \overset{?}{=} \text{true} $$
 
 $$ E(1) \overset{?}{=} 1 $$
 

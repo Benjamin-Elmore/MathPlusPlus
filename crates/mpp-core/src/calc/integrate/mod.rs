@@ -14,6 +14,7 @@
 mod change;
 mod definite;
 mod engine;
+mod improper;
 mod multiple;
 mod numeric;
 mod oscillatory;

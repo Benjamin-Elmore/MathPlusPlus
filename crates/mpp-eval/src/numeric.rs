@@ -64,11 +64,37 @@ fn approx_closed(e: &Expr) -> Result<String, EvalError> {
                 // with the logarithm instead of answering ∞.
                 other => match huge::magnitude(e) {
                     Some(v) => Ok(v.format(DIGITS)),
-                    None => other.map(|z| format_complex(z, DIGITS)),
+                    None => match huge_angle(e) {
+                        Some(what) => Err(EvalError::Math(MathError::TooLarge(format!(
+                            "the angle in {what} (reducing it would take over 39000 digits of π)"
+                        )))),
+                        None => other.map(|z| format_complex(z, DIGITS)),
+                    },
                 },
             },
         },
     }
+}
+
+/// A trigonometric function whose angle is too large for the high-precision evaluator to
+/// reduce modulo π (`sin(2^{1000000})`), as text: it has no honest float value either.
+fn huge_angle(e: &Expr) -> Option<String> {
+    use mpp_core::Func;
+    let limit = mpp_core::hp::float::REDUCE_BITS as f64 * std::f64::consts::LOG10_2;
+    if let ExprNode::Func(f, args) = e.node() {
+        let trig = matches!(
+            f,
+            Func::Sin | Func::Cos | Func::Tan | Func::Sec | Func::Csc | Func::Cot
+        );
+        if trig {
+            if let Some(v) = args.first().and_then(huge::magnitude) {
+                if v.sign != 0.0 && v.log10 > limit {
+                    return Some(e.to_string());
+                }
+            }
+        }
+    }
+    e.children().iter().find_map(|c| huge_angle(c))
 }
 
 /// Real values too large (or small) for a float, carried as a sign and a base-10
@@ -316,6 +342,17 @@ fn precise(e: &Expr) -> Option<String> {
     let zero = || format_complex(Complex64::new(0.0, 0.0), DIGITS);
     let value: Decimal = match approx_closed(e, FIRST_DIGITS)? {
         Approx::Zero { .. } => return Some(zero()),
+        // A floating-point input: only its own digits are known, whatever the format.
+        Approx::Value {
+            value,
+            inexact: true,
+        } => {
+            let known = mpp_core::display::FLOAT_DIGITS;
+            return Some(
+                mpp_core::display::format_decimal_known(&value, DIGITS, known)
+                    .unwrap_or_else(|| mpp_core::number::format_decimal_digits(&value, DIGITS)),
+            );
+        }
         Approx::Value { value, .. } => value,
     };
     let need = mpp_core::display::digits_needed(value.k, DIGITS);

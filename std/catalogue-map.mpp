@@ -71,7 +71,7 @@ Name clashes are resolved as the catalogue asks: a name means the constant unles
 | Beta: B(a,b) = Γ(a)Γ(b)/Γ(a+b) for a,b > 0. | compute | `std/special.mpp` | `B(2, 3) \overset{?}{=} \frac{\Gamma(2) \Gamma(3)}{\Gamma(5)}` |
 | Error function: erf(x) = (2/√π)∫₀ˣ e^(−t²) dt, with erf(0) = 0. | compute | `std/special.mpp` | `\operatorname{erf}(1) \overset{?}{=} \frac{2}{\sqrt{\pi}}` |
 | Lambert W: W(z)e^W(z) = z. The principal branch has W₀(0) = 0. | compute | `std/special.mpp` | `W(1) e^{W(1)} \overset{?}{=} 1` |
-| Bessel: J₀(x) = Σ_{k≥0} (−1)^k(x²/4)^k/(k!)², with J₀(0) = 1. | compute | `std/special.mpp` | `J_0(1) \overset{?}{=} \sum_{k=0}^{20}` |
+| Bessel: J₀(x) = Σ_{k≥0} (−1)^k(x²/4)^k/(k!)², with J₀(0) = 1. | compute | `std/special.mpp` | `J_0(1) - \sum_{k=0}^{20}` |
 | Legendre: P₀(x) = 1, P₁(x) = x, P₂(x) = (3x²−1)/2. | compute | `std/special.mpp` | `P_2(x) \overset{?}{=} \frac{3x^2 - 1}{2}` |
 | Chebyshev: T_n(cos θ) = cos(nθ), so T_n(1) = 1. | compute | `std/special.mpp` | `T_3(\cos t) \overset{?}{=} \cos(3t)` |
 | Fourier transform: f̂(ξ) = ∫_ℝ f(x)e^(−2πixξ) dx for f in L¹. | check | `std/analysis.mpp` | `\int_{-\infty}^{\infty} e^{-\pi x^2} \, dx \overset{?}{=} 1` |

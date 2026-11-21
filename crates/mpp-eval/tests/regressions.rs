@@ -806,3 +806,62 @@ fn a_change_in_a_quantity_is_typeset_as_delta_x() {
     assert_eq!(line.latex.as_deref(), Some("3 \\Delta x"));
     assert_eq!(mpp_core::Expr::sym("Δx").to_latex(), "\\Delta x");
 }
+
+/// `∫ 1/(x⁴+1) dx` was not found: x⁴ + 1 factors over Q(√2) into two quadratics, giving
+/// logarithms and arctangents (checked by differentiating back).
+#[test]
+fn quartic_denominator_split_over_a_quadratic_field() {
+    let got = answer(r"$$ \int \frac{1}{x^4 + 1} \, dx = ? $$");
+    assert!(got.contains("atan") && got.contains("ln"), "{got}");
+    // F(1) − F(0) against ∫₀¹ dx/(x⁴+1) = 0.86697298733991… (mpmath)
+    let v = approx(r"$$ \int_0^1 \frac{1}{x^4 + 1} \, dx \approx ? $$");
+    assert_eq!(v, "0.8669729873");
+    let got = answer(r"$$ \int \frac{x^2}{x^4 + 1} \, dx = ? $$");
+    assert!(got.contains("atan"), "{got}");
+}
+
+/// Convergent improper integrals were left undecided: limit comparison decides them and
+/// the value follows.
+#[test]
+fn convergent_improper_integrals_get_values() {
+    let rows = [
+        (r"$$ \int_0^2 (x-1)^{-2/3} \, dx \approx ? $$", "6"),
+        (
+            r"$$ \int_0^{\infty} \frac{\sin^2 x}{x^2} \, dx \approx ? $$",
+            "1.570796327",
+        ),
+        (r"$$ \int_0^1 x^{-0.99} \, dx \approx ? $$", "100"),
+    ];
+    for (src, want) in rows {
+        assert_eq!(approx(src), want, "{src}");
+    }
+}
+
+/// Boundary value problems: exact for constant coefficients, including the cases with no
+/// solution and infinitely many; shooting otherwise.
+#[test]
+fn boundary_value_problems() {
+    let many = answer(r"$$ \operatorname{dsolve}(y'' + y = 0, y(0) = 0, y(\pi) = 0) = ? $$");
+    assert!(many.contains("sin(x)") && many.contains("C"), "{many}");
+    let errs = errors(r"$$ \operatorname{dsolve}(y'' + y = 0, y(0) = 0, y(\pi) = 1) = ? $$");
+    assert!(errs.iter().any(|e| e.contains("no solution")), "{errs:?}");
+    assert_eq!(
+        answer(r"$$ \operatorname{dsolve}(y'' = 6x, y(0) = 0, y(1) = 2) = ? $$"),
+        "y(x) = x^3 + x"
+    );
+    // y″ + x y = 0, y(0) = 0, y(1) = 1 has no closed form here: shooting meets y(1) = 1.
+    let ev = run(r"$$ \operatorname{dsolve}(y'' + x y = 0, y(0) = 0, y(1) = 1) = ? $$");
+    let (_, line) = ev.queries().next().expect("a query");
+    let shown = line
+        .plain
+        .clone()
+        .or(line.approx.clone())
+        .unwrap_or_default();
+    assert!(shown.contains("y(1)") && shown.contains('1'), "{shown}");
+    let notes: Vec<String> = ev
+        .all_diagnostics()
+        .iter()
+        .map(|d| d.message.clone())
+        .collect();
+    assert!(notes.iter().any(|n| n.contains("shooting")), "{notes:?}");
+}

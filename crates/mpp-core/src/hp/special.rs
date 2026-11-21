@@ -8,12 +8,12 @@ use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{One, ToPrimitive, Zero};
 
-use super::float::{exp, ln, pi, sin_cos, BigF, HpError, HpResult};
+use super::float::{exp, ln, pi, sin_cos, tick, BigF, HpError, HpResult};
 
 /// Largest `n` for which `Γ(n) = (n−1)!` is computed exactly.
 const EXACT_FACTORIAL: u64 = 3000;
 /// Largest Bernoulli index used.
-const MAX_BERNOULLI: usize = 300;
+const MAX_BERNOULLI: usize = 800;
 
 thread_local! {
     static BERNOULLI: RefCell<Vec<BigRational>> = const { RefCell::new(Vec::new()) };
@@ -51,6 +51,11 @@ fn bernoulli(n: usize) -> Option<BigRational> {
     })
 }
 
+/// `B_n`, for the other series of this evaluator.
+pub(super) fn bernoulli_number(n: usize) -> Option<BigRational> {
+    bernoulli(n)
+}
+
 fn ratio(q: &BigRational, p: u64) -> BigF {
     BigF::from_ratio(q, p)
 }
@@ -76,6 +81,7 @@ pub fn ln_gamma(x: &BigF, p: u64) -> HpResult<BigF> {
         if start < x0 as f64 {
             let n = (x0 as f64 - start).ceil() as i64;
             for _ in 0..n {
+                tick()?;
                 prod = prod.mul(&y, w);
                 y = y.add(&BigF::one(), w);
             }
@@ -173,6 +179,7 @@ pub fn hurwitz(s: &BigF, a: &BigF, p: u64) -> HpResult<BigF> {
     let mut sum = BigF::zero();
     let mut base = a.clone().round(w);
     for _ in 0..n {
+        tick()?;
         sum = sum.add(&neg_power(&base, s, s_int.as_ref(), w)?, w);
         base = base.add(&one, w);
     }

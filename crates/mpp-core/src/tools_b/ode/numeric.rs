@@ -133,6 +133,9 @@ pub fn solve_numeric(
             function: "a numerical solution".into(),
             detail: "it needs initial conditions at one point".into(),
         })?;
+    if let Some(r) = shooting(ode, conditions, n, x0) {
+        return r;
+    }
     let mut y0 = vec![f64::NAN; n];
     for c in conditions {
         let at = value(&c.at).unwrap_or(f64::NAN);
@@ -179,6 +182,89 @@ pub fn solve_numeric(
         )),
     );
     Ok(result)
+}
+
+/// A two-point boundary value problem for a second-order equation (`y(a) = α` or
+/// `y′(a) = α`, and `y(b) = β`) by shooting: the missing initial value `s` is found by
+/// the secant method so that the solution from `a` meets `y(b) = β`. `None` when the
+/// conditions are not of that shape.
+fn shooting(
+    ode: &Ode,
+    conditions: &[Condition],
+    n: usize,
+    x0: f64,
+) -> Option<MathResult<NumericSolution>> {
+    let [first, second] = conditions else {
+        return None;
+    };
+    let x1 = value(&second.at)?;
+    if n != 2 || (x1 - x0).abs() <= 1e-12 || second.order != 0 || first.order > 1 {
+        return None;
+    }
+    let alpha = value(&first.value)?;
+    let beta = value(&second.value)?;
+    let sys = match System::new(ode) {
+        Ok(s) => s,
+        Err(e) => return Some(Err(e)),
+    };
+    let known = first.order as usize;
+    let start = |s: f64| {
+        let mut y0 = [0.0; 2];
+        y0[known] = alpha;
+        y0[1 - known] = s;
+        y0
+    };
+    let miss = |s: f64| -> MathResult<f64> {
+        let r = integrate(&sys, x0, &start(s), x1, TOLERANCE * 1e-2)?;
+        Ok(r.last().map_or(f64::NAN, |p| p.1) - beta)
+    };
+    let run = || -> MathResult<NumericSolution> {
+        let (mut s0, mut s1) = (0.0, 1.0);
+        let (mut r0, mut r1) = (miss(s0)?, miss(s1)?);
+        let scale = 1.0 + beta.abs() + alpha.abs();
+        if (r1 - r0).abs() <= 1e-9 * scale {
+            // The end value does not depend on the start: a linear problem at an
+            // eigenvalue, with no solution or with infinitely many.
+            let detail = if r0.abs() <= 1e-7 * scale {
+                "every starting slope meets the end condition: infinitely many solutions"
+            } else {
+                "no starting slope meets the end condition: no solution"
+            };
+            return Err(MathError::Domain {
+                function: "the boundary value problem".into(),
+                detail: detail.into(),
+            });
+        }
+        for _ in 0..60 {
+            crate::budget::check()?;
+            if r1.abs() <= 1e-10 * scale {
+                break;
+            }
+            let d = r1 - r0;
+            if d == 0.0 || !d.is_finite() {
+                break;
+            }
+            let s2 = s1 - r1 * (s1 - s0) / d;
+            (s0, r0) = (s1, r1);
+            s1 = s2;
+            r1 = miss(s1)?;
+        }
+        if r1.is_nan() || r1.abs() > 1e-7 * scale {
+            return Err(MathError::Undetermined(
+                "a starting slope that meets the end condition (shooting did not converge)".into(),
+            ));
+        }
+        let mut sol = integrate(&sys, x0, &start(s1), x1, TOLERANCE * 1e-2)?;
+        let what = if known == 0 { "y′" } else { "y" };
+        sol.method = format!(
+            "shooting, {what}({}) ≈ {}, with {}",
+            crate::number::format_f64(x0, 8),
+            crate::number::format_f64(s1, 10),
+            sol.method
+        );
+        Ok(sol)
+    };
+    Some(run())
 }
 
 // Dormand–Prince 5(4) tableau.

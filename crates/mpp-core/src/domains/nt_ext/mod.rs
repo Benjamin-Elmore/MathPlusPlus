@@ -303,6 +303,12 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
                     }
                 }
             }
+            // An exact real s keeps ζ(s): its digits come from the high-precision
+            // evaluator when asked for, not from a 16-digit float.
+            if !s.has_float() && rational(s).is_some() {
+                zeta::zeta(complex_arg(op, s)?)?;
+                return Ok(Expr::apply(op, args.to_vec()));
+            }
             ctx.note("≈ numeric");
             Ok(complex(zeta::zeta(complex_arg(op, s)?)?))
         }

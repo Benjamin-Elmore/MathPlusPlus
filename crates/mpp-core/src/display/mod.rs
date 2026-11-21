@@ -189,6 +189,44 @@ pub fn format_approx(z: Complex64, digits: usize) -> Option<String> {
     Some(render::render(&n, &fmt, digits.max(1)).0)
 }
 
+/// Significant digits a floating-point value is shown to at most: a float carries about
+/// 16, and the functions that make one lose a little, so a longer format (`%dp 30`) stops
+/// here rather than print digits that are not known.
+pub const FLOAT_DIGITS: usize = 14;
+
+/// `fmt` with its precision cut to `known` significant digits for a value whose first
+/// digit is at `10^k`.
+pub(crate) fn capped(fmt: &NumberFormat, k: i64, known: usize) -> NumberFormat {
+    let mut out = *fmt;
+    // Digits before the point: all of them in plain form, one (three at most in
+    // engineering form) when the number is written `m × 10^e`.
+    let high = i64::from(fmt.sci_high);
+    let sci = match fmt.notation {
+        Notation::Auto => k >= high,
+        _ => k >= high || k < i64::from(fmt.sci_low),
+    };
+    let lead = match (sci, fmt.notation) {
+        (false, _) => k + 1,
+        (true, Notation::Engineering) => k.rem_euclid(3) + 1,
+        (true, _) => 1,
+    };
+    out.precision = match fmt.precision {
+        Precision::Sig(n) if n as usize > known => Precision::Sig(known as u32),
+        Precision::Places(p) if lead + i64::from(p) > known as i64 => {
+            Precision::Places(u32::try_from((known as i64 - lead).max(0)).unwrap_or(0))
+        }
+        other => other,
+    };
+    out
+}
+
+/// A decimal of which only `known` significant digits are right, under the active
+/// format: never more digits than that. `None` when no format is set.
+pub fn format_decimal_known(d: &crate::hp::Decimal, digits: usize, known: usize) -> Option<String> {
+    let fmt = capped(&active()?, d.k, known.max(1));
+    Some(render::render_decimal(d, &fmt, digits.clamp(1, known.max(1))).0)
+}
+
 /// A high-precision decimal as text under the active format, with `digits`
 /// significant figures unless the format asks for others. `None` when no format is set.
 pub fn format_decimal(d: &crate::hp::Decimal, digits: usize) -> Option<String> {

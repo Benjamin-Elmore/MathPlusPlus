@@ -9,6 +9,7 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive};
 
 use super::float::{asin, atan, atan2, exp, ln, pi, sin_cos, BigF, HpError, HpResult};
+use super::funcs;
 use super::special::{gamma, hurwitz};
 use crate::expr::{Constant, Expr, ExprNode};
 use crate::functions::Func;
@@ -92,6 +93,26 @@ impl<'a> Eval<'a> {
                     let (s, a) = (self.ev(s)?, self.ev(a)?);
                     hurwitz(&s, &a, p)
                 }
+                (crate::expr::EULER_GAMMA, []) => funcs::euler_gamma(p),
+                ("erf", [x]) => funcs::erf(&self.ev(x)?, p),
+                ("erfc", [x]) => funcs::erfc(&self.ev(x)?, p),
+                ("besselj", [n, x]) => {
+                    let n = self.ev(n)?;
+                    let x = self.ev_abs(x)?;
+                    funcs::besselj(&n, &x, p)
+                }
+                ("polygamma", [m, x]) => {
+                    let m = self.ev(m)?;
+                    funcs::polygamma(&m, &self.ev(x)?, p)
+                }
+                ("ellipk", [k]) => funcs::ellipk(&self.ev(k)?, p),
+                ("ellipe", [k]) => funcs::ellipe(&self.ev(k)?, p),
+                ("lambertw", [x]) => funcs::lambert_w0(&self.ev(x)?, p),
+                ("lambertw", [x, k]) if k.is_zero() => funcs::lambert_w0(&self.ev(x)?, p),
+                ("beta", [a, b]) => {
+                    let (a, b) = (self.ev(a)?, self.ev(b)?);
+                    funcs::beta(&a, &b, p)
+                }
                 _ => unsupported(),
             },
             _ => unsupported(),
@@ -106,7 +127,7 @@ impl<'a> Eval<'a> {
             return Ok(v);
         }
         let extra = v.mag() as u64 + 8;
-        if extra > 1 << 22 {
+        if extra > super::float::REDUCE_BITS + 64 {
             return Err(HpError::Range);
         }
         self.with_bits(extra, |s| s.ev(e))
@@ -132,7 +153,10 @@ impl<'a> Eval<'a> {
             return exp(&xv, p);
         }
         if let Some(q) = x.as_number().and_then(Number::as_rational) {
-            let bv = self.ev(b)?;
+            // A relative error ε in the base becomes |q| ε in the power, so the base
+            // needs about log₂|q| more bits: (1 + 10⁻²⁰)^(10²⁰) is e, not 1.
+            let extra = q.numer().bits().saturating_sub(q.denom().bits()) + 8;
+            let bv = self.with_bits(extra, |s| s.ev(b))?;
             if q.is_integer() {
                 return bv.powi(q.numer(), p);
             }
@@ -149,8 +173,12 @@ impl<'a> Eval<'a> {
             }
             return self.real_power(&bv, &BigF::from_ratio(q, p + 64));
         }
-        let bv = self.ev(b)?;
         let xv = self.ev_abs(x)?;
+        let extra = xv.mag().max(0) as u64 + 8;
+        if extra > 1 << 22 {
+            return Err(HpError::Range);
+        }
+        let bv = self.with_bits(extra, |s| s.ev(b))?;
         self.real_power(&bv, &xv)
     }
 
@@ -184,7 +212,12 @@ impl<'a> Eval<'a> {
         match f {
             Func::Sin | Func::Cos | Func::Tan | Func::Sec | Func::Csc | Func::Cot => {
                 let x = args.first().map_or_else(unsupported, |a| self.ev_abs(a))?;
-                self.note(&x);
+                // The angle is accurate in absolute terms (`ev_abs`), so only its
+                // reduced size (at most about 1) bounds the noise: noting a huge angle
+                // would call cos(1000!) zero.
+                if !x.is_zero() {
+                    self.scale = self.scale.max(x.mag().min(2));
+                }
                 let (s, c) = sin_cos(&x, w)?;
                 match f {
                     Func::Sin => Ok(s.round(p)),
@@ -290,6 +323,16 @@ impl<'a> Eval<'a> {
                 gamma(&x.add(&one, w + x.mag().max(0) as u64), p)
             }
             Func::Gamma => gamma(&arg(self, 0)?, p),
+            Func::Digamma => funcs::digamma(&arg(self, 0)?, p),
+            Func::Erf => funcs::erf(&arg(self, 0)?, p),
+            Func::Si => {
+                let x = args.first().map_or_else(unsupported, |a| self.ev_abs(a))?;
+                funcs::si(&x, p)
+            }
+            Func::Ci => {
+                let x = args.first().map_or_else(unsupported, |a| self.ev_abs(a))?;
+                funcs::ci(&x, p)
+            }
             Func::Min | Func::Max => {
                 let mut best: Option<BigF> = None;
                 for a in args {

@@ -72,6 +72,22 @@ proptest! {
         let simplified = value(&s, x, y);
         prop_assume!(simplified.is_some());
         let (a, b) = (raw.unwrap_or_default(), simplified.unwrap_or_default());
+        // A closed expression's float value can be all rounding (e^(π³) sin π is 0.0036
+        // in floats); its high-precision value decides instead.
+        if !close(a, b) && e.free_symbols().is_empty() {
+            use mpp_core::hp::{approx_closed, Approx};
+            let truth = match approx_closed(&e, 12) {
+                Some(Approx::Zero { .. }) => Some(0.0),
+                Some(Approx::Value { value, .. }) => value
+                    .to_ratio()
+                    .and_then(|q| num_traits::ToPrimitive::to_f64(&q)),
+                None => None,
+            };
+            if let Some(t) = truth {
+                prop_assert!(close(t, b), "{e} = {t} but {s} = {b}");
+                return Ok(());
+            }
+        }
         prop_assert!(close(a, b), "{e} = {a} but {s} = {b}");
     }
 
