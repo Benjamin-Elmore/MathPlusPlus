@@ -434,3 +434,26 @@ fn one_equation_of_a_coupled_system_is_not_solved_alone() {
     );
     assert_eq!(approx_all(src), vec!["= -6"]);
 }
+
+#[test]
+fn names_with_fraction_and_list_subscripts_and_years() {
+    let src = concat!(
+        r"Let $t_{1/2} \equiv 5730\,\mathrm{yr}$.",
+        "\n\n",
+        r"$$ \lambda := \frac{\ln 2}{t_{1/2}} \approx ? $$",
+        "\n\n",
+        r"$$ \frac{dN}{dt} = -\lambda N, \quad N(0) = N_0 $$",
+        "\n\n",
+        r"$$ \frac{N(10\,000\,\mathrm{yr})}{N_0} \approx ? $$",
+        "\n\n",
+        r"$$ \operatorname{solve}_t \Big(\frac{N(t)}{N_0} = 0.40\Big) \approx ? $$",
+    );
+    assert_eq!(
+        approx_all(src),
+        vec![
+            "≈ 0.0001209680943 1/yr",
+            "≈ 0.2982924364",
+            "≈ {7574.647984 yr}"
+        ]
+    );
+}

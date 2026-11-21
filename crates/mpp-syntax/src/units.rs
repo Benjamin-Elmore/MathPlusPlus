@@ -37,6 +37,7 @@ const SYMBOLS: &[(&str, bool)] = &[
     ("min", false),
     ("h", false),
     ("day", false),
+    ("yr", false),
     ("t", false),
     ("eV", true),
     ("cal", true),

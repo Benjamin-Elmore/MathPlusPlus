@@ -72,7 +72,6 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
     ("labs/02-pendulum.mpp", "`≈ ?` queries in prose, a figure sentence with a trailing clause; elliptic-integral or ODE helpers (C-lane)"),
     ("labs/03-damped-spring.mpp", "`for all t` condition after a query, figure keywords with units in ranges (`t ∈ [0, 10 s]`)"),
     ("labs/04-rc-circuit.mpp", "`solve_t(…) ≈ ?`, fit results with names like `τ_fit`, figure items"),
-    ("labs/05-radioactive-decay.mpp", "subscripts such as `t_{1/2}` on names, `solve_t` approximations"),
     ("labs/06-reaction-kinetics.mpp", "bracket names `[A]_0` as definitions, composite subscripts `E_{a,fit}`"),
     ("labs/07-boyles-law.mpp", "multi-result `a ≈ ? b ≈ ?` lines, regression results in prose"),
     ("labs/08-titration.mpp", "`:=` with a leading operator, `\\mathrm{pH}` as a function head"),
@@ -80,6 +79,28 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
     ("labs/10-heat-rod.mpp", "PDE function `u(x, t)` as an unknown function"),
     ("labs/11-monte-carlo-pi.mpp", "`\\hat{\\pi}` as a definition head, random sampling with a seed"),
 ];
+
+/// True when the report shows the expected result: for a number written with `d`
+/// decimals (`0.2983`), some number in the report that rounds to it (`0.2982924364`),
+/// as the labs state their results to that precision; any other text must appear as
+/// written.
+fn shows(report: &str, needle: &str) -> bool {
+    let Ok(want) = needle.parse::<f64>() else {
+        return report.contains(needle);
+    };
+    let decimals = needle.split_once('.').map_or(0, |(_, d)| d.len());
+    let half_ulp = 0.5 * 10f64.powi(-(decimals as i32));
+    numbers(report).any(|x| (x - want).abs() <= half_ulp * (1.0 + 1e-9))
+}
+
+/// The decimal numbers written in `text` (`3.160602794`, `7574.647984`, `1e-3`).
+fn numbers(text: &str) -> impl Iterator<Item = f64> + '_ {
+    text.split(|c: char| !(c.is_ascii_digit() || c == '.' || c == 'e' || c == '-'))
+        .filter_map(|w| {
+            let w = w.trim_matches(|c: char| c == '.' || c == 'e' || c == '-');
+            w.parse::<f64>().ok()
+        })
+}
 
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../work/pipeline-tests")
@@ -100,7 +121,7 @@ fn outcome(c: &Case) -> Result<(), String> {
     }
     let report = run_report(&ev);
     for needle in c.expect {
-        if !report.contains(needle) {
+        if !shows(&report, needle) {
             problems.push(format!("missing result {needle}"));
         }
     }
