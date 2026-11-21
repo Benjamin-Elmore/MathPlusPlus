@@ -16,8 +16,16 @@ use crate::math::ast::{Clause, DefHead, Line, MathAst, Node, NodeKind, Range, St
 use crate::math::visit::children_mut;
 use crate::span::{Diagnostic, Span};
 
-/// Most entries kept; past it the ones unused for longest are dropped.
-const MAX_ENTRIES: usize = 20_000;
+/// Most bytes kept per thread (stored text plus the estimated size of its parse); past
+/// it the entries unused for longest are dropped.
+const MAX_BYTES: usize = 32 * 1024 * 1024;
+/// A parse takes about this many bytes per byte of formula text (measured: a 1.8 KB
+/// formula keeps about 105 KB).
+const PARSE_FACTOR: usize = 64;
+
+fn cost(text_len: usize) -> usize {
+    text_len * (PARSE_FACTOR + 1) + 256
+}
 /// Longest formula text kept, in bytes (long ones are rare and costly to keep).
 const MAX_TEXT: usize = 16 * 1024;
 
@@ -26,12 +34,14 @@ struct Entry {
     ast: MathAst,
     diags: Vec<Diagnostic>,
     used: u64,
+    cost: usize,
 }
 
 #[derive(Default)]
 struct Memo {
     entries: HashMap<String, Entry>,
     tick: u64,
+    bytes: usize,
 }
 
 thread_local! {
@@ -79,13 +89,19 @@ pub(super) fn store(src: &str, base: usize, ast: &MathAst, diags: &[Diagnostic])
         let mut m = m.borrow_mut();
         m.tick += 1;
         let tick = m.tick;
-        if m.entries.len() >= MAX_ENTRIES {
+        let c = cost(src.len());
+        if let Some(old) = m.entries.remove(src) {
+            m.bytes -= old.cost;
+        }
+        while m.bytes + c > MAX_BYTES && !m.entries.is_empty() {
             // Keep the newer half.
             let mut ages: Vec<u64> = m.entries.values().map(|e| e.used).collect();
             ages.sort_unstable();
             let cut = ages[ages.len() / 2];
             m.entries.retain(|_, e| e.used > cut);
+            m.bytes = m.entries.values().map(|e| e.cost).sum();
         }
+        m.bytes += c;
         m.entries.insert(
             src.to_string(),
             Entry {
@@ -93,6 +109,7 @@ pub(super) fn store(src: &str, base: usize, ast: &MathAst, diags: &[Diagnostic])
                 ast: ast.clone(),
                 diags: diags.to_vec(),
                 used: tick,
+                cost: c,
             },
         );
     });
@@ -197,6 +214,37 @@ fn shift_node(n: &mut Node, mv: &impl Fn(Span) -> Span) {
 mod tests {
     use crate::math::parse_math;
 
+    fn clear() {
+        super::MEMO.with(|m| {
+            let mut m = m.borrow_mut();
+            m.entries.clear();
+            m.bytes = 0;
+        });
+    }
+
+    fn long_formula(i: usize) -> String {
+        let term = r"1 + a_1 \cdot (2 + b^2) + ";
+        format!(r"x_{{{i}}} := {} \ x_{{{i}}} = ?", term.repeat(60))
+    }
+
+    /// Typing in many different long formulas never takes the memo past its byte cap.
+    #[test]
+    fn the_memo_stays_under_its_byte_cap() {
+        clear();
+        for i in 0..1500 {
+            parse_math(&long_formula(i), i);
+            super::MEMO.with(|m| {
+                let m = m.borrow();
+                assert!(m.bytes <= super::MAX_BYTES, "{} bytes", m.bytes);
+                let sum: usize = m.entries.values().map(|e| e.cost).sum();
+                assert_eq!(sum, m.bytes);
+            });
+        }
+        // Recent formulas are still kept.
+        let last = long_formula(1499);
+        super::MEMO.with(|m| assert!(m.borrow().entries.contains_key(&last)));
+    }
+
     /// A formula taken from the memo at a new offset is exactly a fresh parse there.
     #[test]
     fn a_kept_parse_moved_to_a_new_offset_matches_a_fresh_parse() {
@@ -214,11 +262,11 @@ mod tests {
             let again = parse_math(src, 7);
             assert_eq!(first, again, "{src}");
             let moved = parse_math(src, 1234);
-            super::MEMO.with(|m| m.borrow_mut().entries.clear());
+            clear();
             let fresh = parse_math(src, 1234);
             assert_eq!(moved, fresh, "{src}");
             let back = parse_math(src, 3);
-            super::MEMO.with(|m| m.borrow_mut().entries.clear());
+            clear();
             assert_eq!(back, parse_math(src, 3), "{src}");
         }
     }

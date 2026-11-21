@@ -65,6 +65,24 @@ fn data_names(e: &Expr, out: &mut Vec<String>) {
     }
 }
 
+/// Adds the data names used in the bodies of the user functions `e` calls.
+fn called_bodies(e: &Expr, view: &super::View<'_>, out: &mut Vec<String>, depth: usize) {
+    if depth > 8 {
+        return;
+    }
+    if let ExprNode::Apply(op, _) = e.node() {
+        if let Some(b) = view.get(op, true) {
+            if let Binding::Function { body, .. } = &*b {
+                data_names(body, out);
+                called_bodies(body, view, out, depth + 1);
+            }
+        }
+    }
+    for c in e.children() {
+        called_bodies(c, view, out, depth);
+    }
+}
+
 impl Run<'_, '_> {
     /// A table whose header row names variables and whose cells are numbers defines one
     /// data column per header. Returns false for any other table (it stays prose).
@@ -269,10 +287,14 @@ impl Run<'_, '_> {
     pub(super) fn missing_data(&self, e: &Expr) -> Option<EvalError> {
         let mut names = Vec::new();
         data_names(e, &mut names);
+        let view = self.view();
+        // `p(1)` where `p(u) := linreg(h, m)`: the data the called functions use.
+        if self.env.get(FAILED_DATA).is_some() {
+            called_bodies(e, &view, &mut names, 0);
+        }
         if names.is_empty() {
             return None;
         }
-        let view = self.view();
         let failed = view.get(FAILED_DATA, false)?;
         let Binding::Variable { value, .. } = &*failed else {
             return None;
