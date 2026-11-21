@@ -1,0 +1,44 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\begin{pmatrix} 1 \\\\ 2 \\\\ 3 \\\\ 4 \\\\ 5 \\\\ 6 \\\\ 7 \\\\ 8 \\end{pmatrix}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="53" height="192" viewBox="0 0 53 192" overflow="visible">
+<text x="0" y="187" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="157.62" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="148.18" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="138.74" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="129.3" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="119.86" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="110.42" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="100.98" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="91.54" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="82.1" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="72.66" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="63.22" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="53.78" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="44.34" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="0" y="34.9" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="21.5" y="16.8" font-family="Latin Modern Math" font-size="20" fill="#111111">1</text>
+<text x="21.5" y="40.8" font-family="Latin Modern Math" font-size="20" fill="#111111">2</text>
+<text x="21.5" y="64.8" font-family="Latin Modern Math" font-size="20" fill="#111111">3</text>
+<text x="21.5" y="88.8" font-family="Latin Modern Math" font-size="20" fill="#111111">4</text>
+<text x="21.5" y="112.8" font-family="Latin Modern Math" font-size="20" fill="#111111">5</text>
+<text x="21.5" y="136.8" font-family="Latin Modern Math" font-size="20" fill="#111111">6</text>
+<text x="21.5" y="160.8" font-family="Latin Modern Math" font-size="20" fill="#111111">7</text>
+<text x="21.5" y="184.8" font-family="Latin Modern Math" font-size="20" fill="#111111">8</text>
+<text x="35.5" y="187" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="157.62" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="148.18" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="138.74" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="129.3" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="119.86" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="110.42" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="100.98" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="91.54" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="82.1" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="72.66" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="63.22" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="53.78" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="44.34" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="35.5" y="34.9" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+</svg>

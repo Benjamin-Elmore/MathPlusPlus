@@ -1,0 +1,181 @@
+# Analysis
+
+Norms and indicators, Fourier analysis, distributions, operators, differential equations, dynamical systems, the calculus of variations, numerical methods and approximation. Import with `![[std/analysis.mpp]]`. Derivatives, integrals, series and limits are in [[std/calculus.mpp]]; special functions in [[std/special.mpp]].
+
+## Norms and indicators
+
+The $L^p$ norm $\|f\|_p = (\int |f|^p\,d\mu)^{1/p}$ for $1 \le p < \infty$: on $[0, 1]$, $\|x\|_2 = 1/\sqrt{3}$. For a list, the sum of the $p$-th powers.
+
+$$ \operatorname{lpnorm}(x, x, 0, 1, 2) \overset{?}{=} \frac{1}{\sqrt{3}} $$
+
+$$ \left(\int_0^1 x^2 \, dx\right)^{1/2} \overset{?}{=} \frac{1}{\sqrt{3}} $$
+
+$$ \operatorname{lpnorm}((3, 4), 2) \overset{?}{=} 5 $$
+
+$$ \operatorname{lpnorm}((3, -4), 1) \overset{?}{=} 7 $$
+
+The indicator $\mathbf{1}_A(x)$ is 1 on $A$ and 0 elsewhere, so $\int \mathbf{1}_A\,d\mu = \mu(A)$: a relation counts as 1 where it holds.
+
+$$ \operatorname{lpnorm}(x \le 1, x, 0, 3, 1) \overset{?}{=} 1 $$
+
+$$ \operatorname{lpnorm}(x^2 \le 4, x, -3, 3, 1) \overset{?}{=} 4 $$
+
+## Fourier analysis
+
+The Fourier transform $\hat f(\xi) = \int_{\mathbb{R}} f(x) e^{-2\pi i x \xi}\,dx$ for $f \in L^1$. Under this convention $e^{-\pi x^2}$ is its own transform; at $\xi = 0$ and $\xi = 1/2$ (the sine part vanishes by symmetry, and the tails beyond $|x| = 10$ are below $10^{-130}$):
+
+$$ \int_{-\infty}^{\infty} e^{-\pi x^2} \, dx \overset{?}{=} 1 $$
+
+$$ \int_{-10}^{10} e^{-\pi x^2} \cos(\pi x) \, dx \overset{?}{=} e^{-\pi / 4} $$
+
+Plancherel: $\|\hat f\|_2 = \|f\|_2$ for the extended $L^2$ transform. For the discrete transform the same law reads $\sum |X_k|^2 = N \sum |x_j|^2$.
+
+$$ \frac{\operatorname{lpnorm}(\operatorname{dft}((1, 2, 3, 4)), 2)^2}{4} \overset{?}{=} 1^2 + 2^2 + 3^2 + 4^2 $$
+
+**Theorem.** (Plancherel) The Fourier transform extends from $L^1 \cap L^2$ to a unitary map of $L^2(\mathbb{R})$, so $\|\hat f\|_2 = \|f\|_2$.
+
+## Distributions
+
+The Dirac delta pairs with a test function as $\delta(\psi) = \psi(0)$, and its derivative as $\delta'(\psi) = -\psi'(0)$.
+
+$$ \operatorname{diracpair}(\cos x, x) \overset{?}{=} 1 $$
+
+$$ \operatorname{diracpair}(\sin x, x, 1) \overset{?}{=} -1 $$
+
+$$ \operatorname{diracpair}(x^3 + 2x, x, 1) \overset{?}{=} -2 $$
+
+The Heaviside step $H$ has distributional derivative $\delta$: $\langle H', \psi \rangle = -\int_0^\infty \psi'(x)\,dx = \psi(0)$.
+
+$$ -\int_0^{\infty} \frac{d}{dx} e^{-x^2} \, dx \overset{?}{=} \operatorname{diracpair}(e^{-x^2}, x) $$
+
+$$ H(3) \overset{?}{=} 1 $$
+
+$$ H(-3) \overset{?}{=} 0 $$
+
+## Operators
+
+The operator norm $\|T\| = \sup_{\|x\| \le 1} \|Tx\|$; for a matrix it is the square root of the largest eigenvalue of $T^T T$. For the shear below that eigenvalue is $(3 + \sqrt{5})/2$, so the norm is the golden ratio.
+
+$$ T_{\text{shear}} \equiv \begin{pmatrix} 1 & 1 \\ 0 & 1 \end{pmatrix} $$
+
+$$ \det\left(T_{\text{shear}}^T T_{\text{shear}} - \frac{3 + \sqrt{5}}{2} \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix}\right) \overset{?}{=} 0 $$
+
+$$ \sqrt{\frac{3 + \sqrt{5}}{2}} \overset{?}{=} \frac{1 + \sqrt{5}}{2} $$
+
+The Hilbert-space adjoint $T^{\top}$ (often written with a star): $\langle Tx, y \rangle = \langle x, T^{\top} y \rangle$; for a real matrix it is the transpose.
+
+$$ \mathbf{p} \equiv \begin{pmatrix} 2 \\ -1 \end{pmatrix} $$
+
+$$ \mathbf{q} \equiv \begin{pmatrix} 3 \\ 5 \end{pmatrix} $$
+
+$$ (T_{\text{shear}} \mathbf{p}) \cdot \mathbf{q} \overset{?}{=} \mathbf{p} \cdot (T_{\text{shear}}^T \mathbf{q}) $$
+
+**Theorem.** (Adjoint) Every bounded linear operator $T$ on a Hilbert space has a unique bounded adjoint $T^{\top}$ with $\langle Tx, y \rangle = \langle x, T^{\top} y \rangle$, and $\|T^{\top}\| = \|T\|$.
+
+## Ordinary differential equations
+
+Exponential growth: $y' = ay$, $y(0) = y_0$ gives $y(t) = y_0 e^{at}$.
+
+$$ y_{\text{growth}}(t, a, y_0) := y_0 e^{a t} $$
+
+$$ \frac{d}{dt} y_{\text{growth}}(t, a, y_0) \overset{?}{=} a \, y_{\text{growth}}(t, a, y_0) $$
+
+$$ y_{\text{growth}}(0, a, y_0) \overset{?}{=} y_0 $$
+
+The harmonic oscillator: $y'' + \omega^2 y = 0$ for $\omega > 0$ gives $y(t) = A\cos(\omega t) + B\sin(\omega t)$.
+
+$$ y_{\text{SHM}}(t, A, B, \omega) := A \cos(\omega t) + B \sin(\omega t) $$
+
+$$ \frac{d^2}{dt^2} y_{\text{SHM}}(t, A, B, \omega) + \omega^2 y_{\text{SHM}}(t, A, B, \omega) \overset{?}{=} 0 $$
+
+$$ y_{\text{SHM}}(0, A, B, \omega) \overset{?}{=} A $$
+
+The Laplace transform of $e^{at}$ is $1/(s - a)$ for real $a$ and $\operatorname{Re} s > a$; for $a = 1$, $s = 3$:
+
+$$ \int_0^{\infty} e^{t} e^{-3 t} \, dt \overset{?}{=} \frac{1}{3 - 1} $$
+
+$$ \int_0^{\infty} e^{2 t} e^{-5 t} \, dt \overset{?}{=} \frac{1}{5 - 2} $$
+
+## Partial differential equations
+
+The heat kernel on $\mathbb{R}$ for $u_t = \alpha u_{xx}$, $\alpha > 0$: $K_t(x) = (4\pi\alpha t)^{-1/2} \exp(-x^2/(4\alpha t))$ for $t > 0$ (on $\mathbb{R}^n$ the power is $-n/2$ and $x^2$ is $|x|^2$).
+
+$$ K_{\text{heat}}(x, t, \alpha) := \frac{1}{\sqrt{4 \pi \alpha t}} e^{-x^2 / (4 \alpha t)} $$
+
+$$ \frac{\partial}{\partial t} K_{\text{heat}}(x, t, \alpha) \overset{?}{=} \alpha \frac{\partial^2}{\partial x^2} K_{\text{heat}}(x, t, \alpha) $$
+
+$$ \int_{-\infty}^{\infty} K_{\text{heat}}(x, 1, 1) \, dx \overset{?}{=} 1 $$
+
+**Theorem.** (Heat equation on $\mathbb{R}^n$) Convolving $K_t$ with the initial data $u_0$ gives the free-space solution (the convolution of $K_t$ with $u_0$) of $u_t = \alpha \Delta u$, under standard integrability or boundedness assumptions on $u_0$.
+
+## Dynamical systems
+
+Flow maps satisfy $\Phi_{s+t} = \Phi_s \circ \Phi_t$ wherever defined; for $x' = ax$ the flow is $\Phi_t(x) = x e^{at}$.
+
+$$ \Phi_{\text{flow}}(t, x, a) := x e^{a t} $$
+
+$$ \Phi_{\text{flow}}(s + t, x, a) \overset{?}{=} \Phi_{\text{flow}}(s, \Phi_{\text{flow}}(t, x, a), a) $$
+
+The logistic map $f_r(x) = r x (1 - x)$. Its fixed point $\hat{x} = 1 - 1/r$ has slope $2 - r$ there, which passes $-1$ at $r = 3$: the first period doubling.
+
+$$ f_{\text{logistic}}(r, x) := r x (1 - x) $$
+
+$$ f_{\text{logistic}}(r, 1 - \tfrac{1}{r}) \overset{?}{=} 1 - \frac{1}{r} $$
+
+$$ r \left(1 - 2\left(1 - \frac{1}{r}\right)\right) \overset{?}{=} 2 - r $$
+
+$$ f_{\text{logistic}}(3, f_{\text{logistic}}(3, \tfrac{2}{3})) \overset{?}{=} \frac{2}{3} $$
+
+## Calculus of variations
+
+For stationary paths of $\int L(x, y, y')\,dx$ with fixed endpoints, the Euler–Lagrange equation is $\partial L/\partial y - \frac{d}{dx}(\partial L/\partial y') = 0$. For the spring Lagrangian $L = \frac12 m p^2 - \frac12 k y^2$ (with $p = y'$) it gives $m y'' + k y = 0$, solved by $\cos(\sqrt{k/m}\,x)$:
+
+$$ L_{\text{spring}}(y, p, m, k) := \frac{1}{2} m p^2 - \frac{1}{2} k y^2 $$
+
+$$ \frac{\partial}{\partial y} L_{\text{spring}}(y, p, m, k) \overset{?}{=} -k y $$
+
+$$ \frac{\partial}{\partial p} L_{\text{spring}}(y, p, m, k) \overset{?}{=} m p $$
+
+$$ -k \cos\left(\sqrt{\frac{k}{m}}\, x\right) - m \frac{d^2}{dx^2} \cos\left(\sqrt{\frac{k}{m}}\, x\right) \overset{?}{=} 0 $$
+
+**Theorem.** (Euler–Lagrange) If $y$ makes $\int_a^b L(x, y, y')\,dx$ stationary among $C^2$ paths with fixed endpoints, then $\frac{\partial L}{\partial y} - \frac{d}{dx}\frac{\partial L}{\partial y'} = 0$ along $y$.
+
+## Numerical analysis
+
+Newton's iteration $x_{k+1} = x_k - f(x_k)/f'(x_k)$; for $f(x) = x^2 - 2$ from 1 it gives $3/2$, $17/12$, $577/408$ … towards $\sqrt{2}$.
+
+$$ x_{\text{Newton}}(x) := x - \frac{x^2 - 2}{2x} $$
+
+$$ x_{\text{Newton}}(x_{\text{Newton}}(x_{\text{Newton}}(1))) \overset{?}{=} \frac{577}{408} $$
+
+$$ \mathrm{sgn}\left(10^{-5} - \left|\frac{577}{408} - \sqrt{2}\right|\right) \overset{?}{=} 1 $$
+
+Forward Euler for $y' = f(t, y)$: $y_{k+1} = y_k + h f(t_k, y_k)$. For $y' = y$ with step $h$, $n$ steps from 1 give $(1 + h)^n$, which tends to $e$ as $h = 1/n \to 0$.
+
+$$ y_{\text{Euler}}(y, h, f) := y + h f $$
+
+$$ y_{\text{Euler}}(1, \tfrac{1}{10}, 1) \overset{?}{=} \frac{11}{10} $$
+
+$$ y_{\text{Euler}}(y_{\text{Euler}}(1, \tfrac{1}{2}, 1), \tfrac{1}{2}, y_{\text{Euler}}(1, \tfrac{1}{2}, 1)) \overset{?}{=} \left(1 + \frac{1}{2}\right)^2 $$
+
+$$ \lim_{n \to \infty} \left(1 + \frac{1}{n}\right)^n \overset{?}{=} e $$
+
+Fixed-point iteration: a continuously differentiable $g$ whose slope at a fixed point $\hat{x}$ is less than 1 in size converges from nearby starts. The cosine has the fixed point $0.739085…$, where the sine is less than 1.
+
+$$ \operatorname{fixedpoint}(\cos x, x, 1) \overset{?}{=} 0.739085133215160641655 $$
+
+$$ \mathrm{sgn}(1 - |\sin(0.739085133215160641655)|) \overset{?}{=} 1 $$
+
+**Theorem.** (Fixed-point convergence) If $g$ is continuously differentiable near a fixed point $\hat{x} = g(\hat{x})$ and $|g'(\hat{x})| < 1$, the iteration $x_{k+1} = g(x_k)$ converges to $\hat{x}$ from every start close enough to it.
+
+## Approximation
+
+The Bernstein approximation on $[0, 1]$, $B_n[f](x) = \sum_{k=0}^{n} f(k/n) \binom{n}{k} x^k (1 - x)^{n - k}$. It reproduces straight lines exactly and is $x^2/2 + x/2$ for $x^2$ with $n = 2$.
+
+$$ \operatorname{bernstein}(x^2, x, 2) \overset{?}{=} \frac{x^2}{2} + \frac{x}{2} $$
+
+$$ \operatorname{bernstein}(3x + 1, x, 5) \overset{?}{=} 3x + 1 $$
+
+$$ \operatorname{bernsteinbasis}(1, 2, x) \overset{?}{=} 2 x (1 - x) $$
+
+**Theorem.** (Weierstrass, via Bernstein) For continuous $f$ on $[0, 1]$, $B_n[f] \to f$ uniformly as $n \to \infty$.

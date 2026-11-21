@@ -1,0 +1,79 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\providecommand{\degree}{\ensuremath{^\circ}}
+\providecommand{\xmark}{\ensuremath{\times}}
+\providecommand{\omicron}{o}
+\providecommand{\oiint}{\mathop{\oint\mkern-12mu\oint}}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Show the working}
+\date{}
+\begin{document}
+\maketitle
+Write \texttt{= ?!} instead of \texttt{= ?} and every answer comes with its working, one rule per step.
+Turn on "Show steps" to get the working for every \texttt{= ?} query.
+
+\section*{Derivatives}
+
+The product, chain and power rules, each named as it is used.
+
+\begin{equation*}
+  \frac{d}{dx} x^2 \sin(3x) = 3 x^{2} \cos\left(3 x\right) + 2 x \sin\left(3 x\right)
+\end{equation*}
+\begin{equation*}
+  \frac{d}{dx} \frac{\sin x}{x^2} = \frac{x^{2} \cos\left(x\right) - 2 x \sin\left(x\right)}{x^{4}}
+\end{equation*}
+\section*{Integrals}
+
+A substitution writes out $u$ and $du$:
+
+\begin{equation*}
+  \int 2x \cos(x^2) \, dx = \sin\left(x^{2}\right) + C
+\end{equation*}
+Integration by parts names $u$, $dv$, $du$ and $v$:
+
+\begin{equation*}
+  \int x e^x \, dx = e^{x} x - e^{x} + C
+\end{equation*}
+Partial fractions show the decomposition:
+
+\begin{equation*}
+  \int \frac{1}{x^2 - 1} \, dx = \frac{\ln\left(\left|x - 1\right|\right)}{2} - \frac{\ln\left(\left|x + 1\right|\right)}{2} + C
+\end{equation*}
+A definite integral ends with the fundamental theorem of calculus:
+
+\begin{equation*}
+  \int_0^2 x^2 \, dx = \frac{8}{3}
+\end{equation*}
+\section*{Limits}
+
+L'H\^{o}pital's rule says which indeterminate form it removes:
+
+\begin{equation*}
+  \lim_{x \to 0} \frac{e^x - 1 - x}{x^2} = \frac{1}{2}
+\end{equation*}
+\section*{Series}
+
+The Taylor coefficients are listed:
+
+\begin{equation*}
+  \operatorname{Taylor\ series}_{x=0}^{4} e^x \sin x = x + x^{2} + \frac{x^{3}}{3} + O\left(x^{4}\right)
+\end{equation*}
+\end{document}

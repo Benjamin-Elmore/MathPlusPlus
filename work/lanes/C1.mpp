@@ -1,0 +1,38 @@
+# Show the working: notes for the integrator
+
+Lane `tools-a` (branch `wip/tools-a`).
+
+## What it adds
+
+- `mpp_core::tools::{StepTree, StepNode}` (`crates/mpp-core/src/tools/steps.rs`): the CAS's flat step log arranged as a foldable tree. A rule that leaves unevaluated pieces (the sum rule's `d/dx f + d/dx g`, a substitution's `∫ … du`) gets the steps that work those pieces out as its children; "substitute back" and "solve for the integral" close the technique that opened them. Each node has the rule, a short sentence, before/after as `Expr` and LaTeX, the note and its children. `StepTree::for_answer` adds a final "combine the results and simplify" step when the working stops at pieces, so the last step always ends at the answer.
+- `LineResult::step_tree()` in `mpp-eval` builds the tree for a query that recorded steps.
+- `Session::set_show_steps(bool)` / `Session::show_steps()`: the global "Show steps" option; every `= ?` query then records its working as if written `= ?!`.
+
+## Holes filled in the CAS's step log
+
+- L'Hôpital's rule names the indeterminate form (0/0 or ∞/∞) and writes out both derivatives, and an "evaluate the new limit" step ends the chain.
+- Series: the "combine the series" note lists the Taylor coefficients `c_k = f⁽ᵏ⁾(a)/k!`; a series about `x = a` no longer prints `1 - x - 1` for `1 − (x − 1)`.
+- Integrals: a "simplify the integrand" step when the integrand was cancelled or tidied before the techniques ran.
+- Plain-text printer: a lone denominator that is a product in a step tree prints `a/(2*x)`, not `a/2*x`.
+
+## Edits outside the lane's folders
+
+- `crates/mpp-core/src/lib.rs`: `pub mod tools;`.
+- `crates/mpp-core/src/calc/limit.rs`, `calc/series/mod.rs`, `calc/integrate/mod.rs`, `printer.rs`: the step-log holes above (the core lane is finished).
+- `crates/mpp-eval/src/session.rs` (`show_steps` field and setter), `block.rs` (`Inputs::show_steps`, one line in `query`), `result.rs` (`LineResult::step_tree`).
+
+## Guide text (for `docs/guide.mpp`)
+
+### Show the working
+
+Write `= ?!` instead of `= ?` to get the answer with its working, one rule per step, the way a textbook solution sets it out:
+
+$$ \frac{d}{dx} x^2 \sin(3x) = ?! $$
+
+The product rule comes first, and under it the power rule for $x^2$ and the chain rule for $\sin(3x)$. Integrals name their technique: a substitution writes out $u$ and $du$, integration by parts names $u$, $dv$, $du$ and $v$, and partial fractions show the decomposition. Limits say when they use L'Hôpital's rule and which form ($0/0$ or $\infty/\infty$) it removes, and series list their Taylor coefficients. The steps come from the CAS itself, so they always lead to the answer shown.
+
+In the preview each technique is folded into one line; click it to see the steps inside. Turn on **Show steps** to get the working for every `= ?` query in the file without changing them to `= ?!`.
+
+## Example
+
+`examples/steps.mpp` with `examples/steps.expected.txt` (checked by `crates/mpp-eval/tests/tools_examples.rs`; `MPP_UPDATE_EXPECTED=1` rewrites the expected files).

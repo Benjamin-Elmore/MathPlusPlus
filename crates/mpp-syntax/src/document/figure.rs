@@ -3,7 +3,7 @@
 use super::ast::*;
 use super::cursor::Cursor;
 use super::inline::parse_inlines;
-use crate::math::{parse_clause, parse_math, Statement};
+use crate::math::{parse_clause, parse_math, Clause, Statement};
 use crate::span::{Diagnostic, Span};
 
 /// Parses the text after `Figure:`; `rest` is its range in `src`.
@@ -11,6 +11,7 @@ pub(crate) fn parse_figure(src: &str, rest: Span, diags: &mut Vec<Diagnostic>) -
     let mut c = Cursor::new(src, rest);
     let mut items = Vec::new();
     let mut caption = Vec::new();
+    let mut words = Vec::new();
 
     loop {
         c.skip_ws();
@@ -20,6 +21,8 @@ pub(crate) fn parse_figure(src: &str, rest: Span, diags: &mut Vec<Diagnostic>) -
                 kind,
                 span: Span::new(start, c.pos),
             }),
+            // Words that describe the figure (`the data points and $V_C(t)$`).
+            None if prose(&mut c, &mut words) => {}
             None => {
                 c.skip_ws();
                 let at = c.pos;
@@ -34,8 +37,19 @@ pub(crate) fn parse_figure(src: &str, rest: Span, diags: &mut Vec<Diagnostic>) -
                 break;
             }
         }
+        c.skip_ws();
         if c.eat(',') {
             continue;
+        }
+        // `$P$ against $V$`, `$\theta(t)$ and the small-angle solution $…$`.
+        if c.rest().starts_with('$') {
+            continue;
+        }
+        if !c.rest().starts_with('.') && prose(&mut c, &mut words) {
+            c.skip_ws();
+            if c.eat(',') || c.rest().starts_with('$') {
+                continue;
+            }
         }
         if c.rest().starts_with('.') {
             let after = c.pos + 1;
@@ -64,7 +78,53 @@ pub(crate) fn parse_figure(src: &str, rest: Span, diags: &mut Vec<Diagnostic>) -
         }
         break;
     }
-    Figure { items, caption }
+    Figure {
+        items,
+        caption,
+        words,
+    }
+}
+
+/// Reads words up to the next `$`, `,` or sentence end (`. `), recording their span.
+/// False (reading nothing) when no word starts here.
+fn prose(c: &mut Cursor<'_>, words: &mut Vec<Span>) -> bool {
+    let rest = c.rest();
+    if !rest.starts_with(|ch: char| ch.is_alphabetic() || ch == '(') {
+        return false;
+    }
+    let start = c.pos;
+    let mut depth = 0usize;
+    let mut end = rest.len();
+    for (i, ch) in rest.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            '$' if depth == 0 => {
+                end = i;
+                break;
+            }
+            ',' if depth == 0 => {
+                end = i;
+                break;
+            }
+            '.' if depth == 0 => {
+                let next = rest[i + 1..].chars().next();
+                if next.is_none_or(char::is_whitespace) {
+                    end = i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let text = rest[..end].trim_end();
+    if text.is_empty() {
+        return false;
+    }
+    let stop = start + text.len();
+    words.push(Span::new(start, stop));
+    c.pos = stop;
+    true
 }
 
 fn trim_start(src: &str, span: Span) -> Span {
@@ -93,11 +153,56 @@ fn parse_item(
         .iter()
         .copied()
         .find(|k| c.word(k.as_str()))?;
-    let arg = c.math().map(|m| {
-        let text = src.get(m.start..m.end).unwrap_or("");
-        let (clause, d) = parse_clause(text, m.start);
-        diags.extend(d);
-        clause
-    });
+    let arg = c.math().map(|m| keyword_clause(src, m.start, m.end, diags));
     Some(FigureItemKind::Keyword { keyword, arg })
+}
+
+/// Splits the text of a keyword argument at the commas outside brackets, giving each
+/// piece with its offset in `text`: `n = 8, (0, 1)` is `n = 8` and `(0, 1)`.
+pub fn split_keyword_list(text: &str) -> Vec<(usize, &str)> {
+    let mut pieces = Vec::new();
+    let (mut depth, mut start, mut escaped) = (0i32, 0usize, false);
+    for (i, c) in text.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match c {
+            '\\' => escaped = true,
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                pieces.push((start, &text[start..i]));
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    pieces.push((start, &text[start..]));
+    pieces
+}
+
+/// Parses the `$…$` argument of a keyword. Most take one clause (`x = 1`); several take a
+/// list (`n = 8, x_0 = 1`, `y' = x, (0, 1)`), in which case the clause is the first entry
+/// and the plot crate reads the whole list from the source.
+fn keyword_clause(src: &str, start: usize, end: usize, diags: &mut Vec<Diagnostic>) -> Clause {
+    let text = src.get(start..end).unwrap_or("");
+    let pieces: Vec<(usize, &str)> = split_keyword_list(text)
+        .into_iter()
+        .filter(|(_, p)| !p.trim().is_empty())
+        .collect();
+    let mut first: Option<Clause> = None;
+    for (off, piece) in &pieces {
+        let (clause, d) = parse_clause(piece, start + off);
+        diags.extend(d);
+        first.get_or_insert(clause);
+    }
+    match first {
+        Some(c) => c,
+        None => {
+            let (clause, d) = parse_clause(text, start);
+            diags.extend(d);
+            clause
+        }
+    }
 }

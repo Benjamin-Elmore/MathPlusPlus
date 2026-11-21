@@ -1,0 +1,48 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\providecommand{\degree}{\ensuremath{^\circ}}
+\providecommand{\xmark}{\ensuremath{\times}}
+\providecommand{\omicron}{o}
+\providecommand{\oiint}{\mathop{\oint\mkern-12mu\oint}}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\section*{Series}
+
+Sums, infinite or finite.
+
+\begin{equation*}
+  \sum_{k=1}^{100} k = 5050
+\end{equation*}
+\begin{equation*}
+  \sum_{n=1}^{\infty} \frac{1}{n^2} = \frac{\pi^{2}}{6}
+\end{equation*}
+\begin{equation*}
+  \sum_{n=0}^{\infty} \frac{x^n}{n!} = e^{x}
+\end{equation*}
+\begin{equation*}
+  \sum_{n=0}^{\infty} \left(\frac{1}{2}\right)^n = 2
+\end{equation*}
+A telescoping sum:
+
+\begin{equation*}
+  \sum_{n=1}^{\infty} \frac{1}{n (n + 1)} = 1
+\end{equation*}
+\end{document}

@@ -1,0 +1,75 @@
+# Probability
+
+Bayes' rule, moments, Markov chains, Brownian motion and Monte Carlo. Distributions, sample statistics and counting are in [[std/stats.mpp]]. Random samples are reproducible: a `%seed` line fixes them for the rest of the document. Import with `![[std/probability.mpp]]`.
+
+Name clash: $\pi$ alone is the circle constant; a stationary distribution is written $p_{\text{st}}$ here.
+
+## Bayes' rule
+
+$P(A \mid B) = P(B \mid A) P(A)/P(B)$ when $P(A), P(B) > 0$. A test that is 99% sensitive with a 5% false-positive rate, for a condition 1% of people have: $P(B) = 0.99 \cdot 0.01 + 0.05 \cdot 0.99$, and a positive result means the condition only one time in six.
+
+$$ P_{\text{Bayes}}(p_{BA}, p_A, p_B) := \frac{p_{BA} \, p_A}{p_B} $$
+
+$$ P_{\text{Bayes}}(0.99, 0.01, 0.99 \cdot 0.01 + 0.05 \cdot 0.99) \overset{?}{=} \frac{1}{6} $$
+
+$$ P_{\text{Bayes}}(1, \tfrac{1}{2}, \tfrac{1}{2}) \overset{?}{=} 1 $$
+
+## Moments
+
+$\mathrm{Var}(X) = E[X^2] - (E[X])^2$ when the second moment is finite. For a fair die $E[X] = 7/2$ and $E[X^2] = 91/6$:
+
+$$ \mathrm{Var}_{\text{moments}}(m_1, m_2) := m_2 - m_1^2 $$
+
+$$ \mathrm{Var}_{\text{moments}}(\tfrac{7}{2}, \tfrac{91}{6}) \overset{?}{=} \frac{35}{12} $$
+
+$$ \operatorname{pvar}((1, 2, 3, 4, 5, 6)) \overset{?}{=} \mathrm{Var}_{\text{moments}}(\tfrac{7}{2}, \tfrac{91}{6}) $$
+
+The uniform distribution on $[0, 1]$ has mean $1/2$ and variance $1/12$.
+
+$$ \mathrm{Var}_{\text{moments}}\left(\int_0^1 x \, dx, \int_0^1 x^2 \, dx\right) \overset{?}{=} \frac{1}{12} $$
+
+The Poisson distribution with rate $\lambda$ has mean and variance both $\lambda$ (here $\lambda = 3$).
+
+$$ \mathrm{Var}_{\text{moments}}\left(\sum_{k=0}^{\infty} k \frac{e^{-3} 3^k}{k!}, \sum_{k=0}^{\infty} k^2 \frac{e^{-3} 3^k}{k!}\right) \overset{?}{=} 3 $$
+
+## Markov chains
+
+For a time-homogeneous finite Markov chain with transition matrix $P$, the $k$-step transitions are $P^k$.
+
+$$ P_{\text{chain}} \equiv \begin{pmatrix} \tfrac{1}{2} & \tfrac{1}{2} \\ \tfrac{1}{4} & \tfrac{3}{4} \end{pmatrix} $$
+
+$$ \operatorname{markovpower}(P_{\text{chain}}, 2) \overset{?}{=} \begin{pmatrix} \tfrac{3}{8} & \tfrac{5}{8} \\ \tfrac{5}{16} & \tfrac{11}{16} \end{pmatrix} $$
+
+$$ \operatorname{markovpower}(P_{\text{chain}}, 2) \overset{?}{=} P_{\text{chain}} P_{\text{chain}} $$
+
+A stationary distribution satisfies $\pi P = \pi$ (and adds to 1).
+
+$$ p_{\text{st}} \equiv \begin{pmatrix} \tfrac{1}{3} & \tfrac{2}{3} \end{pmatrix} $$
+
+$$ p_{\text{st}} P_{\text{chain}} \overset{?}{=} p_{\text{st}} $$
+
+$$ \operatorname{hamming}(\operatorname{stationary}(P_{\text{chain}}), (\tfrac{1}{3}, \tfrac{2}{3})) \overset{?}{=} 0 $$
+
+## Brownian motion
+
+Standard Brownian motion has $W_t \sim N(0, t)$, so $E[W_t^2] = t$ (here $t = 2$), and quadratic variation $t$ on $[0, t]$.
+
+$$ \int_{-\infty}^{\infty} x^2 \frac{1}{\sqrt{2 \pi \cdot 2}} e^{-x^2 / (2 \cdot 2)} \, dx \overset{?}{=} 2 $$
+
+**Theorem.** (Brownian motion) A standard Brownian motion $W$ has $W_0 = 0$, independent increments with $W_t - W_s \sim N(0, t - s)$, continuous paths, and quadratic variation $[W]_t = t$.
+
+A sampled path on $[0, 1]$ in 10 steps (seeded, so the same on every computer):
+
+%seed 2026
+
+$$ \operatorname{brownian}(10, 1) = ? $$
+
+## Monte Carlo
+
+The area of the quarter disc, four times over, from 10 000 random points: the estimate comes with its standard error.
+
+$$ \operatorname{montecarlo}(4 (x^2 + y^2 \le 1), ((x, 0, 1), (y, 0, 1)), 10000) = ? $$
+
+The same sum for $\int_0^1 x^2\,dx = 1/3$ with an explicit seed, to compare.
+
+$$ \operatorname{montecarlo}(x^2, ((x, 0, 1)), 10000, 7) = ? $$

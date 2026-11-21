@@ -1,0 +1,104 @@
+# Lane notes: C9 (Insert dropdown + visual equation editor)
+
+## Guide text (for `docs/guide.mpp`, integrator applies)
+
+### Inserting maths
+
+You never type `\int`, `_`, `^` or `$$`. Put the cursor anywhere on the page and open the
+**Insert** menu: the **Insert** button in the toolbar, right-click and choose **Insert…**, or
+`Ctrl+Space`. The menu is grouped (Calculus, Sums and products, Algebra, Linear algebra, Greek,
+Symbols, Helpers, Graphs) with the items you used last at the top. Start typing to search
+("integral", "matrix", "alpha", "area"), use the arrow keys, and press `Enter`.
+
+Choosing an item puts a typeset template on the page with an empty box for every part of it,
+placed where the maths puts it: the bounds of an integral above and below the sign, the end of a sum
+above it and `n = 1` below, `x → □` under `lim`, the two parts of a fraction over and under the bar.
+Each empty box shows a grey word for what goes in it (*lower*, *upper*, *integrand* …), and the box
+the cursor is in is lightly highlighted.
+
+- **Tab** moves to the next box in reading order (bounds, then the body, then the variable) and
+  **Shift+Tab** goes back. Tab after the last box leaves the template.
+- A box that already holds something (`dx`, `n = 1`, `∞`) has it selected when you reach it, so typing
+  replaces it. The differential of an integral is already there: `dx`, or the variable of the function
+  you are working on (`dt` after `f(t) := …`).
+- Boxes grow as you type, and you can insert a template inside a box (an integral inside a sum).
+- **Backspace** in an empty first box removes the whole template if nothing was typed in it;
+  otherwise it steps back one box.
+- Until every required box is filled, the equation shows a grey hint such as *fill in: upper bound*
+  and no answer. Optional boxes left empty change the meaning: an integral with both bounds empty
+  becomes an indefinite integral when you leave it.
+- Inserting into a line of text makes a maths block of its own; a Greek letter or symbol in text
+  becomes inline maths; a graph becomes a `Figure:` line under the current block, with its maths
+  (what is drawn, the ranges) shown above the graph so you can fill it in.
+
+Some templates show a small column of buttons beside them while the cursor is inside:
+
+- ∬ and ∭: **Region** or **Bounds**, **Swap order** (bounds mode), and for ∭ **Cartesian**,
+  **Cylindrical** or **Spherical** (which sets dV = r dz dr dθ or ρ² sin φ dρ dφ dθ).
+- Improper integrals and limits: **−∞** and **+∞**. Limits: **Both sides**, **From above**, **From below**.
+- Matrices and vectors: **+ row**, **− row**, **+ column**, **− column** (a matrix asks for its size
+  first: hover over the grid and click, or use the arrow keys and Enter).
+- Piecewise: **+ row**, **− row**, **Otherwise**. Differential equations: **+ condition**.
+  Partial derivatives: **+ variable**. Function definitions: **+ argument**.
+- ∇, ∇·, ∇×, ∇²: the coordinate system. Logarithms: base e, 10 or any base.
+- Volume and surface of revolution: the axis and the method; Riemann sums: the rule.
+- Graphs: **+ curve** and **+ slider**.
+
+Fast typists can type `int` then a space for a definite integral, and `/` for a fraction (what you
+typed just before the `/` becomes the numerator). View → Insert settings turns these off, puts
+integral bounds at the side of the sign instead of above and below it, and picks `k` instead of
+`ω` for Fourier transforms.
+
+### Example (for `examples/`)
+
+```
+# Inserted with the Insert menu
+
+$$ \int_{0}^{1} {x^2} \, dx $$
+
+$$ \sum_{n={1}}^{10} {n} = ? $$          → 55
+
+$$ \begin{pmatrix} {1} & {2} \\ {3} & {4} \end{pmatrix} $$
+
+Figure: ${x^2}$, $x \in [{-10}, {10}]$.
+```
+
+(The braces are the boxes the editor wrote; they are never shown and parse as plain grouping.)
+
+## What was built
+
+- `mpp-ide/src/editor/template.rs`: the snippet language templates are written in (`⟨label⟩` boxes,
+  `⟨?label⟩` optional, `⟨~label⟩` bare where the grammar allows no braces, `⟨label=default⟩`,
+  `⟨*label⟩` start box, `@n` Tab place, `#key`, `⟨^key⟩` mirrors, `⟦…⟧` optional parts) and the
+  `Session` that tracks an inserted template's boxes.
+- `mpp-ide/src/editor/mod.rs`: every text change goes through one splice that moves the boxes;
+  sessions are part of undo/redo (a template insert or a control is one step). New API:
+  `insert_template`, `tab`, `focus_box`, `backspace_in_template`, `finalize`, `finalize_outside`,
+  `set_box_text`, `rebuild_template`, `slot_labels`, `quiet_ranges`, `missing_boxes`.
+- `mpp-ide/src/insert/`: `catalogue.rs` (every item, the helpers' argument lists, controls),
+  `mod.rs` (placement in maths or prose, controls, shortcuts, the "fill in" hint, settings saved as
+  `insert`), `menu.rs` (the dropdown, the matrix picker, the template toolbar, the Insert button).
+- Call sites: `view.rs` (Tab, Backspace, Ctrl+Space, right-click, shortcuts, hint, toolbar, menu),
+  `app.rs` (Insert button, View → Insert settings, saving), `doc.rs` (slot labels, integral style),
+  `diagnostics` (empty template boxes are a hint, not an error), `page/build.rs` + `flow.rs` (slot
+  labels, integral style, the maths line above a figure).
+- mpp-render (additive): `LayoutOptions::slot_labels` (labels by offset override the layout's generic
+  hints) and `LayoutOptions::with_integral_limits`.
+- Dark-mode fix: the glyph edge thickening is now proportional to the glyph size, so script digits
+  (the `0` under ∫) keep Latin Modern's thick and thin strokes instead of looking sans-serif. A test
+  checks the digit is the Latin Modern Math script-size glyph.
+
+## Notes for the integrator and later lanes
+
+- Helper operator names (`\operatorname{crit}`, `area`, `volume`, `riemann`, …) are chosen here; the
+  C2–C4 evaluators should accept them (list in `insert/catalogue.rs`, `HELPERS`). Their answers land
+  later; the templates already parse.
+- ODEs are written `\operatorname{solve}_{y(x)} \left( … \right), \quad y(0) = 1`; ODE systems use
+  `\begin{cases}` inside the brackets. C7 should read these.
+- Derivative "evaluate at" is written as a where-clause (`\frac{d}{dx} {x^3}, \quad x = {2}`), because
+  `\left. … \right|_{x=a}` loses its bar in the parser.
+- In the parser, `d{x}` is not a differential and `\frac{d}{d{x}}` is read wrongly, so differential
+  and derivative variables are bare boxes (written `dx`, braced only while empty).
+- N6 (Insert → Comment) and N1 (Insert → Units) add entries to `catalogue.rs`.
+- Screenshots: `cargo test -p mpp-ide --test insert_ui` writes `insert-*-{light,dark}.png` to
+  `target/ide-snapshots/`.

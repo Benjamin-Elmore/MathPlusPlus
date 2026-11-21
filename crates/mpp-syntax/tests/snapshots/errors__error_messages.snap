@@ -76,10 +76,10 @@ expression: report
   4..4 "": expected the term after `\sum`
     expected: an expression
   tree: (sum (error))
-## \sin
-  4..4 "": expected the argument of `\sin`
+## \sin^2
+  6..6 "": expected the argument of `\sin` after `2`
     expected: an expression, `(`
-  tree: (sin (error))
+  tree: (^ (sin (error)) 2)
 ## x :=
   4..4 "": expected the value after `:=`
     expected: an expression

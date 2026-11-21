@@ -1,0 +1,67 @@
+# Differential equations
+
+The equation solver (Insert, then ODE) recognises the type of an equation, solves it exactly, names the method and checks the answer by putting it back into the equation. Starting values are written as a tuple $(x_0, y_0, y'_0, \dots)$.
+
+## First order
+
+$$ \operatorname{dsolve}(y' = x y) = ? $$
+
+$$ \operatorname{dsolve}(y' + 2y = e^x) = ? $$
+
+$$ \operatorname{dsolve}(y' + y = x y^3) = ? $$
+
+$$ \operatorname{dsolve}(y' = \frac{x + y}{x - y}) = ? $$
+
+$$ \operatorname{dsolve}(y \cos x + 2x e^y + (\sin x + x^2 e^y - 1) y' = 0) = ? $$
+
+$$ \operatorname{dsolve}(y' = 1 + x^2 - 2 x y + y^2) = ? $$
+
+$$ \operatorname{dsolve}(y = x y' + (y')^2) = ? $$
+
+An initial value problem: $y' = y^2$ with $y(0) = 1$.
+
+$$ \operatorname{dsolve}(y' = y^2, (0, 1)) = ?! $$
+
+## Higher order, constant coefficients
+
+$$ \operatorname{dsolve}(y'' - 3y' + 2y = 0) = ? $$
+
+$$ \operatorname{dsolve}(y'' + 2y' + 5y = 0) = ? $$
+
+$$ \operatorname{dsolve}(y'' + y = \sin x) = ? $$
+
+$$ \operatorname{dsolve}(y'' + y = \sec x) = ? $$
+
+$$ \operatorname{dsolve}(y'' + y = 0, (0, 1, 0)) = ? $$
+
+## Variable coefficients
+
+$$ \operatorname{dsolve}(x^2 y'' - 2x y' + 2y = 0) = ? $$
+
+$$ \operatorname{dsolve}(x^2 y'' - x (x + 2) y' + (x + 2) y = 0) = ? $$
+
+The Airy equation has no elementary solution, so a power series is given.
+
+$$ \operatorname{dsolve}(y'' + x y = 0, (0, 1, 0)) = ? $$
+
+## Laplace transforms
+
+$$ \operatorname{laplace}(t^2 e^{-t}) = ? $$
+
+$$ \operatorname{invlaplace}(\frac{1}{s^2 + 4}) = ? $$
+
+$$ \operatorname{dsolve}(y'' + y = \operatorname{H}(t - 1), (0, 0, 0)) = ? $$
+
+## Systems
+
+A linear system with constant coefficients is solved with the matrix exponential (the primes mean $d/dx$ here).
+
+$$ \operatorname{dsolve}((u' = v, v' = -u), (1, 0)) = ? $$
+
+## Numerical fallback
+
+$$ \operatorname{dsolve}(y' = \sin(x y), (0, 1), [0, 2]) = ? $$
+
+## Heat equation
+
+$$ \operatorname{heat}(x, \pi, 1) = ? $$

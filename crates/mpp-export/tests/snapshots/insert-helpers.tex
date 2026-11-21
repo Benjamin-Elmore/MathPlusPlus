@@ -1,0 +1,158 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\providecommand{\degree}{\ensuremath{^\circ}}
+\providecommand{\xmark}{\ensuremath{\times}}
+\providecommand{\omicron}{o}
+\providecommand{\oiint}{\mathop{\oint\mkern-12mu\oint}}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\section*{The helpers of the Insert menu}
+
+Every helper in the Insert menu writes its operator with a box for each argument. These are
+the templates as the editor writes them, with the boxes filled in.
+
+\begin{equation*}
+  f(x) \coloneqq  x^3 - 3x^2 + 1
+\end{equation*}
+\begin{equation*}
+  \operatorname{Domain} {\frac{1}{x - 2}} = \left(-\infty, 2\right) \cup \left(2, \infty\right)
+\end{equation*}
+\begin{equation*}
+  \operatorname{Range} {x^2 + 1} = \left[1, \infty\right)
+\end{equation*}
+\begin{align*}
+  \operatorname{Intercepts} {x^2 - 4} = \begin{array}{ll} \text{x-intercepts} & \left\{\left(-2, 0\right), \left(2, 0\right)\right\} \\ \text{y-intercept} & \left\{\left(0, -4\right)\right\} \end{array}
+\end{align*}
+\begin{equation*}
+  \operatorname{Critical\ points}_{[-1, 3]} {f} = \left\{0, 2\right\}
+\end{equation*}
+\begin{align*}
+  \operatorname{Extrema}_{[-1, 3]} {f} = \begin{array}{ll} \text{local maxima} & \left\{\left(0, 1\right)\right\} \\ \text{local minima} & \left\{\left(2, -3\right)\right\} \\ \text{absolute maximum} & \left\{\left(0, 1\right), \left(3, 1\right)\right\} \\ \text{absolute minimum} & \left\{\left(-1, -3\right), \left(2, -3\right)\right\} \end{array}
+\end{align*}
+\begin{align*}
+  \operatorname{Increasing\ and\ decreasing} {f} = \begin{array}{ll} \text{increasing on} & \left(-\infty, 0\right) \cup \left(2, \infty\right) \\ \text{decreasing on} & \left(0, 2\right) \end{array}
+\end{align*}
+\begin{align*}
+  \operatorname{Concavity} {f} = \begin{array}{ll} \text{concave up on} & \left(1, \infty\right) \\ \text{concave down on} & \left(-\infty, 1\right) \\ \text{inflection points} & \left\{\left(1, -1\right)\right\} \end{array}
+\end{align*}
+\begin{equation*}
+  \operatorname{Inflection\ points} {f} = \left\{\left(1, -1\right)\right\}
+\end{equation*}
+\begin{align*}
+  \operatorname{Asymptotes} {\frac{x^2 + 1}{x - 1}} = \begin{array}{ll} \text{vertical} & \left\{x = 1\right\} \\ \text{horizontal} & \text{none} \\ \text{slant} & \left\{y = x + 1\right\} \end{array}
+\end{align*}
+\begin{equation*}
+  \operatorname{Tangent\ line}_{{1}} {x^2} = y = 2 x - 1
+\end{equation*}
+\begin{equation*}
+  \operatorname{Normal\ line}_{{1}} {x^2} = y = -\frac{x}{2} + \frac{3}{2}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Linearisation}_{{4}} {\sqrt{x}} = L\left(x\right) = \frac{x}{4} + 1
+\end{equation*}
+\begin{align*}
+  \operatorname{Mean\ value\ theorem}_{{[0, 2]}} {x^3 - x} = \begin{array}{ll} \text{continuous on [0, 2]} & \text{yes} \\ \text{differentiable on (0, 2)} & \text{yes} \\ \text{average rate of change} & 3 \\ \text{c with f\prime (c) equal to it} & \left\{\frac{2 \sqrt{3}}{3}\right\} \end{array}
+\end{align*}
+\begin{align*}
+  \operatorname{Intermediate\ value\ theorem}_{{[0, 1]}} {x^3 + x - 1} = \begin{array}{ll} \text{continuous on [0, 1]} & \text{yes} \\ \text{f(0)} & -1 \\ \text{f(1)} & 1 \\ \text{0 lies between f(0) and f(1)} & \text{yes} \\ \text{c with f(c) = 0} & \left\{-\sqrt[3]{\frac{\sqrt{93}}{18} - \frac{1}{2}} + \sqrt[3]{\frac{\sqrt{93}}{18} + \frac{1}{2}}\right\} \end{array}
+\end{align*}
+\begin{align*}
+  \operatorname{Analysis} {x e^{-x}} = \begin{array}{ll} \text{f(x)} & e^{-x} x \\ \text{domain} & \left(-\infty, \infty\right) \\ \text{range} & \left(-\infty, \frac{1}{e}\right] \\ \text{x-intercepts} & \left\{\left(0, 0\right)\right\} \\ \text{y-intercept} & \left\{\left(0, 0\right)\right\} \\ \text{critical points} & \left\{1\right\} \\ \text{local maxima} & \left\{\left(1, \frac{1}{e}\right)\right\} \\ \text{local minima} & \text{none} \\ \text{increasing on} & \left(-\infty, 1\right) \\ \text{decreasing on} & \left(1, \infty\right) \\ \text{concave up on} & \left(2, \infty\right) \\ \text{concave down on} & \left(-\infty, 2\right) \\ \text{inflection points} & \left\{\left(2, \frac{2}{e^{2}}\right)\right\} \\ \text{vertical asymptotes} & \text{none} \\ \text{horizontal asymptotes} & \left\{y = 0\right\} \\ \text{slant asymptotes} & \text{none} \end{array}
+\end{align*}
+\begin{equation*}
+  \operatorname{Area\ between\ curves}_{{0}}^{{1}} \left( {x}, {x^2} \right) = \frac{1}{6}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Volume\ of\ revolution}_{{0}}^{{1}} \left( {x}, {y = 0}, {\text{auto}} \right) = \frac{\pi}{3}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Arc\ length}_{{0}}^{{1}} {x^{3/2}} = \frac{13 \sqrt{13}}{27} - \frac{8}{27}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Surface\ area}_{{0}}^{{1}} \left( {x}, {y = 0} \right) = \pi \sqrt{2}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Average\ value}_{{0}}^{{\pi}} {\sin x} = \frac{2}{\pi}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Work}_{{0}}^{{2}} {3x^2} = 8
+\end{equation*}
+\begin{equation*}
+  \operatorname{Centroid}_{{0}}^{{1}} {x} = \left(\frac{2}{3}, \frac{1}{3}\right)
+\end{equation*}
+\begin{equation*}
+  \operatorname{Accumulation}_{{0}} {t^2} = \frac{t^{3}}{3}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Riemann\ sum}_{{0}}^{{1}} \left( {x^2}, {4}, {\text{mid}} \right) = \frac{21}{64}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Newton's\ method} \left( {x^2 - 2}, {1}, {5} \right) \approx 1.414213562
+\end{equation*}
+\begin{equation*}
+  \operatorname{Euler's\ method} \left( {y' = x + y}, {y(0) = 1}, {0.1}, {10} \right) \approx 3.18748492
+\end{equation*}
+\begin{equation*}
+  \operatorname{RK4} \left( {y' = x + y}, {y(0) = 1}, {0.1}, {10} \right) \approx 3.436559488
+\end{equation*}
+\begin{equation*}
+  \operatorname{Taylor\ bound} \left( {e^x}, {0}, {3}, {1} \right) \approx 0.1132617429
+\end{equation*}
+\begin{equation*}
+  \operatorname{Convergence\ test} {\frac{1}{n^2}} = \text{true}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Radius\ of\ convergence} {\frac{x^n}{n}} = 1
+\end{equation*}
+\begin{equation*}
+  \operatorname{Directional\ derivative} \left( {x^2 y}, {(1, 2)}, {(3, 4)} \right) = \frac{16}{5}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Tangent\ plane}_{{(1, 2)}} {x^2 + y^2} = z = 2 x + 4 y - 5
+\end{equation*}
+\begin{equation*}
+  \operatorname{Linear\ approximation}_{{(1, 2)}} {x^2 y} = L\left(x, y\right) = 4 x + y - 4
+\end{equation*}
+\begin{align*}
+  \operatorname{Second-derivative\ test} {x^3 - 3x + y^2} = \begin{array}{ll} \text{saddle point at (-1, 0)} & 2 \\ \text{local minimum at (1, 0)} & -2 \end{array}
+\end{align*}
+\begin{equation*}
+  \operatorname{Change\ of\ variables} \left( {x + y}, {(x, y) = (u + v, u - v)}, u \in [0, 1], v \in [0, 1] \right) = 2
+\end{equation*}
+\begin{align*}
+  \operatorname{Green's\ theorem} \left( {(-y, x)}, {(x, y) = (r \cos\theta, r \sin\theta)}, r \in [0, 1], \theta \in [0, 2\pi] \right) = \begin{array}{ll} \text{\oint  P dx + Q dy} & 2 \pi \\ \text{\iint  (\partial Q/\partial x ? \partial P/\partial y) dA} & 2 \pi \\ \text{the two sides agree} & \text{yes} \end{array}
+\end{align*}
+\begin{align*}
+  \operatorname{Stokes'\ theorem} \left( {(-y, x, 0)}, {(u, v, 0)}, u \in [0, 1], v \in [0, 1] \right) = \begin{array}{ll} \text{\oint  F \cdot  dr} & 2 \\ \text{\iint  (\nabla  \times  F) \cdot  dS} & 2 \\ \text{the two sides agree} & \text{yes} \end{array}
+\end{align*}
+\begin{align*}
+  \operatorname{Divergence\ theorem} \left( {(x, y, z)}, x \in [0, 1], y \in [0, 1], z \in [0, 1] \right) = \begin{array}{ll} \text{\oiint  F \cdot  dS} & 3 \\ \text{\iiint  \nabla  \cdot  F dV} & 3 \\ \text{the two sides agree} & \text{yes} \end{array}
+\end{align*}
+\begin{equation*}
+  \operatorname{Implicit\ differentiation}_{x} {x^2 + y^2 = 25} = \frac{d}{d x}\left(y\right) = -\frac{x}{y}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Related\ rates}_{t} {x^2 + y^2 = 25} = 2 x \frac{d}{d t}\left(x\right) + 2 y \frac{d}{d t}\left(y\right) = 0
+\end{equation*}
+\begin{align*}
+  \operatorname{Lagrange\ multipliers}\left( {x y}, {x^2 + y^2 = 1} \right) = \begin{array}{ll} \text{f(-sqrt(2)/2, sqrt(2)/2)} & -\frac{1}{2} \\ \text{f(sqrt(2)/2, -sqrt(2)/2)} & -\frac{1}{2} \\ \text{f(-sqrt(2)/2, -sqrt(2)/2)} & \frac{1}{2} \\ \text{f(sqrt(2)/2, sqrt(2)/2)} & \frac{1}{2} \\ \text{largest value} & \frac{1}{2} \\ \text{smallest value} & -\frac{1}{2} \end{array}
+\end{align*}
+\end{document}

@@ -1,0 +1,105 @@
+Title: M16 final checks
+Author: Math++ validation run
+
+Run on branch `fix/validation` (the complete product), Windows 11, release build, 2026-11-20. Each check lists the command, the result and the fixes made.
+
+## 1. Release build
+
+Command: `cargo build --release` (whole workspace).
+
+Result: pass. Builds `mpp.exe` and `Math++.exe` with no warnings.
+
+## 2. Tests
+
+Command: `cargo test --workspace`.
+
+Result: pass. 1431 tests passed, 0 failed, 0 ignored, in 106 test binaries.
+
+The count covers unit tests, property tests, the golden-example tests (`crates/mpp-cli/tests/examples.rs`, one per example, now including `long-worksheet`), the export snapshots, and the egui_kittest UI snapshot tests.
+
+Fix: the new `long-worksheet` example needed export snapshots (`crates/mpp-export/tests/snapshots/long-worksheet.html` and `.tex`) and an expected-output file; both are added.
+
+## 3. Lint, format, no Markdown
+
+Commands: `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all --check`, `git ls-files '*.md'`.
+
+Result: pass. Clippy has no warnings, fmt reports nothing to change, and no tracked Markdown file exists.
+
+## 4. Licences
+
+Command: `cargo deny check licenses` (cargo-deny 0.22.0, installed for this run).
+
+Result: pass, with one item for Ben. A `deny.toml` is added that allows MIT, Apache-2.0 (also with the LLVM exception), BSD-2-Clause, BSD-3-Clause, ISC, Zlib, Unicode-3.0, Unicode-DFS-2016, OFL-1.1, CC0-1.0 and BSL-1.0. MPL-2.0 is not needed by any dependency, so it is not allowed.
+
+Needs Ben: one crate, `epaint_default_fonts` (egui's bundled editor fonts: Hack, Ubuntu-Light and an emoji icon font), is licensed `(MIT OR Apache-2.0) AND OFL-1.1 AND Ubuntu-font-1.0`. The Ubuntu Font Licence is free but not on the permissive list, so it is not allowed globally. It is excepted for that one crate only, with a comment in `deny.toml`. Decide whether to keep the exception or drop egui's default fonts (the page itself uses Latin Modern).
+
+Fonts: the licences ship. `work/release/licences/` holds the GUST Latin Modern licence, the OFL text for egui's fonts, the Hack licence, the Ubuntu Font Licence and the emoji font's MIT licence, and `install-test.ps1` checks the first two are installed beside the program.
+
+## 5. Live-edit speed
+
+Command: `cargo test --release -p mpp-ide --test m16 -- --nocapture` (test `a_live_edit_in_the_long_worksheet_is_fast`).
+
+Example: `examples/long-worksheet.mpp`, 299 lines: 16 sections of prose, definitions, derivatives, integrals and limits, then a figure.
+
+Result: pass, far under the limit. One character typed in the middle, worst of 5 runs:
+
+- Evaluator, `Session::update`: 3.7 ms (limit 100 ms).
+- IDE, edit, re-evaluate, re-layout and paint of the page: 17.9 ms (limit 100 ms).
+
+The test asserts both limits in release builds, so a slowdown fails the suite. No fix needed.
+
+## 6. IDE screenshots
+
+Command: `cargo test --release -p mpp-ide --test m16` (tests `every_example_has_a_screenshot_and_no_raw_source` and `each_problem_kind_is_shown_in_place`). Light theme, 1180 by 1500 pixels, saved to `target/m16-screens/`.
+
+Result: pass after two fixes. Every example (31, with `imports` taken from its `main.mpp`) is drawn and checked for raw source such as `$$`, `\frac` and `\int`. Looked at: integrals, matrices, units, proofs, paper-features, graphs-3d, visual-calculus, long-worksheet, plus several problem screenshots.
+
+Problem kinds in place (`error-*.png`): empty box, undefined name (with a "did you mean" hint), missing bracket, unit mismatch, numeric-fallback warning, assumption warning, import error (a file with errors and a missing file).
+
+Fixes:
+
+- Import line, missing file: the note "Can't find missing-file.mpp." was drawn over the words "Imports missing-file". The problem box covered only a few pixels of the line; it now covers the whole import line (`crates/mpp-ide/src/diagnostics/mod.rs`). Test: the box must be wider than 120 px.
+- Figure labels: the legend said "tangentline" and the readouts under graphs said "tangentatx = 1:y = x - 2" (spaces lost, words in italics). Legend labels with spaces are now text (`crates/mpp-plot/src/spec.rs`), and readouts keep their words and spacing (`crates/mpp-ide/src/figure.rs`). Test: `figure_readouts_and_legend_labels_keep_their_spaces`.
+
+## 7. Pipeline tests
+
+Command: `cargo test -p mpp-cli --test pipeline -- --nocapture`.
+
+Result: 16 of 23 documents pass; the 3 harness tests pass. No document or expectation was edited. All 12 proof documents are within their expectations except `navier-stokes.mpp` (below); nothing is reported as more proved than expected. The 7 failures are all missing features or decisions, so they are for Ben:
+
+- `navier-stokes.mpp`: the proof statuses are right. The failing line is the Lean export check: Lemmas 3, 4 and 5 are checked numerically on a field instance, and vector calculus on fields has no Lean translation, so those steps export as `sorry`, while the expectation says "no sorry on its checked steps". Needs a Lean translation for field calculus, or a changed expectation.
+- `labs/01-projectile-drag.mpp` and `labs/02-pendulum.mpp`: `T \approx ?` asks for a time measured from a solved ODE (the first maximum or landing time) and no such measure exists; `T` has no value.
+- `labs/03-damped-spring.mpp`: the result 0.9954517249 is correct but the check wants it written as 0.9954 (a rounding rule for the check, or a precision written in the document).
+- `labs/06-reaction-kinetics.mpp`: 6 parse errors (a concentration written `[A](t)` is not a function head), so the rate ratio, `[A](60)` and the fitted activation energy have no value.
+- `labs/07-boyles-law.mpp`: `R^2` is read as the gas constant `R` squared, because the lab defines `R`. The regression `R^2` and a user's `R` collide; needs a decision on naming.
+- `labs/11-monte-carlo-pi.mpp`: `p` has no value, so `sigma` cannot be worked out (the document relies on a measured fraction that is not defined as a value).
+
+## 8. Exports
+
+Commands: `mpp export <example> --to pdf|tex|html -o target/m16-export/...` for all 31 examples (93 files), then the PDFs were parsed and rasterised with pdfium (pypdfium2, installed into `target/scratch` only).
+
+Result: pass after one fix. Every export succeeded (0 failures); all 31 PDFs parse (1 to 12 pages each). First pages of paper-features, proofs, integrals and graphs-3d were rasterised and looked at; the layout, typeset maths, results in blue, theorem blocks, references and figures are right.
+
+Fix: in `proofs.pdf` each proof that ended in a numbered list showed a second, lonely end mark on its own line, because the written end mark on the line after the last step was added to again. The export now shows one (`crates/mpp-export/src/pdf/compose.rs`, test `a_proof_ending_in_a_list_shows_one_end_mark`).
+
+Observation, no change: a figure that does not fit under the text moves to the next page (graphs-3d has about half a page of white after the first surface). Taste call.
+
+## 9. Installer
+
+Commands: `pwsh work/release/build.ps1`, then `pwsh work/release/install-test.ps1`.
+
+Result: pass, 0 failures. The build wrote `Math++-0.1.0-portable.zip` and `Math++-0.1.0-x64.msi` (22.9 MB). The test installed it, checked files, shortcut, `.mpp` association and PATH, ran `mpp run`, started the IDE from the registry open command with a `.mpp` (window titled Math++, GUI subsystem, no console), then uninstalled and found everything removed. The WiX tools were copied from another worktree's `target/tools/wix3` into this one's `target/` (not committed).
+
+## Summary of fixes
+
+1. Import problem note no longer overlaps the import line (IDE).
+2. Graph legend and readouts keep their spaces (plot, IDE).
+3. One end mark on PDF proofs that end in a list (export).
+4. Added `examples/long-worksheet.mpp` with its expected output and export snapshots, and the M16 test file `crates/mpp-ide/tests/m16.rs` (screenshots, problem kinds, timing).
+5. Added `deny.toml`.
+
+## Needs Ben
+
+- Keep or drop the Ubuntu Font Licence exception for egui's default fonts.
+- The 7 pipeline documents above.
+- Release, signing and the version number (already under Needs Ben in RUN-STATE).

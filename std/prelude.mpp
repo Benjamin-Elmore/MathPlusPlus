@@ -1,0 +1,51 @@
+# Prelude
+
+These four are always available in every document, with no import: $\pi$, $e$, $i$ and $\infty$. This sheet states what they are and checks each fact. Every other library file is imported with `![[std/<name>.mpp]]` or `Using $…$ from [[std/<name>.mpp]].`
+
+A name means the constant unless it is applied to an argument or brought in from a library file, so $\pi$ alone is the circle constant, and a document can still use $e$ or $i$ as an index where it binds them ($\sum_{i=1}^{n} a_i$).
+
+## The circle constant π
+
+The ratio of a circle's circumference to its diameter, here to 50 digits (OEIS A000796).
+
+$$ \left| \pi - 3.14159265358979323846264338327950288419716939937510582 \right| < 10^{-50} \overset{?}{=} \text{true} $$
+
+Leibniz's series and the Basel problem both give it.
+
+$$ \sum_{n=0}^{\infty} \frac{(-1)^n}{2n+1} \overset{?}{=} \frac{\pi}{4} $$
+
+$$ \sum_{k=1}^{\infty} \frac{1}{k^2} \overset{?}{=} \frac{\pi^2}{6} $$
+
+## Euler's number e
+
+The base of the natural logarithm, to 50 digits (OEIS A001113).
+
+$$ \left| e - 2.71828182845904523536028747135266249775724709369995957 \right| < 10^{-50} \overset{?}{=} \text{true} $$
+
+The compound-interest limit and the factorial series.
+
+$$ \lim_{n \to \infty} (1 + \frac{1}{n})^n \overset{?}{=} e $$
+
+$$ \sum_{n=0}^{\infty} \frac{1}{n!} \overset{?}{=} e $$
+
+$$ \ln e \overset{?}{=} 1 $$
+
+## The imaginary unit i
+
+The square root of minus one, and Euler's identity joining all five constants.
+
+$$ i^2 \overset{?}{=} -1 $$
+
+$$ e^{i\pi} \overset{?}{=} -1 $$
+
+$$ e^{i\pi} + 1 \overset{?}{=} 0 $$
+
+## Infinity ∞
+
+A limit, never a number: $1/x$ shrinks to nothing and $e^x$ grows past every bound.
+
+$$ \lim_{x \to \infty} \frac{1}{x} \overset{?}{=} 0 $$
+
+$$ \lim_{x \to \infty} e^{-x} \overset{?}{=} 0 $$
+
+$$ \int_{1}^{\infty} \frac{1}{x^2} \, dx \overset{?}{=} 1 $$

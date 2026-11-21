@@ -228,6 +228,8 @@ pub static SYMBOLS: &[Symbol] = &[
     entry("triangle", "△", "\\triangle", Misc),
     entry("degree", "°", "\\degree", Misc),
     entry("qed", "∎", "\\qedsymbol", Misc),
+    entry("checkmark", "✓", "\\checkmark", Misc),
+    entry("xmark", "✗", "\\xmark", Misc),
     entry("square", "□", "\\square", Misc),
     entry("sin", "sin", "\\sin", Function),
     entry("cos", "cos", "\\cos", Function),
@@ -263,7 +265,12 @@ pub static SYMBOLS: &[Symbol] = &[
     entry("limsup", "limsup", "\\limsup", Function),
     entry("deg", "deg", "\\deg", Function),
     entry("arg", "arg", "\\arg", Function),
+    entry("Pr", "Pr", "\\Pr", Function),
     entry("sgn", "sgn", "\\operatorname{sgn}", Function),
+    // Special functions of the calculus toolkits (erf x, the sine and cosine integrals).
+    entry("erf", "erf", "\\operatorname{erf}", Function),
+    entry("Si", "Si", "\\operatorname{Si}", Function),
+    entry("Ci", "Ci", "\\operatorname{Ci}", Function),
 ];
 
 pub fn lookup_name(name: &str) -> Option<&'static Symbol> {

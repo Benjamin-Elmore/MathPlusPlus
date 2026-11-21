@@ -1,0 +1,56 @@
+  10: \frac{d}{dx} x^2 \sin(3x) = ?!  = 3x² cos(3x) + 2x sin(3x)
+  12: \frac{d}{dx} \frac{\sin x}{x^2} = ?!  = (x² cos(x) - 2x sin(x))/x⁴
+  18: \int 2x \cos(x^2) \, dx = ?!  = sin(x²) + C
+  22: \int x e^x \, dx = ?!  = x e^x - e^x + C
+  26: \int \frac{1}{x^2 - 1} \, dx = ?!  = ln(|x - 1|)/2 - ln(|x + 1|)/2 + C
+  30: \int_0^2 x^2 \, dx = ?!  = 8/3
+  36: \lim_{x \to 0} \frac{e^x - 1 - x}{x^2} = ?!  = 1/2
+  42: \operatorname{series}_{x=0}^{4} e^x \sin x = ?!  = x + x^2 + x^3/3 + O(x^4)
+
+working for line 10:
+Use the product rule: (uv)′ = u′v + uv′. product rule: d/dx(x² sin(3x)) = x²·d/dx(sin(3x)) + sin(3x)·d/dx(x²)
+  Use the power rule: d/dx xⁿ = n·xⁿ⁻¹. power rule: d/dx(x²) = 2x
+  Use the chain rule: differentiate the outer function at the inner one, then multiply by the derivative of the inner function. chain rule: d/dx(sin(3x)) = cos(3x)·d/dx(3x) (derivative of sin with u = 3·x)
+    Take the constant factor outside the derivative. constant multiple: d/dx(3x) = 3·d/dx(x)
+      Use the power rule: d/dx xⁿ = n·xⁿ⁻¹. power rule: d/dx(x) = 1
+Put the pieces together and simplify. combine the results and simplify: d/dx(x² sin(3x)) = 3x² cos(3x) + 2x sin(3x)
+
+working for line 12:
+Use the quotient rule: (u/v)′ = (u′v − uv′)/v². quotient rule: d/dx(sin(x)/x²) = (x²·d/dx(sin(x)) - sin(x)·d/dx(x²))/(x²)²
+  Use the derivative of sin. derivative of sin: d/dx(sin(x)) = cos(x)
+  Use the power rule: d/dx xⁿ = n·xⁿ⁻¹. power rule: d/dx(x²) = 2x
+Put the pieces together and simplify. combine the results and simplify: d/dx(sin(x)/x²) = (x² cos(x) - 2x sin(x))/x⁴
+
+working for line 18:
+Take the constant factor outside the integral. constant multiple: ∫ 2x cos(x²) dx = 2(∫ x cos(x²) dx)
+  Substitute u for the inner function, writing du in terms of dx. substitution: ∫ x cos(x²) dx = ∫ cos(u)/2 du (u = x^2, du = 2·x dx)
+    Take the constant factor outside the integral. constant multiple: ∫ cos(u)/2 du = (∫ cos(u) du)/2
+      Use the known integral of cos. integral of cos: ∫ cos(u) du = sin(u)
+    Put the original variable back in place of u. substitute back: sin(u)/2 = sin(x²)/2 (u = x^2)
+Add the constant of integration. add the constant of integration: ∫ 2x cos(x²) dx = C + sin(x²) (C is an arbitrary constant)
+
+working for line 22:
+Integrate by parts: ∫ u dv = uv − ∫ v du. integration by parts: ∫ x e^x dx = x e^x - (∫ e^x dx) (u = x, dv = e^x dx, du = 1 dx, v = e^x)
+  Use the known integral of eˣ. integral of eˣ: ∫ e^x dx = e^x
+Add the constant of integration. add the constant of integration: ∫ x e^x dx = C + x e^x - e^x (C is an arbitrary constant)
+
+working for line 26:
+Split the rational function into partial fractions. partial fractions: ∫ 1/(x² - 1) dx = ∫ (1/(2(x - 1)) - 1/(2(x + 1))) dx (decomposition: 1/(x^2 - 1) = 1/(2·(x - 1)) - 1/(2·(x + 1)))
+  Use the known integral of 1/x. integral of 1/x: ∫ 1/(2(x - 1)) dx = ln(|x - 1|)/2
+  Use the known integral of 1/x. integral of 1/x: ∫ (-1/(2(x + 1))) dx = -ln(|x + 1|)/2
+Add the constant of integration. add the constant of integration: ∫ 1/(x² - 1) dx = C + ln(|x - 1|)/2 - ln(|x + 1|)/2 (C is an arbitrary constant)
+
+working for line 30:
+Use the power rule for integrals: ∫ xⁿ dx = xⁿ⁺¹/(n + 1) for n ≠ −1. power rule: ∫ x² dx = x³/3 (∫ xⁿ dx = xⁿ⁺¹/(n + 1))
+Evaluate the antiderivative at the bounds: ∫ₐᵇ f dx = F(b) − F(a). fundamental theorem of calculus: ∫_0^2 x² dx = 8/3 (F(x) = x^3/3; F(2) − F(0) = (8/3) − (0))
+
+working for line 36:
+The limit is indeterminate, so use L'Hôpital's rule: take the limit of the derivatives of the top and bottom. L'Hôpital's rule: lim_(x→0^+) ((-x + e^x - 1)/x²) = lim_(x→0^+) ((e^x - 1)/(2x)) (the limit has the form 0/0, so differentiate the top and bottom: d/dx(-x + e^x - 1) = e^x - 1, d/dx(x^2) = 2·x)
+  The limit is indeterminate, so use L'Hôpital's rule: take the limit of the derivatives of the top and bottom. L'Hôpital's rule: lim_(x→0^+) ((e^x - 1)/(2x)) = lim_(x→0^+) (e^x/2) (the limit has the form 0/0, so differentiate the top and bottom: d/dx((e^x - 1)/2) = e^x/2, d/dx(x) = 1)
+    The new limit can be evaluated directly. evaluate the new limit: lim_(x→0^+) (e^x/2) = 1/2
+The left and right limits are equal, so the limit exists. both one-sided limits agree: lim_(x→0) ((-x + e^x - 1)/x²) = 1/2
+
+working for line 42:
+Use the known exponential series. exponential series: e^x = x⁵/120 + x⁴/24 + x³/6 + x²/2 + x + 1
+Use the known series of sin. series of sin: sin(x) = x⁵/120 - x³/6 + x
+Combine the known series term by term and keep the terms up to the order asked for. combine the series: e^x sin(x) = x³/3 + x² + x (x + x^2 + x^3/3 + O(x^4); the coefficient of x^k is c_k = f⁽ᵏ⁾(0)/k!: c_1 = 1, c_2 = 1, c_3 = 1/3)

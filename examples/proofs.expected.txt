@@ -1,0 +1,15 @@
+Lemma 1: proved
+  1. ◇ assumed
+  2. ✓ checked symbolically by the CAS
+  3. ◇ the cases are closed
+Theorem 2: proved
+  1. ✓ checked symbolically by the CAS
+  2. ✓ checked symbolically by the CAS
+  3. ◇ induction: base case and inductive step are both present
+Theorem 3: not proved: a step is wrong
+  1. ✗ wrong: $(x + 1)^2 = x^2 + 1$ fails (at x = 1: left side 4, right side 2)
+Theorem 4: proved, using 1 cited result
+  1. 📖 cited: every integer greater than 1 has a prime factor
+Theorem 5: 1 gap
+  1. ⚠ gap: decay at infinity is assumed
+Conjecture 6: conjecture: not proved

@@ -1,0 +1,23 @@
+Title: The sum of the first n whole numbers
+Author: Attributed to C. F. Gauss as a schoolboy (c. 1786, by legend); written out for the Math++ pipeline tests
+Abstract: The pairing argument, then the same result by induction. Tests sums, symbolic checking and an induction proof.
+
+%{
+**Pipeline expectations.** Both proofs: status **proved**, no gaps. In the first proof step 3 is checked symbolically. In the second, the base case and inductive step are checked symbolically: $\frac{n(n+1)}{2} + (n+1) = \frac{(n+1)(n+2)}{2}$. Auto-evaluation of $\sum_{k=1}^{100} k$ shows $5050$.
+%}
+
+**Theorem 1.** For every integer $n \ge 1$, $\displaystyle \sum_{k=1}^{n} k = \frac{n(n+1)}{2}$.
+
+**Proof** (pairing).
+1. Let $S := 1 + 2 + \dots + n$, and write it backwards: $S = n + (n-1) + \dots + 1$ — by commutativity.
+2. Adding the two lines term by term, each of the $n$ pairs sums to $n + 1$ — by algebra.
+3. So $2S = n(n+1)$ and $S = \frac{n(n+1)}{2}$ — by algebra.
+∎
+
+**Proof** (induction on $n$).
+1. Base case: $\sum_{k=1}^{1} k = 1 = \frac{1 \cdot 2}{2}$ — by algebra.
+2. Inductive step: if $\sum_{k=1}^{n} k = \frac{n(n+1)}{2}$, then $\sum_{k=1}^{n+1} k = \frac{n(n+1)}{2} + (n+1) = \frac{(n+1)(n+2)}{2}$ — by algebra.
+3. So the formula holds for every $n \ge 1$ — by induction.
+∎
+
+$$ \sum_{k=1}^{100} k $$

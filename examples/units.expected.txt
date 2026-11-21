@@ -1,0 +1,8 @@
+W = ? → 686.7 N
+v in m/s = ? → 250/9 m/s
+v t in m = ? → 1000/3 m
+T in °F = ? → 77 °F
+sin(30°) = ? → 1/2
+2 kW · 3 h in kWh = ? → 6 kWh
+3 m + t = ? → can't add m and s
+exp(2 m) = ? → exp needs a dimensionless argument, but got m

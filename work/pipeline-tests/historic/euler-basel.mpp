@@ -1,0 +1,21 @@
+Title: The Basel problem
+Author: L. Euler (1734–35); the product step made rigorous by K. Weierstrass (1876); written out for the Math++ pipeline tests
+Abstract: Euler's famous argument comparing two expansions of $\sin x / x$. Tests series, infinite products, a cited theorem standing in for a step Euler took on trust, and a numeric cross-check.
+
+%{
+**Pipeline expectations.** Status: **proved, using 1 cited result** (Weierstrass factorisation). If the citation is removed, step 2 must turn into a **gap**, which is how Euler's 1735 proof stood. Step 1 is checked by the series tools, and step 3 by comparing coefficients. The final block auto-evaluates: the closed form is $\pi^2/6$, and the partial sum to $10^6$ is $\approx 1.644933$.
+%}
+
+**Theorem 1** (Euler). $\displaystyle \sum_{k=1}^{\infty} \frac{1}{k^2} = \frac{\pi^2}{6}$.
+
+**Proof.**
+1. $\dfrac{\sin x}{x} = 1 - \dfrac{x^2}{6} + \dfrac{x^4}{120} - \cdots$ — by the Maclaurin series of $\sin$.
+2. $\dfrac{\sin x}{x} = \displaystyle\prod_{k=1}^{\infty} \Big(1 - \frac{x^2}{k^2 \pi^2}\Big)$, since the zeros are $x = \pm k\pi$ — *(cited: Weierstrass factorisation theorem [@weierstrass1876]; Euler assumed this)*.
+3. The coefficient of $x^2$ in the product is $-\sum_{k=1}^{\infty} \frac{1}{k^2 \pi^2}$ — by expanding the product.
+4. Equating the $x^2$ coefficients of steps 1 and 3: $\sum_{k \ge 1} \frac{1}{k^2 \pi^2} = \frac16$, so $\sum_{k \ge 1} \frac{1}{k^2} = \frac{\pi^2}{6}$ — by algebra.
+∎
+
+$$ \sum_{k=1}^{\infty} \frac{1}{k^2} = ? \qquad \sum_{k=1}^{10^6} \frac{1}{k^2} \approx ? $$
+
+## References
+- [@weierstrass1876] K. Weierstrass, *Zur Theorie der eindeutigen analytischen Functionen*, 1876.

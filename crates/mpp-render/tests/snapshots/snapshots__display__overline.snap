@@ -1,0 +1,10 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\overline{z + w}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="48.07" height="17.32" viewBox="0 0 48.07 17.32" overflow="visible">
+<rect x="0" y="0.8" width="48.07" height="0.8" fill="#111111"/>
+<text x="0" y="15.66" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑧</text>
+<text x="13.74" y="15.66" font-family="Latin Modern Math" font-size="20" fill="#111111">+</text>
+<text x="33.75" y="15.66" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑤</text>
+</svg>

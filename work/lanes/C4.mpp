@@ -1,0 +1,50 @@
+# Multivariable and vector calculus helpers: notes for the integrator
+
+Lane `tools-a` (branch `wip/tools-a`).
+
+## What it adds
+
+`mpp_core::tools::multivar` (`crates/mpp-core/src/tools/multivar/`):
+
+- `differential`: `partial` (mixed, in any order), `gradient_at`, `directional_derivative_at`, `tangent_plane` (graph `z = f(x, y)` or level surface `F = c`), `linear_approximation` (`L(x, y)`), `second_derivative_test` (critical points from `f_x = f_y = 0`, classified by `D = f_xx f_yy − f_xy²`), `lagrange` (one or two constraints; solved through the rank conditions on the gradients, with the multiplier system as a fallback), `implicit_derivative` (`−F_x/F_y`), `related_rates` (`Σ ∂F/∂v · dv/dt = 0`) and `solve_rates` (the one unknown rate at an instant).
+- `integrals`: `integrate_in` (polar, cylindrical, spherical, with the Jacobian put in), `change_of_variables` (the Jacobian determinant, its sign checked over the region), `surface_integral` and `flux_integral` over a parametrised `Patch`, and `check_greens_theorem`, `check_stokes_theorem`, `check_divergence_theorem`, which work out both sides and compare them. The boundary side comes from the parametrisation itself: the four edges of the parameter region (counterclockwise, so the orientation follows the normal `Φ_u × Φ_v`), and for the divergence theorem the six faces of the parameter box with outward normals; degenerate edges and seams cancel on their own.
+- `vector`: `divergence`, `curl` (3-D, and the scalar curl in 2-D), `laplacian`.
+- `laplace`: `laplace` (table, linearity, the `e^{at}` shift, `tⁿ` by differentiating in `s`), `inverse_laplace` (partial fractions; repeated linear factors, irreducible quadratics to powers 1 and 2, hyperbolic terms for quadratics with irrational real roots) and `laplace_ode` (constant-coefficient linear ODEs with initial conditions; the solution is checked by putting it back into the equation).
+
+`mpp_eval::helpers::multivar` makes them operators (forms in its module documentation): `tangent`/`tangentplane`, `linearisation`/`linapprox` and `grad` with a point subscript `_{(x,y)=(1,2)}`; `dirderiv`, `classify`, `lagrange`, `polar`, `cylindrical`, `spherical`, `changevars`, `lineintegral`, `surfaceintegral`, `flux`, `green`, `stokes`, `divthm`, `implicit_x`, `rates_t`, `laplace`, `invlaplace`, `lsolve`. Ranges are written `r \in [0, 2]`, outermost first, as arguments or in the subscript.
+
+## Edits outside the lane's folders
+
+- `crates/mpp-core/src/calc/integrate/mod.rs`: `mod rational` is now `pub(crate)`; `calc/integrate/rational.rs`: `decompose` is `pub(crate)` (partial fractions reused by the inverse Laplace transform).
+- `crates/mpp-eval/src/helpers.rs` became `helpers/mod.rs` with `helpers/multivar.rs` beside it.
+
+## Notes for other lanes
+
+- ODE notation: `y'' + y = 0` with a bare `y` lowers to `d²y/dx²` of a constant, and `y(0)` to `y·0`, so `lsolve` takes coefficients `(a₀, a₁, a₂)`, the forcing `g(t)` and `(y(0), y′(0))`. Once C7/C8 settle how an unknown function is written, `laplace_ode` can be fed from the equation directly.
+- Related rates: `\frac{dx}{dt}` evaluates to 0 when `x` is a plain symbol, so known rates are written `dx = 2` (read as the rate of `x`). A rate notation from C8 would replace this.
+- Domains lane (no edit made): `solve_system` returns no solutions for `{y − 2λx = 0, x − 2λy = 0, x² + y² = 1}`; Lagrange avoids it by eliminating λ first, but the solver could handle such systems.
+- `tools-b` also creates files in `mpp-core/src/tools/`; this lane's `tools/mod.rs` declares `analysis`, `multivar`, `steps`, `table` and the test-only `testkit` (a small infix reader, `testkit::p("x^3 - 3*x")`, which tools-b's tests may reuse). Merge the two `mod` lists.
+
+## Guide text (for `docs/guide.mpp`)
+
+### Several variables
+
+Partial derivatives use the usual notation, `\frac{\partial^2 f}{\partial x \partial y}`. At a point written below the operator, `\operatorname{grad}_{(x,y)=(1,2)} f` gives the gradient there, `\operatorname{dirderiv}_{(x,y)=(1,2)}(f, (3, 4))` the directional derivative along $(3, 4)$, `\operatorname{tangent}_{(x,y)=(1,2)} f` the tangent plane (for a surface written as an equation, such as $x^2 + y^2 + z^2 = 14$, the plane through the point), and `\operatorname{linearisation}_{(x,y)=(3,4)} f` the linear approximation $L(x, y)$.
+
+`\operatorname{classify} f` finds the critical points of $f(x, y)$ and names each one (local minimum, local maximum, saddle point) with the second-derivative test. `\operatorname{lagrange}(f, g = c)` finds the candidates for the extreme values of $f$ on the constraint and lists $f$ at each.
+
+### Integrals in other coordinates
+
+`\operatorname{polar}(f, \theta \in [0, 2\pi], r \in [0, 2])` integrates $f(x, y)$ over a region given in polar coordinates, with the factor $r$ put in for you; `cylindrical` and `spherical` work the same way (factors $r$ and $\rho^2 \sin\phi$). List the ranges from the outside in. `\operatorname{changevars}(f, (x, y) = (u + v, u - v), u \in [0, 1], v \in [0, 1])` uses any substitution and multiplies by $|\partial(x, y)/\partial(u, v)|$.
+
+### Vector calculus
+
+$\nabla \cdot \mathbf F$, $\nabla \times \mathbf F$ and $\nabla^2 f$ are written as usual. `\operatorname{lineintegral}(\mathbf F, \mathbf r(t), t \in [a, b])` is the work integral (a scalar first argument integrates with respect to arc length), and `\operatorname{flux}(\mathbf F, \Phi(u, v), u \in …, v \in …)` the flux through a parametrised surface (`surfaceintegral` for a scalar). `green`, `stokes` and `divthm` work out both sides of Green's theorem, Stokes' theorem and the divergence theorem and say whether they agree.
+
+### Implicit differentiation, related rates and Laplace transforms
+
+`\operatorname{implicit}_x (x^2 + y^2 = 25)` gives $dy/dx$. `\operatorname{rates}_t (x^2 + y^2 = 25)` differentiates the relation with respect to time; add the values at the instant and the known rates (`x = 3, y = 4, dx = 2`, where `dx` means $dx/dt$) to get the unknown rate. `\operatorname{laplace} f` and `\operatorname{invlaplace} F` transform between $t$ and $s$, and `\operatorname{lsolve}((a_0, a_1, a_2), g, (y_0, y_1))` solves $a_2 y'' + a_1 y' + a_0 y = g(t)$ with $y(0) = y_0$, $y'(0) = y_1$ by the Laplace transform.
+
+## Example
+
+`examples/vector-calculus.mpp` with `examples/vector-calculus.expected.txt`.

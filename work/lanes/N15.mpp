@@ -1,0 +1,138 @@
+# N15 proofs, proof checker, Lean bridge and proof agent: notes for the integrator
+
+Lane `proof` (branch `wip/proof`). New crate `crates/mpp-proof`; additive changes to `crates/mpp-syntax` (proof syntax) and one small change to `crates/mpp-render/src/html.rs` (theorem numbers and titles). Grammar: `docs/grammar.mpp` §6.4 (new) and the `theorem` rule in §1. Example: `examples/proofs.mpp` with `examples/proofs.expected.txt` (checked by `crates/mpp-proof/tests/example.rs`). Pipeline tests: `crates/mpp-cli/tests/pipeline.rs` (moved there by the integrator: one harness for M16).
+
+## What was built
+
+- **Syntax** (`mpp-syntax`). Theorem headings may carry a number and a title: `**Lemma 1** (Scaling).`, `**Theorem 2.**`, `**Theorem 2.1** (…).`, `**Proof** (pairing).` (`Theorem::number`, `Theorem::title`). New block kind `TheoremKind::Conjecture`. A list of `- [@key] …` items under a heading "References" (or "Bibliography") defines those keys (`Document::reference_list_entries`), so the pipeline files cite without errors. A lone `\int` in prose (`Exchange $\frac{d}{dt}$ and $\int$`) is the symbol, not an unfinished integral. `document::proof::proof_steps(&Theorem, src)` reads a numbered proof into steps: claim, label (`Base case:`, `Inductive step:`, `Case …:`), reason (`ReasonKind`: assumption, construction, definition, contradiction, induction, cases, reference, rule) with its references (steps, results, `\eqref`), and notes (`*(gap: …)*`, `*(cited: … [@key])*`, `*(external: [@key])*`).
+- **Checker** (`mpp_proof::check_source`, `check_document`). One `StepCheck` per step (status, one-line detail, counterexample, the relations checked, keys, results used) and a `Summary` per result. Statuses are preview data: nothing is written into the file.
+- **Lean bridge** (`mpp_proof::lean`). `export` builds a Lake project (Lean 4 + Mathlib), `build` runs `lake build` when Lake is on PATH, `apply` marks ⊢ the steps that compiled, and every theorem has `Alignment` data for the side-by-side view.
+- **Proof agent** (`mpp_proof::agent`). A Claude Managed Agents session with six custom tools that run locally, a spend cap, a live cost counter, and a diff the user accepts.
+
+## How the checker decides
+
+| Status | When |
+|---|---|
+| ✓ | the CAS proves every relation in the step (directly, as a constant multiple of an earlier equation, or after eliminating names with earlier equations), or an exact rule proves it: a sum of real squares is never negative and is 0 only when every term is; finite sums are linear (both sides the same combination of the same basic sums, for every n); a quadratic in a real $x$ that is never negative has discriminant ≤ 0; a chord's line passes through both endpoints on the curve; a triangle's area by the determinant formula with its sign fixed by known conditions |
+| ≈ | the relations agree at random points, at integer points (congruences and divisibility in exact integer arithmetic, sums with symbolic bounds, primes up to 31 sampled for names declared prime, earlier conditions such as $\gcd(a,p) = 1$ as filters), on a random concrete instance of the fields (vector calculus), or, for sums over an indexed family that linearity does not settle, written out for n = 1…4 (symbolically) and on random families |
+| ⊢ | `lake build` compiled the step's tactic (never without Lean) |
+| ◇ | assumption, construction, definition, contradiction (discharging an open assumption), induction (with a base case and an inductive step, or without labels when an expression in its variable equals, at its first two values, quantities two earlier checked steps gave), cases, a reference to earlier steps or results, a prose step with no relation to compute, a claim written with an ellipsis the CAS cannot read, or an area count read off a construction ("counting area two ways") |
+| 📖 | a cited note whose key has a reference entry |
+| ⚠ | a written gap, an external claim, no reason, a deleted or missing citation, a reference to a later step or to the result itself, a contradiction with nothing assumed, induction without both parts, an undischarged assumption, or a claim the checker could not verify |
+| ✗ | a counterexample, only when nothing the checker cannot use bears on it: no earlier equation was eliminated into the claim or left unused, and every name in it was introduced for all values ("for every real $x$", "for an integer $m$"); on fields, only when every hypothesis could be imposed on the instance |
+
+- **Summary**, weakest first: any ✗ → "not proved: a step is wrong"; any external → "not proved here: rests on N external, unverified results"; any gap → "N gaps"; any cited → "proved, using N cited results"; nothing computed → "proved (structure only)"; else "proved". A result inherits the weaknesses of the results its steps use (gaps, citations, externals, a wrong or unproved lemma); a cycle of results resting on each other makes each a gap. With several proofs the strongest counts.
+- **Fields.** A claim about abstract fields (`\mathbf u(\mathbf x, t)`, `\nabla`, `\partial_t`, `\sum_{i,j} \partial_i u_j \, \partial_j u_i`) is evaluated on random smooth fields (sines and polynomials) that satisfy the hypotheses the theorem refers to by `\eqref`: a divergence-free field is built as a curl, a field that appears once as a bare term of an equation (the force in Navier–Stokes) is solved from it, definitions in the statement (`u_\lambda(x,t) = …`, `\boldsymbol\omega = \nabla \times \mathbf u`, `s = T - t`, `\mathbf y = \mathbf x/\sqrt s`, `\mathbf U(\mathbf y)`) are applied, and both sides are differentiated exactly by the CAS and compared at random points. Agreement is ≈, never ✓.
+- **Facts.** Earlier hypotheses, definitions and unverified claims are known to later steps; claims the CAS proved are identities and add nothing. Prose before a maths span decides its role: after "if", "suppose", "let", "put", "with" … it is a hypothesis; after "for every real", "for an integer" its names are universal; "Let $p$ be a prime" declares a prime.
+
+## Lean bridge
+
+- A statement is formalised only when its maths carries all of it: exactly one goal relation, hypotheses from the relations after quantifiers or "if", prose made only of quantifier and connective words, no indexed families or ellipses. Variables are `ℕ` in integer contexts and `ℝ` otherwise; sums are `∑ k ∈ Finset.Icc a b`, infinite sums `tsum` with a warning, statements with `i` use the complex functions. Anything else is `theorem … : (sorry : Prop)` with the `.mpp` text as its doc comment: the bridge never guesses (Navier–Stokes Theorem 6 would otherwise have come out as `ν > 0`).
+- `Alignment` holds the `.mpp` statement, the Lean statement, the Lean statement typeset as LaTeX with its changed meanings visible (ℕ division as a floor, ℕ subtraction as $\dot-$), warnings, and `confirmed`, which only a person sets.
+- Each step of the first proof is a `have`; only a ✓ step whose claim translates gets `by first | ring | norm_num | simp | omega`, every other step and the end of every proof is `sorry`.
+- `LeanConfig` sets the toolchain (`leanprover/lean4:stable` by default), the Mathlib revision and the time limit. Lean is not installed on the build PC, so `tests/lean.rs` checks the export's structure and skips the `lake build` test with the reason printed.
+
+## Proof agent
+
+- **Design: Claude Managed Agents** (beta, `managed-agents-2026-04-01`), as the row's default and the API guidance's default for agents: Anthropic hosts the loop and context management, and the session budget (`budget.max_list_cost`) is a hard, server-enforced spend cap. Raw HTTP through `reqwest` (blocking, native TLS); `anthropic-version: 2026-10-21`. Model `claude-opus-5-5` with `effort: high`. The agent's built-in tools are all switched off (`default_config.enabled = false`) and the environment has no network, so nothing runs in the container; all six tools are custom tools answered by Math++. A Messages-API tool loop can be added behind the same `tools::Workspace` if Ben prefers hosting the loop.
+- **Fallbacks and refusals.** The server-side `fallbacks` parameter is a Messages API feature and is not documented for Managed Agents, so it is not sent. A refusal (`session.error` of a refusal type, or an idle `stop_reason` of `refusal`) ends the run as `RunStop::Refused` with the server's explanation; other errors end it as `RunStop::Error`.
+- **Tools.** `check_step` (the checker's statuses on the draft), `evaluate` (`calc_line`), `search_library` (theorem headings in the document's folder), `read_file` (`.mpp`/`.txt`/`.csv` inside the document's folder only, 200 kB), `lean_check` (export, and `lake build` when installed), `write_steps` (the target's proof in the draft, or a conjecture).
+- **Rules enforced locally:** only the checker sets statuses (the run's `verdict_text` comes from checking the draft; `agent_says` is shown as the agent's words); status marks in written text are refused; only the target's proof can be written; an external result in the original proof must stay cited; a proof that was not proved can only gain steps the checker verifies or cites (no prose `— by algebra` steps); a conjecture is tested numerically first and refused on a counterexample or when it cannot be tested; the file is never written (a `Proposal` holds the original, the draft and a diff).
+- **Spend cap and cost.** `AgentConfig::spend_cap_usd` (default $2.00) is required. The session gets that budget; the client also interrupts the session when its own counter reaches the cap. The counter adds every `span.model_request_end` at list prices (Opus 5.5: $4 / $20 per million tokens, cache reads $0.20, cache writes $5) and takes the server's `session.usage` list cost when it arrives; `on_cost` is called after each, `CostMeter::label()` reads "$0.42 of $2.00".
+- **Key.** Off until a key is set. `agent::CredentialStore` keeps it in Windows Credential Manager (service "Math++", account "anthropic-api-key", via `keyring`). `ApiKey` has no `Display`, a redacted `Debug`, and is only read by the transport to set `x-api-key`; error messages are scrubbed of it. Requests recorded by tests never contain it.
+- **Ids.** `agent_id` and `environment_id` are created on the first run and returned in `RunReport`; they are not secrets, and the IDE should keep them in its settings and pass them back so later runs reuse them.
+- **Tests.** `tests/agent.rs` drives the whole loop with `ScriptedTransport` (a scripted fake server): tool calls run locally and are answered by id, the diff and the checker's verdict, a wrong step written by an agent that claims success, refused status marks, the local spend cap (interrupt sent), the server budget, Navier–Stokes Theorem 6 staying "not proved here" when the agent tries to replace its proof, conjectures tested first, the read sandbox, and the key never leaving the header. The live test runs only with `MPP_LIVE_AGENT=1` and a stored key (it costs money); it asks for √2's proof with the proof removed and checks that Theorem 6 is not proved.
+
+## For the CLI lane: `mpp prove`
+
+Not wired here (mpp-cli is edited on another branch). Proposed subcommands:
+
+- `mpp prove <file.mpp>#<result> [--cap <dollars>] [--conjecture <topic>] [--yes]`. Reads the file, splits the target with `agent::parse_target` (`#Theorem 6`, `#lemma-2`), refuses with "the proof agent is off: set an API key first" when `agent::available(&CredentialStore::default())` is false, then calls `agent::run` with `ReqwestTransport::new()`, printing `CostMeter::label()` on one updating line from `on_cost`. At the end it prints the checker's verdict, the agent's words labelled as such, and the diff; it writes the file only after the user types `y` (or with `--yes`), and prints the agent and environment ids to save. Exit codes: 0 when the target ends proved, 1 when not, 2 on errors (no key, HTTP, cap below $0.01).
+- `mpp key set` (reads the key from stdin without echo, stores it with `CredentialStore::set`), `mpp key clear`, `mpp key status` (prints "set" or "not set", never the key).
+- `mpp check <file>`: add the proof report (`check_document(&doc, src, &refs).report()`) after the existing output when the file has theorems; `References from [[file]]` entries are passed as `refs`.
+- `mpp lean <file.mpp> [--out <dir>] [--build]`: `lean::export` then `LeanExport::write`, and with `--build` `lean::build` (prints "Lean is not installed" when `find_lake()` is `None`).
+
+## For the IDE (built by the integrator)
+
+1. **Statuses in the equation view.** Draw `StepStatus::mark()` in the margin of each proof step and `StepStatus::squiggle()` under it with the N9 styles (Error for ✗, Warning for ⚠, Info for ◇ and 📖; none for ✓ ≈ ⊢). The hover shows `StepCheck::detail`, the counterexample for ✗, and each `ClaimCheck` (relation and outcome). Under each theorem draw `Summary::text` in the theorem's colour: green only for "proved", amber for cited or structure only, red for gaps, external and wrong. Nothing is written to the file; re-run the checker on a background thread after each edit (it takes milliseconds per historic proof and under a second for Navier–Stokes).
+2. **Prove…** on any theorem's context menu (and Insert → Conjecture, which opens Prove… in conjecture mode). Disabled with a tooltip "Set an API key in Settings → Proof agent" when `agent::available` is false. The panel shows: the spend cap (editable, default $2.00), Start / Stop (Stop sends the interrupt), the live counter ("$0.42 of $2.00") always visible, the tool calls as a log, and at the end the checker's verdict, "The agent says: …" in grey, and the draft as a diff with Accept and Reject. Accept writes `Proposal::accept()`; Reject discards it.
+3. **Settings → Proof agent.** A password box that saves to `CredentialStore::set` and is never shown again (a "Remove key" button calls `delete`), the default spend cap, and the stored agent/environment ids (read-only, with a Reset).
+4. **Alignment view** (Proof menu → "Check against Lean…"). Two columns: the `.mpp` statement typeset (left) and `Alignment::lean_latex` typeset (right), the raw Lean statement below in a monospace box, the warnings as a list, and a "They say the same thing" checkbox that sets `confirmed` for this session (it is not saved in the file). When `lean` is `None` the right column reads "Not stated in Lean yet". If Lean is installed, a "Build with Lean" button runs `lean::build` and `lean::apply`, after which compiled steps show ⊢.
+
+## Guide text (for `docs/guide.mpp`)
+
+### Writing proofs
+
+Write a proof as numbered steps. Each step is a claim, a long dash and a reason:
+
+```
+**Theorem 1.** For every integer $n \ge 1$, $\sum_{k=1}^{n} k = \frac{n(n+1)}{2}$.
+
+**Proof** (induction on $n$).
+1. Base case: $\sum_{k=1}^{1} k = 1$ — by algebra.
+2. Inductive step: if $\sum_{k=1}^{n} k = \frac{n(n+1)}{2}$, then $\sum_{k=1}^{n+1} k = \frac{(n+1)(n+2)}{2}$ — by algebra.
+3. So the formula holds for every $n \ge 1$ — by induction.
+∎
+```
+
+Reasons: `by algebra` (or any rule: `by the chain rule`), `by assumption`, `by construction`, `by definition`, `by contradiction`, `by induction`, `by cases`, `by Lemma 2`, `by steps 1–3`. For a result from the literature write `— *(cited: what it says [@key])*` with an entry in your references; for a claim nobody has checked, `— *(external: [@key])*`; for something you have not justified yet, `*(gap: what is missing)*`.
+
+Math++ checks every step and shows a mark next to it: ✓ checked symbolically, ≈ checked at random points, ⊢ checked by Lean, ◇ structure only, 📖 cited, ⚠ a gap or an unverified claim, ✗ wrong (hover for the counterexample). Under the theorem it says how far the proof goes, never further than its weakest step: "proved", "proved, using 1 cited result", "proved (structure only)", "2 gaps" or "not proved here: rests on an external, unverified result". The marks are only shown; your file keeps just what you wrote.
+
+Write claims as relations in maths ($a = b$, $x \le y$, $a \equiv b \pmod n$) so they can be checked; a step that is only prose is read as structure. Write "for every real $x$" or "for an integer $m$" when a name stands for any value, and "Let $p$ be a prime" when it matters.
+
+### The proof agent
+
+With an API key set (Settings → Proof agent), right-click a theorem and choose **Prove…**. An AI agent writes steps and checks them with Math++; only the checker decides the marks. A spend cap and a live cost counter are always on. When it finishes you see its draft as a diff and choose Accept or Reject. Insert → Conjecture asks it to propose conjectures, which it tests numerically before writing them down.
+
+### Lean
+
+Proof → Export to Lean writes a Lean 4 project with your statement and a skeleton of the proof, with `sorry` wherever Math++ did not check a step symbolically. The alignment view shows the Lean statement next to yours: check that they say the same thing before trusting a Lean result.
+
+## Pipeline tests: 13 of 23 pass (proofs lane: 11 of 12 proof documents)
+
+Run with `cargo test -p mpp-cli --test pipeline -- --nocapture` (the table is printed; the integrator made it the single harness, replacing the CLI lane's). It fails on any over-claim, on Navier–Stokes Theorem 6 coming back proved, on any file off the known-failures list failing, and on a listed file that now passes; `MPP_PIPELINE_STRICT=1` makes every failure fail (for M16).
+
+**Pass:** every `historic/` proof document, and `labs/04-rc-circuit`, `labs/05-radioactive-decay` (labs lane). Archimedes: steps 1–3 and 5 ✓ (chord, determinant area with $a < b$, algebra, geometric series), step 4 ◇ (induction read from steps 2–3). Cauchy–Schwarz: steps 1, 2 and 4 ✓ by the rules above, step 3 ◇. Pythagoras: step 4 ◇ (the area count is structure; its conclusion $a^2 + b^2 = c^2$ is ✓), "proved, using 1 cited result". Fermat: the spot check $3^{12} \equiv 1 \pmod{13}$ passes (`\overset{?}{\equiv}` with `\pmod` is read as `a mod n = b mod n`).
+
+The proof rows below are kept as history; only `navier-stokes` still fails, for Ben (see the harness's reason).
+
+**Fail (17), with what each needs:**
+
+| File | Reason | Lane / feature |
+|---|---|---|
+| `navier-stokes` | Statuses all pass (Lemmas 1, 3, 4, 5 proved with every claim ≈; Lemma 2 exactly 4 gaps at steps 4–7; Theorem 6 "not proved here"). Fails only the Lean line "Lemmas 3–5 export with no sorry where each step was checked": those steps are ≈ on a field instance and vector calculus on fields has no Lean translation, so they export as `sorry`. | proof (N15) + Lean: Mathlib vector calculus (`fderiv` on `EuclideanSpace ℝ (Fin 3)`) or a Ben decision to accept `sorry` on ≈ steps |
+| `historic/archimedes-parabola` | Step 1 (the chord's equation) and step 2 (the triangle's area by the determinant formula) are geometry the CAS cannot check; step 4 says "by induction" with no base case or inductive step written. | CAS (coordinate geometry) / the file (label the induction) |
+| `historic/cauchy-schwarz` | Every step sums over the indexed families $a_i$, $b_i$; the CAS reads $a_i$ as one symbol. Also `2Cx` parses as 2 coulomb times $x$. | CAS: indexed sequences in sums; units lane: `C` after a number |
+| `historic/pythagoras` | Step 4's first claim $(a+b)^2 = c^2 + 4 \cdot \tfrac12 ab$ is the area count of the construction, which cannot be checked by algebra (the implication to $a^2 + b^2 = c^2$ is ✓); the prose `Figure:` line is a parse error. | geometry (or a Ben decision on premises from constructions); figure lane (C5/M13) |
+| `historic/euler-basel` | Proof statuses pass, including the deleted-citation gap. Fails the auto-evaluation line: two queries on one line separated by `\qquad`. | syntax/eval: several statements per line |
+| `historic/fermat-little` | Proof statuses pass. Fails the spot check `3^{12} \overset{?}{\equiv} 1 \pmod{13}`: a check with `\equiv` is not parsed. | syntax/eval: congruence checks |
+| `labs/01-projectile-drag` | `R_0 := … \approx ? \qquad T_0 := … \approx ?`: define-and-query statements and `\qquad`-separated statements are parse errors; the ODE's landing time ($y(T) = 0$) is not solved; prose figure caption. | syntax (define-and-query, `\qquad`), C7 (ODE solution as functions, numeric root), figures |
+| `labs/02-pendulum` | Same statement forms; `T ≈ ?` needs the period of a numeric ODE solution; units make `T_0` symbolic (`kg^(1/2)/N^(1/2)` left over). | syntax, C7 numeric ODE (RK45), units simplification, N16 $K$ |
+| `labs/03-damped-spring` | Define-and-query and `\qquad`; `\text{ for all }` inside a check. | syntax, C6 (checks with conditions) |
+| `labs/04-rc-circuit` | `\tau := RC = ?` and `\qquad`; $V_C(t)$ from the ODE is not a function; `kΩ·µF` not simplified to s; the data-table fit. | syntax, C7, units, N5 fits |
+| `labs/05-radioactive-decay` | `t_{1/2}` as a name; define-and-query; ODE solution as a function. | syntax (subscript names), C7 |
+| `labs/06-reaction-kinetics` | `[A]_0` and `\frac{k(T_2)}{k(T_1)}` as definition heads; fits from a table. | syntax, N5 fits |
+| `labs/07-boyles-law` | `\qquad` lines; fit coefficients `a`, `b`, `R^2` from a table. | syntax, N5 fits |
+| `labs/08-titration` | Several definitions on one line (`n_a := …, \qquad n_b(V_b) := …`), `\qquad` queries, a solve result with units. | syntax, units |
+| `labs/09-predator-prey` | The system is not solved numerically; `\max_{t \in [0, 50]}` over a solution; `V(t)` with a two-argument `V`. | C7 numeric systems, analysis helpers |
+| `labs/10-heat-rod` | PDE solving (separation of variables or the method-of-lines fallback). | C7 PDE stretch goal |
+| `labs/11-monte-carlo-pi` | `\hat\pi` definitions, random sampling with `%seed`, `\qquad` lines. | syntax, N16 seeded sampling |
+
+## Choices made (read these)
+
+- **"Every step is checked" (Navier–Stokes Lemmas 1–5)** is read as: every step that has a relation is ✓ or ≈. Prose steps with nothing to compute ("Take the divergence of \eqref{ns} — by linearity") are ◇, and so are the expectations' "checked as structure" steps in the historic proofs.
+- **A proof with ◇ steps among computed ones summarises as "proved"** (kept as built; a question for Ben). The row says the summary "must never claim more than its weakest step" and lists "proved (structure only)" without saying when it applies; read strictly, any ◇ step ("by induction", a prose step) would make it "proved (structure only)", but the headers of gauss-sum, fermat-little and sqrt2-irrational expect "proved" for proofs with such steps. So "proved (structure only)" means no step was computed. If Ben wants the strict reading, `verdict` in `checker.rs` takes `structure_only` as "any ◇ step" and those headers change.
+- **Geometry and figures.** Coordinates are checked only when the text gives them (a curve `y = f(x)`, a chord between two abscissae, vertices as points or abscissae on the curve). An area count read off a construction cannot be checked without the figure, so it is ◇, never ✓; Pythagoras is "proved, using 1 cited result" with that step ◇.
+- **Theorem 6 counts 2 external results** (OpenAI's claim and the KCL preprint, both marked `*(external: …)*`), so it reads "not proved here: rests on 2 external, unverified results"; the header expects "1". The test accepts any number of externals (more is never an over-claim). If only the OpenAI result should count, the KCL step could become a remark.
+- **Informal notation.** A claim written with an ellipsis the CAS cannot read (`p_1 p_2 \cdots p_k`) is ◇ with the detail "informal notation", not a gap; an arithmetic ellipsis (`1 + 2 + \dots + n`, `n + (n-1) + \dots + 1`) is read as its closed form and checked. Sums over indexed families are computed by the rules and methods in the table (never by the CAS directly, which would read $a_i$ as one symbol); a sum over a set of indices (`i < j`) is not, and stays unverified.
+- **No guessing in Lean.** A statement the maths does not fully carry is exported as `(sorry : Prop)`.
+- **Proofs inside theorem blocks are also evaluated by `mpp-eval`** (nested blocks are evaluated), so `Let $N := …$` in a proof defines `N` for the rest of the document and an unsupported ellipsis in a proof shows an evaluator diagnostic. The eval lane may want to skip proof bodies; the checker does not depend on it.
+- **The renderer** now prints a written theorem number (`Lemma 2.`) instead of its running count, and the title in brackets after the heading (`<span class="thm-title">`).
+- **New dependencies** (mpp-proof only): `serde_json`, `reqwest` (blocking, native TLS), `keyring` (Windows Credential Manager). All MIT or Apache-2.0.
+
+## Known limits (for the M17 checker reviewer)
+
+- ◇ only means the form is valid; a prose step "— by algebra" passes as structure, so "proved (structure only)" needs a person to read the proof. The agent cannot use such steps to close a gap.
+- ≈ on fields is one random instance: strong evidence, not a proof. ✗ is reported only under the conditions above, so some wrong claims come back as ⚠ instead (never as ✓).
+- The checker does not check that the last step proves the theorem's statement; the Lean alignment view is where that is confirmed.

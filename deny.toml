@@ -1,0 +1,40 @@
+# Dependency policy for Math++ (checked with `cargo deny check`: licences and advisories).
+# Only permissive licences are allowed. Anything else must be listed for review.
+
+[graph]
+all-features = true
+
+[licenses]
+confidence-threshold = 0.8
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Zlib",
+    "Unicode-3.0",
+    "OFL-1.1",
+    "CC0-1.0",
+    "BSL-1.0",
+]
+
+[licenses.private]
+ignore = true
+
+# NEEDS BEN: egui's bundled editor fonts (Hack, Ubuntu-Light, an emoji icon font)
+# carry the Ubuntu Font Licence 1.0, which is free but not on the permissive list
+# above. It is excepted for this one crate only; its text ships in the installer
+# (work/release/licences/UFL-Ubuntu-font.txt). Remove the exception if Ben would
+# rather drop egui's default fonts.
+[[licenses.exceptions]]
+name = "epaint_default_fonts"
+allow = ["Ubuntu-font-1.0"]
+
+[advisories]
+# NEEDS BEN: both advisories below are accepted on purpose, with the reasons given.
+ignore = [
+    { id = "RUSTSEC-2026-0187", reason = "lopdf stack overflow; lopdf is a dev-dependency used only by the PDF export tests to read back files Math++ wrote itself, so no untrusted PDF is ever parsed and it is not in any shipped binary." },
+    { id = "RUSTSEC-2026-0192", reason = "ttf-parser is unmaintained but has no known vulnerability. mpp-render reads the OpenType MATH and GSUB tables of the two bundled fonts with it; the maintained alternative (skrifa/read-fonts) has a different API for those tables, so moving is a separate piece of work. It only ever reads font files that ship inside Math++." },
+]

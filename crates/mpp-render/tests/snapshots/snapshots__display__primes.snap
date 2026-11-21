@@ -1,0 +1,17 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "f'(x) + g''(x)"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="117.08" height="19.92" viewBox="0 0 117.08 19.92" overflow="visible">
+<text x="0" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑓</text>
+<text x="11.6" y="7.7" font-family="Latin Modern Math" font-size="14" fill="#111111">′</text>
+<text x="18.42" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="26.2" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="37.64" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="49.86" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">+</text>
+<text x="69.87" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑔</text>
+<text x="79.91" y="7.7" font-family="Latin Modern Math" font-size="14" fill="#111111">″</text>
+<text x="90.08" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="97.86" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="109.3" y="14.96" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+</svg>

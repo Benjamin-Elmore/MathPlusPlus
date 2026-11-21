@@ -1,0 +1,11 @@
+sqrt(x^2) = ? → |x|
+∫ x^n dx = ? → { x^(n + 1)/(n + 1) if n ≠ -1; ln(|x|) otherwise } + C
+∫_1^∞ x^(-p) dx = ? → { ∞ if p ≤ 1; -1/(-p + 1) otherwise }
+sqrt(y^2) = ? (y < 0) → -y
+sqrt(x^2) = ? → x
+ln(e^x) = ? → x
+cos(n π) = ? → (-1)^n
+lim_(x→∞) e^(a x) = ? → 0
+∫_0^∞ e^(a x) dx = ? → -1/a
+∫_1^∞ x^(-p) dx = ? → -1/(-p + 1)
+Assume x < 0. → these assumptions can't all hold: x > 0 and x < 0

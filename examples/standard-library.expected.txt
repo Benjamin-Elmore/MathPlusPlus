@@ -1,0 +1,21 @@
+\varphi = ? → (sqrt(5) + 1)/2
+\gamma \approx ? → 0.5772156649
+\varphi^2 \overset{?}{=} \varphi + 1 → ✓
+c = ? → 299792458 m/s
+70\,\mathrm{kg} \cdot g_0 \approx ? → 686.4655 N
+A_{\text{circle}}(2) = ? → 4*π
+V_{\text{ball}}(3) = ? → 36*π
+V_{\text{cone}}(3, 4) = ? → 12*π
+A_{\text{Heron}}(13, 14, 15) = ? → 84
+c_{\text{cos}}(3, 4, \tfrac{\pi}{2}) = ? → 5
+\sin^2 x + \cos^2 x \overset{?}{=} 1 → ✓
+A_{\text{compound}}(1000, 0.05, 1, 2) = ? → 1102.5
+M_{\text{loan}}(1000, \tfrac{1}{10}, 1) = ? → 1100
+\tau(360) = ? → 24
+\sigma(28) = ? → 56
+\mu(30) = ? → -1
+\varphi(36) = ? → 12
+\zeta(2) = ? → π^2/6
+J_0(1) \approx ? → 0.7651976866
+B(\tfrac{1}{2}, \tfrac{1}{2}) = ? → π
+\operatorname{runif}(2) \approx ? → (0.3829641469, 0.1473047457)

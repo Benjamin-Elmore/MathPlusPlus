@@ -1,0 +1,27 @@
+# N2 assumptions: notes for the integrator
+
+Lane `domains` (branch `wip/domains`). The example is `examples/assumptions.mpp` with `examples/assumptions.expected.txt`, checked by `crates/mpp-eval/tests/examples.rs`; the document tests are in `crates/mpp-eval/tests/assumptions.rs`.
+
+## What was built
+
+- **Core** (`crates/mpp-core/src/domains/assume.rs`, re-exported as `mpp_core::domains::Assumptions`): per-name facts (an interval, excluded points, integer), every fact also making the name real. `assume(cond)` takes relations that bound one name linearly (`x > 0`, `0 < x \le 1`, `2x - 1 \ge 0`, `a \neq 0`), memberships (`n ∈ ℤ`, `n ∈ ℕ`, `x ∈ [0, 1]`, `x ∈ ℝ`) and conjunctions; contradictions are `MathError::Contradiction` (new variant in `error.rs`, printed as its message). `signs(e)` propagates signs through sums, products, powers and common functions; `decide(cond)`, `is_real`, `is_integer`.
+- **Additive API, old functions unchanged:** `simplify_with(e, &facts, steps)` (√(x²) = |x| always, = x for x ≥ 0, = −x for x ≤ 0; |x| by sign; ln(eˣ) = x for real x; (xᵃ)ᵇ = xᵃᵇ for x > 0 with real exponents or an integer b; 0ᵏ = 0 for k > 0; sin(nπ) = 0 and cos(nπ) = (−1)ⁿ for integer n; piecewise branches and relations decided by the facts; the step log says why a safe form stays), `integrate_power` (∫ c·xⁿ dx split on n = −1), `limit_at_infinity` and `improper_integral` (limits at ±∞ and integrals over infinite ranges whose value depends on a parameter's sign: decided by the facts, or a piecewise answer over the sign cases, with ∞ marking divergence).
+- **Evaluator:** `Holders` `Ctx` gained an optional assumptions field (`with_assumptions`, `assumptions()`; additive). `crates/mpp-eval/src/assume.rs` is a holder registered in `Holders::default()` that answers the integrals and limits above before the plain calculus (everything else falls through). The block runner (`block/assume.rs`) collects the facts for each statement, runs `simplify_with` on every result (recording the reasons in the `= ?!` working) and handles the sentence and the bracketed condition.
+- **Scoping:** facts live in the environment under reserved keys (`assume:x` for the conditions on `x`, `assume:` for the list of names), so they are scoped top to bottom, imported with `![[…]]`, and tracked for incremental re-runs like any definition (every block reads `assume:`, so a new assumption above re-runs the blocks below). These keys are not listed in a block's `defines`.
+- **Parser:** `BlockKind::Assume(Assume { conditions })` for `Assume $…$[, $…$][ and $…$].`, and `Clause::Assumption(node)` for a relation in round brackets after a query or check. Crates that match `BlockKind` or `Clause` exhaustively need the new arms.
+
+## Grammar
+
+Applied to `docs/grammar.mpp` §3 (the `assume` rule and the paragraph after it).
+
+## Guide section (for `docs/guide.mpp`)
+
+> ## Assumptions
+>
+> Tell Math++ what you know about a name with a sentence: `Assume $x > 0$.` or `Assume $n \in \mathbb{Z}$, $a \neq 0$.` The facts hold from there to the end of the file, like a definition. For one block only, put the condition in brackets after the query: `$$ \sqrt{y^2} = ? \quad (y < 0) $$`.
+>
+> With the facts, the algebra goes further: `$\sqrt{x^2}$` is `x` for `x > 0` (and `|x|` when the sign is unknown), `|x|` loses its bars, `$\ln(e^x)$` is `x`, `$(x^a)^b$` is `x^{ab}`, `$\cos(n\pi)$` is `(-1)^n` for an integer `n`. Without them Math++ keeps the safe form, and the working (`= ?!`) says which fact would let it go further.
+>
+> When an answer depends on a case you haven't settled, you get every case: `$\int x^n \, dx = ?$` gives `x^{n+1}/(n+1)` for `n ≠ −1` and `\ln|x|` otherwise, and `$\int_1^\infty x^{-p} \, dx = ?$` gives `1/(p − 1)` for `p > 1` and `∞` (it diverges) otherwise. Add `Assume $p > 1$.` to get just the one answer.
+>
+> Assumptions that contradict each other (`Assume $x > 0$.` then `Assume $x < 0$.`) are an error. See [[../examples/assumptions.mpp]].

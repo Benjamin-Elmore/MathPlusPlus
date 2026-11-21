@@ -1,0 +1,139 @@
+# Linear algebra
+
+Rotation and reflection matrices, identity and zero matrices, and the identities of determinants, traces, eigenvalues and cross products. Matrix arithmetic, `\det`, `\operatorname{rank}`, `\operatorname{eigen}` and the rest are built in; a product of two matrices that come out of formulas is written `\operatorname{matmul}(P, Q)`, so its order is clear. Import with `![[std/linalg.mpp]]`.
+
+## Identity and zero matrices
+
+$$ I_2 \equiv \begin{pmatrix} 1 & 0 \\ 0 & 1 \end{pmatrix} $$
+
+$$ I_3 \equiv \begin{pmatrix} 1 & 0 & 0 \\ 0 & 1 & 0 \\ 0 & 0 & 1 \end{pmatrix} $$
+
+$$ O_2 \equiv \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix} $$
+
+$$ \det I_3 \overset{?}{=} 1 $$
+
+$$ \operatorname{rank}(O_2) \overset{?}{=} 0 $$
+
+## Rotations
+
+The rotation of the plane by the angle $\theta$, anticlockwise.
+
+$$ R_{\text{2D}}(\theta) := \begin{pmatrix} \cos\theta & -\sin\theta \\ \sin\theta & \cos\theta \end{pmatrix} $$
+
+$$ R_{\text{2D}}(\tfrac{\pi}{2}) \overset{?}{=} \begin{pmatrix} 0 & -1 \\ 1 & 0 \end{pmatrix} $$
+
+A rotation keeps areas and orientation, and two rotations add their angles.
+
+$$ \det R_{\text{2D}}(t) \overset{?}{=} 1 $$
+
+$$ \operatorname{matmul}(R_{\text{2D}}(\tfrac{\pi}{6}), R_{\text{2D}}(\tfrac{\pi}{3})) \overset{?}{=} R_{\text{2D}}(\tfrac{\pi}{2}) $$
+
+Rotations of space about the $x$-, $y$- and $z$-axes.
+
+$$ R_{x}(\theta) := \begin{pmatrix} 1 & 0 & 0 \\ 0 & \cos\theta & -\sin\theta \\ 0 & \sin\theta & \cos\theta \end{pmatrix} $$
+
+$$ R_{y}(\theta) := \begin{pmatrix} \cos\theta & 0 & \sin\theta \\ 0 & 1 & 0 \\ -\sin\theta & 0 & \cos\theta \end{pmatrix} $$
+
+$$ R_{z}(\theta) := \begin{pmatrix} \cos\theta & -\sin\theta & 0 \\ \sin\theta & \cos\theta & 0 \\ 0 & 0 & 1 \end{pmatrix} $$
+
+$$ R_{z}(\tfrac{\pi}{2}) \begin{pmatrix} 1 \\ 0 \\ 0 \end{pmatrix} \overset{?}{=} \begin{pmatrix} 0 \\ 1 \\ 0 \end{pmatrix} $$
+
+$$ R_{x}(\tfrac{\pi}{2}) \begin{pmatrix} 0 \\ 1 \\ 0 \end{pmatrix} \overset{?}{=} \begin{pmatrix} 0 \\ 0 \\ 1 \end{pmatrix} $$
+
+$$ R_{y}(\tfrac{\pi}{2}) \begin{pmatrix} 0 \\ 0 \\ 1 \end{pmatrix} \overset{?}{=} \begin{pmatrix} 1 \\ 0 \\ 0 \end{pmatrix} $$
+
+$$ \det R_{z}(t) \overset{?}{=} 1 $$
+
+## Reflections
+
+The reflection of the plane in the line through the origin at angle $\theta$ to the $x$-axis.
+
+$$ F_{\text{2D}}(\theta) := \begin{pmatrix} \cos 2\theta & \sin 2\theta \\ \sin 2\theta & -\cos 2\theta \end{pmatrix} $$
+
+$$ F_{\text{2D}}(\tfrac{\pi}{4}) \overset{?}{=} \begin{pmatrix} 0 & 1 \\ 1 & 0 \end{pmatrix} $$
+
+A reflection reverses orientation, and doing it twice changes nothing.
+
+$$ \det F_{\text{2D}}(t) \overset{?}{=} -1 $$
+
+$$ \operatorname{matmul}(F_{\text{2D}}(\tfrac{\pi}{6}), F_{\text{2D}}(\tfrac{\pi}{6})) \overset{?}{=} I_2 $$
+
+## Determinants and traces
+
+For general $2 \times 2$ matrices:
+
+$$ A_{\text{g}} \equiv \begin{pmatrix} a & b \\ d & f \end{pmatrix} $$
+
+$$ B_{\text{g}} \equiv \begin{pmatrix} p & q \\ r & s \end{pmatrix} $$
+
+$$ \det A_{\text{g}} \overset{?}{=} a f - b d $$
+
+$$ \det(A_{\text{g}} B_{\text{g}}) \overset{?}{=} \det(A_{\text{g}}) \det(B_{\text{g}}) $$
+
+$$ \det(A_{\text{g}}^T) \overset{?}{=} \det(A_{\text{g}}) $$
+
+$$ \operatorname{trace}(A_{\text{g}} B_{\text{g}}) \overset{?}{=} \operatorname{trace}(B_{\text{g}} A_{\text{g}}) $$
+
+$$ \operatorname{trace}(A_{\text{g}} A_{\text{g}}^{-1}) \overset{?}{=} 2 $$
+
+The trace is the sum of the eigenvalues and the determinant their product, counted with algebraic multiplicity.
+
+$$ M_{\text{ex}} \equiv \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix} $$
+
+$$ \lambda_{\text{ex}} \equiv \operatorname{eigenvals}(M_{\text{ex}}) $$
+
+$$ \operatorname{trace}(M_{\text{ex}}) \overset{?}{=} 5 $$
+
+$$ \lambda_{\text{ex}} \overset{?}{=} \operatorname{eigenvals}(M_{\text{ex}}) $$
+
+$$ \operatorname{trace}(M_{\text{ex}}) \overset{?}{=} \frac{5 - \sqrt{33}}{2} + \frac{5 + \sqrt{33}}{2} $$
+
+$$ \det M_{\text{ex}} \overset{?}{=} \frac{5 - \sqrt{33}}{2} \cdot \frac{5 + \sqrt{33}}{2} $$
+
+$$ M_{\text{ex}}^{-1} \overset{?}{=} \begin{pmatrix} -2 & 1 \\ \tfrac{3}{2} & -\tfrac{1}{2} \end{pmatrix} $$
+
+Rank and nullity of a map from $\mathbb{R}^2$: this matrix squashes the plane onto a line, so its rank is 1 and its kernel is a line.
+
+$$ S_{\text{ex}} \equiv \begin{pmatrix} 1 & 2 \\ 2 & 4 \end{pmatrix} $$
+
+$$ \operatorname{rank}(S_{\text{ex}}) \overset{?}{=} 1 $$
+
+$$ S_{\text{ex}} \begin{pmatrix} -2 \\ 1 \end{pmatrix} \overset{?}{=} \begin{pmatrix} 0 \\ 0 \end{pmatrix} $$
+
+$$ \ker S_{\text{ex}} \overset{?}{=} \operatorname{kernel}(S_{\text{ex}}) $$
+
+**Theorem.** (Rank–nullity) For a linear map $T: V \to W$ with $V$ finite-dimensional, $\dim V = \operatorname{rank}(T) + \dim\ker(T)$.
+
+**Theorem.** (Determinants multiply) For square matrices of the same size, $\det(AB) = \det(A)\det(B)$; for square $A$, $\operatorname{tr}(A)$ is the sum and $\det(A)$ the product of its eigenvalues, counted with algebraic multiplicity.
+
+## Cross and dot products
+
+The cross product of two vectors in space, written out.
+
+$$ \mathbf{c}_{\text{cross}}(a_1, a_2, a_3, b_1, b_2, b_3) := \begin{pmatrix} a_2 b_3 - a_3 b_2 \\ a_3 b_1 - a_1 b_3 \\ a_1 b_2 - a_2 b_1 \end{pmatrix} $$
+
+$$ \mathbf{c}_{\text{cross}}(1, 0, 0, 0, 1, 0) \overset{?}{=} \begin{pmatrix} 0 \\ 0 \\ 1 \end{pmatrix} $$
+
+$$ \mathbf{u} \equiv \begin{pmatrix} 1 \\ 2 \\ 3 \end{pmatrix} $$
+
+$$ \mathbf{v} \equiv \begin{pmatrix} 4 \\ 5 \\ 6 \end{pmatrix} $$
+
+$$ \mathbf{w} \equiv \begin{pmatrix} 7 \\ 8 \\ 10 \end{pmatrix} $$
+
+$$ \mathbf{u} \times \mathbf{v} \overset{?}{=} \mathbf{c}_{\text{cross}}(1, 2, 3, 4, 5, 6) $$
+
+The cross product is perpendicular to both factors, changes sign when they swap, and its length squared is Lagrange's identity.
+
+$$ \mathbf{u} \cdot (\mathbf{u} \times \mathbf{v}) \overset{?}{=} 0 $$
+
+$$ \mathbf{v} \times \mathbf{u} + \mathbf{u} \times \mathbf{v} \overset{?}{=} \begin{pmatrix} 0 \\ 0 \\ 0 \end{pmatrix} $$
+
+$$ (\mathbf{u} \times \mathbf{v}) \cdot (\mathbf{u} \times \mathbf{v}) \overset{?}{=} (\mathbf{u} \cdot \mathbf{u})(\mathbf{v} \cdot \mathbf{v}) - (\mathbf{u} \cdot \mathbf{v})^2 $$
+
+The scalar triple product is the determinant of the three vectors, the volume of the box they span.
+
+$$ \mathbf{u} \cdot (\mathbf{v} \times \mathbf{w}) \overset{?}{=} \det \begin{pmatrix} 1 & 2 & 3 \\ 4 & 5 & 6 \\ 7 & 8 & 10 \end{pmatrix} $$
+
+The vector triple product ("BAC minus CAB").
+
+$$ \mathbf{u} \times (\mathbf{v} \times \mathbf{w}) \overset{?}{=} (\mathbf{u} \cdot \mathbf{w}) \mathbf{v} - (\mathbf{u} \cdot \mathbf{v}) \mathbf{w} $$

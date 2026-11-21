@@ -1,0 +1,118 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\providecommand{\degree}{\ensuremath{^\circ}}
+\providecommand{\xmark}{\ensuremath{\times}}
+\providecommand{\omicron}{o}
+\providecommand{\oiint}{\mathop{\oint\mkern-12mu\oint}}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Differential equations}
+\date{}
+\begin{document}
+\maketitle
+The equation solver (Insert, then ODE) recognises the type of an equation, solves it exactly, names the method and checks the answer by putting it back into the equation. Starting values are written as a tuple $(x_0, y_0, y'_0, \dots)$.
+
+\section*{First order}
+
+\begin{equation*}
+  \operatorname{Solve}(y' = x y) = y\left(x\right) = e^{\frac{x^{2}}{2}} C
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y' + 2y = e^x) = y\left(x\right) = e^{-2 x} C + \frac{e^{x}}{3}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y' + y = x y^3) = y\left(x\right) = \frac{1}{\sqrt{e^{2 x} C + x + \frac{1}{2}}}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y' = \frac{x + y}{x - y}) = -C + \arctan\left(\frac{y}{x}\right) - \frac{\ln\left(\frac{y^{2}}{x^{2}} + 1\right)}{2} - \ln\left(\left|x\right|\right) = 0
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y \cos x + 2x e^y + (\sin x + x^2 e^y - 1) y' = 0) = e^{y} x^{2} - C - y + y \sin\left(x\right) = 0
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y' = 1 + x^2 - 2 x y + y^2) = y\left(x\right) = x + \frac{1}{C - x}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y = x y' + (y')^2) = y\left(x\right) = C^{2} + C x
+\end{equation*}
+An initial value problem: $y' = y^2$ with $y(0) = 1$.
+
+\begin{equation*}
+  \operatorname{Solve}(y' = y^2, (0, 1)) = y\left(x\right) = -\frac{1}{x - 1}
+\end{equation*}
+\section*{Higher order, constant coefficients}
+
+\begin{equation*}
+  \operatorname{Solve}(y'' - 3y' + 2y = 0) = y\left(x\right) = e^{x} C_{1} + e^{2 x} C_{2}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y'' + 2y' + 5y = 0) = y\left(x\right) = e^{-x} C_{1} \cos\left(2 x\right) + e^{-x} C_{2} \sin\left(2 x\right)
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y'' + y = \sin x) = y\left(x\right) = C_{1} \cos\left(x\right) + C_{2} \sin\left(x\right) - \frac{x \cos\left(x\right)}{2}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y'' + y = \sec x) = y\left(x\right) = C_{1} \cos\left(x\right) + C_{2} \sin\left(x\right) + x \sin\left(x\right) + \cos\left(x\right) \ln\left(\left|\cos\left(x\right)\right|\right)
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y'' + y = 0, (0, 1, 0)) = y\left(x\right) = \cos\left(x\right)
+\end{equation*}
+\section*{Variable coefficients}
+
+\begin{equation*}
+  \operatorname{Solve}(x^2 y'' - 2x y' + 2y = 0) = y\left(x\right) = C_{2} x^{2} + C_{1} x
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(x^2 y'' - x (x + 2) y' + (x + 2) y = 0) = y\left(x\right) = C_{1} x + e^{x} C_{2} x
+\end{equation*}
+The Airy equation has no elementary solution, so a power series is given.
+
+\begin{equation*}
+  \operatorname{Solve}(y'' + x y = 0, (0, 1, 0)) = y\left(x\right) = -\frac{x^{9}}{12960} + \frac{x^{6}}{180} - \frac{x^{3}}{6} + 1
+\end{equation*}
+\section*{Laplace transforms}
+
+\begin{equation*}
+  \mathcal{L}\left\{ t^2 e^{-t} \right\} = \frac{2}{\left(s + 1\right)^{3}}
+\end{equation*}
+\begin{equation*}
+  \mathcal{L}^{-1}\left\{ \frac{1}{s^2 + 4} \right\} = \frac{\sin\left(2 t\right)}{2}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Solve}(y'' + y = \operatorname{H}(t - 1), (0, 0, 0)) = y\left(t\right) = H\left(t - 1\right) \left(-\cos\left(t - 1\right) + 1\right)
+\end{equation*}
+\section*{Systems}
+
+A linear system with constant coefficients is solved with the matrix exponential (the primes mean $d/dx$ here).
+
+\begin{equation*}
+  \operatorname{Solve}((u' = v, v' = -u), (1, 0)) = \left(u\left(x\right) = \cos\left(x\right), v\left(x\right) = -\sin\left(x\right)\right)
+\end{equation*}
+\section*{Numerical fallback}
+
+\begin{equation*}
+  \operatorname{Solve}(y' = \sin(x y), (0, 1), [0, 2]) = y\left(2\right) \approx 1.822412551
+\end{equation*}
+\section*{Heat equation}
+
+\begin{equation*}
+  \operatorname{heat}(x, \pi, 1) = u\left(x, t\right) = \sum_{n=1}^{\infty} \left(-\frac{2 e^{-n^{2} t} \left(-1\right)^{n} \sin\left(n x\right)}{n}\right)
+\end{equation*}
+\end{document}

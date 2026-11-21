@@ -1,0 +1,43 @@
+9: \operatorname{area}(x, x^2) = ?!
+    = 1/6
+    step: find where the curves cross
+    step: area between curves
+13: \operatorname{area}(\sin x, [0, 2\pi]) = ?
+    = 4
+17: \operatorname{area}(y + 2, y^2) = ?
+    = 9/2
+23: \operatorname{volume}(\sqrt{x}, [0, 4]) = ?
+    = 8*π ≈ 25.13274123
+27: \operatorname{volume}(x, x^2, [0, 1], y = -1) = ?
+    = 7*π/15 ≈ 1.466076572
+29: \operatorname{volume}_{shell}(x, x^2, [0, 1], x = 0) = ?
+    = π/6 ≈ 0.5235987756
+31: \operatorname{volume}(x, x^2, [0, 1], x = 2) = ?
+    = π/2 ≈ 1.570796327
+35: \operatorname{volume}_{disk}(\sqrt{4 - x^2}, [-2, 2]) = ?
+    = 32*π/3 ≈ 33.51032164
+39: \operatorname{arclength}(x^{3/2}, [0, 4]) = ?
+    = 80*sqrt(10)/27 - 8/27 ≈ 9.073415289
+41: \operatorname{arclength}((\cos t, \sin t), t, [0, 2\pi]) = ?
+    = 2*π ≈ 6.283185307
+43: \operatorname{surfacearea}(x, [0, 1]) = ?
+    = π*sqrt(2) ≈ 4.442882938
+47: \operatorname{average}(x^2, [0, 3]) = ?
+    = 3
+51: \operatorname{work}(5x, [0, 0.2]) = ?
+    = 0.1
+53: \operatorname{centroid}(x, x^2, [0, 1]) = ?
+    = (1/2, 2/5)
+57: \operatorname{centreofmass}(1 + x, [0, 2]) = ?
+    = 7/6
+61: \operatorname{accumulate}(2x, 1) = ?
+    = x^2 - 1
+65: \int_0^{\infty} \frac{\sin x}{x}\,dx = ?
+    = π/2 ≈ 1.570796327
+67: \int_{-\infty}^{\infty} e^{-x^2}\,dx = ?
+    = sqrt(π) ≈ 1.772453851
+69: \int_0^{\infty} \sin(x^2)\,dx = ?
+    ≈ 0.6266570687
+    note: no closed form was found for this integral, so the value shown is numerical (≈)
+71: \int_1^{\infty} \frac{1}{x}\,dx = ?
+    error: ∫ 1/x dx (near x = ∞) diverges

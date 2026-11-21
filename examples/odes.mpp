@@ -1,0 +1,15 @@
+# Differential equations
+
+Solve an equation for a function with `dsolve`.
+
+$$ \operatorname{dsolve}(y' = y, y, x) = ? $$
+
+$$ \operatorname{dsolve}(y' = x y, y, x) = ? $$
+
+With a starting value, written as the point the solution passes through:
+
+$$ \operatorname{dsolve}(y' = y, y, x, (0, 1)) = ? $$
+
+A numerical solution, when there is no formula:
+
+$$ \operatorname{rk4}(x + y, x, y, 0, 1, 1, 100) \approx ? $$

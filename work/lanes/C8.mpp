@@ -1,0 +1,90 @@
+# Lane notes: C8 (auto-evaluation)
+
+Engine lane (`wip/engine`). Code: `crates/mpp-eval/src/auto.rs` (settings, cache, worker
+threads), `crates/mpp-eval/src/block/auto.rs` (what a line computes and how its answer is
+shown), `crates/mpp-eval/src/lower/region.rs` (integrals over regions), the transform
+parser in `crates/mpp-syntax/src/math/parser/atoms.rs` (`\mathcal L\{…\}`), the Fourier
+table in `crates/mpp-core/src/tools_b/fourier.rs`. Tests: `crates/mpp-eval/tests/auto_eval.rs`;
+example: `examples/auto-evaluation.mpp` with `.expected.txt`.
+
+## Guide text (for `docs/guide.mpp`)
+
+### Answers as you type
+
+You don't need `= ?` to see an answer. Type an integral, a derivative, a limit or an equation
+in a maths block and its answer appears after it in grey:
+
+$$ \int_0^1 x^2 \, dx $$
+
+shows `= 1/3`. The grey answer is only shown: the file keeps exactly what you typed. To keep
+an answer, put the cursor on the line and press **Ctrl+Enter**; it is written in as ordinary
+maths (`\int_0^1 x^2 \, dx = \frac{1}{3}`, or for an equation
+`x^2 - 5x + 6 = 0 \implies x = 2 \lor x = 3`) and is typeset like the rest of the page.
+
+**What gets an answer.**
+
+- Integrals: indefinite and definite, double and triple (written as nested integrals, or with
+  a box `\iint_{[0,1]\times[0,2]} f \, dA`). A region written as a condition switches
+  coordinates by itself: `\iint_{x^2 + y^2 \le 4} (x^2 + y^2) \, dA` is worked out in polar
+  coordinates, `\iiint_{x^2+y^2+z^2 \le 1} f \, dV` in spherical ones. Around a circle or over a
+  sphere: `\oint_{x^2 + y^2 = 1} (-y, x) \cdot d\mathbf{r}` (counter-clockwise),
+  `\oiint_{x^2+y^2+z^2=1} \mathbf F \cdot d\mathbf{S}` (outward), and `ds`, `dS` for a scalar.
+- Derivatives in every notation: `\frac{d}{dx}`, `f'(x)`, `f''(0)`, `\partial_x`, `D_x`,
+  `\frac{\partial^2}{\partial x \partial y}`; `\nabla f`, `\nabla \cdot \mathbf F`,
+  `\nabla \times \mathbf F`, `\nabla^2 f`; Jacobians `\frac{\partial(u, v)}{\partial(x, y)}`;
+  the total differential `df` of a function you defined.
+- Limits, sums, products and `\operatorname{series}`.
+- Transforms: `\mathcal{L}\{f\}`, `\mathcal{L}^{-1}\{F\}`, `\mathcal{F}\{f\}`,
+  `\mathcal{F}^{-1}\{F\}`, with the variables under the letter when they are not the usual ones
+  (`\mathcal{L}_{t \to s}\{…\}`). The Fourier transform is `∫ f(x) e^{−iωx} dx`; the note says so.
+- Equations with unknowns: one equation with one unknown, a system (`x + y = 3, \quad x - y = 1`:
+  the equations after the comma belong to it), an inequality in one unknown
+  (`x^2 - 4 < 0` shows `x ∈ (-2, 2)`), and Lagrange systems with `\nabla`.
+- Differential equations: an equation with `y'`, `\frac{dy}{dx}` or `\dot x` of a name with no
+  value is solved, with the conditions after it: `y'' + y = 0, \quad y(0) = 1, y'(0) = 0`
+  shows `y(x) = \cos x`.
+- Matrices: `\det`, inverses `A^{-1}`, `\operatorname{eig}`.
+
+Each answer is exact when possible, otherwise `≈` with the number.
+
+**What doesn't.** Definitions (`:=`, `\equiv`) and checks (`\overset{?}{=}`, which get a ✓ or ✗
+instead) never show an auto answer; neither does maths inside a sentence, a number or matrix on
+its own, an expression with nothing to work out (`x^2 + 1` with `x` free), or an equation with
+more unknowns than equations (`y = x^2 + 1`). Write `%noeval` above a block to switch it off
+there, or turn auto answers off for the whole file with the toggle in the View menu.
+
+**Empty boxes.** A template from the Insert menu with a required box still empty shows a grey
+hint such as *fill in: upper bound* and no answer.
+
+**Slow answers.** Answers are worked out in the background and remembered, so typing never
+waits for a slow integral: a small spinner shows until its answer is ready.
+
+## For the IDE (integrator)
+
+- Per line (`LineResult`): `auto: bool` (the value, `text`, `latex`, `approx` are an auto answer,
+  shown grey after the line, never written), `pending: bool` (show a spinner), `hint:
+  Option<String>` ("fill in: upper bound", or why there is no answer). `auto_eval: bool` says
+  whether the line may show one at all. `Evaluated::auto_results()` lists these lines.
+- `Session::set_auto_eval(bool)` (the View toggle; on by default), `Session::set_auto_budget(
+  Some(Duration))` (time per block before its auto answers are left pending; `None`, the
+  default, works everything out in place). The IDE should set a budget of about 150 ms.
+- While `Session::has_pending()`: poll `Session::pending_ready()` (or block on
+  `Session::wait_pending(timeout)` on the background thread), then call `Session::refresh()`;
+  only the blocks that were waiting run again, and their answers come from the cache.
+- `Ctrl+Enter`: `Evaluated::keep_result_text(block_id, line_index)` returns the new text for the
+  line's span (`LineResult::span`); replace it and save as a normal edit.
+- Answers are cached by the hash of what is computed (the expression with every known value
+  put in, and the assumptions in force), so undo/redo and switching back to a file are
+  instant. Changing the holder registry clears the cache.
+- Empty template boxes: `NodeKind::Placeholder { label }` (from `wip/render`, cherry-picked
+  here) lowers to `EvalError::EmptyBox`, which is never reported as an error; for text with
+  an empty `{}` box the parser's "expected the upper bound after `^`" becomes the hint.
+- Imported files are not auto-evaluated (their blocks are not on screen).
+
+## Notes
+
+- A line integral written as a differential form (`\oint_C (P \, dx + Q \, dy)`) does not
+  parse yet; write the field and `\cdot d\mathbf{r}`.
+- `df` prints its terms in the core's order (`2*dx*x*y + dy*x^2`).
+- The Fourier table covers Gaussians, `e^{−a|x|}`, `1/(x² + a²)`, `H(x)e^{−ax}`, `δ` and
+  constants, with sums and constant factors; anything else says it is not in the table.

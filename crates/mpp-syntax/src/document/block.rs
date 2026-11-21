@@ -10,7 +10,7 @@ use super::ast::*;
 use super::figure::parse_figure;
 use super::inline::parse_inlines;
 use super::list::{build_lists, marker, Flat};
-use super::sentence::parse_sentence;
+use super::sentence::{find_sentence, helper_lookalike, parse_sentence};
 use super::table::{parse_table, rule_aligns};
 use crate::math::parse_math;
 use crate::span::{Diagnostic, Span};
@@ -27,21 +27,217 @@ pub(crate) struct Line {
 
 /// Splits `src` into lines (`\n` or `\r\n` endings).
 pub(crate) fn split_lines(src: &str) -> Vec<Line> {
+    // Old Mac files end lines with a lone CR; Windows files end them with CRLF.
+    let sep = if !src.contains('\n') && src.contains('\r') {
+        '\r'
+    } else {
+        '\n'
+    };
     let mut lines = Vec::new();
     let mut start = 0;
-    for piece in src.split('\n') {
+    for piece in src.split(sep) {
         let mut end = start + piece.len();
-        if piece.ends_with('\r') {
+        if sep == '\n' && piece.ends_with('\r') {
             end -= 1;
         }
         lines.push(Line { start, end });
         start += piece.len() + 1;
     }
+    // A byte-order mark (Notepad writes one) is not part of the first line.
+    if let Some(first) = lines.first_mut() {
+        if src.starts_with('\u{FEFF}') {
+            first.start = '\u{FEFF}'.len_utf8().min(first.end);
+        }
+    }
     // A final newline does not start another line.
-    if src.ends_with('\n') {
+    if src.ends_with(sep) {
         lines.pop();
     }
-    lines
+    split_trailing_displays(src, lines)
+}
+
+/// Where the backtick code span opening at `k` ends (just past its closing
+/// run), or `None` when the run of backticks at `k` is never closed.
+fn code_span_end(b: &[u8], k: usize) -> Option<usize> {
+    let run = b[k..].iter().take_while(|&&c| c == b'`').count();
+    let mut j = k + run;
+    while j < b.len() {
+        if b[j] == b'`' {
+            let n = b[j..].iter().take_while(|&&c| c == b'`').count();
+            if n == run {
+                return Some(j + n);
+            }
+            j += n;
+        } else {
+            j += 1;
+        }
+    }
+    None
+}
+
+/// Byte offsets of the unescaped `$$` pairs in `text`, outside code spans.
+fn display_marks(text: &str) -> Vec<usize> {
+    let b = text.as_bytes();
+    let mut out = Vec::new();
+    let mut k = 0;
+    while k < b.len() {
+        match b[k] {
+            b'\\' => k += 2,
+            b'`' => {
+                let run = b[k..].iter().take_while(|&&c| c == b'`').count();
+                k = code_span_end(b, k).unwrap_or(k + run);
+            }
+            b'$' if b.get(k + 1) == Some(&b'$') => {
+                out.push(k);
+                k += 2;
+            }
+            _ => k += 1,
+        }
+    }
+    out
+}
+
+/// Where a `$$` display starts part-way along a prose line (`4. $$ … $$`,
+/// `Partial fractions: $$ … $$`): the offset of that `$$` in `text`. The
+/// text before it must have its inline `$…$` closed, and the display must
+/// either close on the same line or run on from the end of it.
+fn trailing_display(text: &str) -> Option<usize> {
+    let marks = display_marks(text);
+    let &open = marks.first()?;
+    if open == 0 || text[..open].trim().is_empty() {
+        return None;
+    }
+    let before = &text.as_bytes()[..open];
+    let mut singles = 0;
+    let mut k = 0;
+    while k < before.len() {
+        match before[k] {
+            b'\\' => k += 1,
+            b'$' => singles += 1,
+            b'`' => {
+                if let Some(end) = code_span_end(before, k) {
+                    k = end;
+                    continue;
+                }
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    if singles % 2 == 1 {
+        return None;
+    }
+    let closes_here = marks.len() >= 2;
+    let runs_on = text[open + 2..].trim().is_empty();
+    (closes_here || runs_on).then_some(open)
+}
+
+/// Splits a prose line that carries a display after its text (`4. $$ x = ? $$`)
+/// into two lines, so the display is read as a display block of its own and is
+/// evaluated. Code fences, comments and the inside of multi-line displays are
+/// left alone.
+fn split_trailing_displays(src: &str, lines: Vec<Line>) -> Vec<Line> {
+    let mut out = Vec::with_capacity(lines.len());
+    let mut fence = false;
+    let mut display = false;
+    for line in lines {
+        let text = src.get(line.start..line.end).unwrap_or("");
+        let t = text.trim_start();
+        if fence {
+            fence = !t.starts_with("```");
+            out.push(line);
+            continue;
+        }
+        if display {
+            // A blank line or the closing `$$` ends the display.
+            display = !(t.trim().is_empty() || display_marks(text).len() % 2 == 1);
+            out.push(line);
+            continue;
+        }
+        if t.starts_with("```") {
+            fence = true;
+            out.push(line);
+            continue;
+        }
+        if t.starts_with('%') {
+            out.push(line);
+            continue;
+        }
+        if t.starts_with("$$") {
+            display = display_marks(text).len() % 2 == 1;
+            out.push(line);
+            continue;
+        }
+        match trailing_display(text) {
+            Some(at) => {
+                let p = line.start + at;
+                out.push(Line {
+                    start: line.start,
+                    end: p,
+                });
+                out.push(Line {
+                    start: p,
+                    end: line.end,
+                });
+                display = display_marks(&text[at..]).len() % 2 == 1;
+            }
+            None => split_sentences(src, line, &mut out),
+        }
+    }
+    out
+}
+
+/// Gives a sentence form that shares its line with other text a line of its
+/// own (`1. Solve $…$ for $x$.`, `Roots. Solve $…$ for $x$. Then …`), so it is
+/// read as a block and evaluated wherever it is written. Headings, tables,
+/// quotes, footnotes and figures are left alone.
+fn split_sentences(src: &str, line: Line, out: &mut Vec<Line>) {
+    let text = src.get(line.start..line.end).unwrap_or("");
+    let t = text.trim_start();
+    if t.is_empty()
+        || t.starts_with(['#', '|', '>'])
+        || t.starts_with("[^")
+        || t.starts_with("Figure:")
+    {
+        out.push(line);
+        return;
+    }
+    let listed = marker(text, line.start);
+    let content = listed
+        .map_or(line.start + (text.len() - t.len()), |m| m.content)
+        .min(line.end);
+    let mut from = content;
+    let mut start = line.start;
+    while let Some(found) = find_sentence(src, Span::new(from, line.end)) {
+        if listed.is_none() && found.start == content && found.end >= line.end {
+            break;
+        }
+        if src
+            .get(start..found.start)
+            .is_some_and(|s| !s.trim().is_empty())
+        {
+            out.push(Line {
+                start,
+                end: found.start,
+            });
+        }
+        out.push(Line {
+            start: found.start,
+            end: found.end,
+        });
+        start = found.end;
+        from = found.end;
+    }
+    if start == line.start
+        || src
+            .get(start..line.end)
+            .is_some_and(|s| !s.trim().is_empty())
+    {
+        out.push(Line {
+            start,
+            end: line.end,
+        });
+    }
 }
 
 /// State shared by every block of one document.
@@ -52,6 +248,9 @@ pub(crate) struct Ctx<'a> {
     pub labels: HashMap<String, u32>,
     /// The `%noeval` line waiting for a maths block.
     pending_noeval: Option<Span>,
+    /// Set once a block other than a directive, comment or title line has been read
+    /// at the top level (title lines are only recognised before it).
+    seen_content: bool,
 }
 
 impl<'a> Ctx<'a> {
@@ -62,6 +261,7 @@ impl<'a> Ctx<'a> {
             eq_counter: 0,
             labels: HashMap::new(),
             pending_noeval: None,
+            seen_content: false,
         }
     }
 
@@ -129,8 +329,19 @@ pub(crate) fn parse_blocks(ctx: &mut Ctx<'_>, lines: &[Line], depth: usize) -> V
                     ctx.dangling_noeval();
                     ctx.pending_noeval = Some(b.span);
                 }
-                BlockKind::Directive(_) | BlockKind::DisplayMath(_) => {}
+                BlockKind::Directive(_)
+                | BlockKind::Comment(_)
+                | BlockKind::Title(_)
+                | BlockKind::DisplayMath(_) => {}
                 _ => ctx.dangling_noeval(),
+            }
+            if depth == 0
+                && !matches!(
+                    b.kind,
+                    BlockKind::Directive(_) | BlockKind::Comment(_) | BlockKind::Title(_)
+                )
+            {
+                ctx.seen_content = true;
             }
         }
     }
@@ -155,8 +366,30 @@ fn block_at_line(
         }
     }
     if t.starts_with('%') {
+        if let Some(next) = comment(ctx, lines, i, depth, out) {
+            return next;
+        }
         out.push(directive(t, ts, line));
         return i + 1;
+    }
+    if depth == 0 && !ctx.seen_content {
+        if let Some((kind, offset)) = title_start(t) {
+            return title_field(ctx, lines, i, kind, ts, ts + offset, out);
+        }
+        // An empty `Author:` next to other title lines is a field still to fill in
+        // (the Insert menu's title block), not a sentence.
+        if let Some((kind, offset)) = title_keyword(t) {
+            let after_title = matches!(out.last().map(|b| &b.kind), Some(BlockKind::Title(_)));
+            let before_title = lines
+                .get(i + 1)
+                .is_some_and(|&l| title_keyword(trimmed(ctx, l).0).is_some());
+            if after_title || before_title {
+                return title_field(ctx, lines, i, kind, ts, ts + offset, out);
+            }
+        }
+    }
+    if let Some(head) = super::refs::head(t, ts) {
+        return references(ctx, lines, i, head, ts, out);
     }
     if let Some((level, offset)) = heading_level(t) {
         let content = trim_range(ctx, Span::new(ts + offset, line.end));
@@ -199,8 +432,8 @@ fn block_at_line(
         return footnote(ctx, lines, i, name, ts + offset, ts, out);
     }
     if depth < MAX_BLOCK_DEPTH {
-        if let Some((kind, prefix)) = theorem_start(t) {
-            return theorem(ctx, lines, i, kind, ts, ts + prefix, depth, out);
+        if let Some(head) = theorem_start(t) {
+            return theorem(ctx, lines, i, head, ts, depth, out);
         }
     }
     if t.starts_with('>') {
@@ -251,13 +484,102 @@ fn footnote_def(t: &str) -> Option<(&str, usize)> {
     Some((name, 2 + close + 2 + gap))
 }
 
-fn theorem_start(t: &str) -> Option<(TheoremKind, usize)> {
+/// The heading of a theorem-style block, read from the start of its first line.
+struct TheoremHead {
+    kind: TheoremKind,
+    /// The number as written (`2`, `2.1`).
+    number: Option<String>,
+    /// Byte range of the title inside the line, without its brackets.
+    title: Option<(usize, usize)>,
+    /// Length of the whole heading, with the space after it.
+    prefix: usize,
+}
+
+/// Reads `**Kind.**`, `**Kind 2.**`, `**Kind 2** (Title).`, `**Kind** (Title).` or
+/// `**Kind 2**.` at the start of `t`. A bold word with neither a full stop nor a title
+/// in brackets after it (`**Theorem** is a word`) is ordinary prose.
+fn theorem_start(t: &str) -> Option<TheoremHead> {
     let rest = t.strip_prefix("**")?;
     TheoremKind::ALL.iter().find_map(|&kind| {
-        let after = rest.strip_prefix(kind.as_str())?.strip_prefix(".**")?;
-        let gap = after.len() - after.trim_start().len();
-        Some((kind, 2 + kind.as_str().len() + 3 + gap))
+        let after_kind = rest.strip_prefix(kind.as_str())?;
+        // The number: `2`, `2.1`, `A` (letters and digits, dots inside).
+        let (number, after_num) = match after_kind.strip_prefix(' ') {
+            Some(r) => {
+                let len = r
+                    .char_indices()
+                    .take_while(|&(_, c)| c.is_ascii_alphanumeric() || c == '.')
+                    .map(|(i, c)| i + c.len_utf8())
+                    .last()
+                    .unwrap_or(0);
+                let num = r[..len].trim_end_matches('.');
+                if num.is_empty() || !num.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+                    return None;
+                }
+                (Some(num.to_string()), &r[num.len()..])
+            }
+            None => (None, after_kind),
+        };
+        let (dot_inside, after_close) = match after_num.strip_prefix(".**") {
+            Some(r) => (true, r),
+            None => (false, after_num.strip_prefix("**")?),
+        };
+        let mut pos = t.len() - after_close.len();
+        let mut title = None;
+        let mut closed = dot_inside;
+        let gap = after_close.len() - after_close.trim_start().len();
+        if after_close[gap..].starts_with('(') {
+            let open = pos + gap;
+            if let Some(close) = matching_paren(t, open) {
+                title = Some((open + 1, close));
+                pos = close + 1;
+                if t[pos..].starts_with('.') {
+                    pos += 1;
+                    closed = true;
+                }
+            }
+        } else if !dot_inside && after_close.starts_with('.') {
+            pos += 1;
+            closed = true;
+        }
+        if !closed {
+            return None;
+        }
+        let tail = &t[pos..];
+        let gap = tail.len() - tail.trim_start().len();
+        Some(TheoremHead {
+            kind,
+            number,
+            title,
+            prefix: pos + gap,
+        })
     })
+}
+
+/// The byte offset of the `)` that closes the `(` at `open`, skipping brackets inside
+/// `$…$` maths. `None` when the line ends first.
+fn matching_paren(t: &str, open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut in_math = false;
+    let mut escaped = false;
+    for (i, c) in t.get(open..)?.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match c {
+            '\\' => escaped = true,
+            '$' => in_math = !in_math,
+            '(' if !in_math => depth += 1,
+            ')' if !in_math => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(open + i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// The span of the table rule on `lines[k]`, if that line is one.
@@ -304,6 +626,12 @@ fn directive(t: &str, ts: usize, line: Line) -> Block {
     let text = t[1..].trim().to_string();
     let kind = if text == "noeval" {
         DirectiveKind::NoEval
+    } else if let Some(style) = cite_directive(&text) {
+        DirectiveKind::Cite(style)
+    } else if text == "number sections" {
+        DirectiveKind::NumberSections
+    } else if super::display::parse_display_directive(&t[1..]).is_some() {
+        DirectiveKind::Display
     } else {
         DirectiveKind::Comment
     };
@@ -459,6 +787,9 @@ fn list(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block>) -> us
         }
         k += 1;
     }
+    for item in &flat {
+        warn_lookalike(ctx, Span::new(item.marker.content.min(item.end), item.end));
+    }
     for (list, span) in build_lists(ctx.src, &flat, &mut ctx.diags) {
         out.push(block(BlockKind::List(list), span));
     }
@@ -511,8 +842,27 @@ fn paragraph(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block>) 
         return k;
     }
     let inlines = parse_inlines(ctx.src, range, &mut ctx.diags);
+    warn_lookalike(ctx, range);
     out.push(block(BlockKind::Paragraph(inlines), range));
     k
+}
+
+/// Warns about a sentence that reads like a sentence form but is not one, so
+/// a question written as a sentence never passes silently.
+fn warn_lookalike(ctx: &mut Ctx<'_>, range: Span) {
+    if let Some(span) = helper_lookalike(ctx.src, range) {
+        ctx.diags.push(
+            Diagnostic::warning(
+                span,
+                "this reads like a `Solve`, `Analyse` or `Find the …` sentence, but Math++ does not recognise it, so nothing is worked out",
+            )
+            .expecting([
+                "`Solve $…$ for $x$.`",
+                "`Find the domain of $f$.` (or the range, the critical points, the asymptotes …)",
+                "`Analyse $f$ on $[a, b]$.`",
+            ]),
+        );
+    }
 }
 
 /// True when the line is a complete `Using`, helper, `Analyse` or `Solve` sentence.
@@ -585,10 +935,24 @@ fn display_math(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block
         );
     }
 
-    // `(n)` after the closing `$$`.
+    // `(n)` after the closing `$$`, then perhaps a `% note` on the same line.
     let mut explicit = None;
+    let mut trailing: Option<Line> = None;
     if let Some(rs) = rest_start {
-        let rest_span = Span::new(rs.min(block_end), block_end);
+        let mut rest_span = Span::new(rs.min(block_end), block_end);
+        if let Some(at) = ctx.text(rest_span).find('%') {
+            let note = rest_span.start + at + 1;
+            let skip = ctx
+                .text(Span::new(note, block_end))
+                .chars()
+                .next()
+                .map_or(0, |c| if c.is_whitespace() { c.len_utf8() } else { 0 });
+            trailing = Some(Line {
+                start: (note + skip).min(block_end),
+                end: block_end,
+            });
+            rest_span = Span::new(rest_span.start, rest_span.start + at);
+        }
         let rest = ctx.text(rest_span).trim();
         if !rest.is_empty() {
             let digits = rest
@@ -648,22 +1012,36 @@ fn display_math(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block
         }),
         Span::new(open, block_end),
     ));
+    if let Some(line) = trailing {
+        let blocks = comment_inner(ctx.src, &[line], 0);
+        out.push(block(
+            BlockKind::Comment(Comment {
+                blocks,
+                braces: false,
+                closed: true,
+            }),
+            Span::new(line.start.saturating_sub(1), block_end),
+        ));
+    }
     m + 1
 }
 
 // ---- theorem blocks --------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
 fn theorem(
     ctx: &mut Ctx<'_>,
     lines: &[Line],
     i: usize,
-    kind: TheoremKind,
+    head: TheoremHead,
     start: usize,
-    body_start: usize,
     depth: usize,
     out: &mut Vec<Block>,
 ) -> usize {
+    let kind = head.kind;
+    let body_start = start + head.prefix;
+    let title = head
+        .title
+        .map(|(a, b)| parse_inlines(ctx.src, Span::new(start + a, start + b), &mut ctx.diags));
     // The first line without the `**Kind.**` prefix.
     let mut body: Vec<Line> = vec![Line {
         start: body_start.min(lines[i].end),
@@ -718,8 +1096,258 @@ fn theorem(
             kind,
             body: blocks,
             closed,
+            number: head.number,
+            title,
         }),
         Span::new(start, end),
     ));
     k
+}
+
+// ---- comments --------------------------------------------------------------
+
+/// Reads `% text` lines or a `%{ … %}` block. `None` when the `%` starts a
+/// directive (`%noeval`, `%sf 4`: a word straight after the percent sign).
+fn comment(
+    ctx: &mut Ctx<'_>,
+    lines: &[Line],
+    i: usize,
+    depth: usize,
+    out: &mut Vec<Block>,
+) -> Option<usize> {
+    let (t, ts) = trimmed(ctx, lines[i]);
+    if t.starts_with("%{") {
+        return Some(block_comment(ctx, lines, i, depth, out));
+    }
+    if !is_line_comment(t) {
+        return None;
+    }
+    // Consecutive `%` lines are one comment.
+    let mut inner = Vec::new();
+    let mut k = i;
+    let mut end = lines[i].end;
+    while k < lines.len() {
+        let (tk, tsk) = trimmed(ctx, lines[k]);
+        if !is_line_comment(tk) {
+            break;
+        }
+        let gap = tk[1..].chars().next().filter(|c| c.is_whitespace());
+        let skip = 1 + gap.map_or(0, char::len_utf8);
+        inner.push(Line {
+            start: (tsk + skip).min(lines[k].end),
+            end: lines[k].end,
+        });
+        end = lines[k].end;
+        k += 1;
+    }
+    let masked;
+    let src = if inner.len() > 1 {
+        // Later lines still carry their `% `: blank it (same length, so every span
+        // keeps pointing at the right place in the file).
+        let mut bytes = ctx.src.as_bytes().to_vec();
+        for (k, line) in inner.iter().enumerate() {
+            let (_, tsk) = trimmed(ctx, lines[i + k]);
+            if let Some(prefix) = bytes.get_mut(tsk..line.start) {
+                prefix.fill(b' ');
+            }
+        }
+        masked = String::from_utf8(bytes).unwrap_or_else(|_| ctx.src.to_string());
+        masked.as_str()
+    } else {
+        ctx.src
+    };
+    let blocks = comment_inner(src, &inner, depth);
+    out.push(block(
+        BlockKind::Comment(Comment {
+            blocks,
+            braces: false,
+            closed: true,
+        }),
+        Span::new(ts, end.max(ts)),
+    ));
+    Some(k)
+}
+
+/// `%` alone, or `%` and a space: a comment line. `%{` is a block comment, and
+/// `%word` is left for the directives.
+fn is_line_comment(t: &str) -> bool {
+    match t.strip_prefix('%') {
+        Some(rest) => rest.is_empty() || rest.starts_with(char::is_whitespace),
+        None => false,
+    }
+}
+
+fn block_comment(
+    ctx: &mut Ctx<'_>,
+    lines: &[Line],
+    i: usize,
+    depth: usize,
+    out: &mut Vec<Block>,
+) -> usize {
+    let (_, ts) = trimmed(ctx, lines[i]);
+    let ends = |ctx: &Ctx<'_>, line: Line, from: usize| -> Option<usize> {
+        let from = from.min(line.end);
+        let body = ctx.text(Span::new(from, line.end)).trim_end();
+        body.ends_with("%}").then(|| from + body.len() - 2)
+    };
+    let mut inner = Vec::new();
+    let mut close = None;
+    for (k, &line) in lines.iter().enumerate().skip(i) {
+        let from = if k == i { ts + 2 } else { line.start };
+        match ends(ctx, line, from) {
+            Some(stop) => {
+                inner.push(Line {
+                    start: from.min(stop),
+                    end: stop,
+                });
+                close = Some(k);
+                break;
+            }
+            None => inner.push(Line {
+                start: from.min(line.end),
+                end: line.end,
+            }),
+        }
+    }
+    let closed = close.is_some();
+    if !closed {
+        ctx.diags.push(
+            Diagnostic::error(Span::new(ts, ts + 2), "this `%{` is never closed")
+                .expecting(["a closing `%}`"]),
+        );
+    }
+    let last = close.unwrap_or(lines.len() - 1);
+    let blocks = comment_inner(ctx.src, &inner, depth);
+    out.push(block(
+        BlockKind::Comment(Comment {
+            blocks,
+            braces: true,
+            closed,
+        }),
+        Span::new(ts, lines[last].end.max(ts)),
+    ));
+    last + 1
+}
+
+/// Reads the blocks inside a comment with a context of their own, so nothing in
+/// it counts: its problems are dropped, and it takes no equation number, label or
+/// `%noeval`. `src` is the file text (or a copy with the `%` prefixes blanked).
+fn comment_inner(src: &str, inner: &[Line], depth: usize) -> Vec<Block> {
+    if depth >= MAX_BLOCK_DEPTH {
+        return Vec::new();
+    }
+    let mut sub = Ctx::new(src);
+    let mut blocks = parse_blocks(&mut sub, inner, depth + 1);
+    for b in &mut blocks {
+        if let BlockKind::DisplayMath(m) = &mut b.kind {
+            m.number = None;
+            m.label = None;
+        }
+    }
+    blocks
+}
+
+// ---- title block and references ---------------------------------------------
+
+fn title_start(t: &str) -> Option<(TitleKind, usize)> {
+    TitleKind::ALL.iter().find_map(|&kind| {
+        let after = t.strip_prefix(kind.as_str())?.strip_prefix(':')?;
+        // `Title:` alone on its line is not a title line.
+        if kind != TitleKind::Abstract && after.trim().is_empty() {
+            return None;
+        }
+        let gap = after.len() - after.trim_start().len();
+        Some((kind, kind.as_str().len() + 1 + gap))
+    })
+}
+
+/// `Title:`, `Author:` … with or without words after the colon.
+fn title_keyword(t: &str) -> Option<(TitleKind, usize)> {
+    TitleKind::ALL.iter().find_map(|&kind| {
+        let after = t.strip_prefix(kind.as_str())?.strip_prefix(':')?;
+        let gap = after.len() - after.trim_start().len();
+        Some((kind, kind.as_str().len() + 1 + gap))
+    })
+}
+
+fn title_field(
+    ctx: &mut Ctx<'_>,
+    lines: &[Line],
+    i: usize,
+    kind: TitleKind,
+    start: usize,
+    content_start: usize,
+    out: &mut Vec<Block>,
+) -> usize {
+    let mut k = i + 1;
+    if kind == TitleKind::Abstract {
+        while k < lines.len() && !is_blank(ctx, lines[k]) && !interrupts(ctx, lines, k) {
+            k += 1;
+        }
+    }
+    let content = trim_range(
+        ctx,
+        Span::new(content_start.min(lines[k - 1].end), lines[k - 1].end),
+    );
+    let inlines = parse_inlines(ctx.src, content, &mut ctx.diags);
+    out.push(block(
+        BlockKind::Title(TitleField {
+            kind,
+            content: inlines,
+        }),
+        Span::new(start, content.end.max(start)),
+    ));
+    k
+}
+
+fn references(
+    ctx: &mut Ctx<'_>,
+    lines: &[Line],
+    i: usize,
+    head: super::refs::Head,
+    start: usize,
+    out: &mut Vec<Block>,
+) -> usize {
+    let mut entries = Vec::new();
+    let mut from = None;
+    let mut k = i + 1;
+    let mut end = lines[i].end;
+    match head {
+        super::refs::Head::From { path, path_span } => from = Some((path, path_span)),
+        super::refs::Head::Entries => {
+            while k < lines.len() && !is_blank(ctx, lines[k]) {
+                let (t, ts) = trimmed(ctx, lines[k]);
+                if !t.starts_with("[@") {
+                    break;
+                }
+                let span = Span::new(ts, ts + t.trim_end().len());
+                match super::refs::entry(ctx.text(span), span.start) {
+                    Ok(r) => entries.push(r),
+                    Err(why) => ctx.diags.push(
+                        Diagnostic::error(
+                            span,
+                            format!("this reference entry is malformed: {why}"),
+                        )
+                        .expecting(["`[@key] Author | Title | Year | link`"]),
+                    ),
+                }
+                end = lines[k].end;
+                k += 1;
+            }
+        }
+    }
+    out.push(block(
+        BlockKind::References(References { entries, from }),
+        Span::new(start, end.max(start)),
+    ));
+    k
+}
+
+/// `cite numbered` or `cite author-year` (the text after the `%`).
+fn cite_directive(text: &str) -> Option<CiteStyle> {
+    match text.strip_prefix("cite")?.trim() {
+        "numbered" => Some(CiteStyle::Numbered),
+        "author-year" | "authoryear" => Some(CiteStyle::AuthorYear),
+        _ => None,
+    }
 }

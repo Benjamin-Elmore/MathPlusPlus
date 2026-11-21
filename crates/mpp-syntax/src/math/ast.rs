@@ -40,11 +40,13 @@ pub struct Line {
 /// The core of a statement line.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    /// `head := body` or `head ≡ body`.
+    /// `head := body` or `head ≡ body`, optionally asking for the value straight away
+    /// (`T_0 := 2\pi\sqrt{L/g} \approx ?`).
     Definition {
         head: DefHead,
         kind: DefKind,
         body: Node,
+        query: Option<QueryMode>,
     },
     /// `expr = ?`, `expr ≈ ?` or `expr = ?!`.
     Query {
@@ -117,6 +119,9 @@ pub enum Clause {
     Range(Range),
     /// Any other relation chain, e.g. `x > 0`.
     Condition(Node),
+    /// A condition in brackets after a query or check, `(x > 0)`: an assumption that
+    /// holds for the whole display block.
+    Assumption(Node),
 }
 
 impl Clause {
@@ -125,7 +130,7 @@ impl Clause {
         match self {
             Clause::Where { span, .. } => *span,
             Clause::Range(r) => r.span,
-            Clause::Condition(n) => n.span,
+            Clause::Condition(n) | Clause::Assumption(n) => n.span,
         }
     }
 }
@@ -137,7 +142,73 @@ pub struct Node {
     pub span: Span,
 }
 
+impl Drop for Node {
+    /// A long chain (`a + b + … `, up to 10 000 operators) is a tree as deep as the
+    /// chain is long, and dropping it by plain recursion would need stack in
+    /// proportion. The children of the kinds that chain are moved to a list and
+    /// dropped one at a time instead, so dropping any tree takes little stack.
+    fn drop(&mut self) {
+        let mut pending: Vec<Node> = Vec::new();
+        take_children(&mut self.kind, &mut pending);
+        while let Some(mut n) = pending.pop() {
+            take_children(&mut n.kind, &mut pending);
+        }
+    }
+}
+
+/// Moves the children of `kind` that can form deep chains into `out`.
+fn take_children(kind: &mut NodeKind, out: &mut Vec<Node>) {
+    let mut take = |b: &mut Box<Node>| {
+        let span = b.span;
+        out.push(std::mem::replace(
+            &mut **b,
+            Node::new(NodeKind::Error, span),
+        ));
+    };
+    match kind {
+        NodeKind::Binary { lhs, rhs, .. } => {
+            take(lhs);
+            take(rhs);
+        }
+        NodeKind::Frac { num, den, .. } => {
+            take(num);
+            take(den);
+        }
+        NodeKind::Pow { base, exp } => {
+            take(base);
+            take(exp);
+        }
+        NodeKind::Subscript { base, sub } => {
+            take(base);
+            take(sub);
+        }
+        NodeKind::Unary { operand, .. } | NodeKind::Factorial { operand, .. } => take(operand),
+        NodeKind::Prime { base, .. } => take(base),
+        NodeKind::Group { inner, .. }
+        | NodeKind::Fenced { inner, .. }
+        | NodeKind::Styled { inner, .. }
+        | NodeKind::Accented { inner, .. } => take(inner),
+        NodeKind::Call { callee, args, .. } => {
+            take(callee);
+            out.append(args);
+        }
+        NodeKind::Tuple { elems, .. } | NodeKind::Set { elems, .. } => out.append(elems),
+        NodeKind::Relation { first, rest } => {
+            take(first);
+            out.extend(rest.drain(..).map(|(_, n)| n));
+        }
+        _ => {}
+    }
+}
+
 impl Node {
+    /// The node's kind and span, taken apart (a node can't be moved out of field by
+    /// field, because of its [`Drop`]).
+    pub fn into_parts(mut self) -> (NodeKind, Span) {
+        let span = self.span;
+        (std::mem::replace(&mut self.kind, NodeKind::Error), span)
+    }
+
     /// Makes a node.
     pub fn new(kind: NodeKind, span: Span) -> Self {
         Node { kind, span }
@@ -175,6 +246,21 @@ impl Node {
     pub fn is_error(&self) -> bool {
         matches!(self.kind, NodeKind::Error)
     }
+
+    /// An empty template box with a label (`lower`, `upper`, `variable` …).
+    pub fn placeholder(label: impl Into<String>, span: Span) -> Self {
+        Node::new(
+            NodeKind::Placeholder {
+                label: label.into(),
+            },
+            span,
+        )
+    }
+
+    /// True for an empty slot: an error placeholder or a template box.
+    pub fn is_slot(&self) -> bool {
+        matches!(self.kind, NodeKind::Error | NodeKind::Placeholder { .. })
+    }
 }
 
 /// Every kind of expression.
@@ -194,6 +280,11 @@ pub enum NodeKind {
     Continuation,
     /// Placeholder where parsing failed; a diagnostic points here.
     Error,
+    /// An empty template box the editor inserted (C9), shown as a dotted box
+    /// with a grey label such as `lower` or `upper`. The parser never makes one.
+    Placeholder {
+        label: String,
+    },
     /// `f(x, y)`: a call when `f` is a function, otherwise a product.
     Call {
         callee: Box<Node>,
@@ -314,6 +405,32 @@ pub enum NodeKind {
         first: Box<Node>,
         rest: Vec<(RelOp, Node)>,
     },
+    /// A number with a unit: `9.81\,\mathrm{m/s^2}`, `100 km/h`, `30^\circ`.
+    Quantity {
+        value: Box<Node>,
+        unit: UnitText,
+    },
+    /// A conversion: `v \operatorname{in} \mathrm{km/h}`, `T in {}^\circ\mathrm{F}`.
+    Convert {
+        expr: Box<Node>,
+        unit: UnitText,
+    },
+    /// Set-builder notation: `\{x \in \mathbb{R} : x^2 < 4\}`, `\{x \mid x > 0\}`.
+    SetBuilder {
+        var: Box<Node>,
+        domain: Option<Box<Node>>,
+        condition: Box<Node>,
+    },
+}
+
+/// A unit as written after a number or after `in`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnitText {
+    /// The unit for the core to read (`m/s^2`, `\mathrm{km/h}`, `°C`).
+    pub text: String,
+    /// Written in plain letters (`m/s`) rather than `\mathrm{}` or a degree sign.
+    pub plain: bool,
+    pub span: Span,
 }
 
 /// A name: a letter, a Greek letter, or a longer upright name, with decorations.
@@ -422,6 +539,8 @@ pub enum BinOp {
     Union,
     Intersect,
     SetMinus,
+    /// `a \bmod n`: the remainder of `a` on division by `n`.
+    Mod,
     And,
     Or,
 }
@@ -546,6 +665,9 @@ pub enum Bracket {
     TexGroup,
     /// `\left.` with an invisible delimiter.
     None,
+    /// The evaluation bar `\left. … \right|_{x=a}` or `… \bigg|_{x=a}`: nothing
+    /// before, a bar after (the point goes in the subscript).
+    EvalBar,
 }
 
 /// `\sum`, `\prod`, `\coprod`.
@@ -585,6 +707,9 @@ pub struct Integral {
     pub dot: bool,
     /// Written `\int \frac{dx}{x}`: the differential sat in the numerator, which is now `1`.
     pub diff_in_numerator: bool,
+    /// Written as a differential form, `\oint_C (P\,dx + Q\,dy)`: the body is the tuple of
+    /// coefficients `(P, Q)`, one per differential in `diffs`.
+    pub form: bool,
 }
 
 /// ∫ ∬ ∭ ∮ ∯.

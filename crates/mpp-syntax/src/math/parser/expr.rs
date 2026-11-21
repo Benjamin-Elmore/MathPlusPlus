@@ -3,8 +3,8 @@
 use super::{Ctx, Parser};
 use crate::lexer::{Delim, Op, Tok};
 use crate::math::ast::{
-    Accent, BinOp, Bracket, DerivNotation, Derivative, FracStyle, MulStyle, Name, Node, NodeKind,
-    RelOp, UnaryOp,
+    Accent, BinOp, Bracket, Constant, DerivNotation, Derivative, FracStyle, MulStyle, Name, Node,
+    NodeKind, RelOp, UnaryOp, UnitText,
 };
 use crate::span::Span;
 use crate::symbols::{Font, SymbolKind};
@@ -19,6 +19,7 @@ impl Parser<'_> {
     /// A relation chain (`a = b < c`), stopping before `= ?` so a query can see it.
     pub(super) fn parse_relation(&mut self) -> Node {
         let first = self.parse_expr();
+        let first = self.maybe_convert(first);
         self.relation_tail(first)
     }
 
@@ -28,7 +29,8 @@ impl Parser<'_> {
         let first = if self.at(|t| matches!(t, Tok::Rel(_))) {
             Node::new(NodeKind::Continuation, Span::point(self.cur_span().start))
         } else {
-            self.parse_expr()
+            let e = self.parse_expr();
+            self.maybe_convert(e)
         };
         self.relation_tail(first)
     }
@@ -44,6 +46,7 @@ impl Parser<'_> {
             }
             self.bump();
             let rhs = self.parse_expr();
+            let rhs = self.maybe_convert(rhs);
             rest.push((op, rhs));
         }
         if rest.is_empty() {
@@ -70,7 +73,47 @@ impl Parser<'_> {
             let rhs = self.parse_and();
             lhs = binary(BinOp::Or, lhs, rhs);
         }
-        lhs
+        self.maybe_eval_bar(lhs)
+    }
+
+    /// True at a bar that ends an expression and takes a subscript, `|_{x=2}` (also
+    /// `\big|`, `\bigg|`): the evaluation bar, not the start of an absolute value.
+    pub(super) fn at_eval_bar(&self) -> bool {
+        matches!(self.peek(), Some(Tok::Pipe))
+            && matches!(
+                self.peek_n(1),
+                Some(Tok::Underscore) | Some(Tok::Subscript(_))
+            )
+    }
+
+    /// `f(x) \bigg|_{x=2}`: the expression before the bar, evaluated at the point in
+    /// the subscript (the same node as `\left. f(x) \right|_{x=2}`).
+    fn maybe_eval_bar(&mut self, expr: Node) -> Node {
+        if self.ctx.bars || !self.at_eval_bar() {
+            return expr;
+        }
+        self.bump();
+        let span = expr.span.join(self.prev_span());
+        let group = Node::new(
+            NodeKind::Group {
+                inner: Box::new(expr),
+                bracket: Bracket::EvalBar,
+                sized: true,
+            },
+            span,
+        );
+        let sub = match self.peek().cloned() {
+            Some(Tok::Subscript(text)) => {
+                let at = self.cur_span();
+                self.bump();
+                self.fragment(&text, at)
+            }
+            _ => {
+                self.bump();
+                self.parse_sub_script()
+            }
+        };
+        attach_sub(group, sub)
     }
 
     fn parse_and(&mut self) -> Node {
@@ -194,6 +237,9 @@ impl Parser<'_> {
     /// An atom followed by `^`, `_`, primes, `!`, Unicode scripts, accents and call brackets.
     pub(super) fn parse_postfix(&mut self) -> Node {
         let mut node = self.parse_atom();
+        if matches!(node.kind, NodeKind::Number(_)) {
+            node = self.with_unit(node);
+        }
         let mut count = 0;
         while let Some(tok) = self.peek().cloned() {
             if !self.chain_ok(count) {
@@ -243,22 +289,169 @@ impl Parser<'_> {
                 Tok::Open {
                     delim: Delim::Paren,
                     ..
-                } if callable(&node) => {
-                    let (args, sized, end) = self.call_args();
-                    let span = node.span.join(end);
-                    Node::new(
-                        NodeKind::Call {
-                            callee: Box::new(node),
-                            args,
-                            sized,
-                        },
-                        span,
-                    )
-                }
+                } if callable(&node) => self.call_node(node),
+                // `\mathbf 1[x^2 + y^2 \le 1]`: the indicator of a condition.
+                Tok::Open {
+                    delim: Delim::Square,
+                    ..
+                } if is_indicator(&node) => self.call_node(node),
                 _ => break,
             };
         }
+        if is_power_of_ten(&node) {
+            // `1.5 \times 10^{3}\,\mathrm{m}`: the unit belongs to the whole number.
+            node = self.with_unit(node);
+        }
         node
+    }
+
+    /// `name(args…)`: the call whose arguments start at the bracket ahead.
+    fn call_node(&mut self, callee: Node) -> Node {
+        let (args, sized, end) = self.call_args();
+        let span = callee.span.join(end);
+        Node::new(
+            NodeKind::Call {
+                callee: Box::new(callee),
+                args,
+                sized,
+            },
+            span,
+        )
+    }
+
+    /// A number followed by a unit becomes a quantity (`9.81 m/s^2`, `30^\circ`).
+    fn with_unit(&mut self, value: Node) -> Node {
+        // The end of the last token read (a braced exponent's `}` included).
+        let start = self.prev_end().max(value.span.end);
+        let Some(text) = start.checked_sub(self.base).and_then(|r| self.src.get(r..)) else {
+            return value;
+        };
+        let Some(found) = crate::units::after_number(text) else {
+            return value;
+        };
+        // In an integrand, `1 \, dA` ends with the differential, not deci-amperes.
+        if self.ctx.in_integral && found.plain && found.text.starts_with('d') {
+            return value;
+        }
+        let end = start + found.len;
+        if !self.consume_to(end) {
+            return value;
+        }
+        let unit = UnitText {
+            text: found.text,
+            plain: found.plain,
+            span: Span::new(start + found.lead, end),
+        };
+        let span = value.span.join(unit.span);
+        Node::new(
+            NodeKind::Quantity {
+                value: Box::new(value),
+                unit,
+            },
+            span,
+        )
+    }
+
+    /// Consumes the tokens up to the byte offset `end`, which must fall between tokens.
+    fn consume_to(&mut self, end: usize) -> bool {
+        let mut k = self.pos;
+        let mut last = None;
+        while k < self.stop {
+            let Some(t) = self.toks.get(k) else { break };
+            if t.span.start >= end {
+                break;
+            }
+            if t.span.end > end {
+                return false;
+            }
+            last = Some(t.span.end);
+            k += 1;
+        }
+        if last != Some(end) {
+            return false;
+        }
+        self.pos = k;
+        true
+    }
+
+    /// True when the next token is a bare `in` followed by a unit that reads as a
+    /// conversion target (see [`Parser::maybe_convert`]).
+    pub(super) fn at_unit_conversion(&self) -> bool {
+        let Some(tok) = self.toks.get(self.pos).filter(|_| self.pos < self.stop) else {
+            return false;
+        };
+        if !matches!(tok.kind, Tok::Rel(RelOp::In)) || self.text(tok.span) != "in" {
+            return false;
+        }
+        tok.span
+            .end
+            .checked_sub(self.base)
+            .and_then(|r| self.src.get(r..))
+            .and_then(crate::units::conversion_target)
+            .is_some_and(|f| !f.plain || crate::units::is_compound(&f.text))
+    }
+
+    /// `expr \operatorname{in} unit`, `expr in unit` or `expr \text{ in } unit`: a
+    /// conversion. A bare `in` that is not followed by a unit stays the relation `∈`.
+    pub(super) fn maybe_convert(&mut self, expr: Node) -> Node {
+        let Some(tok) = self.toks.get(self.pos).filter(|_| self.pos < self.stop) else {
+            return expr;
+        };
+        let tok_span = tok.span;
+        let explicit = match &tok.kind {
+            Tok::OperatorName(n) if n == "in" => true,
+            Tok::Text(t) if t.trim() == "in" => true,
+            Tok::Rel(RelOp::In) if self.text(tok_span) == "in" => false,
+            _ => return expr,
+        };
+        let Some(text) = tok_span
+            .end
+            .checked_sub(self.base)
+            .and_then(|r| self.src.get(r..))
+        else {
+            return expr;
+        };
+        let Some(found) = crate::units::conversion_target(text) else {
+            if explicit {
+                self.bump();
+                // Read what was written there, so it is reported once.
+                let what = if self.can_start_factor() {
+                    self.parse_postfix().span
+                } else {
+                    Span::point(tok_span.end)
+                };
+                self.error(
+                    what,
+                    "expected a unit after `in`".to_string(),
+                    &["a unit such as `\\mathrm{km/h}`"],
+                );
+            }
+            return expr;
+        };
+        // `x in S` is membership: after a bare `in`, a one-letter plain unit is not enough.
+        if !explicit && found.plain && !crate::units::is_compound(&found.text) {
+            return expr;
+        }
+        let end = tok_span.end + found.len;
+        let saved = self.pos;
+        self.bump();
+        if !self.consume_to(end) {
+            self.pos = saved;
+            return expr;
+        }
+        let unit = UnitText {
+            text: found.text,
+            plain: found.plain,
+            span: Span::new(tok_span.end + found.lead, end),
+        };
+        let span = expr.span.join(unit.span);
+        Node::new(
+            NodeKind::Convert {
+                expr: Box::new(expr),
+                unit,
+            },
+            span,
+        )
     }
 
     /// `^\prime` or `^{\prime\prime}`: returns the prime count and consumes it.
@@ -343,7 +536,8 @@ impl Parser<'_> {
         match self.peek()? {
             Tok::LBrace => {
                 let open = self.pos;
-                let close = self.matching_close(open);
+                // A label is one short word, so a long group is never one.
+                let close = self.matching_close_within(open, 64)?;
                 let close_tok = self.toks.get(close).filter(|_| close < self.stop)?;
                 if !matches!(close_tok.kind, Tok::RBrace) {
                     return None;
@@ -382,10 +576,15 @@ impl Parser<'_> {
             return false;
         }
         match t {
-            Tok::Pipe => !self.ctx.bars,
+            Tok::Pipe => !self.ctx.bars && !self.at_eval_bar(),
             Tok::DoublePipe => !self.ctx.norms,
             Tok::Sym(s) if self.ctx.func_arg && s.kind == SymbolKind::Function => false,
             Tok::OperatorName(_) if self.ctx.func_arg => false,
+            // `v \operatorname{in} \mathrm{km/h}`: the conversion ends the product.
+            Tok::OperatorName(n) if n == "in" => false,
+            Tok::Text(t) if t.trim() == "in" => false,
+            // `P \text{ for all } t \ge 0`: the quantifier ends the statement.
+            Tok::Text(t) if is_for_all(t) => false,
             t => starts_operand(t),
         }
     }
@@ -475,15 +674,43 @@ fn mul_op(op: Op) -> Option<MulOp> {
         Op::Cap => MulOp::Bin(BinOp::Intersect),
         Op::Slash => MulOp::Frac(FracStyle::Slash),
         Op::Obelus => MulOp::Frac(FracStyle::Obelus),
+        Op::Mod => MulOp::Bin(BinOp::Mod),
         _ => return None,
     })
 }
 
+/// `10^{3}` or `10^{-6}`: a power of ten that a unit may follow.
+fn is_power_of_ten(node: &Node) -> bool {
+    let NodeKind::Pow { base, exp } = &node.kind else {
+        return false;
+    };
+    let exp = match &exp.ungrouped().kind {
+        NodeKind::Unary { operand, .. } => operand.ungrouped(),
+        _ => exp.ungrouped(),
+    };
+    matches!(&base.kind, NodeKind::Number(t) if t == "10")
+        && matches!(&exp.kind, NodeKind::Number(_))
+}
+
 /// Names (and primed names) can be called: `f(x)`, `f'(x)`, `v_0(t)`.
+/// The bold one `\mathbf 1` (`𝟏`), which before `[…]` is the indicator function.
+pub(super) fn is_indicator(node: &Node) -> bool {
+    matches!(&node.kind, NodeKind::Name(n)
+        if n.sub.is_none() && n.accent.is_none()
+            && (n.base == "𝟏" || (n.base == "1" && n.font == Some(crate::symbols::Font::Bold))))
+}
+
 fn callable(node: &Node) -> bool {
     match &node.kind {
         NodeKind::Name(_) => true,
         NodeKind::Prime { base, .. } => matches!(base.kind, NodeKind::Name(_)),
+        // `\dot x(0)`, `\ddot\theta(t)`: the time derivative of a function, at a point.
+        NodeKind::Derivative(d) => {
+            matches!(d.notation, DerivNotation::Dot(_))
+                && d.of
+                    .as_ref()
+                    .is_some_and(|of| matches!(of.kind, NodeKind::Name(_)))
+        }
         _ => false,
     }
 }
@@ -536,7 +763,8 @@ pub(super) fn pow(base: Node, exp: Node) -> Node {
 
 fn prime(node: Node, count: u8, end: usize) -> Node {
     let span = Span::new(node.span.start, end.max(node.span.end));
-    match node.kind {
+    let (kind, node_span) = node.into_parts();
+    match kind {
         NodeKind::Prime { base, count: c } => Node::new(
             NodeKind::Prime {
                 base,
@@ -546,7 +774,7 @@ fn prime(node: Node, count: u8, end: usize) -> Node {
         ),
         kind => Node::new(
             NodeKind::Prime {
-                base: Box::new(Node::new(kind, node.span)),
+                base: Box::new(Node::new(kind, node_span)),
                 count,
             },
             span,
@@ -556,13 +784,14 @@ fn prime(node: Node, count: u8, end: usize) -> Node {
 
 fn factorial(node: Node, end: usize) -> Node {
     let span = Span::new(node.span.start, end.max(node.span.end));
-    match node.kind {
+    let (kind, node_span) = node.into_parts();
+    match kind {
         NodeKind::Factorial { operand, count: 1 } => {
             Node::new(NodeKind::Factorial { operand, count: 2 }, span)
         }
         kind => Node::new(
             NodeKind::Factorial {
-                operand: Box::new(Node::new(kind, node.span)),
+                operand: Box::new(Node::new(kind, node_span)),
                 count: 1,
             },
             span,
@@ -607,6 +836,12 @@ pub(super) fn make_accent(accent: Accent, arg: Node, span: Span) -> Node {
             span,
         );
     }
+    // `\hat\pi`: an estimate of π is a name of its own, never the constant.
+    if let NodeKind::Constant(Constant::Pi) = &arg.ungrouped().kind {
+        let mut name = Name::simple("π");
+        name.accent = Some(accent);
+        return Node::new(NodeKind::Name(name), span);
+    }
     if let NodeKind::Name(name) = &arg.ungrouped().kind {
         if name.accent.is_none() {
             let mut name = name.clone();
@@ -625,19 +860,21 @@ pub(super) fn make_accent(accent: Accent, arg: Node, span: Span) -> Node {
 
 /// Removes plain round brackets used only for grouping (`x^(n+1)`, `sqrt(x)`).
 pub(super) fn ungroup_paren(node: Node) -> Node {
-    match node.kind {
+    let (kind, node_span) = node.into_parts();
+    match kind {
         NodeKind::Group {
             inner,
             bracket: Bracket::Paren,
             sized: false,
         } => *inner,
-        kind => Node::new(kind, node.span),
+        kind => Node::new(kind, node_span),
     }
 }
 
 /// A round pair `(a, b)` read where a set is expected becomes the open interval.
 pub(crate) fn as_interval(node: Node) -> Node {
-    match node.kind {
+    let (kind, node_span) = node.into_parts();
+    match kind {
         NodeKind::Tuple {
             mut elems,
             bracket: Bracket::Paren,
@@ -654,12 +891,12 @@ pub(crate) fn as_interval(node: Node) -> Node {
                         hi_closed: false,
                         sized,
                     },
-                    node.span,
+                    node_span,
                 ),
-                _ => Node::error(node.span),
+                _ => Node::error(node_span),
             }
         }
-        kind => Node::new(kind, node.span),
+        kind => Node::new(kind, node_span),
     }
 }
 
@@ -691,4 +928,11 @@ pub(super) fn name_node(node: &Node) -> Node {
         Some(name) => Node::new(NodeKind::Name(name), node.span),
         None => node.clone(),
     }
+}
+
+/// `\text{ for all }` (also "for every", "for each"): a quantifier over the condition
+/// that follows.
+pub(super) fn is_for_all(text: &str) -> bool {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    matches!(words.as_slice(), ["for", "all" | "every" | "each"])
 }

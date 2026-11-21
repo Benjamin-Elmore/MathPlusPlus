@@ -1,0 +1,22 @@
+1. 2D curve + tangent | sliders x_0=1 | tangent at x = 1: y = x − 2
+2. 2D curve + riemann | sliders n=8 | Left Riemann sum, n = 8: 2.188; exact integral ≈ 2.667
+3. 2D curve + riemann | sliders n=8 | Right Riemann sum, n = 8: 3.188; exact integral ≈ 2.667
+4. 2D curve + riemann | sliders n=8 | Midpoint rule, n = 8: 2.656; exact integral ≈ 2.667
+5. 2D curve + riemann | sliders n=8 | Trapezoid rule, n = 8: 2.688; exact integral ≈ 2.667
+6. 2D curve + curve + area between | area between x = 0 and x = 1: 0.1667
+7. 2D curve + curve + area between | area between x = 0.7854 and x = 3.927: 2.828
+8. 3D revolve | turned about y = 0, disk method: volume ≈ 25.13
+9. 3D revolve | turned about y = 0, washer method: volume ≈ 0.4189
+10. 3D revolve | turned about x = 0, shell method: volume ≈ 25.13
+11. 2D slope field
+12. 2D slope field
+13. 2D phase portrait
+14. 2D contour + gradient field
+15. 2D vector field
+16. 2D contour
+17. 3D surface + tangent plane | sliders x_0=1, y_0=1 | tangent plane at (1, 1): z = 2 + 2(x − 1) + 2(y − 1)
+18. 2D curve + taylor | sliders n=5 | Taylor polynomial T₅(x) of degree 5 about x = 0
+19. 2D curve + newton | sliders x_0=3, steps=4 | x₄ ≈ 1.414 after 4 steps
+20. 2D curve + scatter
+21. 2D histogram
+22. 2D box plot

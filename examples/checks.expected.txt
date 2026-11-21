@@ -1,0 +1,34 @@
+9: \sin^2 x + \cos^2 x \overset{?}{=} 1
+    ✓ (proved symbolically)
+11: \sin 2x \overset{?}{=} 2 \sin x \cos x
+    ✓ (proved symbolically)
+13: \cos 2x \overset{?}{=} \cos^2 x - \sin^2 x
+    ✓ (proved symbolically)
+15: \tan^2 x + 1 \overset{?}{=} \sec^2 x
+    ✓ (proved symbolically)
+17: \sin(x + y) \overset{?}{=} \sin x \cos y + \cos x \sin y
+    ✓ (proved symbolically)
+19: \cosh^2 x - \sinh^2 x ≟ 1
+    ✓ (proved symbolically)
+21: (a + b)^2 ?= a^2 + 2ab + b^2
+    ✓ (proved symbolically)
+25: \frac{d}{dx} x^2 \sin x \overset{?}{=} 2x \sin x + x^2 \cos x
+    ✓ (proved symbolically)
+27: \int x e^x \, dx \overset{?}{=} (x - 1) e^x
+    ✓ (proved symbolically)
+    note: the two sides agree up to a constant of integration
+31: \int \sin x \cos x \, dx \overset{?}{=} -\frac{\cos^2 x}{2}
+    ✓ (proved symbolically)
+    note: the two sides agree up to a constant of integration
+33: \lim_{x \to 0} \frac{1 - \cos x}{x^2} \overset{?}{=} \frac{1}{2}
+    ✓ (proved symbolically)
+35: \sum_{n=1}^{\infty} \frac{1}{2^n} \overset{?}{=} 1
+    ✓ (proved symbolically)
+39: (x + 1)^2 \overset{?}{=} x^2 + 1
+    ✗ (at x = 1: left side 4, right side 2)
+41: \sqrt{x^2} \overset{?}{=} x
+    ✗ (at x = -1: left side 1, right side -1)
+43: \frac{d}{dx} \ln(2x) \overset{?}{=} \frac{2}{x}
+    ✗ (at x = 1: left side 1, right side 2)
+45: \int_0^1 x^2 \, dx \overset{?}{=} \frac{1}{2}
+    ✗ (left side 0.3333333333, right side 0.5)

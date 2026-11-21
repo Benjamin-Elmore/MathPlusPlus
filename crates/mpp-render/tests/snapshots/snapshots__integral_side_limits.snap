@@ -1,0 +1,13 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "text_svg(r\"\\int_0^1 x^2 \\, dx\", &opts)"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="78.1" height="53.02" viewBox="0 0 78.1 53.02" overflow="visible">
+<text x="0" y="31.52" font-family="Latin Modern Math" font-size="20" fill="#111111">∫</text>
+<text x="19.98" y="9.3" font-family="Latin Modern Math" font-size="14" fill="#111111">1</text>
+<text x="8.16" y="52.74" font-family="Latin Modern Math" font-size="14" fill="#111111">0</text>
+<text x="32.4" y="31.52" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="43.84" y="24.26" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<text x="56.26" y="31.52" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="66.66" y="31.52" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+</svg>

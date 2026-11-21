@@ -1,0 +1,58 @@
+# N12 standard library: notes for the integrator
+
+Lane `stdlib` (branch `wip/stdlib`, on `feat/domains` + N16). The library is 22 formula sheets in `std/` written in Math++ itself, embedded in the binary, plus the wiring that lets documents call the N16 functions by their textbook names and seed their random samples.
+
+## What was built
+
+- **`std/`** (repository root): `prelude`, `constants`, `algebra`, `trig`, `hyperbolic`, `calculus`, `geometry`, `linalg`, `complex`, `stats`, `numbers`, `physics`, `finance`, and the catalogue fields `number-theory`, `analysis`, `special`, `discrete`, `probability`, `information`, `algebra-structures`, `topology-geometry`, `applied`. Each entry has a one-line description above it (what hovers show), compute lines are definitions (`A_{\text{circle}}(r) := \pi r^2`, `\varphi \equiv …`), check lines are identities and worked examples written `\overset{?}{=}`, and state lines are `**Theorem.**` blocks that are never evaluated. About 660 checks, 150 formulas, 49 constants and 42 stated theorems.
+- **`std/catalogue-map.mpp`**: the classification table the catalogue asks for, one row per line of `work/stdlib-catalogue.mpp` (174 lines: compute 72, check 76, state 26), naming the file and the entry. It also says how each name clash is resolved. This table replaces the one the catalogue suggested putting in this note.
+- **Embedding** (`crates/mpp-eval/build.rs`, new): lists every `std/*.mpp` into `$OUT_DIR/stdlib_files.rs` with `include_str!`, in name order, and re-runs when a file changes. No new dependencies and no `Cargo.toml` change (Cargo picks up `build.rs` by itself).
+- **`crates/mpp-eval/src/stdlib.rs`** (new): `files()`, `source(path)`, `embedded()` (an `EmbeddedSources` layer) and `index()`, the list of every constant, function, identity and theorem with its file, line and description, for the C10 Explorer section, the C9 Insert → Library group and autocomplete.
+- **`crates/mpp-eval/src/fields_wire.rs`** (new): textbook names for the N16 operators and `%seed` (below).
+- **`crates/mpp-eval/src/block/seed.rs`** (new): the `%seed n` directive and the seeding of sampling calls.
+
+## One-line hooks in existing `mpp-eval` files
+
+- `lib.rs`: `pub mod fields_wire;` and `pub mod stdlib;`.
+- `files.rs`: `FileImporter::new()` reads through `LayeredSource::over_files(stdlib::embedded())`, so `std/…` paths resolve to the embedded files from any document (and from inside library files); everything else still comes from disk.
+- `holders.rs`: `h.register(crate::fields_wire::evaluate);` in `Holders::default()`.
+- `lower.rs`: at the top of `Lowerer::call`, a textbook name applied to arguments lowers to its operator.
+- `block.rs`: `mod seed;`, the `BlockKind::Directive(d)` arm calls `seed_directive`, and `lower` / `lower_in_function` pass their result through `seeded`.
+
+## Textbook names
+
+Applied to arguments, and only when the document does not bind the name itself (a variable, a function, a parameter or an index keeps its own meaning, so `\tau := 3` makes `\tau(2)` a product again): `\tau(n)` → `divcount`, `\sigma(n)` and `\sigma_k(n)` → `divsum`, `\mu(n)` → `mobius`, `\varphi(n)` / `\phi(n)` → `totient`, `\zeta(s)` → `zeta`, `\zeta(s, a)` → `hurwitzzeta`, `L(s, \chi)` → `dirichletl`, `B(a, b)` → `beta`, `W(x)`, `W_0(x)`, `W_{-1}(x)` → `lambertw`, `J_n(x)` → `besselj`, `P_n(x)` → `legendrep`, `T_n(x)` → `chebyshevt`, `U_n(x)` → `chebyshevu`, `K(k)` → `ellipk`, `E(k)` → `ellipe`, `\delta(x)`, `\delta'(x)` → `dirac`, `H(x)` → `heaviside`, `\Phi(z)` → `normalcdf`, `v_p(x)` → `padicval`. A constant brought in from the library (`\varphi` from `std/constants.mpp`) still means the function when applied, as the clash rule asks.
+
+## `%seed`
+
+`%seed 42` stores the seed under the reserved key `seed:` (scoped like a definition, so the blocks below re-run when it changes). A sampling call written without its seed (`\operatorname{runif}(n)`, `\operatorname{rnorm}(n)`, `\operatorname{brownian}(n, T)`, `\operatorname{montecarlo}(f, box, N)`) gets one derived from the document seed, the block's id and the line's place in the block (SplitMix64), so two calls differ, edits elsewhere don't change them, and every run gives the same numbers on every computer. Without `%seed` the seed is 0 and the line says so. A malformed `%seed x` is an error on its line. An explicit seed argument still works as before.
+
+## Grammar and guide (integrator-only files)
+
+**Grammar**, §1 `directive` comment and §2.4: add `%seed n` (a whole number) as a directive that fixes the seed of random sampling from its line to the end of the file.
+
+**Guide**, a section "The standard library":
+
+> ## The standard library
+>
+> Math++ comes with formula sheets for the common fields, written in Math++ itself so they read like the back of a textbook: constants, algebra, trigonometry, hyperbolic functions, calculus, geometry, linear algebra, complex numbers, statistics, number sequences, physics (with CODATA 2022 constants and their units), finance, and the wider fields (number theory, analysis, special functions, discrete maths, probability, information theory, algebraic structures, topology and geometry, applied maths). $\pi$, $e$, $i$ and $\infty$ are always there. Bring in a whole sheet with `![[std/geometry.mpp]]`, or just the names you need: `Using $\varphi, \gamma$ from [[std/constants.mpp]].` Your own names always win over a sheet's.
+>
+> Every formula is a named function with a label you would see in a book, such as $A_{\text{circle}}(r)$, $V_{\text{ball}}(r)$, $s_{\text{suvat}}(u, a, t)$ or $\mathrm{PV}_{\text{cont}}(F, r, T)$, and every identity in a sheet is checked when it loads. Theorems that can't be computed, such as Gauss–Bonnet or the Yoneda lemma, are written out as stated results.
+>
+> The textbook names of the special and number-theory functions work without any import as soon as you apply them: $\tau(360)$, $\sigma(28)$, $\mu(30)$, $\varphi(36)$, $\zeta(3)$, $J_0(1)$, $W(1)$, $K(\sin 15°)$. On their own, $\varphi$ is the golden ratio and $\pi$ the circle constant.
+>
+> Put `%seed 42` in a document and its random samples, Monte Carlo sums and Brownian paths come out the same every time. See [[../examples/standard-library.mpp]].
+
+## Tests
+
+`crates/mpp-eval/tests/stdlib.rs`: every file runs with no errors and every check in it passes; every formula has a worked example (a check that calls it); every constant matches its reference (CODATA 2022 for the physical ones, OEIS for the mathematical ones, with a 50-digit literal compared digit by digit where the reference is long; the digits were cross-checked against mpmath); every catalogue line has a row in the map whose entry really is in the named file in the form its class promises (a `$$` line, a check line or a Theorem block); the library imports by `Using` and `![[…]]` without overwriting the document's own names; the index covers every file and every entry has a description; textbook names and seeds work in documents; and `examples/standard-library.mpp` gives `examples/standard-library.expected.txt`. Unit tests in `stdlib.rs` and `fields_wire.rs`.
+
+## Limits and things left for other lanes
+
+- **Checks are numeric where they have to be.** C6's symbolic trigonometry is not on this branch, so many identities pass by the existing numeric spot check (12 random points) rather than by proof; they will upgrade on their own once C6 lands.
+- **What a check can compare.** The check helper compares numbers and expressions only, so the library compares lists with `\operatorname{hamming}(u, v) = 0`, inequalities with `\mathrm{sgn}(b - a) = 1`, and constants with units through a ratio to a unit (`\hbar / (1\,\mathrm{J\,s})`) or to the constant itself. Identities that only hold on part of the line (logarithm laws) are checked at numbers.
+- **`\pi(x)` is not wired.** The parser never makes a call out of `\pi(…)` (π is a constant node), and treating `\pi(r + h)` as prime counting would break geometry formulas, so prime counting is `\operatorname{primepi}(x)`. The lowering hook already handles a call on π if the parser ever produces one; that is a grammar decision for the integrator.
+- **Not wired from the N16 list:** `|x|_p`, `\operatorname{Tr}` on field elements, `[X, Y]` on matrices, `e^{tA}` with a matrix, `\ker A` and `C_n` (use `\operatorname{padicabs}`, `\operatorname{gftrace}`, `\operatorname{liebracket}`, `\operatorname{expm}`, `\operatorname{kernel}`, `\operatorname{catalan}`). N16's numeric fallback (`Env::call_real` → `special::call_real`) and its derivative hook (`special::partial` in `calc::diff`) touch the engine and calculus code, so they are left to those lanes: until then `\frac{d}{dx} H(x)` stays unevaluated and a spot check can't sample `\operatorname{erf}(x)` at a symbolic $x$ (the library checks such functions at numbers).
+- **Found while writing:** `\Gamma'(1)` evaluates to 0 (a prime on a built-in function is treated as a constant); the library uses `-\mathrm{digamma}(1)` instead. A product of two matrices returned by functions needs `\operatorname{matmul}(P, Q)` (the existing ordered-product rule).
+- **Tuples:** an entry of a tuple is `S_1` only for a single plain letter bound with `≡`; the library avoids this so importing a sheet doesn't bring in one-letter helper names.
+- Not pushed (lane instruction for this run).

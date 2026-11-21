@@ -1,0 +1,79 @@
+# Multivariable and vector calculus
+
+## Partial derivatives and the gradient
+
+$$ f(x, y) := x^2 y + y^3 $$
+
+$$ \frac{\partial^2 f}{\partial x \partial y} = ? $$
+
+$$ \operatorname{grad}_{(x,y)=(1,2)} f = ? $$
+
+$$ \operatorname{dirderiv}_{(x,y)=(1,2)}(f, (3, 4)) = ? $$
+
+## Tangent planes and linear approximation
+
+$$ \operatorname{tangent}_{(x,y)=(1,2)} (x^2 + y^2) = ? $$
+
+$$ \operatorname{tangentplane}_{(x,y,z)=(1,2,3)} (x^2 + y^2 + z^2 = 14) = ? $$
+
+$$ \operatorname{linearisation}_{(x,y)=(3,4)} \sqrt{x^2 + y^2} = ? $$
+
+## Extrema
+
+The second-derivative test classifies each critical point:
+
+$$ \operatorname{classify} (x^3 + y^3 - 3xy) = ? $$
+
+Lagrange multipliers on the circle $x^2 + y^2 = 1$:
+
+$$ \operatorname{lagrange}(x y, x^2 + y^2 = 1) = ? $$
+
+## Integrals in other coordinates
+
+The Jacobian ($r$, $r$ and $\rho^2 \sin\phi$) is put in for you.
+
+$$ \operatorname{polar}(x^2 + y^2, \theta \in [0, 2\pi], r \in [0, 2]) = ? $$
+
+$$ \operatorname{cylindrical}(z, \theta \in [0, 2\pi], r \in [0, 1], z \in [0, 2]) = ? $$
+
+$$ \operatorname{spherical}(1, \theta \in [0, 2\pi], \phi \in [0, \pi], \rho \in [0, 1]) = ? $$
+
+$$ \operatorname{changevars}(x + y, (x, y) = (u + v, u - v), u \in [0, 1], v \in [0, 1]) = ? $$
+
+## Vector fields
+
+$$ \nabla \cdot (x y, y z, z x) = ? $$
+
+$$ \nabla \times (x y, y z, z x) = ? $$
+
+$$ \nabla^2 (x^2 + y^2 + z^2) = ? $$
+
+$$ \operatorname{lineintegral}((-y, x), (\cos t, \sin t), t \in [0, 2\pi]) = ? $$
+
+$$ \operatorname{flux}((x, y, z), (\sin u \cos v, \sin u \sin v, \cos u), u \in [0, \pi], v \in [0, 2\pi]) = ? $$
+
+## The integral theorems, both sides worked out
+
+$$ \operatorname{green}((-y, x), x \in [0, 1], y \in [0, 1]) = ? $$
+
+$$ \operatorname{stokes}((-y, x, 0), (\sin u \cos v, \sin u \sin v, \cos u), u \in [0, \pi/2], v \in [0, 2\pi]) = ? $$
+
+$$ \operatorname{divthm}((x, y, z), \rho \in [0, 1], \phi \in [0, \pi], \theta \in [0, 2\pi]) = ? $$
+
+## Implicit differentiation and related rates
+
+$$ \operatorname{implicit}_x (x^2 + y^2 = 25) = ? $$
+
+A ladder of length 5: the foot slides away at 2 m/s when it is 3 m from the wall.
+
+$$ \operatorname{rates}_t (x^2 + y^2 = 25, x = 3, y = 4, dx = 2) = ? $$
+
+## Laplace transforms
+
+$$ \operatorname{laplace} t^2 e^{3t} = ? $$
+
+$$ \operatorname{invlaplace} \frac{s + 1}{s^2 + 2s + 5} = ? $$
+
+Solve $y'' - 3y' + 2y = 0$ with $y(0) = 0$ and $y'(0) = 1$ (coefficients from $y$ up):
+
+$$ \operatorname{lsolve}((2, -3, 1), 0, (0, 1)) = ?! $$

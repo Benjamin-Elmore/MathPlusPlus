@@ -1,0 +1,79 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\providecommand{\degree}{\ensuremath{^\circ}}
+\providecommand{\xmark}{\ensuremath{\times}}
+\providecommand{\omicron}{o}
+\providecommand{\oiint}{\mathop{\oint\mkern-12mu\oint}}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\title{Projectile motion on a slope}
+\author{Ben Elmore}
+\date{20 November 2026}
+\maketitle
+\begin{abstract}
+We find how far a projectile launched at speed $v_0$ and angle $\theta$ travels, following the classical treatment \cite{halliday14} and the numerical study of \cite{lee20,knuth84}.
+\end{abstract}
+\section{Introduction}
+
+Every worksheet works without any of this: the title block, numbered theorems, citations and notes are all optional.
+
+\section{Range on flat ground}
+
+Let $g \equiv 9.81$ and $v_0 \equiv 20$. The range is given in \eqref{range}.
+
+\begin{equation}
+  R(\theta) \coloneqq  \frac{v_0^2 \sin 2\theta}{g} \label{range}
+\end{equation}
+\begin{equation*}
+  R(\pi / 4) = \frac{40000}{981}
+\end{equation*}
+\begin{definition}
+The \emph{range} of a launch is the horizontal distance to the point where the projectile lands again.
+
+\end{definition}
+\begin{theorem}
+For a fixed launch speed the range is largest when $\theta = \pi/4$.
+
+\end{theorem}
+\begin{proof}
+By \eqref{range} the range is proportional to $\sin 2\theta$, which is at most $1$ and equals $1$ exactly when $2\theta = \pi/2$.\footnote{Strictly, for $0 \le \theta \le \pi/2$.}
+
+\end{proof}
+\begin{remark}
+Air resistance is ignored throughout.
+
+\end{remark}
+\section{Slopes}
+
+\begin{lemma}
+A slope shortens the range of an uphill launch.
+
+\end{lemma}
+\begin{corollary}
+The best angle on a slope is below $\pi/4$.
+
+\end{corollary}
+\begin{thebibliography}{99}
+\bibitem{knuth84} Knuth, D. E. \emph{The TeXbook}, 1984. \url{https://example.org/texbook}
+\bibitem{lee20} Lee, K. and Park, H. \emph{Slopes and projectiles}, 2020.
+\bibitem{halliday14} Halliday, D.; Resnick, R.; Walker, J. \emph{Fundamentals of Physics}, 2014.
+\end{thebibliography}
+\end{document}

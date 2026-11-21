@@ -1,0 +1,20 @@
+Title: The real numbers are uncountable
+Author: G. Cantor (1891), the diagonal argument; written out for the Math++ pipeline tests
+Abstract: Cantor's diagonal argument for $(0, 1)$. Tests a proof that is pure logic with almost no algebra, so the checker must handle structure (assumption, construction, contradiction) without the CAS.
+
+%{
+**Pipeline expectations.** Status: **proved, using 1 cited result** (decimal expansions without trailing 9s are unique). Steps are checked as structure; step 4 is checked by the rule "differs in digit $n$ ⇒ different numbers", given the cited uniqueness. No CAS steps. A second test deletes the citation and confirms that the checker then reports step 2 as a **gap**, not as proved.
+%}
+
+**Theorem 1** (Cantor). There is no surjection $f : \mathbb N \to (0, 1)$.
+
+**Proof.**
+1. Suppose $f : \mathbb N \to (0, 1)$ is a surjection — by assumption.
+2. Write each $f(n) = 0.d_{n1} d_{n2} d_{n3} \dots$ as a decimal that does not end in repeating 9s — *(cited: every real number in $(0,1)$ has exactly one such expansion [@rudin])*.
+3. Define $x = 0.e_1 e_2 e_3 \dots$ with $e_n = 5$ if $d_{nn} \ne 5$, and $e_n = 4$ if $d_{nn} = 5$. Then $x \in (0, 1)$ and its expansion has no 9s — by construction.
+4. For every $n$, $x$ and $f(n)$ differ in digit $n$, so $x \ne f(n)$ — by step 2 (uniqueness of expansions).
+5. So $x$ is not in the image of $f$, which contradicts step 1 — by contradiction.
+∎
+
+## References
+- [@rudin] W. Rudin, *Principles of Mathematical Analysis*, 3rd ed., Chapter 1.

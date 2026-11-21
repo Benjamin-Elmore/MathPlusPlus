@@ -1,0 +1,83 @@
+# Mathematical constants
+
+Named constants beyond the prelude's $\pi$, $e$, $i$ and $\infty$. Each is exact where a closed form exists; the others are written to 50 or more digits from OEIS and checked against a second way of computing them. Bring one in with `Using $\varphi, \gamma$ from [[std/constants.mpp]].`
+
+Name clashes: $\varphi$ here is the golden ratio, but $\varphi(n)$ applied to a whole number is Euler's totient (see [[std/number-theory.mpp]]). $G$ here is Catalan's constant; the gravitational constant has the same letter in [[std/physics.mpp]], so import one of them under another name (`Using $G$ as $G_c$ from …`) if a document needs both.
+
+## The golden ratio φ
+
+The positive root of $x^2 = x + 1$, exactly (OEIS A001622).
+
+$$ \varphi \equiv \frac{1 + \sqrt{5}}{2} $$
+
+It satisfies its own equation, its reciprocal is one less than itself, and its decimal value is 1.6180339887….
+
+$$ \varphi^2 \overset{?}{=} \varphi + 1 $$
+
+$$ \frac{1}{\varphi} \overset{?}{=} \varphi - 1 $$
+
+$$ \left| \varphi - 1.6180339887498948482045868343656381177203091798057628621 \right| < 10^{-50} \overset{?}{=} \text{true} $$
+
+Its continued fraction is all ones, $[1; 1, 1, 1, …]$, so its convergents are ratios of Fibonacci numbers: six ones give $13/8$, and they close in on $\varphi$.
+
+$$ \operatorname{contfracvalue}((1, 1, 1, 1, 1, 1)) \overset{?}{=} \frac{13}{8} $$
+
+$$ \left| \operatorname{contfracvalue}((1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)) - \varphi \right| < 10^{-12} \overset{?}{=} \text{true} $$
+
+## The Euler–Mascheroni constant γ
+
+The limit of $\sum_{k=1}^{n} 1/k - \ln n$, to 60 digits (OEIS A001620).
+
+$$ \gamma \equiv 0.577215664901532860606512090082402431042159335939923598805767 $$
+
+Checked against the harmonic sum with its Euler–Maclaurin correction, which at $n = 1000$ is good to about $10^{-14}$.
+
+$$ \left| \left(\sum_{k=1}^{1000} \frac{1}{k} - \ln 1000 - \frac{1}{2000} + \frac{1}{12000000}\right) - \gamma \right| < 10^{-14} \overset{?}{=} \text{true} $$
+
+The 60 digits agree with $-\psi(1)$ worked out in high precision (a 60-digit decimal cannot equal it exactly, so the check bounds the gap).
+
+$$ \left| \gamma + \mathrm{digamma}(1) \right| < 10^{-59} \overset{?}{=} \text{true} $$
+
+## Catalan's constant G
+
+$G = 1 - 1/3^2 + 1/5^2 - 1/7^2 + …$, to 60 digits (OEIS A006752).
+
+$$ G \equiv 0.915965594177219015054603514932384110774149374281672134266498 $$
+
+It is the Dirichlet $L$-series of the character mod 4 at $s = 2$.
+
+$$ \operatorname{dirichletl}(2, (1, 0, -1, 0)) \overset{?}{=} G $$
+
+## Apéry's constant ζ(3)
+
+$\zeta(3) = \sum 1/n^3$, irrational (Apéry, 1979), to 60 digits (OEIS A002117).
+
+$$ \zeta_3 \equiv 1.20205690315959428539973816151144999076498629234049888179227 $$
+
+$$ \left| \zeta(3) - \zeta_3 \right| < 10^{-59} \overset{?}{=} \text{true} $$
+
+## Square roots and logarithms
+
+These are exact as written ($\sqrt{2}$, $\ln 2$ …); the checks bound them to their first 50 digits (OEIS A002193, A002194, A002162, A002392).
+
+$$ \left| \sqrt{2} - 1.41421356237309504880168872420969807856967187537694807 \right| < 10^{-50} \overset{?}{=} \text{true} $$
+
+$$ \left| \sqrt{3} - 1.73205080756887729352744634150587236694280525381038062 \right| < 10^{-50} \overset{?}{=} \text{true} $$
+
+$$ \left| \ln 2 - 0.69314718055994530941723212145817656807550013436025525 \right| < 10^{-50} \overset{?}{=} \text{true} $$
+
+$$ \left| \ln 10 - 2.30258509299404568401799145468436420760110148862877297 \right| < 10^{-50} \overset{?}{=} \text{true} $$
+
+$$ \sum_{n=1}^{\infty} \frac{(-1)^{n+1}}{n} \overset{?}{=} \ln 2 $$
+
+## The Feigenbaum constants δ and α
+
+Period doubling in the logistic map: the gaps between doublings shrink by $\delta$ and the widths by $\alpha$ (OEIS A006890 and A006891).
+
+$$ \delta_{\text{F}} \equiv 4.669201609102990671853203820466201617258185577475768632745651 $$
+
+$$ \alpha_{\text{F}} \equiv 2.502907875095892822283902873218215786381271376727149977336192 $$
+
+A rough check from the first superstable parameters of $x \mapsto r x (1 - x)$: $r_2 = 1 + \sqrt{5}$, $r_3 = 3.4985616993277$ and $r_4 = 3.5546408627688$ give a gap ratio $(r_3 - r_2)/(r_4 - r_3)$ about $0.0116$ above $\delta$, and the ratios converge to $\delta$ as the doublings go on.
+
+$$ \left| \frac{3.4985616993277 - (1 + \sqrt{5})}{3.5546408627688 - 3.4985616993277} - (\delta_{\text{F}} + 0.0115693889096262) \right| < 10^{-15} \overset{?}{=} \text{true} $$
