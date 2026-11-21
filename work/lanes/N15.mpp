@@ -13,10 +13,10 @@ Lane `proof` (branch `wip/proof`). New crate `crates/mpp-proof`; additive change
 
 | Status | When |
 |---|---|
-| ✓ | the CAS proves every relation in the step (directly, as a constant multiple of an earlier equation, or after eliminating names with earlier equations) |
-| ≈ | the relations agree at random points, at integer points (congruences, divisibility, sums with symbolic bounds, primes sampled for names declared prime, earlier conditions such as $\gcd(a,p) = 1$ as filters), or on a random concrete instance of the fields (vector calculus) |
+| ✓ | the CAS proves every relation in the step (directly, as a constant multiple of an earlier equation, or after eliminating names with earlier equations), or an exact rule proves it: a sum of real squares is never negative and is 0 only when every term is; finite sums are linear (both sides the same combination of the same basic sums, for every n); a quadratic in a real $x$ that is never negative has discriminant ≤ 0; a chord's line passes through both endpoints on the curve; a triangle's area by the determinant formula with its sign fixed by known conditions |
+| ≈ | the relations agree at random points, at integer points (congruences and divisibility in exact integer arithmetic, sums with symbolic bounds, primes up to 31 sampled for names declared prime, earlier conditions such as $\gcd(a,p) = 1$ as filters), on a random concrete instance of the fields (vector calculus), or, for sums over an indexed family that linearity does not settle, written out for n = 1…4 (symbolically) and on random families |
 | ⊢ | `lake build` compiled the step's tactic (never without Lean) |
-| ◇ | assumption, construction, definition, contradiction (discharging an open assumption), induction (with a base case and an inductive step), cases, a reference to earlier steps or results, a prose step with no relation to compute, or a claim written with an ellipsis the CAS cannot read |
+| ◇ | assumption, construction, definition, contradiction (discharging an open assumption), induction (with a base case and an inductive step, or without labels when an expression in its variable equals, at its first two values, quantities two earlier checked steps gave), cases, a reference to earlier steps or results, a prose step with no relation to compute, a claim written with an ellipsis the CAS cannot read, or an area count read off a construction ("counting area two ways") |
 | 📖 | a cited note whose key has a reference entry |
 | ⚠ | a written gap, an external claim, no reason, a deleted or missing citation, a reference to a later step or to the result itself, a contradiction with nothing assumed, induction without both parts, an undischarged assumption, or a claim the checker could not verify |
 | ✗ | a counterexample, only when nothing the checker cannot use bears on it: no earlier equation was eliminated into the claim or left unused, and every name in it was introduced for all values ("for every real $x$", "for an integer $m$"); on fields, only when every hypothesis could be imposed on the instance |
@@ -89,11 +89,13 @@ With an API key set (Settings → Proof agent), right-click a theorem and choose
 
 Proof → Export to Lean writes a Lean 4 project with your statement and a skeleton of the proof, with `sorry` wherever Math++ did not check a step symbolically. The alignment view shows the Lean statement next to yours: check that they say the same thing before trusting a Lean result.
 
-## Pipeline tests: 6 of 23 pass
+## Pipeline tests: 13 of 23 pass (proofs lane: 11 of 12 proof documents)
 
 Run with `cargo test -p mpp-cli --test pipeline -- --nocapture` (the table is printed; the integrator made it the single harness, replacing the CLI lane's). It fails on any over-claim, on Navier–Stokes Theorem 6 coming back proved, on any file off the known-failures list failing, and on a listed file that now passes; `MPP_PIPELINE_STRICT=1` makes every failure fail (for M16).
 
-**Pass (6):** `historic/cantor-diagonal`, `historic/euclid-primes`, `historic/euler-identity`, `historic/gauss-sum`, `historic/sqrt2-irrational`, `historic/turing-halting`.
+**Pass:** every `historic/` proof document, and `labs/04-rc-circuit`, `labs/05-radioactive-decay` (labs lane). Archimedes: steps 1–3 and 5 ✓ (chord, determinant area with $a < b$, algebra, geometric series), step 4 ◇ (induction read from steps 2–3). Cauchy–Schwarz: steps 1, 2 and 4 ✓ by the rules above, step 3 ◇. Pythagoras: step 4 ◇ (the area count is structure; its conclusion $a^2 + b^2 = c^2$ is ✓), "proved, using 1 cited result". Fermat: the spot check $3^{12} \equiv 1 \pmod{13}$ passes (`\overset{?}{\equiv}` with `\pmod` is read as `a mod n = b mod n`).
+
+The proof rows below are kept as history; only `navier-stokes` still fails, for Ben (see the harness's reason).
 
 **Fail (17), with what each needs:**
 
@@ -120,8 +122,10 @@ Run with `cargo test -p mpp-cli --test pipeline -- --nocapture` (the table is pr
 ## Choices made (read these)
 
 - **"Every step is checked" (Navier–Stokes Lemmas 1–5)** is read as: every step that has a relation is ✓ or ≈. Prose steps with nothing to compute ("Take the divergence of \eqref{ns} — by linearity") are ◇, and so are the expectations' "checked as structure" steps in the historic proofs.
+- **A proof with ◇ steps among computed ones summarises as "proved"** (kept as built; a question for Ben). The row says the summary "must never claim more than its weakest step" and lists "proved (structure only)" without saying when it applies; read strictly, any ◇ step ("by induction", a prose step) would make it "proved (structure only)", but the headers of gauss-sum, fermat-little and sqrt2-irrational expect "proved" for proofs with such steps. So "proved (structure only)" means no step was computed. If Ben wants the strict reading, `verdict` in `checker.rs` takes `structure_only` as "any ◇ step" and those headers change.
+- **Geometry and figures.** Coordinates are checked only when the text gives them (a curve `y = f(x)`, a chord between two abscissae, vertices as points or abscissae on the curve). An area count read off a construction cannot be checked without the figure, so it is ◇, never ✓; Pythagoras is "proved, using 1 cited result" with that step ◇.
 - **Theorem 6 counts 2 external results** (OpenAI's claim and the KCL preprint, both marked `*(external: …)*`), so it reads "not proved here: rests on 2 external, unverified results"; the header expects "1". The test accepts any number of externals (more is never an over-claim). If only the OpenAI result should count, the KCL step could become a remark.
-- **Informal notation.** A claim written with an ellipsis the CAS cannot read (`p_1 p_2 \cdots p_k`) is ◇ with the detail "informal notation", not a gap; an arithmetic ellipsis (`1 + 2 + \dots + n`, `n + (n-1) + \dots + 1`) is read as its closed form and checked. Sums over indexed families are never computed (the CAS would read them wrongly) and stay unverified.
+- **Informal notation.** A claim written with an ellipsis the CAS cannot read (`p_1 p_2 \cdots p_k`) is ◇ with the detail "informal notation", not a gap; an arithmetic ellipsis (`1 + 2 + \dots + n`, `n + (n-1) + \dots + 1`) is read as its closed form and checked. Sums over indexed families are computed by the rules and methods in the table (never by the CAS directly, which would read $a_i$ as one symbol); a sum over a set of indices (`i < j`) is not, and stays unverified.
 - **No guessing in Lean.** A statement the maths does not fully carry is exported as `(sorry : Prop)`.
 - **Proofs inside theorem blocks are also evaluated by `mpp-eval`** (nested blocks are evaluated), so `Let $N := …$` in a proof defines `N` for the rest of the document and an unsupported ellipsis in a proof shows an evaluator diagnostic. The eval lane may want to skip proof bodies; the checker does not depend on it.
 - **The renderer** now prints a written theorem number (`Lemma 2.`) instead of its running count, and the title in brackets after the heading (`<span class="thm-title">`).
