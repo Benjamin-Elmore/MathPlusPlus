@@ -1,0 +1,56 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\providecommand{\degree}{\ensuremath{^\circ}}
+\providecommand{\xmark}{\ensuremath{\times}}
+\providecommand{\omicron}{o}
+\providecommand{\oiint}{\mathop{\oint\mkern-12mu\oint}}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\section*{Integrals}
+
+Indefinite integrals get a constant of integration.
+
+\begin{equation*}
+  \int \sin^2 x \, dx = \frac{x}{2} - \frac{\sin\left(2 x\right)}{4} + C
+\end{equation*}
+\begin{equation*}
+  \int x e^x \, dx = e^{x} x - e^{x} + C
+\end{equation*}
+\begin{equation*}
+  \int \frac{1}{x^2 + 1} \, dx = \arctan\left(x\right) + C
+\end{equation*}
+Definite integrals give a number:
+
+\begin{equation*}
+  \int_0^1 x^2 \, dx = \frac{1}{3}
+\end{equation*}
+\begin{equation*}
+  \int_0^{\pi} \sin x \, dx = 2
+\end{equation*}
+\begin{equation*}
+  \int_1^e \ln x \, dx = 1
+\end{equation*}
+Ask for a decimal answer by writing \texttt{$\approx$ ?} instead of \texttt{= ?}:
+
+\begin{equation*}
+  \int_0^1 e^{-x^2} \, dx \approx 0.7468241328
+\end{equation*}
+\end{document}

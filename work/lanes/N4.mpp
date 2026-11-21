@@ -1,0 +1,37 @@
+# N4 number display: notes for the integrator
+
+Lane `render` (branch `wip/numfmt`, on `feat/domains`). The example is `examples/number-display.mpp` with `examples/number-display.expected.txt`, checked by `crates/mpp-eval/tests/examples.rs`; the document tests for every directive are in `crates/mpp-eval/tests/numfmt.rs`.
+
+## What was built
+
+- **Formatting engine** (`crates/mpp-core/src/display/`): `NumberFormat` (style exact or decimal, precision default, sig figs or decimal places, notation auto, scientific or engineering with thresholds, improper or mixed fractions, radians or degrees, rectangular or polar complex), `format_number(&Number, &NumberFormat) -> (text, latex)`, and `with_format(&fmt, || …)`, which makes a format active for the current thread so `Expr::to_string`, `Expr::to_latex` and the numeric answers use it. Nothing is active by default, so every plain printer is unchanged. Plain text shows `6.02 × 10²³`, LaTeX `6.02 \times 10^{23}`; `6.02e23` is never shown. Helpers: `to_degrees(&Expr)` (exact when the angle is a rational multiple of π).
+- **Edits outside the new module** (all small): `printer.rs` asks `display::render_active` first in `plain_number` and `latex_number`; `number.rs` gained `rational_sig_parts` (the digit and exponent part of `rational_to_sig_digits`, which now calls it); `lib.rs` has `pub mod display;`.
+- **Directive parsing** (`crates/mpp-syntax/src/document/display.rs`): `parse_display_directive(text)` and `DisplayOption`. `DirectiveKind::Display` is a new variant; a `%` line is one only when a keyword follows the `%` straight away, so `% sf 3` stays a comment.
+- **Evaluator** (`crates/mpp-eval/src/numfmt.rs`, one new module): after a run, `apply` walks the document, tracks the format in effect (file-wide settings, later directives, `%block …` for the next block with results) and re-shows every `LineResult`. Malformed directives become error diagnostics on their own line. Results are re-shown, never recomputed, so a directive cannot change a value, and block hashes and the cache are untouched.
+- **Hooks in the rest of `mpp-eval`** (the only edits, to keep the merge with the auto-eval lane easy): `LineResult` has one new field `number_format: Option<Shown>`; `Session` has `set_number_format` and calls `numfmt::apply` once at the end of `update_with`; `numeric::format_complex` asks `display::format_approx` first; `lib.rs` has `pub mod numfmt;` and re-exports `NumberFormat`.
+
+## API for the IDE
+
+- `LineResult::reformat(&NumberFormat) -> (Option<String> text, Option<String> latex)`: what the result would read under another format, without changing the line. `reformat_all` also returns the approximation. `set_format(&NumberFormat)` switches the line. `format()` says what it is shown under now.
+- `numfmt::{toggle_exact_decimal, more_digits, fewer_digits}` take a `NumberFormat` and return the next one: wire them to the right-click items "exact ↔ decimal" and "more / fewer digits". The IDE settings screen builds a `NumberFormat` and gives it to `Session::set_number_format` (the file's starting point, which its `%` lines then change).
+- `LineResult::keep_text() -> Option<String>`: the answer as shown with powers of ten as `\times 10^{n}`, for Ctrl+Enter to write into the file.
+- A line whose text is not just its value (a custom presentation, such as one a calculus holder supplied) is left exactly as the evaluator wrote it; `reformat` returns it unchanged.
+
+## Choices made (read these)
+
+- **`%deg` is display only.** The row says degrees or radians affect "display of angles from inverse trig and angle inputs to trig", but also that input meaning must stay explicit, so the conservative reading is used: `30^\circ` and `30°` are always degrees, a bare `\sin(30)` is always radians whatever `%deg` says, and `%deg` changes only how an answer is shown. An answer counts as an angle when what is written is exactly one inverse trig call (the evaluator has already folded `\arcsin(1/2)` into `π/6`, so this is read from the line's source). It also puts the angle of `%polar` numbers in degrees.
+- **`%sf` and `%dp` keep trailing zeros** (`%sf 4` shows `2.500`); without them results keep ten significant figures with zeros trimmed, as before. They apply to decimals, so `1/3` stays `1/3` under `%exact` and its `≈` answer follows them.
+- **`%sci` and `%eng` thresholds:** `%sci` alone switches from 10^4 up and below 10^-3; `%sci 6` from 10^6 up and below 10^-6; `%sci 0` always. They also rewrite exact integers outside the thresholds (all digits kept unless a precision is set), so `6.02 \times 10^{23}` shows as written. The automatic switch (no `%sci`) is unchanged: from 10^21 up and below 10^-7.
+- **Limits:** a rational coefficient inside a product (`7x/2`) is printed by the existing product printer, so `%mixed` does not touch it. Under `%decimal`, symbolic constants inside a bigger expression (`x + \sqrt{2}`) stay symbolic; a closed constant (`\sqrt{2}`, `\pi/4`) becomes a decimal.
+
+## Grammar
+
+Applied to `docs/grammar.mpp` §2.4 "Number display" (integrator-approved), and the `directive` rule in §1 now points at it.
+
+## Guide section (for `docs/guide.mpp`)
+
+> ## Showing numbers your way
+>
+> Math++ works out results exactly and shows them the way you ask. A line starting with `%` and a keyword changes the display from that line to the end of the file (at the top of the file it covers everything): `%sf 4` for four significant figures, `%dp 2` for two decimal places, `%decimal` to see fractions as decimals and `%exact` to go back, `%sci` or `%eng` for `6.02 × 10²³` style powers of ten (`%sci 6` to start only at a million), `%mixed` for `3 1/2`, `%deg` to see angle answers like `\arcsin(1/2)` as `30°`, `%polar` for `5∠53.13°`, and `%plain` to clear the notation and digit settings. To change one block only, write `%block sf 3` (or any other option) right before it.
+>
+> Directives only change how a result is shown, never its value, and they never change how you write things: `30^\circ` is always 30 degrees and `\sin(30)` is always the sine of 30 radians. Units follow the same rules. In the IDE, right-click any result to switch exact and decimal or show more or fewer digits without touching the file, and press Ctrl+Enter to keep what you see. See [[../examples/number-display.mpp]].

@@ -1,0 +1,107 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\providecommand{\degree}{\ensuremath{^\circ}}
+\providecommand{\xmark}{\ensuremath{\times}}
+\providecommand{\omicron}{o}
+\providecommand{\oiint}{\mathop{\oint\mkern-12mu\oint}}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Numerical methods}
+\date{}
+\begin{document}
+\maketitle
+Each method shows its answer with an error estimate; \texttt{= ?!} shows every step.
+
+\section*{Riemann sums, trapezoid and Simpson}
+
+\begin{equation*}
+  \operatorname{Riemann\ sum}_{left}(x^2, [0, 1], 4) = \frac{7}{32}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Riemann\ sum}_{right}(x^2, [0, 1], 4) = \frac{15}{32}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Midpoint\ rule}(x^2, [0, 1], 4) = \frac{21}{64}
+\end{equation*}
+\begin{equation*}
+  \operatorname{Trapezoid\ rule}(\sin x, [0, \pi], 10) \approx 1.983523538
+\end{equation*}
+\begin{equation*}
+  \operatorname{Simpson's\ rule}(e^{-x^2}, [0, 1], 10) \approx 0.7468249483
+\end{equation*}
+\begin{equation*}
+  \operatorname{Simpson's\ rule}(x^3, [0, 2], 2) = 4
+\end{equation*}
+\section*{Newton's method}
+
+\begin{equation*}
+  \operatorname{Newton's\ method}(x^2 - 2, 1) \approx 1.414213562
+\end{equation*}
+\begin{equation*}
+  \operatorname{Newton's\ method}(\cos x - x, 1) \approx 0.7390851332
+\end{equation*}
+\section*{Euler's method and RK4}
+
+For $y' = y$ with $y(0) = 1$, step $h = 0.1$ and ten steps, the exact value is $y(1) = e$.
+
+\begin{equation*}
+  \operatorname{Euler's\ method}(y, 0, 1, 0.1, 10) \approx 2.59374246
+\end{equation*}
+\begin{equation*}
+  \operatorname{RK4}(y, 0, 1, 0.1, 10) \approx 2.718279744
+\end{equation*}
+\begin{equation*}
+  \operatorname{RK4}(x + y, 0, 1, 0.1, 10) \approx 3.436559488
+\end{equation*}
+\section*{Taylor error bounds}
+
+The Lagrange bound for the cubic Taylor polynomial of $e^x$ about $0$ at $x = 1$, and the degree needed for $\sin x$ at $x = 0.5$ to be within $10^{-6}$.
+
+\begin{equation*}
+  \operatorname{Taylor\ bound}(e^x, 0, 3, 1) \approx 0.1132617429
+\end{equation*}
+\begin{equation*}
+  \operatorname{Terms\ needed}(\sin x, 0, 0.5, 0.000001) = 7
+\end{equation*}
+\section*{Convergence tests}
+
+Every test is reported by name.
+
+\begin{equation*}
+  \operatorname{tests}(\frac{1}{k^2}) = \text{true}
+\end{equation*}
+\begin{equation*}
+  \operatorname{tests}(\frac{(-1)^k}{k}) = \text{true}
+\end{equation*}
+\begin{equation*}
+  \operatorname{tests}(\frac{2^k}{k!}) = \text{true}
+\end{equation*}
+\section*{Radius and interval of convergence}
+
+\begin{equation*}
+  \operatorname{ioc}(\frac{(x-2)^k}{k 3^k}) = \left[-1, 5\right)
+\end{equation*}
+\begin{equation*}
+  \operatorname{ioc}(\frac{x^k}{k^2}) = \left[-1, 1\right]
+\end{equation*}
+\begin{equation*}
+  \operatorname{Radius\ of\ convergence}(\frac{x^k}{k!}) = \infty
+\end{equation*}
+\end{document}

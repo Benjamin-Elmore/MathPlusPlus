@@ -5,6 +5,29 @@ edition.workspace = true
 license.workspace = true
 description = "Command-line entry point for Math++"
 
+build = "build.rs"
+
+[lib]
+name = "mpp_cli"
+path = "src/lib.rs"
+
 [[bin]]
 name = "mpp"
 path = "src/main.rs"
+
+[dependencies]
+mpp-core = { path = "../mpp-core" }
+mpp-syntax = { path = "../mpp-syntax" }
+mpp-eval = { path = "../mpp-eval" }
+mpp-export = { path = "../mpp-export" }
+mpp-proof = { path = "../mpp-proof" }
+mpp-ide = { path = "../mpp-ide" }
+clap = { version = "4", features = ["derive"] }
+rpassword = "7"
+
+[dev-dependencies]
+tempfile = "3"
+serde_json = "1"
+
+[target.'cfg(windows)'.build-dependencies]
+winresource = "0.1"

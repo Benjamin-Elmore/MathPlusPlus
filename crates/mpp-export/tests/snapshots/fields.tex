@@ -1,0 +1,95 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\providecommand{\degree}{\ensuremath{^\circ}}
+\providecommand{\xmark}{\ensuremath{\times}}
+\providecommand{\omicron}{o}
+\providecommand{\oiint}{\mathop{\oint\mkern-12mu\oint}}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\title{Functions across the fields}
+\date{}
+\begin{document}
+\maketitle
+A tour of the wider function library: number theory, special functions, analysis, discrete maths, probability and information, algebra and applied maths. Each line asks for a value with \texttt{= ?}.
+
+\section*{Number theory}
+
+The divisor count, the divisor sum, the M\"{o}bius function and the prime count:
+$\operatorname{divcount}(360) = 24$, $\operatorname{divsum}(28) = 56$, $\operatorname{mobius}(30) = -1$, $\operatorname{primepi}(1000) = 168$.
+
+The 2-adic absolute value of 8 is $\operatorname{padicabs}(2, 8) = \frac{1}{8}$.
+
+$\sqrt 7$ has a periodic continued fraction (the inner group repeats): $\operatorname{Continued\ fraction}(\sqrt 7) = \left(2, \left(1, 1, 1, 4\right)\right)$. The convergents of the golden ratio are ratios of Fibonacci numbers:
+$\operatorname{Convergents}\big(\tfrac{1 + \sqrt 5}{2}, 6\big) = \left(1, 2, \frac{3}{2}, \frac{5}{3}, \frac{8}{5}, \frac{13}{8}\right)$.
+
+In the Gaussian integers 5 splits: $\operatorname{gaussfactor}(5) = \left(-i, \left(\left(2 + i, 1\right), \left(1 + 2 i, 1\right)\right)\right)$. In $\mathbb F_8 = \mathbb F_2[x]/(x^3 + x + 1)$, $x \cdot x^2$ is $\operatorname{gfmul}(2, 3, (0, 1, 0), (0, 0, 1)) = \left(1, 1, 0\right)$.
+
+$\zeta(2) = \frac{\pi^{2}}{6}$, $\zeta(3) \approx 1.202056903$, and the Leibniz series $L(1, \chi_4)$ is $\operatorname{dirichletl}(1, (1, 0, -1, 0)) \approx 0.7853981634$.
+
+\section*{Special functions}
+
+$\operatorname{erf}(\tfrac12) \approx 0.5204998778$, $\operatorname{lambertw}(1) \approx 0.5671432904$, $\operatorname{lambertw}(-\tfrac1{10}, -1) \approx -3.577152064$, $\operatorname{besselj}(0, 1) \approx 0.7651976866$, $\operatorname{beta}(\tfrac12, \tfrac12) = \pi$, $\operatorname{legendrep}(2, x) = \frac{3 x^{2}}{2} - \frac{1}{2}$.
+
+The pendulum lab needs the complete elliptic integral with modulus $\sin 15\degree $: $\operatorname{ellipk}(\sin\tfrac{\pi}{12}) \approx 1.598142002$.
+
+\section*{Analysis}
+
+Pairing $\delta'$ with $\sin$ gives $-\cos 0$: $\operatorname{diracpair}(\sin x, x, 1) = -1$.
+
+$\operatorname{dft}((1, 2, 3, 4)) = \left(10, -2 + 2 i, -2, -2 - 2 i\right)$
+
+\section*{Discrete maths}
+
+$\operatorname{catalan}(10) = 16796$, and the standard Young tableaux of shape $(4, 3, 1)$: $\operatorname{hooklength}((4, 3, 1)) = 70$.
+
+$K_4$ has $\operatorname{spanningtrees}(((1,2), (1,3), (1,4), (2,3), (2,4), (3,4))) = 16$ spanning trees, and every 2-colouring of $K_6$ has a one-colour triangle: $\operatorname{ramsey}(3, 3, 6) = \text{true}$.
+
+\begin{align*}
+  G \coloneqq  \begin{pmatrix} 1 & 0 & 0 & 0 & 1 & 1 & 0 \\ 0 & 1 & 0 & 0 & 1 & 0 & 1 \\ 0 & 0 & 1 & 0 & 0 & 1 & 1 \\ 0 & 0 & 0 & 1 & 1 & 1 & 1 \end{pmatrix}
+\end{align*}
+$\operatorname{codeparams}(G, 2) = \left(7, 4, 3\right)$
+
+\section*{Probability and information}
+
+\begin{align*}
+  P \coloneqq  \begin{pmatrix} \tfrac12 & \tfrac12 \\ \tfrac14 & \tfrac34 \end{pmatrix}
+\end{align*}
+$\operatorname{stationary}(P) = \left(\frac{1}{3}, \frac{2}{3}\right)$
+
+$\operatorname{Monte\ Carlo\ estimate}\big(4 \cdot \mathbf 1[x^2 + y^2 \le 1], ((x, 0, 1), (y, 0, 1)), 10^5, 42\big) = \left(3.13676, 0.005203656196\right)$
+
+$\operatorname{entropy}((\tfrac12, \tfrac14, \tfrac14)) \approx 1.5$ bits, and a binary symmetric channel with flip probability 0.11 carries $\operatorname{bsccapacity}(0.11) \approx 0.5000840418$ bits per use.
+
+\section*{Algebra}
+
+\begin{align*}
+  J \coloneqq  \begin{pmatrix} 0 & -1 \\ 1 & 0 \end{pmatrix}
+\end{align*}
+$\operatorname{expm}(J, t) = \begin{pmatrix} \cos\left(t\right) & -\sin\left(t\right) \\ \sin\left(t\right) & \cos\left(t\right) \end{pmatrix}$, $\operatorname{chartable}(S_3) = \left(\left(1, 3, 2\right), \begin{pmatrix} 1 & 1 & 1 \\ 1 & -1 & 1 \\ 2 & 0 & -1 \end{pmatrix}\right)$.
+
+\section*{Applied maths}
+
+$\operatorname{gamevalue}\begin{pmatrix} 3 & 1 \\ 2 & 4 \end{pmatrix} = \left(\frac{5}{2}, \left(\frac{1}{2}, \frac{1}{2}\right), \left(\frac{3}{4}, \frac{1}{4}\right)\right)$
+
+Hamilton's equations for the oscillator $H \coloneqq  \tfrac12(p^2 + q^2)$: $\operatorname{hamilton}(H, q, p) = \left(\left(q, p\right), \left(p, -q\right)\right)$.
+
+A call at 10 on a spot of 100, strike 100, $r = 5\%$, one year: the put is $\operatorname{putfromcall}(10, 100, 100, \tfrac1{20}, 1) = \frac{100}{\sqrt[20]{e}} - 90$.
+
+\end{document}

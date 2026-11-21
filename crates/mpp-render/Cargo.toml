@@ -1,0 +1,16 @@
+[package]
+name = "mpp-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Maths typesetting for Math++: TeX-style layout with Latin Modern Math, SVG and HTML output"
+include = ["src/**/*.rs", "fonts/*.otf", "fonts/GUST-FONT-LICENSE.txt", "Cargo.toml"]
+
+[dependencies]
+mpp-syntax = { path = "../mpp-syntax" }
+ttf-parser = "0.25"
+
+[dev-dependencies]
+insta = "1.49"
+proptest = "1.12"
+resvg = "0.45"

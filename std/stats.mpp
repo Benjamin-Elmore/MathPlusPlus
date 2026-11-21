@@ -1,0 +1,109 @@
+# Statistics
+
+Densities and distribution functions, z-scores, standard errors, counting formulas, sample variance and least squares. The distributions themselves are built in (`\operatorname{normalcdf}`, `\operatorname{binompdf}`, `\operatorname{poissonpdf}`, `\operatorname{tcdf}`, `\operatorname{chi2cdf}` and their inverses); this sheet writes their formulas out and checks them against the built-in ones. Import with `![[std/stats.mpp]]`.
+
+## Counting
+
+Combinations: the ways to choose $k$ of $n$ things, order ignored, $C(n, k) = n!/(k!(n - k)!)$ for $0 \le k \le n$.
+
+$$ C_{\text{choose}}(n, k) := \frac{n!}{k! (n - k)!} $$
+
+$$ C_{\text{choose}}(5, 2) \overset{?}{=} 10 $$
+
+$$ C_{\text{choose}}(10, 3) \overset{?}{=} \binom{10}{3} $$
+
+Permutations: the ways to arrange $k$ of $n$ things in order.
+
+$$ P_{\text{perm}}(n, k) := \frac{n!}{(n - k)!} $$
+
+$$ P_{\text{perm}}(5, 2) \overset{?}{=} 20 $$
+
+$$ P_{\text{perm}}(n, k) \overset{?}{=} C_{\text{choose}}(n, k) \cdot k!, \quad n = 9, \quad k = 4 $$
+
+## The normal distribution
+
+The density of the normal distribution with mean $\mu$ and standard deviation $\sigma$.
+
+$$ f_{\text{normal}}(x, \mu, \sigma) := \frac{1}{\sigma \sqrt{2\pi}} e^{-(x - \mu)^2 / (2\sigma^2)} $$
+
+$$ f_{\text{normal}}(0, 0, 1) \overset{?}{=} \frac{1}{\sqrt{2\pi}} $$
+
+$$ f_{\text{normal}}(1, 0, 1) \overset{?}{=} \operatorname{normalpdf}(1) $$
+
+$$ \int_{-\infty}^{\infty} f_{\text{normal}}(x, 0, 1) \, dx \overset{?}{=} 1 $$
+
+The standard normal distribution function through the error function, $\Phi(z) = [1 + \operatorname{erf}(z/\sqrt{2})]/2$, with $\Phi(0) = 1/2$.
+
+$$ \Phi_{\text{erf}}(z) := \frac{1}{2}\left(1 + \operatorname{erf}\left(\frac{z}{\sqrt{2}}\right)\right) $$
+
+$$ \Phi_{\text{erf}}(0) \overset{?}{=} \frac{1}{2} $$
+
+$$ \Phi_{\text{erf}}(1) \overset{?}{=} \operatorname{normalcdf}(1) $$
+
+$$ \Phi(1.96) \overset{?}{=} \Phi_{\text{erf}}(1.96) $$
+
+The z-score: how many standard deviations $x$ lies from the mean.
+
+$$ z_{\text{score}}(x, \mu, \sigma) := \frac{x - \mu}{\sigma} $$
+
+$$ z_{\text{score}}(130, 100, 15) \overset{?}{=} 2 $$
+
+The standard error of a mean of $n$ observations with standard deviation $s$.
+
+$$ \mathrm{SE}(s, n) := \frac{s}{\sqrt{n}} $$
+
+$$ \mathrm{SE}(10, 25) \overset{?}{=} 2 $$
+
+## Discrete distributions
+
+The binomial probability of $k$ successes in $n$ trials with success probability $p$.
+
+$$ p_{\text{binom}}(n, p, k) := \binom{n}{k} p^k (1 - p)^{n - k} $$
+
+$$ p_{\text{binom}}(10, \tfrac{1}{2}, 5) \overset{?}{=} \frac{63}{256} $$
+
+$$ p_{\text{binom}}(6, \tfrac{1}{3}, 2) \overset{?}{=} \operatorname{binompdf}(6, \tfrac{1}{3}, 2) $$
+
+$$ \sum_{k=0}^{8} p_{\text{binom}}(8, \tfrac{1}{4}, k) \overset{?}{=} 1 $$
+
+The Poisson probability of $k$ events at rate $\lambda$: $P(X = k) = e^{-\lambda}\lambda^k/k!$, with mean and variance both $\lambda$.
+
+$$ p_{\text{Poisson}}(\lambda, k) := \frac{e^{-\lambda} \lambda^k}{k!} $$
+
+$$ p_{\text{Poisson}}(2, 3) \overset{?}{=} \operatorname{poissonpdf}(2, 3) $$
+
+$$ \sum_{k=0}^{\infty} p_{\text{Poisson}}(3, k) \overset{?}{=} 1 $$
+
+$$ \sum_{k=0}^{\infty} k \, p_{\text{Poisson}}(3, k) \overset{?}{=} 3 $$
+
+$$ \sum_{k=0}^{\infty} k^2 p_{\text{Poisson}}(3, k) - 3^2 \overset{?}{=} 3 $$
+
+## Sample statistics
+
+The sample variance divides by $n - 1$: $s^2 = \sum (x_i - \bar x)^2/(n - 1)$ for $n \ge 2$.
+
+$$ \operatorname{var}((2, 4, 4, 4, 5, 5, 7, 9)) \overset{?}{=} \frac{32}{7} $$
+
+$$ \frac{(2 - 5)^2 + 3 (4 - 5)^2 + 2 (5 - 5)^2 + (7 - 5)^2 + (9 - 5)^2}{8 - 1} \overset{?}{=} \frac{32}{7} $$
+
+$$ \operatorname{mean}((2, 4, 4, 4, 5, 5, 7, 9)) \overset{?}{=} 5 $$
+
+$$ \operatorname{pvar}((2, 4, 4, 4, 5, 5, 7, 9)) \overset{?}{=} 4 $$
+
+## Least squares
+
+For a full-column-rank design matrix $X$, the least-squares coefficients are $\hat\beta = (X^T X)^{-1} X^T y$. The points $(0, 1)$, $(1, 3)$, $(2, 5)$ lie on $y = 1 + 2x$:
+
+$$ X_{\text{ls}} \equiv \begin{pmatrix} 1 & 0 \\ 1 & 1 \\ 1 & 2 \end{pmatrix} $$
+
+$$ y_{\text{ls}} \equiv \begin{pmatrix} 1 \\ 3 \\ 5 \end{pmatrix} $$
+
+$$ (X_{\text{ls}}^T X_{\text{ls}})^{-1} X_{\text{ls}}^T y_{\text{ls}} \overset{?}{=} \begin{pmatrix} 1 \\ 2 \end{pmatrix} $$
+
+## Continuous uniform
+
+The uniform distribution on $[0, 1]$ has mean $1/2$ and variance $1/12$.
+
+$$ \int_0^1 x \, dx \overset{?}{=} \frac{1}{2} $$
+
+$$ \int_0^1 x^2 \, dx - \left(\frac{1}{2}\right)^2 \overset{?}{=} \frac{1}{12} $$

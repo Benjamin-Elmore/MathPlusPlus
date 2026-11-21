@@ -1,0 +1,79 @@
+# Complex numbers
+
+Euler's formula, De Moivre's theorem, roots of unity, and the change between rectangular form $a + bi$ and polar form $r e^{i\theta}$. The modulus $|z|$ is built in. Import with `![[std/complex.mpp]]`.
+
+## Euler's formula and De Moivre
+
+$$ e^{i x} \overset{?}{=} \cos x + i \sin x $$
+
+$$ e^{i \pi / 2} \overset{?}{=} i $$
+
+$$ \cos x \overset{?}{=} \frac{e^{i x} + e^{-i x}}{2} $$
+
+$$ \sin x \overset{?}{=} \frac{e^{i x} - e^{-i x}}{2i} $$
+
+De Moivre's theorem, $(\cos x + i \sin x)^n = \cos(nx) + i \sin(nx)$, for $n = 3$ and $n = 5$.
+
+$$ (\cos x + i \sin x)^3 \overset{?}{=} \cos(3x) + i \sin(3x) $$
+
+$$ (\cos x + i \sin x)^5 \overset{?}{=} \cos(5x) + i \sin(5x) $$
+
+## Polar and rectangular form
+
+The point at distance $r$ and angle $\theta$, as $a + bi$.
+
+$$ z_{\text{rect}}(r, \theta) := r \cos\theta + i r \sin\theta $$
+
+$$ z_{\text{rect}}(2, \tfrac{\pi}{2}) \overset{?}{=} 2i $$
+
+$$ z_{\text{rect}}(\sqrt{2}, \tfrac{\pi}{4}) \overset{?}{=} 1 + i $$
+
+The modulus of $a + bi$.
+
+$$ r_{\text{mod}}(a, b) := \sqrt{a^2 + b^2} $$
+
+$$ r_{\text{mod}}(3, 4) \overset{?}{=} 5 $$
+
+$$ |3 + 4i| \overset{?}{=} r_{\text{mod}}(3, 4) $$
+
+The argument of $a + bi$, in $(-\pi, \pi]$.
+
+$$ \theta_{\text{arg}}(a, b) := \mathrm{atan2}(b, a) $$
+
+$$ \theta_{\text{arg}}(1, 1) \overset{?}{=} \frac{\pi}{4} $$
+
+$$ \theta_{\text{arg}}(-1, 0) \overset{?}{=} \pi $$
+
+$$ z_{\text{rect}}(r_{\text{mod}}(1, \sqrt{3}), \theta_{\text{arg}}(1, \sqrt{3})) \overset{?}{=} 1 + i\sqrt{3} $$
+
+Products multiply the moduli and add the arguments.
+
+$$ |(1 + i)(\sqrt{3} + i)| \overset{?}{=} |1 + i| \cdot |\sqrt{3} + i| $$
+
+$$ z_{\text{rect}}(2, \tfrac{\pi}{4}) z_{\text{rect}}(3, \tfrac{\pi}{6}) \overset{?}{=} z_{\text{rect}}(6, \tfrac{5\pi}{12}) $$
+
+## Roots of unity
+
+The $k$-th of the $n$ $n$-th roots of unity.
+
+$$ \omega(k, n) := e^{2 \pi i k / n} $$
+
+$$ \omega(1, 4) \overset{?}{=} i $$
+
+$$ \omega(1, 5)^5 \overset{?}{=} 1 $$
+
+$$ \omega(1, 3) \overset{?}{=} -\frac{1}{2} + \frac{\sqrt{3}}{2} i $$
+
+The $n$-th roots of unity add to zero (for $n \ge 2$).
+
+$$ \sum_{k=0}^{4} \omega(k, 5) \overset{?}{=} 0 $$
+
+$$ \sum_{k=0}^{5} \omega(k, 6) \overset{?}{=} 0 $$
+
+## Contour integrals
+
+Going once round the unit circle, $\oint dz/z = 2\pi i$; with $z = e^{it}$, $dz = i e^{it}\,dt$.
+
+$$ \int_0^{2\pi} \frac{i e^{i t}}{e^{i t}} \, dt \overset{?}{=} 2 \pi i $$
+
+**Theorem.** (Cauchy's integral formula) If $f$ is holomorphic on and inside a positively oriented simple closed contour $\gamma$ and $a$ lies inside $\gamma$, then $f(a) = \frac{1}{2\pi i} \oint_\gamma \frac{f(z)}{z - a}\,dz$. In particular $\oint_\gamma dz/z = 2\pi i$ for a contour enclosing 0.

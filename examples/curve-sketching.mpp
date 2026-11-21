@@ -1,0 +1,60 @@
+# Curve sketching
+
+The analysis helpers answer the questions of a curve-sketching exercise. Each one has a
+sentence form and an operator form that mean the same thing.
+
+## A cubic
+
+$$ f(x) := x^3 - 3x^2 + 1 $$
+
+Find the domain of $f$.
+
+Find the intercepts of $f$.
+
+Find the critical points of $f$.
+
+Find the local extrema of $f$.
+
+Find the intervals of increase of $f$.
+
+Find the concavity of $f$.
+
+Find the absolute extrema of $f$ on $[-1/2, 4]$.
+
+The same questions in operator form:
+
+$$ \operatorname{crit} f = ? $$
+
+$$ \operatorname{extrema}_{[-1/2, 4]} f = ? $$
+
+## Lines at a point
+
+Find the tangent line of $f$ at $x = 1$.
+
+Find the normal line of $f$ at $x = 3$.
+
+$$ \operatorname{linearisation}_{x=3} f = ? $$
+
+## A rational function
+
+$$ g(x) := \frac{2x^2 + 1}{x^2 - 1} $$
+
+Find the domain of $g$.
+
+Find the range of $g$.
+
+Find the asymptotes of $g$.
+
+$$ \operatorname{asymptotes} \frac{x^2 + 1}{x - 1} = ? $$
+
+## The mean value and intermediate value theorems
+
+$$ \operatorname{mvt}_{[0, 2]} (x^3 - x) = ? $$
+
+$$ \operatorname{ivt}_{[0, 1]}^{0} (x^3 + x - 1) = ? $$
+
+## The full summary
+
+$$ h(x) := x e^{-x} $$
+
+Analyse $h$.

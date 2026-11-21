@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Comments in a worksheet</title>
+<style>
+@font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: normal; src: url(data:…) format('opentype'); }
+@font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: normal; src: url(data:…) format('opentype'); }
+@font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: bold; src: url(data:…) format('opentype'); }
+:root { --mpp-text: #111111; --mpp-result: #1f5fb8; --mpp-auto-result: #6b6b6b; --mpp-placeholder: #7a7a7a; --mpp-placeholder-label: #6b6b6b; --mpp-rule: #111111; --mpp-background: #fdfdfb; --mpp-code-background: #f2f2ee; --mpp-link: #1f4f98; --mpp-muted: #444444; --mpp-error: #c01c28; --mpp-warning: #8a6100; --mpp-note-background: #f6f1dc; --mpp-note-accent: #a8821c; }
+html { background: var(--mpp-background); }
+body { margin: 0; color: var(--mpp-text); background: var(--mpp-background); font-family: 'Latin Modern Roman', 'LM Roman 10', 'CMU Serif', 'Cambria', 'Times New Roman', serif; font-size: 19px; line-height: 1.45; }
+main.paper { max-width: 40em; margin: 3em auto 5em; padding: 0 1.5em; text-align: justify; hyphens: auto; }
+h1 { font-size: 1.7em; font-weight: normal; text-align: center; margin: 0.4em 0 1em; }
+h2 { font-size: 1.3em; margin: 1.6em 0 0.6em; }
+h3 { font-size: 1.1em; margin: 1.3em 0 0.5em; }
+h4, h5, h6 { font-size: 1em; font-style: italic; margin: 1em 0 0.4em; }
+p { margin: 0 0 0.7em; }
+svg.defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+svg.m { display: inline; }
+.eq { position: relative; display: flex; justify-content: center; align-items: center; margin: 0.9em 0; overflow-x: auto; }
+.eq-num { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+.theorem { margin: 1em 0; }
+.theorem > p:first-of-type { display: inline; }
+.theorem.slanted p { font-style: italic; }
+.thm-head { font-weight: bold; margin-right: 0.4em; }
+.proof .thm-head { font-weight: normal; font-style: italic; }
+.qed { float: right; }
+.eq-error { color: var(--mpp-error); text-align: center; margin: -0.4em 0 0.9em; }
+ol.steps { font-size: 0.9em; color: var(--mpp-muted); margin: -0.4em 0 1em 2em; }
+.import, .helper, .assume { color: var(--mpp-muted); }
+.assume { font-style: italic; }
+.unit { font-size: 0.85em; color: var(--mpp-muted); }
+blockquote { margin: 1em 2em; color: var(--mpp-muted); }
+table { border-collapse: collapse; margin: 1em auto; }
+th, td { padding: 0.2em 0.8em; }
+thead th { border-top: 1.5px solid var(--mpp-rule); border-bottom: 1px solid var(--mpp-rule); }
+tbody tr:last-child td { border-bottom: 1.5px solid var(--mpp-rule); }
+pre { background: var(--mpp-code-background); padding: 0.7em 1em; overflow-x: auto; font-size: 0.85em; }
+code { font-family: 'Consolas', 'DejaVu Sans Mono', monospace; font-size: 0.9em; }
+figure { margin: 1.2em 0; text-align: center; }
+figcaption { font-size: 0.92em; margin-top: 0.4em; }
+.fig-spec { border: 1px dashed var(--mpp-placeholder); padding: 1.5em; color: var(--mpp-muted); }
+hr { border: none; border-top: 1px solid var(--mpp-rule); opacity: 0.35; margin: 1.5em 0; }
+ol.footnotes { font-size: 0.88em; }
+.title-block { text-align: center; margin: 0 0 2em; }
+.doc-title { font-size: 1.9em; margin: 0.2em 0 0.5em; }
+.doc-author { margin: 0.1em 0; font-size: 1.1em; }
+.doc-date { margin: 0.1em 0; color: var(--mpp-muted); }
+.abstract { margin: 1.4em 2.5em 0; font-size: 0.92em; text-align: justify; }
+.abstract-head { text-align: center; font-weight: bold; margin: 0 0 0.3em; }
+.sec-num { margin-right: 0.5em; }
+.cite-missing { color: var(--mpp-error); font-weight: bold; }
+.references h2 { margin-top: 2em; }
+ol.refs { list-style: none; padding-left: 0; font-size: 0.95em; }
+ol.refs li { margin: 0.35em 0; padding-left: 2.6em; text-indent: -2.6em; text-align: left; }
+ol.refs.author-year li { padding-left: 1.6em; text-indent: -1.6em; }
+.ref-num { display: inline-block; width: 2.6em; text-indent: 0; }
+.note { display: flex; gap: 0.7em; align-items: flex-start; margin: 0.9em 0; padding: 0.55em 0.9em; background: var(--mpp-note-background); border-left: 3px solid var(--mpp-note-accent); border-radius: 0 6px 6px 0; font-size: 0.86em; line-height: 1.4; color: var(--mpp-muted); text-align: left; }
+.note-mark { color: var(--mpp-note-accent); font-size: 1.1em; line-height: 1.2; }
+.note-body { flex: 1; min-width: 0; }
+.note-body > :first-child { margin-top: 0; }
+.note-body > :last-child { margin-bottom: 0; }
+.note.off { border-left-style: dashed; }
+.note .eq { opacity: 0.6; }
+.eq + .note { margin-top: -0.4em; }
+a { color: var(--mpp-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main class="paper">
+<svg class="defs" width="0" height="0" aria-hidden="true">
+<defs>
+<path id="mpp-m15" d="M192 53C192 82 168 106 139 106C110 106 86 82 86 53C86 24 110 0 139 0C168 0 192 24 192 53Z"/>
+<path id="mpp-m17" d="M460 320C460 400 455 480 420 554C374 650 292 666 250 666C190 666 117 640 76 547C44 478 39 400 39 320C39 245 43 155 84 79C127 -2 200 -22 249 -22C303 -22 379 -1 423 94C455 163 460 241 460 320ZM377 332C377 257 377 189 366 125C351 30 294 0 249 0C210 0 151 25 133 121C122 181 122 273 122 332C122 396 122 462 130 516C149 635 224 644 249 644C282 644 348 626 367 527C377 471 377 395 377 332Z"/>
+<path id="mpp-m18" d="M419 0L419 31L387 31C297 31 294 42 294 79L294 640C294 664 294 666 271 666C209 602 121 602 89 602L89 571C109 571 168 571 220 597L220 79C220 43 217 31 127 31L95 31L95 0C130 3 217 3 257 3C297 3 384 3 419 0Z"/>
+<path id="mpp-m19" d="M449 174L424 174C419 144 412 100 402 85C395 77 329 77 307 77L127 77L233 180C389 318 449 372 449 472C449 586 359 666 237 666C124 666 50 574 50 485C50 429 100 429 103 429C120 429 155 441 155 482C155 508 137 534 102 534C94 534 92 534 89 533C112 598 166 635 224 635C315 635 358 554 358 472C358 392 308 313 253 251L61 37C50 26 50 24 50 0L421 0Z"/>
+<path id="mpp-m21" d="M471 165L471 196L371 196L371 651C371 671 371 677 355 677C346 677 343 677 335 665L28 196L28 165L294 165L294 78C294 42 292 31 218 31L197 31L197 0C238 3 290 3 332 3C374 3 427 3 468 0L468 31L447 31C373 31 371 42 371 78L371 165ZM300 196L56 196L300 569Z"/>
+<path id="mpp-m22" d="M449 201C449 320 367 420 259 420C211 420 168 404 132 369L132 564C152 558 185 551 217 551C340 551 410 642 410 655C410 661 407 666 400 666C400 666 397 666 392 663C372 654 323 634 256 634C216 634 170 641 123 662C115 665 111 665 111 665C101 665 101 657 101 641L101 345C101 327 101 319 115 319C122 319 124 322 128 328C139 344 176 398 257 398C309 398 334 352 342 334C358 297 360 258 360 208C360 173 360 113 336 71C312 32 275 6 229 6C156 6 99 59 82 118C85 117 88 116 99 116C132 116 149 141 149 165C149 189 132 214 99 214C85 214 50 207 50 161C50 75 119 -22 231 -22C347 -22 449 74 449 201Z"/>
+<path id="mpp-m25" d="M457 168C457 204 446 249 408 291C389 312 373 322 309 362C381 399 430 451 430 517C430 609 341 666 250 666C150 666 69 592 69 499C69 481 71 436 113 389C124 377 161 352 186 335C128 306 42 250 42 151C42 45 144 -22 249 -22C362 -22 457 61 457 168ZM386 517C386 460 347 412 287 377L163 457C117 487 113 521 113 538C113 599 178 641 249 641C322 641 386 589 386 517ZM407 132C407 58 332 6 250 6C164 6 92 68 92 151C92 209 124 273 209 320L332 242C360 223 407 193 407 132Z"/>
+<path id="mpp-m30" d="M722 347C722 358 713 367 702 367L76 367C65 367 56 358 56 347C56 336 65 327 76 327L702 327C713 327 722 336 722 347ZM722 153C722 164 713 173 702 173L76 173C65 173 56 164 56 153C56 142 65 133 76 133L702 133C713 133 722 142 722 153Z"/>
+<path id="mpp-m1299" d="M516 683C516 683 516 694 503 694C488 694 393 685 376 683C368 682 362 677 362 664C362 652 371 652 386 652C434 652 436 645 436 635L433 615L373 378C355 415 326 442 281 442C164 442 40 295 40 149C40 55 95 -11 173 -11C193 -11 243 -7 303 64C311 22 346 -11 394 -11C429 -11 452 12 468 44C485 80 498 143 498 143C498 153 489 153 486 153C476 153 475 149 472 135C455 70 437 11 396 11C369 11 366 37 366 57C366 81 368 88 372 105ZM361 332C361 326 359 320 358 315L308 119C303 101 303 99 288 82C244 27 203 11 175 11C125 11 111 66 111 105C111 155 143 278 166 324C197 383 242 420 282 420C347 420 361 338 361 332Z"/>
+<path id="mpp-m1315" d="M330 420C330 431 320 431 302 431L214 431C250 573 255 593 255 599C255 616 243 626 226 626C223 626 195 625 186 590L147 431L53 431C33 431 23 431 23 412C23 400 31 400 51 400L139 400C67 116 63 99 63 81C63 27 101 -11 155 -11C257 -11 314 135 314 143C314 153 306 153 302 153C293 153 292 150 287 139C244 35 191 11 157 11C136 11 126 24 126 57C126 81 128 88 132 105L206 400L300 400C320 400 330 400 330 420Z"/>
+<path id="mpp-m1317" d="M468 372C468 426 442 442 424 442C399 442 375 416 375 394C375 381 380 375 391 364C412 344 425 318 425 282C425 240 364 11 247 11C196 11 173 46 173 98C173 154 200 227 231 310C238 327 243 341 243 360C243 405 211 442 161 442C67 442 29 297 29 288C29 278 41 278 41 278C51 278 52 280 57 296C86 397 129 420 158 420C166 420 183 420 183 388C183 363 173 336 166 318C122 202 109 156 109 113C109 5 197 -11 243 -11C411 -11 468 320 468 372Z"/>
+<path id="mpp-m2847" d="M850 347C850 358 841 367 830 367L310 367C299 367 290 358 290 347C290 336 299 327 310 327L830 327C841 327 850 336 850 347ZM850 153C850 164 841 173 830 173L310 173C299 173 290 164 290 153C290 142 299 133 310 133L830 133C841 133 850 142 850 153ZM162 369C162 398 138 422 109 422C80 422 56 398 56 369C56 340 80 316 109 316C138 316 162 340 162 369ZM162 131C162 160 138 184 109 184C80 184 56 160 56 131C56 102 80 78 109 78C138 78 162 102 162 131Z"/>
+</defs>
+</svg>
+<h1>Comments in a worksheet</h1>
+<p>A car covers <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="66.15" height="13.6" viewBox="0 0 66.15 13.6" overflow="visible" style="vertical-align:-0.42px" role="img" aria-label="𝑑≔120"><use xlink:href="#mpp-m1299" href="#mpp-m1299" transform="matrix(0.019 0 0 -0.019 0 13.19)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2847" href="#mpp-m2847" transform="matrix(0.019 0 0 -0.019 15.16 13.19)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 37.65 13.19)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m19" href="#mpp-m19" transform="matrix(0.019 0 0 -0.019 47.15 13.19)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m17" href="#mpp-m17" transform="matrix(0.019 0 0 -0.019 56.65 13.19)" fill="var(--mpp-text, #111111)"/>
+</svg> in <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="58.91" height="13.07" viewBox="0 0 58.91 13.07" overflow="visible" style="vertical-align:-0.42px" role="img" aria-label="𝑡≔1.5"><use xlink:href="#mpp-m1315" href="#mpp-m1315" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2847" href="#mpp-m2847" transform="matrix(0.019 0 0 -0.019 12.14 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 34.63 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m15" href="#mpp-m15" transform="matrix(0.019 0 0 -0.019 44.13 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m22" href="#mpp-m22" transform="matrix(0.019 0 0 -0.019 49.41 12.65)" fill="var(--mpp-text, #111111)"/>
+</svg>, so its speed is</p>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="51.42" height="39.29" viewBox="0 0 51.42 39.29" overflow="visible" style="vertical-align:-13.24px" role="img" aria-label="𝑣≔𝑑𝑡"><use xlink:href="#mpp-m1317" href="#mpp-m1317" transform="matrix(0.019 0 0 -0.019 0 26.05)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2847" href="#mpp-m2847" transform="matrix(0.019 0 0 -0.019 14.49 26.05)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1299" href="#mpp-m1299" transform="matrix(0.019 0 0 -0.019 39.26 13.19)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1315" href="#mpp-m1315" transform="matrix(0.019 0 0 -0.019 40.78 39.08)" fill="var(--mpp-text, #111111)"/>
+<rect x="36.98" y="20.92" width="14.44" height="0.76" fill="var(--mpp-text, #111111)"/>
+</svg></div>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="53.55" height="13.07" viewBox="0 0 53.55 13.07" overflow="visible" style="vertical-align:-0.42px" role="img" aria-label="𝑣=80"><use xlink:href="#mpp-m1317" href="#mpp-m1317" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 14.49 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m25" href="#mpp-m25" transform="matrix(0.019 0 0 -0.019 34.55 12.65)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m17" href="#mpp-m17" transform="matrix(0.019 0 0 -0.019 44.05 12.65)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+<p>Doubling the time halves the speed:</p>
+<div class="eq"><svg class="dm" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="65.26" height="39.29" viewBox="0 0 65.26 39.29" overflow="visible" style="vertical-align:-13.24px" role="img" aria-label="𝑑2𝑡=40"><use xlink:href="#mpp-m1299" href="#mpp-m1299" transform="matrix(0.019 0 0 -0.019 5.52 13.19)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m19" href="#mpp-m19" transform="matrix(0.019 0 0 -0.019 2.28 39.08)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1315" href="#mpp-m1315" transform="matrix(0.019 0 0 -0.019 11.78 39.08)" fill="var(--mpp-text, #111111)"/>
+<rect x="0" y="20.92" width="20.92" height="0.76" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 26.2 26.05)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m21" href="#mpp-m21" transform="matrix(0.019 0 0 -0.019 46.26 26.05)" fill="var(--mpp-result, #1f5fb8)"/>
+<use xlink:href="#mpp-m17" href="#mpp-m17" transform="matrix(0.019 0 0 -0.019 55.76 26.05)" fill="var(--mpp-result, #1f5fb8)"/>
+</svg></div>
+</main>
+<!-- Latin Modern fonts: GUST Font License.
+% This is a preliminary version (2006-09-30), barring acceptance from
+% the LaTeX Project Team and other feedback, of the GUST Font License.
+% (GUST is the Polish TeX Users Group, http://www.gust.org.pl)
+%
+% For the most recent version of this license see
+% http://www.gust.org.pl/fonts/licenses/GUST-FONT-LICENSE.txt
+% or
+% http://tug.org/fonts/licenses/GUST-FONT-LICENSE.txt
+%
+% This work may be distributed and/or modified under the conditions
+% of the LaTeX Project Public License, either version 1.3c of this
+% license or (at your option) any later version.
+% 
+% Please also observe the following clause:
+% 1) it is requested, but not legally required, that derived works be
+%    distributed only after changing the names of the fonts comprising this
+%    work and given in an accompanying &quot;manifest&quot;, and that the
+%    files comprising the Work, as listed in the manifest, also be given
+%    new names. Any exceptions to this request are also given in the
+%    manifest.
+%    
+%    We recommend the manifest be given in a separate file named
+%    MANIFEST-&lt;fontid&gt;.txt, where &lt;fontid&gt; is some unique identification
+%    of the font family. If a separate &quot;readme&quot; file accompanies the Work, 
+%    we recommend a name of the form README-&lt;fontid&gt;.txt.
+%
+% The latest version of the LaTeX Project Public License is in
+% http://www.latex-project.org/lppl.txt and version 1.3c or later
+% is part of all distributions of LaTeX version 2006/05/20 or later.
+
+
+-->
+</body>
+</html>

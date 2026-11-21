@@ -1,0 +1,43 @@
+# Lane C5 (plot): visual calculus helpers, notes for the integrator
+
+Branch `feat/render-plot`, crate `crates/mpp-plot` (new modules `helpers.rs`, `calculus.rs`, `keywords.rs`), the example `examples/visual-calculus.mpp` with `examples/visual-calculus.expected.txt` (the list of figures, checked by `crates/mpp-plot/tests/visual_calculus.rs`; `MPP_BLESS=1` rewrites it) and tests in `crates/mpp-plot/tests/calculus.rs`, `perf_helpers.rs`.
+
+## Edits outside the crate
+
+- **`mpp-syntax` (additive):** new figure keywords `riemann trapezoid`, `scatter`, `histogram`, `box plot` (`FigureKeyword`), and a keyword argument may now be a comma list inside one `$…$` (`riemann left $n = 8, [0, 2]$`, `slope field $y' = x - y, (0, 1)$`). The parser splits at commas outside brackets (`document::split_keyword_list`), keeps the first entry as the `arg: Option<Clause>` it always had, and reports no error for the rest; the plot crate reads the whole list from the source. `FigureItemKind::Keyword` itself did not change.
+- **`mpp-render` theme (shared with ide-b):** `Theme` gets `info`, `grid`, `axis` and `series: [Color; 8]`. The new fields and their values are copied exactly from `wip/ide-b`'s `theme.rs`, but the other colours (`auto_result`, `placeholder_*`, `warning`) are the old ones, because this branch's render snapshots depend on them. On merge take ide-b's `theme.rs` whole.
+- **`mpp-plot` depends on `mpp-render`** (for the theme only). `PlotTheme::light()` and `dark()` are now `PlotTheme::from_render(&Theme::LIGHT / DARK)`: background, text, grid, axes and the eight curve colours come from the shared theme, so a figure always matches the page. Only the height colour map, the wireframe and how opaque shaded regions are stay in `theme.rs`. A test checks they match.
+- **`docs/grammar.mpp` §4:** the new keywords and the argument forms.
+- Axis letters (`x`, `y`, `z`, Greek) are now drawn as the mathematical italic letters of Unicode (`𝑥`), so they slant in every font; a multi-letter axis name (`count`) stays upright. `Label.latex` is unchanged for the IDE.
+
+## What each keyword does
+
+Each helper is a `Geometry` variant (`Tangent`, `Riemann`, `AreaBetween`, `Revolve`, `SlopeField`, `PhasePortrait`, `VectorField`, `GradientField`, `TangentPlane`, `Taylor`, `Newton`, `BoxPlot`) with its sampled form in `LayerData`. They apply to the first curve `y = f(x)` of the figure (`area between` uses the first two; `tangent plane at` uses the surface). Numbers a reader may want to move become sliders of the figure: `x_0` (tangent point, Newton start, plane point `x_0`, `y_0`), `n` (strips, degree), `steps`. A name the document already declared a slider keeps that slider. `Slider` has a new field `integer`; the IDE should step integer sliders by 1 (`Slider::step` does). `Figure::readouts()` lists short facts (the tangent line, the sum and the exact integral, the area, the volume and method, the plane, `x₄ ≈ …`); the 2D scene draws them in a strip under the axes (`layout_2d` accounts for it) and the 3D scene in a box.
+
+## Guide text for `docs/guide.mpp` (section "Graphs", after the existing list)
+
+### Calculus pictures
+
+Add a keyword to a `Figure:` line and the picture is drawn on your curve. Everything that can move gets a slider: drag it and the figure redraws at once.
+
+- **Tangent line:** `Figure: $x^3 - 2x$, tangent at $x = 1$, $x \in [-2, 2]$.` draws the tangent with its equation; drag `x_0` to slide the point along the curve.
+- **Riemann sums:** `riemann left`, `riemann right`, `riemann mid` or `riemann trapezoid`, with `$n = 8$` for the number of strips (a slider) and optionally the interval, `riemann mid $n = 8, [0, 2]$`. The sum and the exact integral are written under the graph.
+- **Area between curves:** `Figure: $x$, $x^2$, area between.` shades the region the two curves enclose; the crossings are found for you. Give `area between $[0, 2]$` to choose the interval; the shading changes sides at every crossing.
+- **Solids of revolution:** `Figure: $\sqrt{x}$, revolve about $y = 0$, $x \in [0, 4]$.` turns the region about the axis and shows the volume. About a horizontal axis the slices are disks (or washers when there are two curves); about a vertical axis they are shells. The solid is cut open so you can see inside; drag to turn it.
+- **Slope fields and phase portraits:** `slope field $y' = x - y$` draws the slopes and solution curves; add starting points, `$y' = x - y, (0, 1)$`. Two equations, `slope field $x' = y, y' = -x$`, draw a phase portrait.
+- **Vector and gradient fields:** `vector field $(-y, x)$` and `gradient field $x^2 + y^2$` (level curves under the arrows).
+- **Level curves:** `Figure: $x^2 - y^2$, contour, $x, y \in [-2, 2]$.`
+- **Tangent plane:** `Figure: $z = x^2 + y^2$, tangent plane at $(1, 1)$, $x, y \in [-2, 2]$.` draws the plane touching the surface; two sliders move the point.
+- **Taylor polynomials:** `Figure: $\sin x$, taylor $n = 5$, $x \in [-7, 7]$.` lays the degree-5 polynomial over the curve; the degree is a slider. `taylor $n = 3, a = 1$` expands about $x = 1$.
+- **Newton's method:** `Figure: $x^2 - 2$, newton from $x_0 = 3$, $x \in [0, 3.5]$.` draws each tangent and where it meets the axis; the start and the number of steps are sliders.
+- **Data:** `scatter $t, x$` plots two columns of a data table, and a curve written beside it (`$p(t)$` for a fitted function) is drawn over the data range; `histogram $x$` (or `histogram $x, 6$` for six bars) and `box plot $x, y$` summarise columns.
+
+## What the Insert menu writes (C9)
+
+Checked in `tests/calculus.rs`: `Figure: slope field $y' = x - y$, $x \in [-10, 10]$, $y \in [-10, 10]$.`, `Figure: parametric $(\cos t, \sin t)$, $t \in [0, 2\pi]$.` and `Figure: $x^2 - y^2$, $x \in [-2, 2]$, $y \in [-2, 2]$.` all parse and draw. The helpers' keyword templates are not in the menu yet; they would write the forms above.
+
+## Notes
+
+- Sampling is numeric (RK4 solution curves of equal length on the screen, Simpson integrals, bisection for crossings) with symbolic derivatives from `mpp_core::calc::diff` (cached per figure; a central difference when a derivative is not available). The numbers agree with C3: Riemann sums equal `tools_b::quadrature_rule`, areas equal `area_between`, volumes equal `volume`, Newton iterates equal `newton` (all tested).
+- Release timings (best of 7): tangent 0.2 ms, Riemann 0.5 ms, Taylor 0.2 ms, slope field with solution curves 0.8 ms, solid of revolution 0.4 ms.
+- N3 open and closed dots are checked in `jumps_get_open_and_closed_dots`; N5 data figures are `scatter`, `histogram`, `box plot` and a fitted curve over the data.

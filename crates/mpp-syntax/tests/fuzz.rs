@@ -191,7 +191,7 @@ fn check_ast(ast: &MathAst, base: usize, len: usize) {
                     r.names.iter().for_each(|n| check_node(n, base, len));
                     check_node(&r.set, base, len);
                 }
-                Clause::Condition(n) => check_node(n, base, len),
+                Clause::Condition(n) | Clause::Assumption(n) => check_node(n, base, len),
             }
         }
     }
@@ -247,13 +247,23 @@ fn deep_nesting_is_reported_not_overflowed() {
         r"\int ",
         "f(",
     ];
-    for unit in units {
-        let src = unit.repeat(5000);
-        let (ast, diags) = parse_math(&src, 0);
-        assert!(!diags.is_empty(), "{unit}");
-        // Printing walks the whole tree, so it must stay shallow too.
-        let _ = sexpr::ast(&ast, sexpr::Mode::Full);
-    }
+    // Past both limits (256 brackets, 10 000 operators in a row). The debug printer
+    // walks the tree recursively, as deep as a 10 000-operator chain, so it runs on
+    // a stack like the apps' main threads; parsing itself needs no large stack (see
+    // `deep_input.rs`).
+    std::thread::Builder::new()
+        .stack_size(256 << 20)
+        .spawn(move || {
+            for unit in units {
+                let src = unit.repeat(12_000);
+                let (ast, diags) = parse_math(&src, 0);
+                assert!(!diags.is_empty(), "{unit}");
+                let _ = sexpr::ast(&ast, sexpr::Mode::Full);
+            }
+        })
+        .expect("spawn")
+        .join()
+        .expect("no stack overflow");
 }
 
 #[test]

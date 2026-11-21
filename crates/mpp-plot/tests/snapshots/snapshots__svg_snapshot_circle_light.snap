@@ -1,0 +1,49 @@
+---
+source: crates/mpp-plot/tests/snapshots.rs
+expression: "to_svg(&fig.scene_2d(360.0, 360.0, &PlotTheme::light()))"
+---
+<svg xmlns="http://www.w3.org/2000/svg" width="360" height="360" viewBox="0 0 360 360">
+<rect width="360" height="360" fill="#fdfdfb"/>
+<polyline points="117.9,18 117.9,324" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="193,18 193,324" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="268.1,18 268.1,324" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,321.19 340,321.19" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,283.64 340,283.64" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,246.1 340,246.1" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,208.55 340,208.55" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,171 340,171" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,133.45 340,133.45" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,95.9 340,95.9" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,58.36 340,58.36" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,20.81 340,20.81" fill="none" stroke="#d4d4d0" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="178.3,244.64 177.6,244.5 175.85,244.11 173.4,243.49 170.95,242.79 168.68,242.05 168.5,241.99 166.05,241.09 163.6,240.1 162.45,239.6 161.15,239.01 158.7,237.8 157.45,237.15 156.25,236.49 153.8,235.05 153.23,234.7 151.35,233.49 149.55,232.25 148.9,231.78 146.45,229.93 146.29,229.8 144,227.91 143.36,227.35 141.55,225.7 140.71,224.9 139.1,223.29 138.3,222.45 136.65,220.64 136.09,220 134.2,217.71 134.07,217.55 132.22,215.1 131.75,214.45 130.51,212.65 129.3,210.77 128.95,210.2 127.51,207.75 126.85,206.55 126.2,205.3 124.99,202.85 124.4,201.55 123.9,200.4 122.91,197.95 122.01,195.5 121.95,195.32 121.21,193.05 120.51,190.6 119.89,188.15 119.5,186.4 119.36,185.7 118.91,183.25 118.55,180.8 118.26,178.35 118.06,175.9 117.94,173.45 117.9,171 117.94,168.55 118.06,166.1 118.26,163.65 118.55,161.2 118.91,158.75 119.36,156.3 119.5,155.6 119.89,153.85 120.51,151.4 121.21,148.95 121.95,146.68 122.01,146.5 122.91,144.05 123.9,141.6 124.4,140.45 124.99,139.15 126.2,136.7 126.85,135.45 127.51,134.25 128.95,131.8 129.3,131.23 130.51,129.35 131.75,127.55 132.22,126.9 134.07,124.45 134.2,124.29 136.09,122 136.65,121.36 138.3,119.55 139.1,118.71 140.71,117.1 141.55,116.3 143.36,114.65 144,114.09 146.29,112.2 146.45,112.07 148.9,110.22 149.55,109.75 151.35,108.51 153.23,107.3 153.8,106.95 156.25,105.51 157.45,104.85 158.7,104.2 161.15,102.99 162.45,102.4 163.6,101.9 166.05,100.91 168.5,100.01 168.68,99.95 170.95,99.21 173.4,98.51 175.85,97.89 177.6,97.5 178.3,97.36 180.75,96.91 183.2,96.55 185.65,96.26 188.1,96.06 190.55,95.94 193,95.9 195.45,95.94 197.9,96.06 200.35,96.26 202.8,96.55 205.25,96.91 207.7,97.36 208.4,97.5 210.15,97.89 212.6,98.51 215.05,99.21 217.32,99.95 217.5,100.01 219.95,100.91 222.4,101.9 223.55,102.4 224.85,102.99 227.3,104.2 228.55,104.85 229.75,105.51 232.2,106.95 232.77,107.3 234.65,108.51 236.45,109.75 237.1,110.22 239.55,112.07 239.71,112.2 242,114.09 242.64,114.65 244.45,116.3 245.29,117.1 246.9,118.71 247.7,119.55 249.35,121.36 249.91,122 251.8,124.29 251.93,124.45 253.78,126.9 254.25,127.55 255.49,129.35 256.7,131.23 257.05,131.8 258.49,134.25 259.15,135.45 259.8,136.7 261.01,139.15 261.6,140.45 262.1,141.6 263.09,144.05 263.99,146.5 264.05,146.68 264.79,148.95 265.49,151.4 266.11,153.85 266.5,155.6 266.64,156.3 267.09,158.75 267.45,161.2 267.74,163.65 267.93,166.1 268.06,168.55 268.1,171 268.06,173.45 267.93,175.9 267.74,178.35 267.45,180.8 267.09,183.25 266.64,185.7 266.5,186.4 266.11,188.15 265.49,190.6 264.79,193.05 264.05,195.32 263.99,195.5 263.09,197.95 262.1,200.4 261.6,201.55 261.01,202.85 259.8,205.3 259.15,206.55 258.49,207.75 257.05,210.2 256.7,210.77 255.49,212.65 254.25,214.45 253.78,215.1 251.93,217.55 251.8,217.71 249.91,220 249.35,220.64 247.7,222.45 246.9,223.29 245.29,224.9 244.45,225.7 242.64,227.35 242,227.91 239.71,229.8 239.55,229.93 237.1,231.78 236.45,232.25 234.65,233.49 232.77,234.7 232.2,235.05 229.75,236.49 228.55,237.15 227.3,237.8 224.85,239.01 223.55,239.6 222.4,240.1 219.95,241.09 217.5,241.99 217.32,242.05 215.05,242.79 212.6,243.49 210.15,244.11 208.4,244.5 207.7,244.64 205.25,245.09 202.8,245.45 200.35,245.74 197.9,245.94 195.45,246.06 193,246.1 190.55,246.06 188.1,245.94 185.65,245.74 183.2,245.45 180.75,245.09 178.3,244.64" fill="none" stroke="#1f5fb8" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="46,171 340,171" fill="none" stroke="#333333" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="193,324 193,18" fill="none" stroke="#333333" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round"/>
+<polygon points="340,171 332,174.2 332,167.8" fill="#333333"/>
+<polygon points="193,18 196.2,26 189.8,26" fill="#333333"/>
+<polyline points="117.9,167.5 117.9,174.5" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="117.9" y="188" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="middle" fill="#111111">−2</text>
+<polyline points="193,167.5 193,174.5" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="268.1,167.5 268.1,174.5" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="268.1" y="188" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="middle" fill="#111111">2</text>
+<polyline points="189.5,321.19 196.5,321.19" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="185" y="325.19" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">−4</text>
+<polyline points="189.5,283.64 196.5,283.64" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="185" y="287.64" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">−3</text>
+<polyline points="189.5,246.1 196.5,246.1" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="185" y="250.1" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">−2</text>
+<polyline points="189.5,208.55 196.5,208.55" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="185" y="212.55" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">−1</text>
+<polyline points="189.5,171 196.5,171" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="189.5,133.45 196.5,133.45" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="185" y="137.45" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">1</text>
+<polyline points="189.5,95.9 196.5,95.9" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="185" y="99.9" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">2</text>
+<polyline points="189.5,58.36 196.5,58.36" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="185" y="62.36" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">3</text>
+<polyline points="189.5,20.81 196.5,20.81" fill="none" stroke="#333333" stroke-width="1" stroke-linejoin="round" stroke-linecap="round"/>
+<text x="185" y="24.81" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">4</text>
+<text x="187" y="187" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#111111">0</text>
+<text x="338" y="163" font-family="Latin Modern Math, STIX Two Math, Cambria Math, serif" font-size="14" text-anchor="end" fill="#111111">𝑥</text>
+<text x="202" y="28" font-family="Latin Modern Math, STIX Two Math, Cambria Math, serif" font-size="14" text-anchor="start" fill="#111111">𝑦</text>
+</svg>

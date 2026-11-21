@@ -404,3 +404,103 @@ fn repository_files_parse_without_panics() {
         }
     }
 }
+
+#[test]
+fn a_display_after_a_list_number_or_prose_is_its_own_block() {
+    let src = "4. $$ x = ? $$\n\nPartial fractions: $$ y = ? $$\n\nIt costs $$5 = ? here.\n";
+    let doc = parse_document(src);
+    let kinds: Vec<&str> = doc
+        .blocks
+        .iter()
+        .map(|b| match b.kind {
+            BlockKind::List(_) => "list",
+            BlockKind::DisplayMath(_) => "display",
+            BlockKind::Paragraph(_) => "paragraph",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(
+        kinds,
+        ["list", "display", "paragraph", "display", "paragraph"],
+        "{}",
+        dump(&doc)
+    );
+}
+
+#[test]
+fn display_marks_inside_code_spans_stay_prose() {
+    let src = "The maths sits between `$ x $` and `$$ x $$` in a file.
+
+See ``$$ a $$`` too.
+";
+    let doc = parse_document(src);
+    assert!(doc.diagnostics.is_empty(), "{:?}", doc.diagnostics);
+    assert!(
+        doc.blocks
+            .iter()
+            .all(|b| matches!(b.kind, BlockKind::Paragraph(_))),
+        "{}",
+        dump(&doc)
+    );
+}
+
+#[test]
+fn a_letter_after_a_number_is_a_variable_where_it_is_one() {
+    // g is defined before, t is the function's parameter, the figure's range or a
+    // letter the same line uses: each is the variable, set in italic.
+    let src = concat!(
+        r"$$ g \equiv 9.81\,\mathrm{m/s^2} $$",
+        "\n\n",
+        r"$$ H := \frac{v^2}{2 g} $$",
+        "\n\n",
+        r"$$ u(t) := e^{-20 t} \cos(20 t) $$",
+        "\n\n",
+        r"$$ \int_0^1 2 t \, dt = ? $$",
+        "\n\n",
+        r"Figure: $e^{-3 t}$, $t \in [0, 1]$.",
+        "\n\n",
+        r"Let $m = 2\,\mathrm{kg}$.",
+        "\n\n",
+        "$$ F := 3 m $$\n",
+    );
+    let out = outline(src);
+    assert!(
+        !out.contains("quantity g") && !out.contains("quantity t") && !out.contains("quantity m"),
+        "{out}"
+    );
+    // A letter nothing binds stays a unit, and a thin space always makes one.
+    let out = outline(concat!(
+        "$$ 5 m + 2 m = ? $$\n\n",
+        r"$$ u(t) := 20\,t $$",
+        "\n"
+    ));
+    assert_eq!(out.matches("quantity m").count(), 2, "{out}");
+    assert!(out.contains("quantity t"), "{out}");
+}
+
+/// A word defined with `velocity := 3` is one name wherever it is written, so it is
+/// set the same way (upright) at its definition and at every use.
+#[test]
+fn a_defined_word_is_one_name_where_it_is_used() {
+    use mpp_syntax::math::{NodeKind, Statement};
+    let src = "$$ velocity := 3 $$\n\n$$ 2 velocity^2 + xy = ? $$\n";
+    let doc = parse_document(src);
+    let BlockKind::DisplayMath(m) = &doc.blocks[1].kind else {
+        panic!("{}", dump(&doc));
+    };
+    let Statement::Query { expr, .. } = &m.ast.lines[0].statement else {
+        panic!("{}", dump(&doc));
+    };
+    let mut names = vec![];
+    fn walk(n: &mpp_syntax::math::Node, out: &mut Vec<String>) {
+        if let NodeKind::Name(name) = &n.kind {
+            out.push(name.base.clone());
+        }
+        mpp_syntax::math::visit::children(n, &mut |c| walk(c, out));
+    }
+    walk(expr, &mut names);
+    assert!(names.contains(&"velocity".to_string()), "{names:?}");
+    // Letters that spell no defined name still multiply.
+    assert!(names.contains(&"x".to_string()) && names.contains(&"y".to_string()));
+    assert!(!names.contains(&"v".to_string()), "{names:?}");
+}

@@ -1,0 +1,26 @@
+Title: Lab 1: Projectile motion with and without air resistance
+Author: Math++ pipeline test (physics)
+
+%{
+**Pipeline expectations.** $R_0 \approx 40.77\ \mathrm m$ and $T_0 \approx 2.883\ \mathrm s$. With linear drag, C7 solves the ODE exactly; the landing time is found numerically, $T \approx 2.757\ \mathrm s$ and $R \approx 34.07\ \mathrm m$ (tolerance $0.05\ \mathrm m$). Units check throughout ($k$ in $\mathrm{s^{-1}}$). The figure draws both paths, and the slider for $\theta$ redraws them. Changing $k$ to $0$ must reproduce $R_0$.
+%}
+
+## Setup
+Let $g \equiv 9.81\,\mathrm{m/s^2}$, $v_0 := 20\,\mathrm{m/s}$ and $k := 0.1\,\mathrm{s^{-1}}$ (drag per unit mass).
+Let $\theta := 45°$, $\; \theta \in [5°, 85°]$.
+
+## Without drag
+$$ R_0 := \frac{v_0^2 \sin 2\theta}{g} \approx ? \qquad T_0 := \frac{2 v_0 \sin\theta}{g} \approx ? $$
+
+## With linear drag
+The equations of motion are $\ddot x = -k \dot x$ and $\ddot y = -g - k \dot y$, with $x(0) = y(0) = 0$, $\dot x(0) = v_0\cos\theta$, $\dot y(0) = v_0 \sin\theta$.
+
+$$ \ddot x = -k\dot x, \quad \ddot y = -g - k\dot y, \quad x(0) = 0,\ y(0) = 0,\ \dot x(0) = v_0\cos\theta,\ \dot y(0) = v_0\sin\theta $$
+
+The ball lands when $y(T) = 0$ with $T > 0$:
+$$ T \approx ? \qquad R := x(T) \approx ? $$
+
+Figure: $(x(t), y(t))$ and the drag-free path, $t \in [0, T_0]$. Both paths, with and without drag.
+
+## Discussion
+% Drag shortens the range by about 16 percent at this speed. Try moving θ: the best angle with drag is below 45°.

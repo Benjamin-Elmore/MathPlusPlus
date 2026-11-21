@@ -1,0 +1,143 @@
+8: \operatorname{domain} {\frac{1}{x - 2}} = ?
+    = (-∞, 2) ∪ (2, ∞)
+10: \operatorname{range} {x^2 + 1} = ?
+    = [1, ∞)
+12: \operatorname{intercepts} {x^2 - 4} = ?
+    = x-intercepts: {(-2, 0), (2, 0)}
+y-intercept: {(0, -4)}
+14: \operatorname{crit}_{[-1, 3]} {f} = ?
+    = {0, 2}
+16: \operatorname{extrema}_{[-1, 3]} {f} = ?
+    = local maxima: {(0, 1)}
+local minima: {(2, -3)}
+absolute maximum: {(0, 1), (3, 1)}
+absolute minimum: {(-1, -3), (2, -3)}
+18: \operatorname{increasing} {f} = ?
+    = increasing on: (-∞, 0) ∪ (2, ∞)
+decreasing on: (0, 2)
+20: \operatorname{concavity} {f} = ?
+    = concave up on: (1, ∞)
+concave down on: (-∞, 1)
+inflection points: {(1, -1)}
+22: \operatorname{inflection} {f} = ?
+    = {(1, -1)}
+24: \operatorname{asymptotes} {\frac{x^2 + 1}{x - 1}} = ?
+    = vertical: {x = 1}
+horizontal: none
+slant: {y = x + 1}
+26: \operatorname{tangent}_{{1}} {x^2} = ?
+    = y = 2*x - 1
+28: \operatorname{normal}_{{1}} {x^2} = ?
+    = y = -x/2 + 3/2
+30: \operatorname{linearise}_{{4}} {\sqrt{x}} = ?
+    = L(x) = x/4 + 1
+32: \operatorname{mvt}_{{[0, 2]}} {x^3 - x} = ?
+    = continuous on [0, 2]: yes
+differentiable on (0, 2): yes
+average rate of change: 3
+c with f′(c) equal to it: {2*sqrt(3)/3}
+34: \operatorname{ivt}_{{[0, 1]}} {x^3 + x - 1} = ?
+    = continuous on [0, 1]: yes
+f(0): -1
+f(1): 1
+0 lies between f(0) and f(1): yes
+c with f(c) = 0: {-(sqrt(93)/18 - 1/2)^(1/3) + (sqrt(93)/18 + 1/2)^(1/3)}
+36: \operatorname{analyse} {x e^{-x}} = ?
+    = f(x): e^(-x)*x
+domain: (-∞, ∞)
+range: (-∞, 1/e]
+x-intercepts: {(0, 0)}
+y-intercept: {(0, 0)}
+critical points: {1}
+local maxima: {(1, 1/e)}
+local minima: none
+increasing on: (-∞, 1)
+decreasing on: (1, ∞)
+concave up on: (2, ∞)
+concave down on: (-∞, 2)
+inflection points: {(2, 2/e^2)}
+vertical asymptotes: none
+horizontal asymptotes: {y = 0}
+slant asymptotes: none
+38: \operatorname{area}_{{0}}^{{1}} \left( {x}, {x^2} \right) = ?
+    = 1/6
+40: \operatorname{volume}_{{0}}^{{1}} \left( {x}, {y = 0}, {\text{auto}} \right) = ?
+    = π/3 ≈ 1.047197551
+42: \operatorname{arclength}_{{0}}^{{1}} {x^{3/2}} = ?
+    = 13*sqrt(13)/27 - 8/27 ≈ 1.439709873
+44: \operatorname{surfacearea}_{{0}}^{{1}} \left( {x}, {y = 0} \right) = ?
+    = π*sqrt(2) ≈ 4.442882938
+46: \operatorname{average}_{{0}}^{{\pi}} {\sin x} = ?
+    = 2/π ≈ 0.6366197724
+48: \operatorname{work}_{{0}}^{{2}} {3x^2} = ?
+    = 8
+50: \operatorname{centroid}_{{0}}^{{1}} {x} = ?
+    = (2/3, 1/3)
+52: \operatorname{accumulate}_{{0}} {t^2} = ?
+    = t^3/3
+54: \operatorname{riemann}_{{0}}^{{1}} \left( {x^2}, {4}, {\text{mid}} \right) = ?
+    = 21/64
+    note: midpoint rule with n = 4: error bound |E| ≤ 0.005208
+56: \operatorname{newton} \left( {x^2 - 2}, {1}, {5} \right) = ?
+    ≈ 1.414213562
+    note: Newton's method from x₀ = 1 converged in 4 iterations
+58: \operatorname{euler} \left( {y' = x + y}, {y(0) = 1}, {0.1}, {10} \right) = ?
+    ≈ 3.18748492
+    note: Euler's method with h = 0.1: y(1) ≈ 3.18748492 after 10 steps
+60: \operatorname{rk4} \left( {y' = x + y}, {y(0) = 1}, {0.1}, {10} \right) = ?
+    ≈ 3.436559488
+    note: classical Runge–Kutta (RK4) with h = 0.1: y(1) ≈ 3.436559488 after 10 steps
+62: \operatorname{taylorbound} \left( {e^x}, {0}, {3}, {1} \right) = ?
+    ≈ 0.1132617429
+64: \operatorname{converges} {\frac{1}{n^2}} = ?
+    = true
+    note: divergence test: no conclusion (the terms tend to 0, so this test is inconclusive)
+    note: geometric series test: no conclusion (the terms are not a constant times rⁿ)
+    note: p-series test: converges (p = 2 > 1)
+    note: comparison test: converges (aₖ behaves like a constant times 1/k^2, and Σ 1/k^2 converges (p-series))
+    note: limit comparison test: converges (aₖ · k^2 tends to 1; Σ 1/k^2 converges (p-series))
+    note: ratio test: no conclusion (the ratio |aₖ₊₁/aₖ| tends to 1 (or has no limit), so the test is inconclusive)
+    note: root test: no conclusion (|aₖ|^(1/k) tends to 1 or the test does not apply (no k in an exponent))
+    note: integral test: converges (∫_3^∞ 1/n² dn = 1/3 is finite)
+    note: alternating series test: no conclusion (the series does not alternate)
+    note: telescoping series: no conclusion (the terms are not a difference g(k) − g(k + m))
+66: \operatorname{radius} {\frac{x^n}{n}} = ?
+    = 1
+    note: at x = -1: converges by the alternating series test: the terms alternate in sign and |aₖ| = 1/n decreases to 0
+    note: at x = 1: diverges by the p-series: p = 1 ≤ 1
+68: \operatorname{directional} \left( {x^2 y}, {(1, 2)}, {(3, 4)} \right) = ?
+    = 16/5
+70: \operatorname{tangentplane}_{{(1, 2)}} {x^2 + y^2} = ?
+    = z = 2*x + 4*y - 5
+72: \operatorname{linearapprox}_{{(1, 2)}} {x^2 y} = ?
+    = L(x, y) = 4*x + y - 4
+74: \operatorname{classify} {x^3 - 3x + y^2} = ?
+    = saddle point at (-1, 0): 2
+local minimum at (1, 0): -2
+76: \operatorname{changevars} \left( {x + y}, {(x, y) = (u + v, u - v)}, u \in [0, 1], v \in [0, 1] \right) = ?
+    = 2
+    note: the Jacobian factor is |∂(x, y)/∂(u, v)| = 2
+78: \operatorname{green} \left( {(-y, x)}, {(x, y) = (r \cos\theta, r \sin\theta)}, r \in [0, 1], \theta \in [0, 2\pi] \right) = ?
+    = ∮ P dx + Q dy: 2*π
+∬ (∂Q/∂x − ∂P/∂y) dA: 2*π
+the two sides agree: yes
+80: \operatorname{stokes} \left( {(-y, x, 0)}, {(u, v, 0)}, u \in [0, 1], v \in [0, 1] \right) = ?
+    = ∮ F · dr: 2
+∬ (∇ × F) · dS: 2
+the two sides agree: yes
+82: \operatorname{gauss} \left( {(x, y, z)}, x \in [0, 1], y \in [0, 1], z \in [0, 1] \right) = ?
+    = ∯ F · dS: 3
+∭ ∇ · F dV: 3
+the two sides agree: yes
+84: \operatorname{implicit}_{x} {x^2 + y^2 = 25} = ?
+    = d/dx(y) = -x/y
+86: \operatorname{relatedrates}_{t} {x^2 + y^2 = 25} = ?
+    = 2*x*d/dt(x) + 2*y*d/dt(y) = 0
+88: \operatorname{lagrange}\left( {x y}, {x^2 + y^2 = 1} \right) = ?
+    = f(-sqrt(2)/2, sqrt(2)/2): -1/2
+f(sqrt(2)/2, -sqrt(2)/2): -1/2
+f(-sqrt(2)/2, -sqrt(2)/2): 1/2
+f(sqrt(2)/2, sqrt(2)/2): 1/2
+largest value: 1/2
+smallest value: -1/2
+    note: on a closed and bounded constraint set the largest and smallest values are the absolute maximum and minimum

@@ -1,0 +1,9 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "\\|v\\|"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="25.62" height="20" viewBox="0 0 25.62 20" overflow="visible">
+<text x="0" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">‖</text>
+<text x="7.96" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑣</text>
+<text x="17.66" y="15" font-family="Latin Modern Math" font-size="20" fill="#111111">‖</text>
+</svg>

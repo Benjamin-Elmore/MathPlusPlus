@@ -1,0 +1,31 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+assertion_line: 76
+expression: "text_svg(src, &opts)"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="110.56" height="134.74" viewBox="0 0 110.56 134.74" overflow="visible">
+<text x="6.47" y="8.17" font-family="Latin Modern Math" font-size="14" fill="#111111">∞</text>
+<text x="0.07" y="52.95" font-family="Latin Modern Math" font-size="14" fill="#111111">𝑛</text>
+<text x="9.95" y="52.95" font-family="Latin Modern Math" font-size="14" fill="#111111">=</text>
+<text x="20.85" y="52.95" font-family="Latin Modern Math" font-size="14" fill="#111111">1</text>
+<text x="0" y="31.31" font-family="Latin Modern Math" font-size="20" fill="#111111">∑</text>
+<text x="40.16" y="17.77" font-family="Latin Modern Math" font-size="20" fill="#111111">1</text>
+<text x="34.61" y="45.03" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑛</text>
+<text x="46.61" y="39.25" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<rect x="32.21" y="25.91" width="25.89" height="0.8" fill="#111111"/>
+<text x="63.65" y="31.31" font-family="Latin Modern Math" font-size="20" fill="#111111">=</text>
+<text x="87.17" y="17.77" font-family="Latin Modern Math" font-size="20" fill="#1f5fb8">𝜋</text>
+<text x="99.07" y="10.51" font-family="Latin Modern Math" font-size="14" fill="#1f5fb8">2</text>
+<text x="92.66" y="45.03" font-family="Latin Modern Math" font-size="20" fill="#1f5fb8">6</text>
+<rect x="84.77" y="25.91" width="25.79" height="0.8" fill="#1f5fb8"/>
+<text x="16.5" y="71.39" font-family="Latin Modern Math" font-size="14" fill="#111111">1</text>
+<text x="4.68" y="132.46" font-family="Latin Modern Math" font-size="14" fill="#111111">0</text>
+<text x="4.58" y="102.61" font-family="Latin Modern Math" font-size="20" fill="#111111">∫</text>
+<text x="27.89" y="102.61" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="42.67" y="102.61" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑑</text>
+<text x="53.07" y="102.61" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="70.06" y="102.61" font-family="Latin Modern Math" font-size="20" fill="#111111">=</text>
+<text x="93.58" y="89.07" font-family="Latin Modern Math" font-size="20" fill="#6b6b6b">1</text>
+<text x="93.58" y="116.33" font-family="Latin Modern Math" font-size="20" fill="#6b6b6b">2</text>
+<rect x="91.18" y="97.21" width="14.8" height="0.8" fill="#6b6b6b"/>
+</svg>

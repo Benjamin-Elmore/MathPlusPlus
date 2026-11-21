@@ -1,0 +1,11 @@
+# Limits
+
+$$ \lim_{x \to 0} \frac{\sin x}{x} = ? $$
+
+$$ \lim_{n \to \infty} \left(1 + \frac{1}{n}\right)^n = ? $$
+
+$$ \lim_{x \to \infty} \frac{3 x^2 + 1}{x^2 - 5} = ? $$
+
+$$ \lim_{x \to 0} \frac{1 - \cos x}{x^2} = ? $$
+
+$$ \lim_{x \to 2} \frac{x^2 - 4}{x - 2} = ? $$

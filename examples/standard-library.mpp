@@ -1,0 +1,45 @@
+# The standard library
+
+The library is a set of formula sheets written in Math++ itself and built into the program. Bring in a whole sheet with `![[…]]`, or just the names you need with a `Using` sentence.
+
+## Constants
+
+Using $\varphi, \gamma$ from [[std/constants.mpp]].
+
+The golden ratio is exact, and Euler's constant is stored to 60 digits: $\varphi = ?$, $\gamma \approx ?$.
+
+$$ \varphi^2 \overset{?}{=} \varphi + 1 $$
+
+## Physics with units
+
+Using $c, g_0, G$ from [[std/physics.mpp]].
+
+$c = ?$, and the weight of a 70 kg person is $70\,\mathrm{kg} \cdot g_0 \approx ?$.
+
+## Geometry and trigonometry
+
+![[std/geometry.mpp]]
+
+$A_{\text{circle}}(2) = ?$, $V_{\text{ball}}(3) = ?$, $V_{\text{cone}}(3, 4) = ?$.
+
+![[std/trig.mpp]]
+
+A triangle with sides 13, 14, 15 has area $A_{\text{Heron}}(13, 14, 15) = ?$, and the third side of a triangle with sides 3 and 4 at a right angle is $c_{\text{cos}}(3, 4, \tfrac{\pi}{2}) = ?$.
+
+$$ \sin^2 x + \cos^2 x \overset{?}{=} 1 $$
+
+## Finance
+
+Using $A_{\text{compound}}, M_{\text{loan}}$ from [[std/finance.mpp]].
+
+£1000 at 5% for two years: $A_{\text{compound}}(1000, 0.05, 1, 2) = ?$. The yearly payment on a 1000 loan over one year at 10%: $M_{\text{loan}}(1000, \tfrac{1}{10}, 1) = ?$.
+
+## Functions across the fields
+
+Textbook names work as soon as they are applied, with no import: $\tau(360) = ?$, $\sigma(28) = ?$, $\mu(30) = ?$, $\varphi(36) = ?$, $\zeta(2) = ?$, $J_0(1) \approx ?$, $B(\tfrac{1}{2}, \tfrac{1}{2}) = ?$.
+
+## Reproducible randomness
+
+%seed 42
+
+With a seed, random samples come out the same every time: $\operatorname{runif}(2) \approx ?$.

@@ -98,13 +98,27 @@ impl Printer {
 
     fn statement(&self, s: &Statement) -> String {
         match s {
-            Statement::Definition { head, kind, body } => {
+            Statement::Definition {
+                head,
+                kind,
+                body,
+                query,
+            } => {
                 let op = match kind {
                     DefKind::Assign => ":=",
                     DefKind::Const => "≡",
                 };
                 let mut list = List::new("def");
                 list.push(op).push(self.head(head)).push(self.node(body));
+                match query {
+                    Some(QueryMode::Exact) => {
+                        list.push("=?");
+                    }
+                    Some(QueryMode::Approx) => {
+                        list.push("≈?");
+                    }
+                    None => {}
+                }
                 list.finish()
             }
             Statement::Query { expr, mode, steps } => {
@@ -164,6 +178,7 @@ impl Printer {
             }
             Clause::Range(r) => self.range(r),
             Clause::Condition(n) => format!("(if {})", self.node(n)),
+            Clause::Assumption(n) => format!("(assume {})", self.node(n)),
         }
     }
 
@@ -198,6 +213,7 @@ impl Printer {
             K::Text(t) => format!("(text {t:?})"),
             K::Continuation => "(cont)".to_string(),
             K::Error => "(error)".to_string(),
+            K::Placeholder { label } => format!("(slot {label:?})"),
             K::Call {
                 callee,
                 args,
@@ -253,6 +269,21 @@ impl Printer {
             K::Accented { accent, inner } => self.prefixed(accent.name(), inner),
             K::Styled { font, inner } => self.prefixed(font_name(*font), inner),
             K::Relation { first, rest } => self.relation(first, rest),
+            K::Quantity { value, unit } => self.prefixed(&format!("quantity {}", unit.text), value),
+            K::Convert { expr, unit } => self.prefixed(&format!("in {}", unit.text), expr),
+            K::SetBuilder {
+                var,
+                domain,
+                condition,
+            } => match domain {
+                Some(d) => format!(
+                    "(setof {} {} {})",
+                    self.node(var),
+                    self.node(d),
+                    self.node(condition)
+                ),
+                None => self.pair("setof", var, condition),
+            },
         }
     }
 
@@ -357,6 +388,7 @@ impl Printer {
             BinOp::Union => "∪",
             BinOp::Intersect => "∩",
             BinOp::SetMinus => "∖",
+            BinOp::Mod => "mod",
             BinOp::And => "and",
             BinOp::Or => "or",
         };
@@ -543,6 +575,9 @@ impl Printer {
         if int.diff_in_numerator {
             self.key(&mut list, ":d-in-numerator");
         }
+        if int.form {
+            self.key(&mut list, ":form");
+        }
         self.opt(&mut list, ":lower", int.lower.as_ref());
         self.opt(&mut list, ":upper", int.upper.as_ref());
         list.push(self.node(&int.body));
@@ -674,5 +709,6 @@ fn bracket_name(bracket: Bracket) -> &'static str {
         Bracket::Angle => "angle",
         Bracket::TexGroup => "texgroup",
         Bracket::None => "none",
+        Bracket::EvalBar => "evalbar",
     }
 }

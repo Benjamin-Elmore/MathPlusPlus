@@ -1,0 +1,30 @@
+---
+source: crates/mpp-render/tests/snapshots.rs
+expression: "y(x) := x \\tan\\theta - \\frac{g x^2}{2 v_0^2 \\cos^2\\theta}"
+---
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="232.57" height="49.97" viewBox="0 0 232.57 49.97" overflow="visible">
+<text x="0" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑦</text>
+<text x="9.8" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">(</text>
+<text x="17.58" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="29.02" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">)</text>
+<text x="42.36" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">≔</text>
+<text x="66.03" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="80.8" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">t</text>
+<text x="88.58" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">a</text>
+<text x="98.58" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">n</text>
+<text x="113.04" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">𝜃</text>
+<text x="126.86" y="30.1" font-family="Latin Modern Math" font-size="20" fill="#111111">−</text>
+<text x="174.68" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑔</text>
+<text x="184.22" y="16.56" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑥</text>
+<text x="195.66" y="9.3" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<text x="149.27" y="44.07" font-family="Latin Modern Math" font-size="20" fill="#111111">2</text>
+<text x="159.27" y="44.07" font-family="Latin Modern Math" font-size="20" fill="#111111">𝑣</text>
+<text x="169.19" y="37.19" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<text x="168.97" y="49.69" font-family="Latin Modern Math" font-size="14" fill="#111111">0</text>
+<text x="181.61" y="44.07" font-family="Latin Modern Math" font-size="20" fill="#111111">c</text>
+<text x="190.49" y="44.07" font-family="Latin Modern Math" font-size="20" fill="#111111">o</text>
+<text x="200.49" y="44.07" font-family="Latin Modern Math" font-size="20" fill="#111111">s</text>
+<text x="208.37" y="38.29" font-family="Latin Modern Math" font-size="14" fill="#111111">2</text>
+<text x="220.79" y="44.07" font-family="Latin Modern Math" font-size="20" fill="#111111">𝜃</text>
+<rect x="146.87" y="24.7" width="85.7" height="0.8" fill="#111111"/>
+</svg>

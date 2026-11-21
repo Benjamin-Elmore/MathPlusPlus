@@ -59,6 +59,10 @@ pub enum BlockKind {
     Analyse(Analyse),
     /// `Solve $x^2 = 4$ for $x$.`
     Solve(Solve),
+    /// `Assume $x > 0$.`, `Assume $n \in \mathbb{Z}$, $a \neq 0$.`
+    Assume(Assume),
+    /// `Data: $T$ from [[measurements.csv]].`
+    Data(DataImport),
     /// `Let $a = 3$.` and prose that starts the same way.
     Let(Let),
     FootnoteDef {
@@ -67,6 +71,12 @@ pub enum BlockKind {
     },
     Directive(Directive),
     Theorem(Theorem),
+    /// `% note` or `%{ … %}`: shown to the reader, skipped by the interpreter.
+    Comment(Comment),
+    /// `Title:`, `Author:`, `Date:` or `Abstract:` at the top of the file.
+    Title(TitleField),
+    /// `References` with entries, or `References from [[refs.mpp]]`.
+    References(References),
 }
 
 /// A list; items may hold nested lists.
@@ -141,6 +151,9 @@ pub struct Figure {
     pub items: Vec<FigureItem>,
     /// The text after the first `. `; empty when there is none.
     pub caption: Vec<Inline>,
+    /// Words written between the items that describe them rather than draw anything
+    /// (`and the drag-free path`, `with the half-lives marked`, `against`).
+    pub words: Vec<Span>,
 }
 
 /// One comma-separated item of a figure.
@@ -196,10 +209,14 @@ figure_keywords! {
     RiemannLeft => "riemann left",
     RiemannRight => "riemann right",
     RiemannMid => "riemann mid",
+    RiemannTrapezoid => "riemann trapezoid",
     AreaBetween => "area between",
     RevolveAbout => "revolve about",
     Taylor => "taylor",
     NewtonFrom => "newton from",
+    Scatter => "scatter",
+    Histogram => "histogram",
+    BoxPlot => "box plot",
 }
 
 /// `Using $names$ [as $aliases$] from [[path]].`
@@ -262,6 +279,22 @@ pub struct Solve {
     pub unknowns: Option<Vec<Node>>,
 }
 
+/// `Data: $T$ from [[file.csv]].`: a table of measurements read from a CSV file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DataImport {
+    /// The table's name.
+    pub name: Node,
+    /// The path as written (relative to the document).
+    pub path: String,
+    pub path_span: Span,
+}
+
+/// `Assume $cond$ {, $cond$} [and $cond$].`: facts about names, in force from here on.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Assume {
+    pub conditions: Vec<Node>,
+}
+
 /// A paragraph that starts `Let $…$`: the maths in it defines variables.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Let {
@@ -291,7 +324,14 @@ pub struct Directive {
 pub enum DirectiveKind {
     /// `%noeval`: the next maths block is never auto-evaluated.
     NoEval,
-    /// Any other `%` line.
+    /// A number-display directive such as `%sf 4` or `%block dp 2`; read it with
+    /// [`crate::document::display::parse_display_directive`].
+    Display,
+    /// `%cite numbered` or `%cite author-year`: how citations read.
+    Cite(CiteStyle),
+    /// `%number sections`: number the headings, and theorems per section (`Theorem 2.1`).
+    NumberSections,
+    /// Any other `%word` line (reserved for directives).
     Comment,
 }
 
@@ -306,6 +346,9 @@ pub enum TheoremKind {
     Example,
     Remark,
     Proof,
+    /// A statement put forward without proof (written by a person or proposed by the
+    /// proof agent); a proof that follows it is checked like any other.
+    Conjecture,
 }
 
 impl TheoremKind {
@@ -319,6 +362,7 @@ impl TheoremKind {
         TheoremKind::Example,
         TheoremKind::Remark,
         TheoremKind::Proof,
+        TheoremKind::Conjecture,
     ];
 
     /// The word as written (`Theorem`).
@@ -332,18 +376,23 @@ impl TheoremKind {
             TheoremKind::Example => "Example",
             TheoremKind::Remark => "Remark",
             TheoremKind::Proof => "Proof",
+            TheoremKind::Conjecture => "Conjecture",
         }
     }
 }
 
-/// `**Theorem.** …`, with the blocks that follow it inside the statement
-/// (a proof runs on to its `∎`).
+/// `**Theorem.** …`, `**Theorem 2** (Title). …` or `**Proof** (by induction). …`, with the
+/// blocks that follow it inside the statement (a proof runs on to its `∎`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theorem {
     pub kind: TheoremKind,
     pub body: Vec<Block>,
     /// For a proof: whether it ends at `∎` or `\qed`. Always true otherwise.
     pub closed: bool,
+    /// The number written in the heading (`2` in `**Lemma 2.**`, `2.1`), if any.
+    pub number: Option<String>,
+    /// The title in brackets after the heading (`Scaling` in `**Lemma 1** (Scaling).`).
+    pub title: Option<Vec<Inline>>,
 }
 
 /// A piece of running text.
@@ -380,6 +429,8 @@ pub enum InlineKind {
     },
     /// `\$`, `\*`, … : the escaped character.
     Escape(char),
+    /// `[@key]`, `[@a; @b]`: a citation.
+    Cite(Vec<Cite>),
 }
 
 /// `$ … $` inside text.
@@ -388,4 +439,111 @@ pub struct InlineMath {
     pub ast: MathAst,
     /// The text between the `$` delimiters.
     pub raw: Span,
+}
+
+/// A formatted comment: `% text` (one or more lines) or `%{ … %}`. The reader sees
+/// it; the interpreter skips it. Its blocks are parsed like the rest of the file
+/// (prose markup, lists, tables, `$…$` maths) but never evaluated, and nothing
+/// defined inside takes effect.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Comment {
+    pub blocks: Vec<Block>,
+    /// Written `%{ … %}`.
+    pub braces: bool,
+    /// False when a `%{` has no closing `%}`.
+    pub closed: bool,
+}
+
+impl Comment {
+    /// True when the comment holds nothing but display maths: maths commented out.
+    pub fn is_commented_out_maths(&self) -> bool {
+        !self.blocks.is_empty()
+            && self
+                .blocks
+                .iter()
+                .all(|b| matches!(b.kind, BlockKind::DisplayMath(_)))
+    }
+}
+
+/// The line kinds of a title block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum TitleKind {
+    Title,
+    Author,
+    Date,
+    Abstract,
+}
+
+impl TitleKind {
+    pub const ALL: &'static [TitleKind] = &[
+        TitleKind::Title,
+        TitleKind::Author,
+        TitleKind::Date,
+        TitleKind::Abstract,
+    ];
+
+    /// The word as written, before the colon.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TitleKind::Title => "Title",
+            TitleKind::Author => "Author",
+            TitleKind::Date => "Date",
+            TitleKind::Abstract => "Abstract",
+        }
+    }
+}
+
+/// `Title: …`, `Author: …`, `Date: …` or `Abstract: …` at the top of a file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TitleField {
+    pub kind: TitleKind,
+    pub content: Vec<Inline>,
+}
+
+impl TitleField {
+    /// True when nothing is written after the keyword yet (`Author:` alone): the
+    /// paper and the exports leave such a field out.
+    pub fn is_empty(&self) -> bool {
+        self.content.iter().all(|i| match &i.kind {
+            InlineKind::Text(s) => s.trim().is_empty(),
+            InlineKind::SoftBreak => true,
+            _ => false,
+        })
+    }
+}
+
+/// One entry of a `References` block: `[@key] Author | Title | Year | link`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Reference {
+    pub key: String,
+    pub author: String,
+    pub title: String,
+    pub year: Option<String>,
+    pub link: Option<String>,
+    pub span: Span,
+}
+
+/// A `References` block, with the entries written in it or the file they come from.
+#[derive(Debug, Clone, PartialEq)]
+pub struct References {
+    pub entries: Vec<Reference>,
+    /// `References from [[refs.mpp]]`.
+    pub from: Option<(String, Span)>,
+}
+
+/// How citations and the reference list read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CiteStyle {
+    /// `[1]`, numbered in order of first citation (the default).
+    #[default]
+    Numbered,
+    /// `(Knuth 1984)`, listed alphabetically.
+    AuthorYear,
+}
+
+/// One `[@key]` inside a citation.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Cite {
+    pub key: String,
+    pub span: Span,
 }

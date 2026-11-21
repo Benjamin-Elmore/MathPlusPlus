@@ -2,10 +2,10 @@
 
 use super::expr::{attach_sub, bound_letter, is_d, is_sign, name_node, rebind, starts_variable};
 use super::{Ctx, Parser};
-use crate::lexer::{Op, Tok};
+use crate::lexer::{Delim, Op, Tok};
 use crate::math::ast::{
-    BigOp, BigOpKind, BinOp, DerivNotation, DerivVar, Derivative, IntKind, Integral, Limit,
-    MulStyle, NablaOp, Name, Node, NodeKind, RelOp, Side,
+    BigOp, BigOpKind, BinOp, Bracket, DerivNotation, DerivVar, Derivative, IntKind, Integral,
+    Limit, MulStyle, NablaOp, Name, Node, NodeKind, RelOp, Side, UnaryOp,
 };
 use crate::span::Span;
 
@@ -63,7 +63,7 @@ impl Parser<'_> {
     }
 
     /// The operand of a big operator: the multiplicative term to its right.
-    fn op_body(&mut self, what: &str) -> Node {
+    pub(super) fn op_body(&mut self, what: &str) -> Node {
         if self.at(is_sign) {
             return self.parse_signed_term();
         }
@@ -114,8 +114,38 @@ impl Parser<'_> {
     fn integral(&mut self, kind: IntKind) -> Node {
         let start = self.cur_span();
         self.bump();
+        // A sign on its own (`Exchange $\frac{d}{dt}$ and $\int$`) names the operator in
+        // prose: it is the symbol, not an integral with its parts missing.
+        if self.at_end() {
+            let symbol = match kind {
+                IntKind::Single => "∫",
+                IntKind::Double => "∬",
+                IntKind::Triple => "∭",
+                IntKind::Contour => "∮",
+                IntKind::Surface => "∯",
+            };
+            return Node::new(NodeKind::Symbol(symbol), start);
+        }
         let (lower, upper) = self.limits("the lower bound after `_`", "the upper bound after `^`");
         let ctx = self.integral_ctx();
+        if matches!(kind, IntKind::Single | IntKind::Contour) {
+            if let Some((body, diffs)) = self.with_ctx(ctx, |p| p.differential_form()) {
+                let end = diffs.last().map_or(body.span, |d| d.span);
+                return Node::new(
+                    NodeKind::Integral(Box::new(Integral {
+                        kind,
+                        lower,
+                        upper,
+                        body,
+                        diffs,
+                        dot: true,
+                        diff_in_numerator: false,
+                        form: true,
+                    })),
+                    start.join(end),
+                );
+            }
+        }
         let (body, diffs, dot) = self.with_ctx(ctx, |p| {
             if p.differential_at(0) {
                 // `\int dx \, f(x)`: differentials first.
@@ -171,9 +201,91 @@ impl Parser<'_> {
                 diffs,
                 dot,
                 diff_in_numerator,
+                form: false,
             })),
             start.join(end),
         )
+    }
+
+    /// `(P\,dx + Q\,dy)` after a line-integral sign: a bracketed sum whose terms each end
+    /// in a differential of a different variable. Returns the coefficients as a tuple
+    /// and the variables, or `None` (having read nothing) when the bracket is not one.
+    fn differential_form(&mut self) -> Option<(Node, Vec<Node>)> {
+        let open = self.cur_span();
+        if !self.at(|t| {
+            matches!(
+                t,
+                Tok::Open {
+                    delim: Delim::Paren,
+                    ..
+                }
+            )
+        }) {
+            return None;
+        }
+        let cp = self.checkpoint();
+        self.bump();
+        let mut coefs = Vec::new();
+        let mut diffs: Vec<Node> = Vec::new();
+        loop {
+            let neg = match self.peek() {
+                Some(Tok::Op(Op::Minus)) => Some(self.cur_span()),
+                _ => None,
+            };
+            if neg.is_some() || self.at(|t| matches!(t, Tok::Op(Op::Plus))) {
+                self.bump();
+            }
+            // `dx` alone has the coefficient 1.
+            let coef = if self.differential_at(0) {
+                Node::new(
+                    NodeKind::Number("1".to_string()),
+                    Span::point(self.cur_span().start),
+                )
+            } else if self.can_start_factor() {
+                self.parse_term()
+            } else {
+                self.restore(cp);
+                return None;
+            };
+            let d = self.differentials(IntKind::Single);
+            let Some(var) = d.into_iter().next() else {
+                self.restore(cp);
+                return None;
+            };
+            let same = |a: &Node, b: &Node| {
+                crate::math::sexpr::node(a, crate::math::sexpr::Mode::Semantic)
+                    == crate::math::sexpr::node(b, crate::math::sexpr::Mode::Semantic)
+            };
+            if diffs.iter().any(|v| same(v, &var)) {
+                self.restore(cp);
+                return None;
+            }
+            coefs.push(match neg {
+                Some(at) => super::expr::unary(UnaryOp::Neg, at, coef),
+                None => coef,
+            });
+            diffs.push(var);
+            match self.peek() {
+                Some(Tok::Op(Op::Plus | Op::Minus)) => continue,
+                Some(Tok::Close { .. }) => {
+                    let end = self.cur_span();
+                    self.bump();
+                    let body = Node::new(
+                        NodeKind::Tuple {
+                            elems: coefs,
+                            bracket: Bracket::Paren,
+                            sized: false,
+                        },
+                        open.join(end),
+                    );
+                    return Some((body, diffs));
+                }
+                _ => {
+                    self.restore(cp);
+                    return None;
+                }
+            }
+        }
     }
 
     /// `d x`, `dx dy`, `\mathrm{d} x`, up to as many as the integral sign takes.
@@ -185,7 +297,7 @@ impl Parser<'_> {
             match self.deriv_var() {
                 Some(var) => {
                     let span = d.join(var.span);
-                    diffs.push(Node::new(var.kind, span));
+                    diffs.push(Node::new(var.into_parts().0, span));
                 }
                 None => break,
             }
@@ -648,8 +760,9 @@ impl Parser<'_> {
 
 /// `\frac{dx}{x}` as an integral body: takes the `dx` out, leaving `\frac{1}{x}`.
 fn numerator_differential(body: Node) -> Result<(Node, Node), Node> {
-    let NodeKind::Frac { num, den, style } = body.kind else {
-        return Err(body);
+    let (kind, body_span) = body.into_parts();
+    let NodeKind::Frac { num, den, style } = kind else {
+        return Err(Node::new(kind, body_span));
     };
     let split = match &num.kind {
         NodeKind::Binary {
@@ -662,18 +775,19 @@ fn numerator_differential(body: Node) -> Result<(Node, Node), Node> {
     match split {
         Some((d_span, var)) => {
             let one = Node::new(NodeKind::Number("1".to_string()), d_span);
-            let var = Node::new(var.kind, d_span.join(var.span));
+            let var_span = d_span.join(var.span);
+            let var = Node::new(var.into_parts().0, var_span);
             let frac = Node::new(
                 NodeKind::Frac {
                     num: Box::new(one),
                     den,
                     style,
                 },
-                body.span,
+                body_span,
             );
             Ok((frac, var))
         }
-        None => Err(Node::new(NodeKind::Frac { num, den, style }, body.span)),
+        None => Err(Node::new(NodeKind::Frac { num, den, style }, body_span)),
     }
 }
 

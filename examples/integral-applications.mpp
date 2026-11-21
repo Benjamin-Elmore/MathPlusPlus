@@ -1,0 +1,71 @@
+# Applications of the integral
+
+A worksheet of the standard applications. Each one is inserted from the Helpers group of the Insert menu; an interval $[a, b]$ gives the bounds and $x = c$ or $y = c$ gives an axis.
+
+## Area between curves
+
+The line $y = x$ and the parabola $y = x^2$ cross at $x = 0$ and $x = 1$; without an interval the region they enclose is used.
+
+$$ \operatorname{area}(x, x^2) = ?! $$
+
+Over a whole period of $\sin x$ both humps count as area.
+
+$$ \operatorname{area}(\sin x, [0, 2\pi]) = ? $$
+
+Curves in $y$: $x = y + 2$ and $x = y^2$.
+
+$$ \operatorname{area}(y + 2, y^2) = ? $$
+
+## Volumes of revolution
+
+Disks: $y = \sqrt{x}$ on $[0, 4]$ about the $x$-axis.
+
+$$ \operatorname{volume}(\sqrt{x}, [0, 4]) = ? $$
+
+Washers about $y = -1$, then shells about the $y$-axis and about $x = 2$, for the region between $y = x$ and $y = x^2$.
+
+$$ \operatorname{volume}(x, x^2, [0, 1], y = -1) = ? $$
+
+$$ \operatorname{volume}_{shell}(x, x^2, [0, 1], x = 0) = ? $$
+
+$$ \operatorname{volume}(x, x^2, [0, 1], x = 2) = ? $$
+
+A sphere of radius $2$ from the upper half circle.
+
+$$ \operatorname{volume}_{disk}(\sqrt{4 - x^2}, [-2, 2]) = ? $$
+
+## Lengths and surfaces
+
+$$ \operatorname{arclength}(x^{3/2}, [0, 4]) = ? $$
+
+$$ \operatorname{arclength}((\cos t, \sin t), t, [0, 2\pi]) = ? $$
+
+$$ \operatorname{surfacearea}(x, [0, 1]) = ? $$
+
+## Average value, work and centres of mass
+
+$$ \operatorname{average}(x^2, [0, 3]) = ? $$
+
+Stretching a spring with $k = 5$ from $0$ to $0.2$ by Hooke's law $F = kx$.
+
+$$ \operatorname{work}(5x, [0, 0.2]) = ? $$
+
+$$ \operatorname{centroid}(x, x^2, [0, 1]) = ? $$
+
+A rod on $[0, 2]$ with density $1 + x$.
+
+$$ \operatorname{centreofmass}(1 + x, [0, 2]) = ? $$
+
+## The accumulation function
+
+$$ \operatorname{accumulate}(2x, 1) = ? $$
+
+## Improper integrals
+
+$$ \int_0^{\infty} \frac{\sin x}{x}\,dx = ? $$
+
+$$ \int_{-\infty}^{\infty} e^{-x^2}\,dx = ? $$
+
+$$ \int_0^{\infty} \sin(x^2)\,dx = ? $$
+
+$$ \int_1^{\infty} \frac{1}{x}\,dx = ? $$

@@ -1,0 +1,45 @@
+Commands run (from C:\Elmore\MathPP\.claude\worktrees\ide-tools, branch feat/ide-tools):
+  cargo build --release                       -> target\release\mathpp.exe (IDE) and mpp.exe
+  pwsh work/release/build.ps1                 -> dist\Math++-0.1.0-portable.zip, dist\Math++-0.1.0-x64.msi (renames mathpp.exe to Math++.exe; WiX 3.14 candle/light)
+  pwsh work/release/install-test.ps1          -> the output below (installs, checks, launches, uninstalls, checks)
+Note: Windows registers a per-user MSI's Apps & features entry under HKLM Uninstall; no admin was used (admin: False).
+
+Math++ install test, 2026-11-20T16:51:12, whoami: Kyle, admin: False
+msi: Math++-0.1.0-x64.msi (19.6 MB)
+PASS not installed before
+> msiexec /i "Math++-0.1.0-x64.msi" /qn /l*v dist\install.log ADDLOCAL=Main,AddToPath
+PASS msiexec install exit code 0 (got 0)
+PASS installed: Math++.exe
+PASS installed: mpp.exe
+PASS installed: LICENSE-MIT
+PASS installed: LICENSE-APACHE
+PASS installed: CHANGELOG.mpp
+PASS installed: licences\GUST-Latin-Modern-LICENSE.txt
+PASS installed: licences\OFL-egui-fonts.txt
+PASS installed: docs\guide.mpp
+PASS installed: examples\integrals.mpp
+PASS installed: examples\imports
+PASS Start-menu shortcut Math++.lnk
+PASS shortcut target = C:\Users\Kyle\AppData\Local\Programs\Math++\Math++.exe
+PASS .mpp -> MathPlusPlus.Document
+PASS open command: "C:\Users\Kyle\AppData\Local\Programs\Math++\Math++.exe" "%1"
+PASS DefaultIcon: C:\Users\Kyle\AppData\Local\Programs\Math++\Math++.exe,0
+PASS user PATH contains the install folder
+PASS Math++.exe version info: Math++ 0.1.0
+PASS Apps & features entry (Windows lists per-user MSIs under HKLM Uninstall): Math++ 0.1.0
+> C:\Users\Kyle\AppData\Local\Programs\Math++\mpp.exe run examples\integrals.mpp
+PASS mpp run works (prints 1/3)
+> Math++.exe examples\integrals.mpp   (command taken from the registry open command, %1 replaced)
+PASS IDE alive after 6 s (pid 64188, HasExited=False)
+PASS IDE has a window titled: Math++
+PASS IDE has no console window (PE subsystem 2, 2 = GUI)
+> msiexec /x "Math++-0.1.0-x64.msi" /qn /l*v dist\uninstall.log
+PASS msiexec uninstall exit code 0 (got 0)
+PASS install folder gone
+PASS Start-menu shortcut gone
+PASS .mpp association gone
+PASS MathPlusPlus.Document gone
+PASS HKCU\Software\Math++ gone
+PASS user PATH no longer has the folder
+PASS Apps & features entry gone
+RESULT: 0 failure(s)

@@ -166,6 +166,12 @@ fn block(out: &mut String, b: &Block, depth: usize) {
                     .map_or("-".to_string(), |u| format!("[{}]", nodes(u)))
             );
         }
+        BlockKind::Data(d) => {
+            let _ = writeln!(out, "Data name={} path={:?}", node(&d.name), d.path);
+        }
+        BlockKind::Assume(a) => {
+            let _ = writeln!(out, "Assume [{}]", nodes(&a.conditions));
+        }
         BlockKind::Let(l) => {
             let _ = writeln!(out, "Let {}", inlines(&l.content));
         }
@@ -175,8 +181,33 @@ fn block(out: &mut String, b: &Block, depth: usize) {
         BlockKind::Directive(d) => {
             let _ = writeln!(out, "Directive {:?} {:?}", d.kind, d.text);
         }
+        BlockKind::Comment(c) => {
+            let _ = writeln!(out, "Comment braces={} closed={}", c.braces, c.closed);
+            blocks(out, &c.blocks, depth + 1);
+        }
+        BlockKind::Title(t) => {
+            let _ = writeln!(out, "Title {} {}", t.kind.as_str(), inlines(&t.content));
+        }
+        BlockKind::References(r) => {
+            let _ = writeln!(out, "References from={:?}", r.from.as_ref().map(|(p, _)| p));
+            for e in &r.entries {
+                pad(out, depth + 1);
+                let _ = writeln!(
+                    out,
+                    "@{} {:?} {:?} {:?} {:?}",
+                    e.key, e.author, e.title, e.year, e.link
+                );
+            }
+        }
         BlockKind::Theorem(t) => {
-            let _ = writeln!(out, "Theorem {} closed={}", t.kind.as_str(), t.closed);
+            let _ = write!(out, "Theorem {} closed={}", t.kind.as_str(), t.closed);
+            if let Some(n) = &t.number {
+                let _ = write!(out, " number={n}");
+            }
+            if let Some(title) = &t.title {
+                let _ = write!(out, " title={}", inlines(title));
+            }
+            out.push('\n');
             blocks(out, &t.body, depth + 1);
         }
     }
@@ -224,5 +255,12 @@ fn inline(i: &Inline) -> String {
         InlineKind::FootnoteRef(n) => format!("(fnref {n:?})"),
         InlineKind::EqRef { label, number } => format!("(eqref {label:?} {number:?})"),
         InlineKind::Escape(c) => format!("(escape {c:?})"),
+        InlineKind::Cite(cs) => format!(
+            "(cite {})",
+            cs.iter()
+                .map(|c| c.key.as_str())
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
     }
 }

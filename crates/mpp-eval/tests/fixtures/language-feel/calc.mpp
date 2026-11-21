@@ -1,0 +1,81 @@
+Title: Calculus II — Homework 7
+Author: K. Student
+Date: 20 November 2026
+
+## Part A. Derivatives
+
+1. Differentiate $f(x) = x^2 e^{3x}$, showing the steps.
+
+$$ \frac{d}{dx} x^2 e^{3x} = ?! $$
+
+2. Find $\frac{dy}{dx}$ for $y = \ln(\sin x)$.
+
+$$ \frac{d}{dx} \ln(\sin x) = ? $$
+
+3. Second derivative of $\arctan x$:
+
+$$ \frac{d^2}{dx^2} \arctan x = ? $$
+
+## Part B. Integrals
+
+4. Integrate by parts.
+
+$$ \int x \cos x \, dx = ?! $$
+
+5. Evaluate:
+
+$$ \int_1^e \frac{\ln x}{x} \, dx = ? $$
+
+6. An improper integral:
+
+$$ \int_0^{\infty} e^{-2x} \, dx = ? $$
+
+7. Partial fractions:
+
+$$ \int \frac{1}{x^2 - 1} \, dx = ?! $$
+
+## Part C. Limits
+
+8. Show the working:
+
+$$ \lim_{x \to 0} \frac{1 - \cos x}{x^2} = ?! $$
+
+9. The limit that defines $e$:
+
+$$ \lim_{x \to \infty} \left(1 + \frac{1}{x}\right)^x = ? $$
+
+10. A one-sided limit:
+
+$$ \lim_{x \to 0^+} x \ln x = ? $$
+
+## Part D. Series
+
+11. A geometric series:
+
+$$ \sum_{n=0}^{\infty} \frac{1}{2^n} = ? $$
+
+12. Does $\sum_{n=1}^{\infty} \frac{1}{n}$ converge?
+
+$$ \sum_{n=1}^{\infty} \frac{1}{n} = ? $$
+
+13. Taylor series of $e^x$ about $0$ to order 4:
+
+$$ \operatorname{series}_{x=0}^{4} e^x = ? $$
+
+## Part E. Curve sketch
+
+14. Sketch $g(x) = x^3 - 3x$.
+
+$$ g(x) := x^3 - 3x $$
+
+Critical points:
+
+$$ \operatorname{solve}(g'(x) = 0, x) = ? $$
+
+$$ g''(x) = ? $$
+
+$$ g(-1) = ? $$
+$$ g(1) = ? $$
+
+Figure: $g(x)$, $x \in [-2.5, 2.5]$. The cubic $g(x) = x^3 - 3x$ with a local maximum at $x = -1$ and a local minimum at $x = 1$.
+

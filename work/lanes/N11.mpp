@@ -1,0 +1,24 @@
+# Lane notes: N11 (Windows .exe and installer)
+
+## What exists
+
+- `cargo build --release` makes `target\release\mathpp.exe` (the IDE) and `mpp.exe` (the CLI), both with the app icon and Windows version info (from Cargo.toml, via `winresource` in each crate's `build.rs`). The IDE uses the GUI subsystem in release builds, so no console window opens.
+- **The IDE is `Math++.exe` only after packaging.** Cargo refuses a `+` in a binary name ("invalid character '+' in crate name"), so the cargo target is `mathpp` and `work/release/build.ps1` copies it to `Math++.exe` in the zip and the installer. The shortcut and the `.mpp` association use `Math++.exe`.
+- Icon: `crates/mpp-ide/assets/mathpp.svg` (an integral sign with two plusses) rendered to `mathpp.ico` (16 to 256 px) by the standalone helper `work/release/icon-gen` (`cargo run --release --manifest-path work/release/icon-gen/Cargo.toml`). The .ico is committed.
+- `pwsh work/release/build.ps1` builds `dist\Math++-<version>-portable.zip` and `dist\Math++-<version>-x64.msi` (git ignores `dist/`). The version is read from Cargo.toml.
+- The installer is WiX 3 (`work/release/mathpp.wxs`, driven by `candle`/`light` directly, not `cargo wix`, because a hand-written per-user package needs no cargo-wix layout). It is **per-user**: no admin rights, installs to `%LOCALAPPDATA%\Programs\Math++`, a Start-menu shortcut, the `.mpp` association (HKCU, icon and `"Math++.exe" "%1"` open command), an optional feature "Add mpp to PATH" (off by default; silent install with `ADDLOCAL=Main,AddToPath`), docs, examples, licences, and a normal uninstaller.
+- WiX 3.14 is not installed machine-wide: the unzipped `wix314-binaries.zip` lives in `target\tools\wix3` (build.ps1 also looks at `WIX_BIN`, `WIX` and the PATH). `cargo-wix` 0.3.9 is installed but unused.
+- `work/release/install-test.ps1` runs the whole install, check, launch, uninstall test; the last result is in `work/release/install-test.txt`.
+- Licences: `LICENSE-MIT`, `LICENSE-APACHE`, and the font licences in `work/release/licences` (GUST for Latin Modern; OFL, UFL, Hack and MIT for the editor's default fonts).
+
+## Needs Ben
+
+- **Releasing.** Nothing is published. Ben decides when to make a GitHub Release and attach the .msi and .zip.
+- **Code signing.** The exes and the .msi are unsigned, so Windows SmartScreen will warn on first run. Signing needs a certificate (an OV or EV code-signing certificate, or Azure Trusted Signing). Then `signtool sign` the two exes before packaging and the .msi after.
+- **The version number.** `0.1.0` is a placeholder in `[workspace.package]`; change it there and `CHANGELOG.mpp`.
+- Also: the copyright holder in the licences and version info is "Benjamin Elmore"; correct it if it should read differently.
+
+## Known limits
+
+- Explorer may show the old icon for `.mpp` files until it refreshes (the installer does not broadcast a shell change notification).
+- The package is x64 only.

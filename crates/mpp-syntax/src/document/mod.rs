@@ -10,16 +10,22 @@
 mod ast;
 mod block;
 mod cursor;
+pub mod display;
 pub mod dump;
 mod figure;
 mod inline;
+mod letters;
 mod list;
+pub mod proof;
+mod refs;
 mod sentence;
 mod table;
 
 use std::collections::HashMap;
 
 pub use ast::*;
+pub use figure::split_keyword_list;
+pub use refs::{cite_name, parse_reference_entries};
 
 use crate::span::{Diagnostic, Span};
 use block::{parse_blocks, split_lines, Ctx};
@@ -36,12 +42,21 @@ pub fn parse_document(src: &str) -> Document {
     for b in &mut blocks {
         resolve_block(b, &labels, &mut diagnostics);
     }
+    letters::bind_unit_letters(&mut blocks, src);
+    letters::bind_spelled_names(&mut blocks);
     assign_ids(&mut blocks, src);
-    diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
-    Document {
+    let mut doc = Document {
         blocks,
-        diagnostics,
+        diagnostics: Vec::new(),
+    };
+    // A `References from [[file]]` list is only known once the file is read, so the
+    // keys are checked by [`citation_diagnostics`] then.
+    if !doc.has_references_file() {
+        diagnostics.extend(citation_diagnostics(&doc, &[]));
     }
+    diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
+    doc.diagnostics = diagnostics;
+    doc
 }
 
 /// The innermost block that contains the byte `offset`. An offset just past
@@ -51,12 +66,17 @@ pub fn block_at(doc: &Document, offset: usize) -> Option<&Block> {
 }
 
 fn find_block(blocks: &[Block], offset: usize) -> Option<&Block> {
-    let hit = blocks
+    // Blocks come in text order and do not overlap, so only the ones from the last
+    // block ending before `offset` up to the last one starting at or before it can
+    // hold it (a file with thousands of problems asks this for every one of them).
+    let upto = blocks.partition_point(|b| b.span.start <= offset);
+    let from = blocks[..upto].partition_point(|b| b.span.end < offset);
+    let near = &blocks[from..upto];
+    let hit = near
         .iter()
         .find(|b| b.span.start <= offset && offset < b.span.end)
         .or_else(|| {
-            blocks
-                .iter()
+            near.iter()
                 .find(|b| b.span.start <= offset && offset == b.span.end)
         })?;
     if let BlockKind::Theorem(t) = &hit.kind {
@@ -157,6 +177,9 @@ fn resolve_block(b: &mut Block, labels: &HashMap<String, u32>, diags: &mut Vec<D
         }
         BlockKind::Figure(f) => each(&mut f.caption),
         BlockKind::Theorem(t) => {
+            if let Some(title) = &mut t.title {
+                resolve(title, labels, diags);
+            }
             for inner in &mut t.body {
                 resolve_block(inner, labels, diags);
             }
@@ -194,4 +217,290 @@ fn resolve(inlines: &mut [Inline], labels: &HashMap<String, u32>, diags: &mut Ve
             _ => {}
         }
     }
+}
+
+// ---- citations -------------------------------------------------------------
+
+fn visit_block_inlines<'a>(b: &'a Block, f: &mut impl FnMut(&'a Inline)) {
+    fn each<'a>(items: &'a [Inline], f: &mut impl FnMut(&'a Inline)) {
+        for i in items {
+            f(i);
+            match &i.kind {
+                InlineKind::Emphasis(inner) | InlineKind::Strong(inner) => each(inner, f),
+                InlineKind::Link { text, .. } => each(text, f),
+                _ => {}
+            }
+        }
+    }
+    fn list<'a>(l: &'a List, f: &mut impl FnMut(&'a Inline)) {
+        for item in &l.items {
+            each(&item.content, f);
+            for child in &item.children {
+                list(child, f);
+            }
+        }
+    }
+    match &b.kind {
+        BlockKind::Heading { content, .. }
+        | BlockKind::Paragraph(content)
+        | BlockKind::FootnoteDef { content, .. } => each(content, f),
+        BlockKind::Title(t) => each(&t.content, f),
+        BlockKind::Let(l) => each(&l.content, f),
+        BlockKind::Quote(ps) => {
+            for p in ps {
+                each(p, f);
+            }
+        }
+        BlockKind::List(l) => list(l, f),
+        BlockKind::Table(t) => {
+            for cell in t.header.iter().chain(t.rows.iter().flatten()) {
+                each(cell, f);
+            }
+        }
+        BlockKind::Figure(fig) => each(&fig.caption, f),
+        BlockKind::Theorem(t) => {
+            if let Some(title) = &t.title {
+                each(title, f);
+            }
+            for inner in &t.body {
+                visit_block_inlines(inner, f);
+            }
+        }
+        _ => {}
+    }
+}
+
+impl Document {
+    /// Visits every inline of the document, nested blocks included, in order.
+    /// Comments are skipped: nothing in them counts.
+    pub fn walk_inlines<'a>(&'a self, f: &mut impl FnMut(&'a Inline)) {
+        for b in &self.blocks {
+            visit_block_inlines(b, f);
+        }
+    }
+
+    /// The entries of every `References` block written in this file, in order.
+    pub fn reference_entries(&self) -> Vec<&Reference> {
+        let mut out = Vec::new();
+        self.walk(&mut |b| {
+            if let BlockKind::References(r) = &b.kind {
+                out.extend(r.entries.iter());
+            }
+        });
+        out
+    }
+
+    /// The heading level that numbers as a section (`1`, `2` …) under `%number
+    /// sections`: the top level the document uses, so a file written with `##`
+    /// headings only numbers them 1, 2, 3 rather than 0.1, 0.2. A single `#` heading
+    /// above deeper ones is the document's title, and the level below it is the section.
+    pub fn section_base_level(&self) -> u8 {
+        let mut h1 = 0;
+        let mut top_deeper: Option<u8> = None;
+        self.walk(&mut |b: &Block| {
+            if let BlockKind::Heading { level, .. } = &b.kind {
+                if *level == 1 {
+                    h1 += 1;
+                } else {
+                    top_deeper = Some(top_deeper.map_or(*level, |t| t.min(*level)));
+                }
+            }
+        });
+        match (h1, top_deeper) {
+            (0, Some(l)) => l,
+            (1, Some(l)) => l,
+            _ => 1,
+        }
+    }
+
+    /// The entries written as a list under a `References` (or `Bibliography`) heading,
+    /// one item per entry starting with its key: `- [@key] Author, *Title*, year.` The
+    /// text after the key is kept whole as the entry's `title`; `author` is empty.
+    pub fn reference_list_entries(&self) -> Vec<Reference> {
+        let mut out = Vec::new();
+        let mut under_references = false;
+        for b in &self.blocks {
+            match &b.kind {
+                BlockKind::Heading { content, .. } => {
+                    under_references = is_references_heading(content);
+                }
+                BlockKind::List(list) if under_references => {
+                    for item in &list.items {
+                        if let Some(entry) = list_item_reference(item) {
+                            out.push(entry);
+                        }
+                    }
+                }
+                BlockKind::Comment(_) | BlockKind::Directive(_) => {}
+                _ => {}
+            }
+        }
+        out
+    }
+
+    /// True when a `References from [[file]]` block names a file whose entries
+    /// have to be read before the citations can be checked.
+    pub fn has_references_file(&self) -> bool {
+        let mut found = false;
+        self.walk(&mut |b| {
+            if matches!(&b.kind, BlockKind::References(r) if r.from.is_some()) {
+                found = true;
+            }
+        });
+        found
+    }
+
+    /// The `%cite` style in force (the first such directive), numbered by default.
+    pub fn cite_style(&self) -> CiteStyle {
+        self.blocks
+            .iter()
+            .find_map(|b| match &b.kind {
+                BlockKind::Directive(Directive {
+                    kind: DirectiveKind::Cite(s),
+                    ..
+                }) => Some(*s),
+                _ => None,
+            })
+            .unwrap_or_default()
+    }
+}
+
+/// True for a heading that reads "References" or "Bibliography" (any case, with or
+/// without a section number in front).
+pub fn is_references_heading(content: &[Inline]) -> bool {
+    let mut text = String::new();
+    for i in content {
+        if let InlineKind::Text(t) = &i.kind {
+            text.push_str(t);
+        }
+    }
+    let word = text
+        .trim()
+        .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ' ')
+        .to_lowercase();
+    word == "references" || word == "bibliography"
+}
+
+/// The entry in a reference-list item that starts with `[@key]`.
+pub fn list_item_reference(item: &ListItem) -> Option<Reference> {
+    let mut parts = item
+        .content
+        .iter()
+        .skip_while(|i| matches!(&i.kind, InlineKind::Text(t) if t.trim().is_empty()));
+    let first = parts.next()?;
+    let InlineKind::Cite(cites) = &first.kind else {
+        return None;
+    };
+    let [cite] = cites.as_slice() else {
+        return None;
+    };
+    let mut rest = String::new();
+    for i in parts {
+        inline_plain_text(i, &mut rest);
+    }
+    Some(Reference {
+        key: cite.key.clone(),
+        author: String::new(),
+        title: rest.trim().trim_start_matches(':').trim().to_string(),
+        year: None,
+        link: None,
+        span: item.span,
+    })
+}
+
+/// Appends the plain text of an inline (markup dropped, maths kept as written).
+pub fn inline_plain_text(i: &Inline, out: &mut String) {
+    match &i.kind {
+        InlineKind::Text(t) => out.push_str(t),
+        InlineKind::SoftBreak => out.push(' '),
+        InlineKind::Emphasis(inner) | InlineKind::Strong(inner) => {
+            for x in inner {
+                inline_plain_text(x, out);
+            }
+        }
+        InlineKind::Link { text, .. } => {
+            for x in text {
+                inline_plain_text(x, out);
+            }
+        }
+        InlineKind::Code(c) => out.push_str(c),
+        InlineKind::Escape(c) => out.push(*c),
+        InlineKind::Cite(cites) => {
+            let keys: Vec<String> = cites.iter().map(|c| format!("@{}", c.key)).collect();
+            out.push('[');
+            out.push_str(&keys.join("; "));
+            out.push(']');
+        }
+        InlineKind::WikiLink { path, alias } => out.push_str(alias.as_deref().unwrap_or(path)),
+        InlineKind::FootnoteRef(n) => {
+            out.push_str("[^");
+            out.push_str(n);
+            out.push(']');
+        }
+        InlineKind::EqRef { label, number } => match number {
+            Some(n) => out.push_str(&format!("({n})")),
+            None => out.push_str(&format!("({label})")),
+        },
+        InlineKind::Math(_) => out.push_str("$…$"),
+    }
+}
+
+/// Checks every `[@key]` against the entries written in the file plus `extra`
+/// (the entries read from a `References from [[file]]` file): an unknown key is an
+/// error, and so is a key defined twice.
+pub fn citation_diagnostics(doc: &Document, extra: &[Reference]) -> Vec<Diagnostic> {
+    let mut known: HashMap<&str, ()> = HashMap::new();
+    let mut diags = Vec::new();
+    let listed = doc.reference_list_entries();
+    for r in doc
+        .reference_entries()
+        .into_iter()
+        .chain(extra.iter())
+        .chain(listed.iter())
+    {
+        if known.insert(r.key.as_str(), ()).is_some() {
+            diags.push(Diagnostic::error(
+                r.span,
+                format!("the reference key `{}` is defined twice", r.key),
+            ));
+        }
+    }
+    let mut names: Vec<&str> = known.keys().copied().collect();
+    names.sort_unstable();
+    doc.walk_inlines(&mut |i| {
+        if let InlineKind::Cite(cites) = &i.kind {
+            for c in cites {
+                if !known.contains_key(c.key.as_str()) {
+                    let d =
+                        Diagnostic::error(c.span, format!("no reference has the key `{}`", c.key));
+                    diags.push(if names.is_empty() {
+                        d.expecting(["an entry in a `References` block"])
+                    } else {
+                        d.expecting(names.iter().map(|n| format!("`@{n}`")))
+                    });
+                }
+            }
+        }
+    });
+    diags
+}
+
+/// True when a heading's own words start with a section number (`1. Intro`,
+/// `2.1 Method`), so `%number sections` must not number it a second time.
+pub fn heading_has_number(content: &[Inline]) -> bool {
+    let Some(Inline {
+        kind: InlineKind::Text(t),
+        ..
+    }) = content.first()
+    else {
+        return false;
+    };
+    let t = t.trim_start();
+    let digits = t
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.')
+        .count();
+    let (num, rest) = t.split_at(digits);
+    num.starts_with(|c: char| c.is_ascii_digit())
+        && (rest.is_empty() || rest.starts_with(char::is_whitespace))
 }

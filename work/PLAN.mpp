@@ -7,8 +7,8 @@ The queue is in [[RUN-STATE.mpp]] and the grammar is in [[../docs/grammar.mpp]].
 | Crate | Job | Depends on |
 |---|---|---|
 | `mpp-syntax` | symbol table, lexer, maths parser, `.mpp` document parser; every node has a source span | — |
-| `mpp-core` | expression tree, exact numbers, simplification, the CAS (calculus, series, solving), the `Domain` trait, step log | — |
-| `mpp-eval` | turns the syntax tree into core expressions, runs a document top to bottom: scopes, `:=` / `≡`, functions, queries, imports, dependency graph, auto-evaluation | syntax, core |
+| `mpp-core` | expression tree, exact numbers, simplification, the CAS (calculus, series, solving), the `Domain` trait, step log; the textbook tools in modules named by subject: `analysis`, `applications`, `convergence`, `numerics`, `ode`, `multivar`, `transforms` (Laplace, Fourier), `step_tree`, `table` | — |
+| `mpp-eval` | turns the syntax tree into core expressions, runs a document top to bottom: scopes, `:=` / `≡`, functions, queries, imports, dependency graph, auto-evaluation; operator holders in `helpers/{analysis, applications, convergence, multivar, numerics, ode, transforms}`, and `dispatch` with the one table of operator forms answered by different front ends | syntax, core |
 | `mpp-render` | maths layout (TeX-style boxes using the OpenType MATH table), output as a display list, SVG and HTML | syntax, eval |
 | `mpp-plot` | 2D and 3D figures as a display list (lines, triangles, text) | core, eval |
 | `mpp-ide` | the `eframe` app: equation view, editor, explorer, tabs | all |
@@ -24,7 +24,8 @@ The queue is in [[RUN-STATE.mpp]] and the grammar is in [[../docs/grammar.mpp]].
 - `mpp_syntax::document::{parse_document(&str) -> Document}`, a `Vec<Block>` where maths spans are already parsed (M4).
 - `mpp_core::Expr`: a reference-counted immutable tree (`Rc`-free `Arc<ExprNode>` so the IDE can evaluate on a background thread). Numbers are `Number` (big rational, plus complex rational and `f64` for approximate values). `simplify`, `expand`, `factor`, `eval_f64`, `subs` (M5).
 - `mpp_core::calc::{diff, limit, integrate, sum, series}` returning `Result<Expr, MathError>` and logging into an optional `&mut Steps` (M8 to M10, C1).
-- `mpp_core::domain::Domain` trait: `fn name(&self)`, `fn operators(&self) -> &[&str]`, `fn apply(&self, op, args, &mut Ctx) -> Option<Result<Value, MathError>>`. Each field (linear algebra, solving, ODEs, sets, number theory, statistics, helpers) is one module that implements it and is registered in a `Registry` (M11).
+- One engine per method, shared by every operator form: `mpp_core::transforms::laplace` (transform, inverse, constant-coefficient ODEs), `mpp_core::ode::dsolve` (the only differential-equation solver), `mpp_core::numerics::{rk4_march, newton_iterate}` (every RK4 and Newton answer). `mpp_eval::dispatch::FORMS` lists each shared operator's accepted argument forms and which front end reads them.
+- `mpp_core::domains::Domain` trait: `fn name(&self)`, `fn operators(&self) -> &[&str]`, `fn apply(&self, op, args, &mut Ctx) -> Option<Result<Value, MathError>>`. Each field (linear algebra, solving, ODEs, sets, number theory, statistics, helpers) is one module that implements it and is registered in a `Registry` (M11).
 - `mpp_eval::{Session, Evaluated}`: `Session::run(path or text) -> Evaluated`, where each block has its values, query results (exact, approximate, steps), diagnostics, figures, and the names it defines and uses (M6, M7).
 - `mpp_render::{layout_math, DisplayList, to_svg, render_html}` (M12) and `mpp_plot::{Figure, plot_2d, plot_3d}` (M13).
 

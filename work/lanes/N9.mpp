@@ -1,0 +1,129 @@
+# Lane notes: N9 (live errors in place)
+
+## Guide text (for `docs/guide.mpp`, integrator applies)
+
+### Problems, as you type
+
+Math++ checks the page while you type, the way a code editor does, and marks every problem
+right on the typeset maths:
+
+- a **red wavy underline** under the exact thing that is wrong: an empty box, a name with no
+  value, the bracket that is never closed (an error in a subscript underlines just the
+  subscript);
+- a **yellow wavy underline** for warnings: a definition nothing uses, a check that was only
+  tested with numbers;
+- **blue dots** for notes: something that is kept as written because it cannot be worked out yet.
+
+The block also gets a coloured bar in the left margin, the scrollbar shows a small mark for
+every problem on the page, and the status bar counts them ("2 errors, 1 warning"; click it to
+open the Problems panel). A file you import is checked too: its import line says
+"2 errors in mechanics.mpp".
+
+Problems never show line or column numbers and never show the file text. Hover over an
+underline to see a card with what is wrong in plain words, what was expected, and how to fix it:
+
+> Undefined: θ. Did you mean ϑ, or import it from launch.mpp?
+
+While you are filling in a template from the Insert menu, its empty boxes are not errors yet: they
+show their grey labels and a *fill in* hint. Once you leave the template, an empty box that still
+needs something is underlined.
+
+### Quick fixes
+
+When the caret is on a problem that can be fixed for you, a light bulb appears beside the maths.
+Click it or press `Ctrl+.` to choose a fix; the file text is changed behind the scenes:
+
+- **Use ϑ instead**: a close name that is defined (Greek look-alikes such as θ and ϑ first).
+- **Define θ**: adds `θ := □` above the block with the caret in the box.
+- **Import θ from launch.mpp**: adds the name to the import line, or a new
+  `Using … from [[launch.mpp]].` line under the title.
+- **Close the bracket**: adds the missing `)` where it belongs.
+- **Go to the empty box**, **Open mechanics.mpp**, and a close file name for an import that cannot
+  be found.
+
+### Moving between problems
+
+- `F8` goes to the next problem and opens its card; `Shift+F8` goes back. Both wrap around.
+- `Ctrl+Shift+M` opens the **Problems** panel: every problem in the open files and the files they
+  import, grouped by file and typeset. Click one to go there (a file that is not open is opened).
+
+### Example (for `examples/`)
+
+```
+# Problems on purpose
+
+Let $\vartheta := 0.3$ and $m := 2$.         ← ϑ and m: yellow, nothing uses them
+
+$$ \frac{1}{} = ? $$                          ← red under the empty box: "Empty box: denominator."
+
+$$ \sin \theta \approx ? $$                   ← red under θ: "Undefined: θ. Did you mean ϑ?"
+
+$$ 2 (x + 1 $$                                ← red under the "(": "Missing closing bracket )."
+
+$$ \sin(x)^2 + \cos(x)^2 \overset{?}{=} 1 $$  ← yellow: "Checked with numbers only."
+
+$$ \int_0^1 e^{-x^2} \, dx \approx ? $$       ← blue dots: kept as written for now
+```
+
+Expected: 3 errors, 3 warnings, 1 note (status bar: "3 errors, 3 warnings").
+
+## What was built
+
+- `mpp-ide/src/diagnostics/`:
+  - `mod.rs`: `Level` (Error, Warning, Info), `Kind` (EmptyBox, Undefined, MissingBracket,
+    UnitMismatch, Unused, Assumption, NumericCheck, NotYet, Import, Other), `Problem` (span, level,
+    kind, plain message, typeset `rich` message, expected, fix, rects, block), `Counts`.
+    `gather` (page-free) and `place` (exact boxes) = `collect`. Evaluation problems of blocks that
+    did not change are kept while a newer evaluation runs (matched by block id, moved by offset),
+    so only changed blocks lose and regain their marks.
+  - `map.rs`: span to typeset box: empty slot, exact node, outermost nodes inside, the opening
+    bracket glyph of a group, prose words per line, import line ink, names by evaluator key (a
+    name inside another name, the θ of x_θ, is not a separate name).
+  - `rich.rs`: messages as words plus typeset maths; backticked source fragments are turned into
+    words (`\frac` → fraction, `}` → end of the group) or typeset maths; "on line 3" is removed.
+  - `suggest.rs`: the **`Suggest` trait** and `BasicSuggest` (edit distance + Greek variants),
+    with `set_suggester` / `suggester`.
+  - `fixes.rs`: `QuickFix`, `FixAction` (Replace, Edits as one undo step, Define as a template
+    with a box, MoveCaret, OpenFile), `quick_fixes`, `apply`, `import_edit`, `combine`.
+  - `background.rs`: runs on the evaluation thread after each evaluation: problems of each
+    imported file (cached until the file changes on disk) and an index of the names the other
+    `.mpp` files of the folder define.
+  - `ui.rs`: squiggles, dotted underline, margin bar, import notes, scrollbar marks, level icons,
+    the bulb, the hover/peek card (`show_card`, `CardStyle`), the quick-fix menu, F8 helpers.
+- `mpp-ide/src/problems/`: `ProblemsView` (the panel widget), `gather` (grouped by file),
+  `FileProblems`, `Item`, `Jump`, `counts_for`, `total`, `badge`.
+- Call sites (minimal): `view.rs` (marks, bulb, hover card, Ctrl+., F8, quick-fix menu, scrollbar
+  marks), `app.rs` (Ctrl+Shift+M, Problems bottom panel, status bar counts, `ViewEvent::Open`),
+  `doc.rs` (background results, quiet range of the template being filled, `problems()`,
+  `problem_counts()`), `eval/mod.rs` (`submit_file`, `Done::background`), `theme/palette.rs`
+  (bulb colour).
+- mpp-render (asked for in the same run): slot labels never smaller than a full-size label
+  (0.6 em, at least 10 px), with padding that grows with the label; filled maths unchanged.
+
+## Hooks for ide-a (tabs, explorer tree, tiles, N10)
+
+- Counts per file: `IdeApp::problem_counts_for(path) -> Counts`, `IdeApp::error_count(path)`,
+  `Doc::problem_counts()`, `problems::gather(&mut docs)`. `Counts::worst()` gives the colour
+  level; `problems::badge(ui, counts, theme, size)` draws "⊗ 2 ⚠ 1".
+- The tab strip already turns red (`Tab::errors`); the count badge is for C10's tab/tree code.
+- The Problems panel is a widget: `ProblemsView::ui(ui, &list, &theme, size) -> Option<Jump>`
+  and `IdeApp::jump_to(&jump)`. Today `app.rs` hosts it in a bottom panel; the N13 tile manager
+  can host it as a tile instead (`IdeApp::problems.open` is the toggle).
+- N10 did-you-mean: implement `diagnostics::suggest::Suggest` and call
+  `diagnostics::suggest::set_suggester(Arc::new(…))` at start-up; delete `BasicSuggest` (or keep
+  it as the fallback). Hover cards and quick fixes pick it up with no other change.
+
+## Notes for the integrator and later lanes
+
+- Units do not parse on this branch, so no unit mismatch can be written yet. `Kind::UnitMismatch`
+  and its message slot exist; N1 should report a mismatch as a diagnostic whose message names
+  both units, then add a "Convert to …" fix in `fixes.rs`. The UI test
+  `unit_mismatch_is_skipped_until_units_parse` documents the skip.
+- Assumption-dependent results (N2) map to `Kind::Assumption` (warning) the same way.
+- When a statement has a parse error the evaluator skips it, so an undefined name in the same
+  statement is only reported once the parse error is fixed.
+- Existing (not N9): a passed check renders `\checkmark`, which the maths parser does not know,
+  so it shows an empty box after the equation. The parser symbol table (or the page builder)
+  should map it to ✓.
+- Screenshots: `cargo test -p mpp-ide --test problems_ui` writes `problem-*.png` and
+  `problems-*.png` to `target/ide-snapshots/`.

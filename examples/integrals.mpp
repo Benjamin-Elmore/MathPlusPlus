@@ -1,0 +1,21 @@
+# Integrals
+
+Indefinite integrals get a constant of integration.
+
+$$ \int \sin^2 x \, dx = ? $$
+
+$$ \int x e^x \, dx = ? $$
+
+$$ \int \frac{1}{x^2 + 1} \, dx = ? $$
+
+Definite integrals give a number:
+
+$$ \int_0^1 x^2 \, dx = ? $$
+
+$$ \int_0^{\pi} \sin x \, dx = ? $$
+
+$$ \int_1^e \ln x \, dx = ? $$
+
+Ask for a decimal answer by writing `≈ ?` instead of `= ?`:
+
+$$ \int_0^1 e^{-x^2} \, dx \approx ? $$

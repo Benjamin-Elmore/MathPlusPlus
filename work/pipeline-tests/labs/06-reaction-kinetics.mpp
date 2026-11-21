@@ -1,0 +1,29 @@
+Title: Lab 6: Reaction rates and the Arrhenius equation
+Author: Math++ pipeline test (chemistry)
+
+%{
+**Pipeline expectations.** Raising the temperature from $298\ \mathrm K$ to $308\ \mathrm K$ multiplies the rate constant by $\approx 1.926$. For the first-order reaction, the concentration after $60\ \mathrm s$ is $\approx 0.0549\ \mathrm{mol/L}$ (with $k_{298} = 0.01\ \mathrm{s^{-1}}$). The Arrhenius plot of the data table recovers $E_a \approx 50\ \mathrm{kJ/mol}$ from a linear fit of $\ln k$ against $1/T$. Units: $E_a / (RT)$ must be dimensionless.
+%}
+
+## Setup
+Let $R \equiv 8.314\,\mathrm{J/(mol\,K)}$, $E_a := 50\,\mathrm{kJ/mol}$, $k_{298} := 0.01\,\mathrm{s^{-1}}$ and $[A]_0 := 0.1\,\mathrm{mol/L}$.
+
+$$ \frac{k(T_2)}{k(T_1)} := \exp\!\Big(\frac{E_a}{R}\Big(\frac{1}{T_1} - \frac{1}{T_2}\Big)\Big), \qquad T_1 = 298\,\mathrm K, \ T_2 = 308\,\mathrm K $$
+$$ \frac{k(T_2)}{k(T_1)} \approx ? $$
+
+## First-order decay at 298 K
+$$ \frac{d[A]}{dt} = -k_{298} [A], \quad [A](0) = [A]_0 $$
+$$ [A](60\,\mathrm s) \approx ? $$
+
+## Measured rate constants
+| $T$ ($\mathrm K$) | $k$ ($\mathrm{s^{-1}}$) |
+|---|---|
+| 298 | 0.0100 |
+| 308 | 0.0193 |
+| 318 | 0.0357 |
+| 328 | 0.0637 |
+
+Fit $\ln k = \ln A - \dfrac{E_a}{R}\cdot\dfrac{1}{T}$:
+$$ E_{a,\text{fit}} \approx ? $$
+
+Figure: $\ln k$ against $1/T$ with the fitted line.

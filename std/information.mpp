@@ -1,0 +1,91 @@
+# Information theory, coding and cryptography
+
+Entropy, mutual information and channel capacity, error-correcting codes, and the two classic ciphers. Probabilities are lists that add to 1; joint distributions are matrices $p(x, y)$. Import with `![[std/information.mpp]]`.
+
+## Entropy
+
+Shannon entropy $H(X) = -\sum p_i \log_2 p_i$ in bits, with $0 \log_2 0 = 0$.
+
+$$ \operatorname{entropy}((\tfrac{1}{2}, \tfrac{1}{4}, \tfrac{1}{4})) \overset{?}{=} -\left(\frac{1}{2} \log_2 \frac{1}{2} + \frac{1}{4} \log_2 \frac{1}{4} + \frac{1}{4} \log_2 \frac{1}{4}\right) $$
+
+$$ \operatorname{entropy}((\tfrac{1}{2}, \tfrac{1}{2}, 0)) \overset{?}{=} 1 $$
+
+The binary entropy function, the entropy of a coin that lands heads with probability $p$.
+
+$$ H_{2}(p) := -p \log_2 p - (1 - p) \log_2 (1 - p) $$
+
+$$ H_{2}(\tfrac{1}{2}) \overset{?}{=} 1 $$
+
+$$ H_{2}(\tfrac{1}{4}) \overset{?}{=} \operatorname{entropy}((\tfrac{1}{4}, \tfrac{3}{4})) $$
+
+For $m$ outcomes $H$ ranges from 0 to $\log_2 m$: a point mass has none, the uniform distribution the most.
+
+$$ \operatorname{entropy}((1, 0, 0, 0)) \overset{?}{=} 0 $$
+
+$$ \operatorname{entropy}((\tfrac{1}{4}, \tfrac{1}{4}, \tfrac{1}{4}, \tfrac{1}{4})) \overset{?}{=} \log_2 4 $$
+
+$$ \mathrm{sgn}(\log_2 3 - \operatorname{entropy}((\tfrac{1}{2}, \tfrac{1}{3}, \tfrac{1}{6}))) \overset{?}{=} 1 $$
+
+## Mutual information
+
+$I(X; Y) = H(X) + H(Y) - H(X, Y)$ for finite alphabets. When $Y$ copies a fair bit $X$, they share one bit; when they are independent, none.
+
+$$ J_{\text{copy}} \equiv \begin{pmatrix} \tfrac{1}{2} & 0 \\ 0 & \tfrac{1}{2} \end{pmatrix} $$
+
+$$ \operatorname{mutualinfo}(J_{\text{copy}}) \overset{?}{=} 1 + 1 - \operatorname{jointentropy}(J_{\text{copy}}) $$
+
+$$ \operatorname{mutualinfo}(\begin{pmatrix} \tfrac{1}{4} & \tfrac{1}{4} \\ \tfrac{1}{4} & \tfrac{1}{4} \end{pmatrix}) \overset{?}{=} 0 $$
+
+$$ \operatorname{condentropy}(J_{\text{copy}}) \overset{?}{=} 0 $$
+
+## Channel capacity
+
+A binary symmetric channel that flips each bit with probability $p$ carries $1 - H_2(p)$ bits per use.
+
+$$ C_{\text{BSC}}(p) := 1 - H_{2}(p) $$
+
+$$ C_{\text{BSC}}(0.11) \overset{?}{=} \operatorname{bsccapacity}(0.11) $$
+
+$$ \operatorname{bsccapacity}(\tfrac{1}{2}) \overset{?}{=} 0 $$
+
+$$ \operatorname{capacity}(\begin{pmatrix} 0.9 & 0.1 \\ 0.1 & 0.9 \end{pmatrix}) \overset{?}{=} C_{\text{BSC}}(0.1) $$
+
+## Coding theory
+
+The Hamming distance counts the coordinates where two codewords differ.
+
+$$ \operatorname{hamming}((1, 0, 1, 1, 0), (1, 1, 1, 0, 0)) \overset{?}{=} 2 $$
+
+$$ \operatorname{hamming}(5, 3) \overset{?}{=} 2 $$
+
+A $q$-ary linear $[n, k, d]$ code satisfies $d \le n - k + 1$ (the Singleton bound). Binary Hamming codes have parameters $[2^m - 1, 2^m - 1 - m, 3]$ for $m \ge 2$.
+
+$$ N_{\text{Hamming}}(m) := 2^m - 1 $$
+
+$$ \operatorname{hamming}(\operatorname{codeparams}(\operatorname{hammingcode}(3), 2), (N_{\text{Hamming}}(3), N_{\text{Hamming}}(3) - 3, 3)) \overset{?}{=} 0 $$
+
+$$ \operatorname{hamming}(\operatorname{codeparams}(\operatorname{hammingcode}(4), 2), (15, 11, 3)) \overset{?}{=} 0 $$
+
+$$ \mathrm{sgn}((7 - 4 + 1) - 3 + \tfrac{1}{2}) \overset{?}{=} 1 $$
+
+**Theorem.** (Singleton bound) Every $q$-ary linear $[n, k, d]$ code has $d \le n - k + 1$.
+
+## Cryptography
+
+The one-time pad, $C = M \oplus K$: with an independent, uniform key of the same length used once, the ciphertext says nothing about the message, $H(M \mid C) = H(M)$. For one bit, message and ciphertext are independent:
+
+$$ \operatorname{mutualinfo}(\begin{pmatrix} \tfrac{1}{4} & \tfrac{1}{4} \\ \tfrac{1}{4} & \tfrac{1}{4} \end{pmatrix}) \overset{?}{=} 0 $$
+
+$$ (1 + 1) \bmod 2 \overset{?}{=} 0 $$
+
+**Theorem.** (Shannon, perfect secrecy) The one-time pad $C = M \oplus K$ with an independent, uniform key as long as the message, used once, has $H(M \mid C) = H(M)$.
+
+RSA's modular identity: $m^{ed} \equiv m \pmod{pq}$ for distinct primes $p$, $q$ when $ed \equiv 1 \pmod{\operatorname{lcm}(p - 1, q - 1)}$. With $p = 61$, $q = 53$, $e = 17$:
+
+$$ \operatorname{lcm}(60, 52) \overset{?}{=} 780 $$
+
+$$ \operatorname{modinv}(17, 780) \overset{?}{=} 413 $$
+
+$$ \operatorname{powmod}(\operatorname{powmod}(65, 17, 3233), 413, 3233) \overset{?}{=} 65 $$
+
+$$ \operatorname{powmod}(\operatorname{powmod}(1234, 17, 3233), 413, 3233) \overset{?}{=} 1234 $$

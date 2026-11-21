@@ -6,13 +6,34 @@ use super::{closes, is_close, is_terminator, Ctx, Parser};
 use crate::lexer::{Delim, Op, Tok};
 use crate::math::ast::{
     Accent, BinOp, Bracket, CallStyle, CaseCondition, CaseRow, Constant, Dots, Fence, FenceStyle,
-    FracStyle, FuncApp, MatrixEnv, MulStyle, Name, NamedOp, Node, NodeKind, SetStyle, SqrtStyle,
-    UnaryOp,
+    FracStyle, FuncApp, MatrixEnv, MulStyle, Name, NamedOp, Node, NodeKind, RelOp, SetStyle,
+    SqrtStyle, UnaryOp,
 };
 use crate::span::Span;
 use crate::symbols::{lookup_name, Font, Symbol, SymbolKind};
 
 const EXPR: &[&str] = &["a number", "a name", "`(`"];
+
+/// `\operatorname` names that act on a whole function, so an unbracketed argument runs
+/// to the end of the sum (`\operatorname{range} x^3 - 3x` is the range of `x³ − 3x`).
+const WHOLE_FUNCTION_OPS: &[&str] = &[
+    "domain",
+    "range",
+    "intercepts",
+    "crit",
+    "critical",
+    "extrema",
+    "localextrema",
+    "absextrema",
+    "increasing",
+    "decreasing",
+    "monotonicity",
+    "concavity",
+    "inflection",
+    "asymptotes",
+    "analyse",
+    "analyze",
+];
 
 impl Parser<'_> {
     /// One atom (grammar `atom`), including big operators and derivatives.
@@ -36,7 +57,11 @@ impl Parser<'_> {
         match tok {
             Tok::Number(text) => {
                 self.bump();
-                Node::new(NodeKind::Number(text), span)
+                let (text, end) = self.digit_groups(text, span);
+                if let Some(node) = self.digit_expansion(&text, span.join(end)) {
+                    return node;
+                }
+                Node::new(NodeKind::Number(text), span.join(end))
             }
             Tok::Letter(c) => {
                 self.bump();
@@ -51,6 +76,11 @@ impl Parser<'_> {
                 self.word_atom(word, span)
             }
             Tok::Styled { font, text } => {
+                if font == Font::Calligraphic && matches!(text.as_str(), "L" | "F") {
+                    if let Some(node) = self.transform(&text, span) {
+                        return node;
+                    }
+                }
                 self.bump();
                 let name = Name {
                     font: Some(font),
@@ -110,9 +140,123 @@ impl Parser<'_> {
         }
     }
 
+    /// `\mathcal{L}\{f\}`, `\mathcal{L}^{-1}\{F\}`, `\mathcal{L}_{t \to s}\left\{ f \right\}` and
+    /// the same with `\mathcal{F}`: the Laplace and Fourier transforms, as the operators
+    /// `laplace`, `invlaplace`, `fourier` and `invfourier` (the subscript names the
+    /// variables). `None`, with nothing consumed, when no `\{` follows: then the letter is
+    /// an ordinary name.
+    fn transform(&mut self, letter: &str, start: Span) -> Option<Node> {
+        // Look ahead without consuming: scripts are `_` or `^` and one group or token.
+        let mut k = 1;
+        let mut scripts = 0;
+        while scripts < 2 && matches!(self.peek_n(k), Some(Tok::Underscore | Tok::Caret)) {
+            k += 1;
+            match self.peek_n(k) {
+                Some(Tok::LBrace) => {
+                    let mut depth = 0usize;
+                    loop {
+                        match self.peek_n(k) {
+                            Some(Tok::LBrace) => depth += 1,
+                            Some(Tok::RBrace) => {
+                                depth = depth.saturating_sub(1);
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            None => return None,
+                            _ => {}
+                        }
+                        k += 1;
+                    }
+                    k += 1;
+                }
+                Some(_) => k += 1,
+                None => return None,
+            }
+            scripts += 1;
+        }
+        if !matches!(
+            self.peek_n(k),
+            Some(Tok::Open {
+                delim: Delim::Brace,
+                ..
+            })
+        ) {
+            return None;
+        }
+        self.bump();
+        let mut sub = None;
+        let mut inverse = false;
+        loop {
+            match self.peek() {
+                Some(Tok::Underscore) => {
+                    self.bump();
+                    sub = Some(self.tex_arg("the variables of the transform"));
+                }
+                Some(Tok::Caret) => {
+                    self.bump();
+                    let sup = self.tex_arg("`-1` for the inverse transform");
+                    let text: String = self
+                        .text(sup.span)
+                        .chars()
+                        .filter(|c| !c.is_whitespace())
+                        .collect();
+                    if matches!(text.as_str(), "-1" | "{-1}") {
+                        inverse = true;
+                    } else {
+                        self.error(
+                            sup.span,
+                            "a transform's superscript can only be `-1` (the inverse)",
+                            &["`-1`"],
+                        );
+                    }
+                }
+                _ => break,
+            }
+        }
+        let open = self.cur_span();
+        let (delim, sized) = match self.peek() {
+            Some(Tok::Open { delim, sized }) => (*delim, *sized),
+            _ => return None,
+        };
+        self.bump();
+        let inner = self.bracketed(delim, sized, open);
+        let (inner_kind, inner_span) = inner.into_parts();
+        let arg = match inner_kind {
+            NodeKind::Set { mut elems, .. } if elems.len() == 1 => elems.remove(0),
+            kind => Node::new(kind, inner_span),
+        };
+        let name = match (letter, inverse) {
+            ("L", false) => "laplace",
+            ("L", true) => "invlaplace",
+            (_, false) => "fourier",
+            (_, true) => "invfourier",
+        };
+        let span = start.join(self.prev_span());
+        Some(Node::new(
+            NodeKind::NamedOp(Box::new(NamedOp {
+                name: name.to_string(),
+                sub,
+                sup: None,
+                args: vec![arg],
+                bracketed: true,
+            })),
+            span,
+        ))
+    }
+
     fn symbol_atom(&mut self, sym: &'static Symbol, span: Span) -> Node {
         let kind = match sym.kind {
             SymbolKind::Letter if sym.name == "pi" => NodeKind::Constant(Constant::Pi),
+            // `\Delta x`, `\Delta t`, `ΔV`: a change in a quantity is one name.
+            SymbolKind::Letter if sym.name == "Delta" => {
+                if let Some(Tok::Letter(c)) = self.peek().cloned() {
+                    self.bump();
+                    let span = span.join(self.prev_span());
+                    return Node::new(NodeKind::Name(Name::simple(format!("Δ{c}"))), span);
+                }
+                NodeKind::Name(Name::simple(sym.unicode))
+            }
             SymbolKind::Letter => NodeKind::Name(Name::simple(sym.unicode)),
             SymbolKind::Function if sym.name == "sqrt" => {
                 let command = self.text(span).starts_with('\\');
@@ -142,6 +286,81 @@ impl Parser<'_> {
             _ => NodeKind::Symbol(sym.unicode),
         };
         Node::new(kind, span)
+    }
+
+    /// `0.d_1 d_2 d_3 \dots`: a decimal expansion with symbolic digits, written right
+    /// after a whole number and its point. It is read as one text node (prose
+    /// describing a number, with nothing to compute), so it is not a syntax error.
+    fn digit_expansion(&mut self, whole: &str, number: Span) -> Option<Node> {
+        if !whole.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let point = self.toks.get(self.pos).filter(|_| self.pos < self.stop)?;
+        if !matches!(point.kind, Tok::Period) || point.span.start != number.end {
+            return None;
+        }
+        let digit = self
+            .toks
+            .get(self.pos + 1)
+            .filter(|_| self.pos + 1 < self.stop)?;
+        let letter = match &digit.kind {
+            Tok::Letter(_) => true,
+            Tok::Sym(s) => s.kind == SymbolKind::Letter,
+            _ => false,
+        };
+        if !letter || digit.span.start != point.span.end {
+            return None;
+        }
+        self.bump();
+        let mut end = number.end;
+        // The digits: names (with subscripts) and dots, side by side.
+        loop {
+            let next = self.peek();
+            let more = match next {
+                Some(Tok::Letter(_)) => true,
+                Some(Tok::Sym(s)) => {
+                    s.kind == SymbolKind::Letter
+                        || (s.kind == SymbolKind::Misc
+                            && matches!(s.name, "dots" | "ldots" | "cdots"))
+                }
+                _ => false,
+            };
+            if !more {
+                break;
+            }
+            let part = self.parse_postfix();
+            end = part.span.end;
+        }
+        let span = Span::new(number.start, end);
+        let text = self.text(span).to_string();
+        Some(Node::new(NodeKind::Text(text), span))
+    }
+
+    /// `10\,000` and `1\,234\,567.5`: groups of three digits joined by a thin space
+    /// are one number, as in printed tables. Returns the digits and the last span.
+    fn digit_groups(&mut self, mut text: String, mut end: Span) -> (String, Span) {
+        if text.contains('.') {
+            return (text, end);
+        }
+        while let Some(Tok::Number(next)) = self.peek().cloned() {
+            let at = self.cur_span();
+            let between = self
+                .src
+                .get(end.end.saturating_sub(self.base)..at.start.saturating_sub(self.base))
+                .unwrap_or("");
+            let thin = matches!(between, "\\," | "\\ " | "{,}" | "\u{2009}" | "\u{202F}");
+            let group = next.split('.').next().unwrap_or("");
+            if !thin || group.len() != 3 || !group.chars().all(|c| c.is_ascii_digit()) {
+                break;
+            }
+            self.bump();
+            text.push_str(&next);
+            end = at;
+            if next.contains('.') {
+                break;
+            }
+        }
+        (text, end)
     }
 
     /// A known function after its name: scripts, then bracketed or bare arguments.
@@ -175,7 +394,18 @@ impl Parser<'_> {
         if inverse {
             power = None;
         }
-        let (args, bracketed, end) = if self.at(|t| {
+        // `\max_{t \in [0, 50]} (x - 1)^2 + …`: over a range, max and min take the whole
+        // term after them, as a sum does.
+        let over_range = matches!(sym.name, "max" | "min")
+            && sub.as_ref().is_some_and(|s| {
+                matches!(&s.ungrouped().kind, NodeKind::Relation { rest, .. }
+                    if rest.len() == 1 && rest[0].0 == RelOp::In)
+            });
+        let (args, bracketed, end) = if over_range && !inverse {
+            let body = self.op_body(&format!("the term after `{}`", self.text(start)));
+            let end = body.span;
+            (vec![body], false, end)
+        } else if self.at(|t| {
             matches!(
                 t,
                 Tok::Open {
@@ -190,6 +420,13 @@ impl Parser<'_> {
             let arg = self.func_arg();
             let end = arg.span;
             (vec![arg], false, end)
+        } else if sub.is_none() && power.is_none() && !inverse && self.at_name_end() {
+            // `$\sin$` on its own (prose about the function): the function's name.
+            let name = Name {
+                font: Some(Font::Roman),
+                ..Name::simple(sym.name)
+            };
+            return Node::new(NodeKind::Name(name), start);
         } else {
             let what = format!("the argument of `{}`", self.text(start));
             let missing = self.missing(&what, &["an expression", "`(`"]);
@@ -208,6 +445,12 @@ impl Parser<'_> {
             })),
             span,
         )
+    }
+
+    /// True at the end of the line or before a `,`: nothing an argument could start with.
+    fn at_name_end(&self) -> bool {
+        self.peek()
+            .is_none_or(|t| matches!(t, Tok::NewLine | Tok::Comma))
     }
 
     /// A bracket-less function argument: the product to the right, up to the next
@@ -323,7 +566,13 @@ impl Parser<'_> {
             let (args, _, end) = self.call_args();
             (args, true, end)
         } else if self.can_start_factor() || self.at(is_sign) {
-            let arg = self.parse_signed_term();
+            // An operator on a whole function (`\operatorname{range} x^3 - 3x`) takes
+            // the whole sum; others (`\operatorname{sgn} x + 1`) the next term.
+            let arg = if WHOLE_FUNCTION_OPS.contains(&name.as_str()) {
+                self.parse_additive()
+            } else {
+                self.parse_signed_term()
+            };
             let end = arg.span;
             (vec![arg], false, end)
         } else {
@@ -547,12 +796,32 @@ impl Parser<'_> {
             return;
         }
         let span = self.cur_span();
+        if self.unclosed_already_reported(span.start) {
+            self.skip_group_rest();
+            return;
+        }
         let open_text = self.text(open).to_string();
         self.error(
             span,
             format!("expected `}}` to close the `{open_text}`"),
             &["`}`"],
         );
+        self.skip_group_rest();
+    }
+
+    /// True when the nesting error was reported, or an unclosed bracket was already
+    /// reported at `at`: one deep unclosed nest then gives one error, not one per level.
+    fn unclosed_already_reported(&self, at: usize) -> bool {
+        self.too_deep_reported
+            || self.diags.last().is_some_and(|d| {
+                d.span.start == at
+                    && d.message.starts_with("expected `")
+                    && d.message.contains("` to close the ")
+            })
+    }
+
+    /// Skips to the `}` that closes the current group (consumed) or the line end.
+    fn skip_group_rest(&mut self) {
         let mut depth = 0usize;
         while let Some(t) = self.peek() {
             match t {
@@ -622,6 +891,7 @@ impl Parser<'_> {
         span: Span,
     ) -> Node {
         let bracket = match open {
+            Delim::None if close == Delim::Bar => Bracket::EvalBar,
             Delim::Square => Bracket::Square,
             Delim::Brace => Bracket::Brace,
             Delim::Angle => Bracket::Angle,
@@ -629,6 +899,32 @@ impl Parser<'_> {
             _ => Bracket::Paren,
         };
         if open == Delim::Brace {
+            if let [only] = elems.as_slice() {
+                if let Some(builder) = set_builder(only, span) {
+                    return builder;
+                }
+            }
+            // `{x ∈ ℝ : sin x = 0, 0 ≤ x ≤ 7}`: the commas after the colon join more
+            // conditions, as `∧`.
+            if let Some((first, more)) = elems.split_first() {
+                if let Some(mut builder) = set_builder(first, span) {
+                    if let NodeKind::SetBuilder { condition, .. } = &mut builder.kind {
+                        for extra in more {
+                            let cspan = condition.span.join(extra.span);
+                            let lhs = (**condition).clone();
+                            **condition = Node::new(
+                                NodeKind::Binary {
+                                    op: BinOp::And,
+                                    lhs: Box::new(lhs),
+                                    rhs: Box::new(extra.clone()),
+                                },
+                                cspan,
+                            );
+                        }
+                    }
+                    return builder;
+                }
+            }
             return Node::new(
                 NodeKind::Set {
                     elems,
@@ -695,6 +991,9 @@ impl Parser<'_> {
 
     fn unclosed(&mut self, open: Span, closer: &str) {
         let span = self.cur_span();
+        if self.unclosed_already_reported(span.start) {
+            return;
+        }
         let open_text = self.text(open).to_string();
         let expected = format!("`{closer}`");
         self.error(
@@ -1041,6 +1340,48 @@ impl Parser<'_> {
 }
 
 /// A single letter: `e` and `i` are the constants, anything else a name.
+/// `x \in S : cond` or `x : cond` (also with `\mid`) inside `\{ \}`: the relation chain
+/// is split at the colon into the variable, its domain and the condition.
+fn set_builder(node: &Node, span: Span) -> Option<Node> {
+    let NodeKind::Relation { first, rest } = &node.kind else {
+        return None;
+    };
+    let colon = rest
+        .iter()
+        .position(|(op, _)| matches!(op, RelOp::Other(":" | "∣")))?;
+    let (var, domain) = match colon {
+        0 => ((**first).clone(), None),
+        1 if rest[0].0 == RelOp::In => ((**first).clone(), Some(Box::new(rest[0].1.clone()))),
+        _ => return None,
+    };
+    if !var.is_name() {
+        return None;
+    }
+    let cond_first = rest[colon].1.clone();
+    let cond_rest: Vec<(RelOp, Node)> = rest[colon + 1..].to_vec();
+    let condition = if cond_rest.is_empty() {
+        cond_first
+    } else {
+        let end = cond_rest.last().map_or(cond_first.span, |(_, n)| n.span);
+        let cspan = cond_first.span.join(end);
+        Node::new(
+            NodeKind::Relation {
+                first: Box::new(cond_first),
+                rest: cond_rest,
+            },
+            cspan,
+        )
+    };
+    Some(Node::new(
+        NodeKind::SetBuilder {
+            var: Box::new(var),
+            domain,
+            condition: Box::new(condition),
+        },
+        span,
+    ))
+}
+
 fn letter_node(c: char, span: Span) -> Node {
     let kind = match c {
         'e' => NodeKind::Constant(Constant::E),

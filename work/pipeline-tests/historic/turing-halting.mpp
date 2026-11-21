@@ -1,0 +1,17 @@
+Title: The halting problem is undecidable
+Author: A. M. Turing, *On Computable Numbers* (1936); written out for the Math++ pipeline tests
+Abstract: The diagonal argument for programs. Tests a proof about programs written in prose, with no algebra at all: the checker can only check its structure.
+
+%{
+**Pipeline expectations.** Status: **proved (structure only)**. Every step is a definition, construction or logical step, and the status line says that no step was checked by computation. Lean export produces a statement plus a skeleton with `sorry` on the computability steps, so the alignment view has something to show.
+%}
+
+**Theorem 1** (Turing). There is no program $H$ that, for every program $M$ and input $w$, halts and correctly answers whether $M$ halts on $w$.
+
+**Proof.**
+1. Suppose such an $H$ exists — by assumption.
+2. Build a program $D$ that, given a program $M$, runs $H(M, M)$; if the answer is "halts", $D$ loops forever, and otherwise $D$ halts — by construction.
+3. If $D(D)$ halts, then $H(D, D)$ answered "halts", so $D(D)$ loops forever — by step 2.
+4. If $D(D)$ does not halt, then $H(D, D)$ answered "does not halt", so $D(D)$ halts — by step 2.
+5. Both cases are contradictory, so no such $H$ exists — by contradiction.
+∎
