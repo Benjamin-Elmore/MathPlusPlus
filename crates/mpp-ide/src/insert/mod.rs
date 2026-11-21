@@ -188,7 +188,91 @@ pub fn insert(
 /// Puts a prose block (a note, a theorem, the title block) in a block of its own
 /// after the caret's block, with the caret where `⟨⟩` marks (or at its end). The
 /// title block goes at the top of the file.
+/// The next free footnote number: one more than the largest `[^n]` in `text`.
+fn next_footnote(text: &str) -> u32 {
+    text.match_indices("[^")
+        .filter_map(|(i, _)| {
+            let rest = &text[i + 2..];
+            let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+            rest[digits.len()..]
+                .starts_with(']')
+                .then(|| digits.parse::<u32>().ok())
+                .flatten()
+        })
+        .max()
+        .map_or(1, |n| n.saturating_add(1))
+}
+
+/// A footnote: the mark `[^n]` at the caret (or at the end of the prose line
+/// above, when the caret is on an empty line) and its note `[^n]: ` as a block
+/// after the paragraph, with the caret in the note. One edit, one undo step.
+fn insert_footnote(editor: &mut Editor, page: &Page, caret: usize) {
+    let text = editor.text().to_string();
+    let n = next_footnote(&text);
+    let mark = format!("[^{n}]");
+    let note = format!("[^{n}]: ");
+    let (at, before, after) = figure_place(&text, caret, page);
+    let line = line_at(&text, caret);
+    let in_prose = !page.in_math(caret) && !text[line.clone()].trim().is_empty();
+    // Where the mark goes: at the caret in prose, else the end of the prose line
+    // above (not a display, a heading or a note of its own).
+    let mark_at = if in_prose {
+        // Never inside a word: after the word the caret is in.
+        let rest = &text[caret..line.end];
+        let word = rest
+            .find(|c: char| !c.is_alphanumeric())
+            .unwrap_or(rest.len());
+        Some(caret + word)
+    } else {
+        let mut end = line.start;
+        let mut found = None;
+        while end > 0 {
+            let l = line_at(&text, end - 1);
+            let t = text[l.clone()].trim();
+            if !t.is_empty() {
+                let prose = !t.starts_with("$$")
+                    && !t.ends_with("$$")
+                    && !t.starts_with('#')
+                    && !t.starts_with("[^")
+                    && !t.starts_with("Figure:");
+                if prose {
+                    found = Some(l.start + text[l.clone()].trim_end().len());
+                }
+                break;
+            }
+            end = l.start;
+        }
+        found
+    };
+    match mark_at.filter(|&m| m <= at.start) {
+        Some(m) => {
+            let between = &text[m..at.start];
+            // The note is a block of its own: a blank line before it.
+            let gap = if before.is_empty() && !between.ends_with("\n\n") {
+                "\n"
+            } else {
+                ""
+            };
+            let new = format!("{mark}{between}{before}{gap}{note}{after}");
+            editor.replace_node(mpp_syntax::Span::new(m, at.end), &new);
+            editor.move_caret(m + new.len() - after.len(), false);
+        }
+        None => {
+            let start = at.start;
+            editor.replace_node(
+                mpp_syntax::Span::new(at.start, at.end),
+                &format!("{before}{note}{after}"),
+            );
+            editor.move_caret(start + before.len() + note.len(), false);
+        }
+    }
+}
+
 fn insert_block(editor: &mut Editor, page: &Page, id: &str, body: &str, caret: usize) {
+    if id == "doc.footnote" {
+        insert_footnote(editor, page, caret);
+        return;
+    }
     let (cut, rest) = body.split_once("⟨⟩").unwrap_or((body, ""));
     let text = format!("{cut}{rest}");
     let (at, before, after) = if id == "doc.title" {
