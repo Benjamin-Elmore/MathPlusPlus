@@ -811,6 +811,7 @@ impl Run<'_, '_> {
         let noeval = line.noeval || place == Place::Display { noeval: true };
         if place != Place::Prose {
             self.ambiguous_unit_letters(line, &where_names);
+            self.letter_run_warnings(line, &where_names);
         }
         let scope = Scope {
             names: &where_names,
@@ -848,6 +849,28 @@ impl Run<'_, '_> {
                 self.push(LineResult::new(line.span, LineKind::Range));
             }
             Statement::NameList(_) | Statement::Empty => {}
+        }
+    }
+
+    /// Letters side by side that spell no defined name (`velocity`, `sinn(2)`) are
+    /// read as a product, which is rarely what was typed: a warning says so and
+    /// names the function when one is close.
+    fn letter_run_warnings(&mut self, line: &Line, where_names: &[String]) {
+        let mut bound: Vec<String> = where_names.to_vec();
+        if let Statement::Definition {
+            head: DefHead::Function { params, .. },
+            ..
+        } = &line.statement
+        {
+            bound.extend(params.iter().filter_map(node_key));
+        }
+        let found = {
+            let known =
+                |w: &str| bound.iter().any(|b| b == w) || self.view().get(w, false).is_some();
+            crate::letter_runs::hits(line, &known)
+        };
+        for hit in found {
+            self.warn(hit.span, crate::letter_runs::message(&hit));
         }
     }
 

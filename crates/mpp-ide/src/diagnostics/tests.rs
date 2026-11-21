@@ -392,7 +392,7 @@ fn a_spelled_word_that_is_not_a_name_is_pointed_out() {
     let (ps, _) = problems_of(src);
     let p = ps
         .iter()
-        .find(|p| matches!(&p.kind, Kind::LetterRun { word } if word == "speed"))
+        .find(|p| matches!(&p.kind, Kind::LetterRun { word, .. } if word == "speed"))
         .expect("a warning on speed");
     assert_eq!(p.level, Level::Warning);
     let doc = mpp_syntax::document::parse_document(src);
@@ -423,7 +423,7 @@ fn a_letter_run_warning_shows_no_answer() {
         .find(|p| matches!(&p.kind, Kind::LetterRun { .. }))
         .expect("a warning on sinn");
     assert!(
-        matches!(&p.kind, Kind::LetterRun { word } if word == "sinn"),
+        matches!(&p.kind, Kind::LetterRun { word, .. } if word == "sinn"),
         "{p:#?}"
     );
     let text: String = pc
@@ -474,6 +474,12 @@ fn a_mistyped_function_offers_the_function() {
         .collect();
     assert_eq!(edits, [r"\sin", r"\mathrm{sinn}", "s i n n"]);
     assert_eq!(fixes[0].title.plain(), "Use the name sin");
+    assert!(p.rich.plain().contains("Did you mean sin?"), "{p:#?}");
+    let again = ps
+        .iter()
+        .filter(|p| matches!(&p.kind, Kind::LetterRun { .. }))
+        .count();
+    assert_eq!(again, 1, "{ps:#?}");
 }
 
 /// The option words a helper accepts (`left`, `shell`) are not products of letters.

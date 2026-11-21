@@ -192,20 +192,17 @@ pub fn quick_fixes(p: &Problem, src: &str, doc: &Document) -> Vec<QuickFix> {
                 });
             }
         }
-        Kind::LetterRun { word } => {
+        Kind::LetterRun { word, function } => {
             let letters: Vec<String> = word.chars().map(String::from).collect();
             // A typo of a function (`sinn(2)`): the function comes first.
-            for f in TYPED_FUNCTIONS {
-                if word.chars().count() >= 3 && super::suggest::edit_distance(word, f) == 1 {
-                    out.push(QuickFix {
-                        title: Rich::text("Use the name ").m(format!(r"\mathrm{{{f}}}")),
-                        action: FixAction::Replace {
-                            span: p.span,
-                            with: format!(r"\{f}"),
-                        },
-                    });
-                    break;
-                }
+            if let Some(f) = function {
+                out.push(QuickFix {
+                    title: Rich::text("Use the name ").m(format!(r"\mathrm{{{f}}}")),
+                    action: FixAction::Replace {
+                        span: p.span,
+                        with: format!(r"\{f}"),
+                    },
+                });
             }
             out.push(QuickFix {
                 title: Rich::text("Use the name ").m(format!(r"\mathrm{{{word}}}")),
@@ -261,12 +258,6 @@ pub fn quick_fixes(p: &Problem, src: &str, doc: &Document) -> Vec<QuickFix> {
     }
     out
 }
-
-/// The functions written as `\name`, for spotting a mistyped one.
-const TYPED_FUNCTIONS: [&str; 15] = [
-    "sin", "cos", "tan", "sec", "csc", "cot", "sinh", "cosh", "tanh", "coth", "arcsin", "arccos",
-    "arctan", "exp", "log",
-];
 
 /// Several non-overlapping replacements as one replacement of the range that
 /// covers them all.

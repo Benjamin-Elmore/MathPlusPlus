@@ -36,6 +36,7 @@ pub mod helpers;
 pub mod holders;
 pub mod import;
 pub mod ivp_wire;
+pub mod letter_runs;
 pub mod lower;
 pub mod names;
 pub mod numeric;

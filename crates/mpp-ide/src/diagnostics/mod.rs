@@ -116,7 +116,11 @@ pub enum Kind {
     Unused { name: String },
     /// Letters side by side that spell no defined name (`velocity`): the grammar
     /// reads them as a product of one-letter names.
-    LetterRun { word: String },
+    LetterRun {
+        word: String,
+        /// The function the word is close to (`sin` for `sinn`).
+        function: Option<String>,
+    },
     /// A result that holds only under a condition (`x ≠ 0`), given as LaTeX.
     Assumption { conditions: Vec<String> },
     /// A check that was tested with numbers only, not proved.
@@ -485,6 +489,29 @@ pub fn classify(
     }
     if let Some(p) = unit_mismatch(d, msg) {
         return vec![p];
+    }
+    // Letters read as a product: the evaluator's warning, with the IDE's quick fixes.
+    if let Some((word, function)) = mpp_eval::letter_runs::parse_message(msg) {
+        let spaced: Vec<String> = word.chars().map(String::from).collect();
+        let ask = match &function {
+            Some(f) => Rich::text(" of single letters. Did you mean ")
+                .m(format!(r"\mathrm{{{f}}}"))
+                .t("?"),
+            None => Rich::text(" of single letters. Did you mean the name ")
+                .m(format!(r"\mathrm{{{word}}}"))
+                .t("?"),
+        };
+        return vec![Problem::new(
+            d.span,
+            Level::Warning,
+            Kind::LetterRun { word, function },
+            Rich::text("Read as the product ")
+                .m(spaced.join(r" \cdot "))
+                .and(ask),
+        )
+        .fixing(Rich::text(
+            "Press Ctrl+. to use it as one name, or to keep the product.",
+        ))];
     }
     // Names without values.
     if msg.contains("no value") {
@@ -930,7 +957,6 @@ pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
     if let Some(bg) = inp.background {
         out.extend(import_problems(inp.doc, bg));
     }
-    out.extend(letter_runs(inp.doc, &known));
     out.extend(proof_problems(inp.proof));
     if let Some(q) = &inp.quiet {
         out.retain(|p| !(q.start <= p.span.start && p.span.end <= q.end));
@@ -954,106 +980,18 @@ fn classify_context(known: &[String], bg: Option<&Background>) -> u64 {
     h.finish()
 }
 
-/// Three or more letters side by side that spell no defined name: the grammar keeps
-/// reading them as a product (`xy` is `x·y`), but a word such as `velocity` was
-/// more likely meant as one name, so it is pointed out with both ways to settle it.
-fn letter_runs(doc: &Document, known: &[String]) -> Vec<Problem> {
-    let mut out = vec![];
-    doc.walk(&mut |b| {
-        let BlockKind::DisplayMath(m) = &b.kind else {
-            return;
-        };
-        for line in &m.ast.lines {
-            line_letter_runs(line, known, &mut out);
-        }
-    });
-    out
-}
-
 /// The lines of a maths block (by index) with a run of letters that spells no
 /// defined name: their answer would be the product of the letters, which is not
-/// what was meant, so the page shows the warning and no answer.
+/// what was meant, so the page shows the warning (from the evaluator) and no answer.
 pub(crate) fn lines_with_letter_runs(m: &DisplayMath, known: &[String]) -> Vec<usize> {
-    let mut lines = vec![];
-    for (i, line) in m.ast.lines.iter().enumerate() {
-        let mut found = vec![];
-        line_letter_runs(line, known, &mut found);
-        if !found.is_empty() {
-            lines.push(i);
-        }
-    }
-    lines
-}
-
-fn line_letter_runs(line: &mpp_syntax::math::Line, known: &[String], out: &mut Vec<Problem>) {
-    use mpp_syntax::math::letters::{implicit_factors, letter_runs as runs, plain_letter};
-    use mpp_syntax::math::{visit, DefHead, Node, NodeKind, Statement};
-    fn walk(n: &Node, known: &[String], in_op: bool, out: &mut Vec<Problem>) {
-        let in_op = in_op || matches!(n.kind, NodeKind::NamedOp(_));
-        let factors = implicit_factors(n);
-        if factors.len() > 1 {
-            for r in runs(&factors) {
-                // The words a helper takes as options (`left`, `shell`) are not products.
-                let option = in_op && mpp_eval::helpers::is_option_word(&r.word);
-                if r.word.len() >= 3 && !known.contains(&r.word) && !option {
-                    // `sinn(2)`: the last letter is the name of a call; it belongs
-                    // to the word the reader typed.
-                    let (mut word, mut span) = (r.word.clone(), r.span);
-                    if let Some(NodeKind::Call { callee, .. }) = factors.get(r.end).map(|f| &f.kind)
-                    {
-                        if let Some(c) = plain_letter(callee) {
-                            if callee.span.start == r.span.end && !r.powered {
-                                word.push(c);
-                                span = span.join(callee.span);
-                            }
-                        }
-                    }
-                    let spaced = word.chars().map(String::from).collect::<Vec<_>>();
-                    out.push(
-                        Problem::new(
-                            span,
-                            Level::Warning,
-                            Kind::LetterRun { word: word.clone() },
-                            Rich::text("Read as the product ")
-                                .m(spaced.join(r" \cdot "))
-                                .t(" of single letters. Did you mean the name ")
-                                .m(format!(r"\mathrm{{{word}}}"))
-                                .t("?"),
-                        )
-                        .fixing(Rich::text(
-                            "Press Ctrl+. to use it as one name, or to keep the product.",
-                        )),
-                    );
-                }
-            }
-            for f in factors {
-                visit::children(f, &mut |c| walk(c, known, in_op, out));
-            }
-        } else {
-            visit::children(n, &mut |c| walk(c, known, in_op, out));
-        }
-    }
-    let mut roots: Vec<&Node> = vec![];
-    match &line.statement {
-        Statement::Definition {
-            head: DefHead::Function { .. } | DefHead::Name(_),
-            body,
-            ..
-        } => roots.push(body),
-        Statement::Query { expr, .. } => roots.push(expr),
-        Statement::Check { lhs, rhs } => {
-            roots.push(lhs);
-            roots.push(rhs);
-        }
-        Statement::Relation(n) => roots.push(n),
-        _ => {}
-    }
-    for r in roots {
-        if matches!(r.kind, NodeKind::Error) {
-            continue;
-        }
-        walk(r, known, false, out);
-    }
+    let is_known = |w: &str| known.iter().any(|k| k == w);
+    m.ast
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| !mpp_eval::letter_runs::hits(line, &is_known).is_empty())
+        .map(|(i, _)| i)
+        .collect()
 }
 
 /// The proof steps that get a mark: a wrong step is an error, a gap or an external
