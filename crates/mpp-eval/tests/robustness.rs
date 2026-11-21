@@ -390,3 +390,32 @@ $$ \operatorname{mean}(c_1) = ? $$
     assert_eq!(q[0], q[1], "{q:?}");
     assert_eq!(q[0].as_deref(), Some("7/2"));
 }
+
+/// One bad byte in a CSV leaves out its row and says which line, instead of making the
+/// whole data file fail to load.
+#[test]
+fn one_bad_byte_in_a_data_file_leaves_out_its_row() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut csv = b"t, v\n1, 10\n2, 2".to_vec();
+    csv.push(0xE9);
+    csv.extend_from_slice(b"0\n3, 30\n");
+    std::fs::write(dir.path().join("d.csv"), &csv).expect("write");
+    let mut s = session_in(dir.path());
+    let ev = s
+        .run_str("Data: $D$ from [[d.csv]].\n\n$$ \\bar{v} = ? $$\n")
+        .clone();
+    assert!(ev.errors().is_empty(), "{:?}", ev.all_diagnostics());
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.plain.as_deref(), Some("20"));
+    let warnings: Vec<String> = ev
+        .all_diagnostics()
+        .iter()
+        .map(|d| d.message.clone())
+        .collect();
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("line 3 of d.csv") && w.contains("not valid UTF-8")),
+        "{warnings:?}"
+    );
+}

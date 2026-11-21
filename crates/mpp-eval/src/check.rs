@@ -920,6 +920,24 @@ fn try_point(
     float: &HashMap<String, f64>,
 ) -> PointResult {
     use num_traits::ToPrimitive;
+    // Binomial identities are tried on the usual domain, whole numbers 0 ≤ k ≤ n and
+    // real n: at a negative whole number the extended definition breaks symmetry
+    // (`C(n, k) = C(n, n − k)` fails at n = k = −1), which no textbook means.
+    if (has_binomial(lhs) || has_binomial(rhs)) && {
+        let env: HashMap<String, Complex64> = names
+            .iter()
+            .map(|n| {
+                let x = match exact {
+                    Some(q) => q[n].to_f64().unwrap_or(f64::NAN),
+                    None => float.get(n).copied().unwrap_or(0.0),
+                };
+                (n.clone(), Complex64::new(x, 0.0))
+            })
+            .collect();
+        binomial_off_domain(lhs, &env) || binomial_off_domain(rhs, &env)
+    } {
+        return PointResult::Skip;
+    }
     let shown_at = || -> Vec<(String, String)> {
         names
             .iter()
@@ -989,6 +1007,26 @@ fn try_point(
             rhs: format_complex(r, DIGITS),
         })
     }
+}
+
+fn has_binomial(e: &Expr) -> bool {
+    matches!(e.node(), ExprNode::Func(mpp_core::Func::Binomial, _))
+        || e.children().iter().any(|c| has_binomial(c))
+}
+
+/// Whether a binomial coefficient in `e` has a negative whole number on top or at the
+/// bottom at this point.
+fn binomial_off_domain(e: &Expr, env: &HashMap<String, Complex64>) -> bool {
+    let negative_whole = |x: &Expr| {
+        x.eval_complex(env)
+            .is_ok_and(|v| v.im == 0.0 && v.re < 0.0 && v.re.fract() == 0.0)
+    };
+    if let ExprNode::Func(mpp_core::Func::Binomial, args) = e.node() {
+        if args.iter().any(negative_whole) {
+            return true;
+        }
+    }
+    e.children().iter().any(|c| binomial_off_domain(c, env))
 }
 
 fn spot_check(lhs: &Expr, rhs: &Expr) -> Verdict {

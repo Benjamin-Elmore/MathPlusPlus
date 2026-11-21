@@ -912,3 +912,73 @@ fn an_unknown_scripted_operator_is_warned_about() {
         .plain_answer()
         .is_none_or(|a| !a.contains("operatorname")));
 }
+
+/// A symbolic proof that cancelled a factor which can be zero says where it holds.
+#[test]
+fn proofs_that_cancel_a_factor_name_the_points_left_out() {
+    for (src, note) in [
+        (r"$$ \frac{1}{\frac{1}{x}} \overset{?}{=} x $$", "for x ≠ 0"),
+        (
+            r"$$ \frac{x^2 - 1}{x - 1} \overset{?}{=} x + 1 $$",
+            "for x ≠ 1",
+        ),
+        (
+            r"$$ \operatorname{sign}(x) \overset{?}{=} \frac{x}{|x|} $$",
+            "for x ≠ 0",
+        ),
+        (
+            r"$$ \frac{d}{dx} |x| \overset{?}{=} \operatorname{sign}(x) $$",
+            "for x ≠ 0",
+        ),
+    ] {
+        let ev = run(src);
+        let line = ev.blocks[0].values.first().expect("a check");
+        let text = line.verdict_text().unwrap_or_default();
+        assert!(
+            text.starts_with('✓') && text.contains(note),
+            "{src}: {text}"
+        );
+    }
+    // Where both sides are undefined at the same points, or the proof cancels nothing,
+    // there is nothing to add.
+    for src in [
+        r"$$ \frac{1}{x} + \frac{1}{x} \overset{?}{=} \frac{2}{x} $$",
+        r"$$ \sin^2 x + \cos^2 x \overset{?}{=} 1 $$",
+    ] {
+        let ev = run(src);
+        let line = ev.blocks[0].values.first().expect("a check");
+        assert_eq!(
+            line.verdict_text().as_deref(),
+            Some("✓ (proved symbolically)")
+        );
+    }
+}
+
+/// A binomial identity is tried on the usual domain, not at negative whole numbers
+/// where the extended definition breaks the symmetry; a false one still fails.
+#[test]
+fn binomial_identities_are_checked_on_the_usual_domain() {
+    let ev = run(r"$$ \binom{n}{k} \overset{?}{=} \binom{n}{n-k} $$");
+    let line = ev.blocks[0].values.first().expect("a check");
+    assert_eq!(line.verdict.as_ref().and_then(|v| v.passed()), Some(true));
+    let ev = run(r"$$ \binom{n}{k} \overset{?}{=} \binom{n}{k+1} $$");
+    let line = ev.blocks[0].values.first().expect("a check");
+    assert_eq!(line.verdict.as_ref().and_then(|v| v.passed()), Some(false));
+}
+
+/// A finite-range integral that will not settle was not computed reliably; its
+/// convergence is not in question.
+#[test]
+fn a_refused_finite_integral_is_not_called_a_convergence_question() {
+    for src in [
+        r"$$ \int_0^{100} \sin(x^2) \, dx = ? $$",
+        r"$$ \int_0^1 \sin(1/x) \, dx = ? $$",
+    ] {
+        let errs = errors(src);
+        assert!(
+            errs.iter()
+                .any(|e| e.contains("reliably") && !e.contains("converges")),
+            "{src}: {errs:?}"
+        );
+    }
+}

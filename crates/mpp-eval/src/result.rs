@@ -75,6 +75,9 @@ pub struct LineResult {
     pub approx: Option<String>,
     /// The verdict of a check.
     pub verdict: Option<Verdict>,
+    /// A proof that cancelled a factor which can be zero holds away from these points
+    /// (`for x ≠ 0`); shown with the verdict.
+    pub caveat: Option<String>,
     /// Conditions written after the statement (`, x > 0`).
     pub conditions: Vec<Expr>,
     /// True when auto-evaluation may show a preview result for this line.
@@ -112,6 +115,7 @@ impl LineResult {
             plain: None,
             approx: None,
             verdict: None,
+            caveat: None,
             conditions: Vec::new(),
             auto_eval: false,
             noeval: false,
@@ -248,10 +252,21 @@ impl LineResult {
         }
     }
 
+    /// The verdict of a check as one line, with the points a symbolic proof leaves out
+    /// (`✓ (proved symbolically, for x ≠ 0)`).
+    pub fn verdict_text(&self) -> Option<String> {
+        let text = self.verdict.as_ref()?.describe();
+        Some(match (&self.caveat, text.strip_suffix(')')) {
+            (Some(c), Some(head)) => format!("{head}, {c})"),
+            (Some(c), None) => format!("{text} ({c})"),
+            _ => text,
+        })
+    }
+
     /// The answer as one line of text (`= 2`, `≈ 1.414213562`, `✓ …`).
     pub fn answer(&self) -> Option<String> {
-        if let Some(v) = &self.verdict {
-            return Some(v.describe());
+        if let Some(v) = self.verdict_text() {
+            return Some(v);
         }
         match (&self.kind, &self.text, &self.approx) {
             (

@@ -248,6 +248,29 @@ impl Run<'_, '_> {
                 return self.error(d.path_span, EvalError::Invalid(format!("{file}: {msg}")));
             }
         };
+        if !loaded.table.skipped.is_empty() {
+            let file = Path::new(&d.path)
+                .file_name()
+                .map_or(d.path.clone(), |f| f.to_string_lossy().into_owned());
+            let lines = &loaded.table.skipped;
+            let shown: Vec<String> = lines.iter().take(5).map(usize::to_string).collect();
+            let more = match lines.len().saturating_sub(5) {
+                0 => String::new(),
+                n => format!(" and {n} more"),
+            };
+            let (noun, verb, rows) = if lines.len() == 1 {
+                ("line", "has", "row was")
+            } else {
+                ("lines", "have", "rows were")
+            };
+            self.warn(
+                d.path_span,
+                format!(
+                    "{noun} {}{more} of {file} {verb} bytes that are not valid UTF-8, so the {rows} left out (save the file as UTF-8)",
+                    shown.join(", "),
+                ),
+            );
+        }
         for (column, value) in loaded.table.columns.iter().zip(&loaded.values) {
             self.define_column(column, value.clone(), d.path_span);
         }

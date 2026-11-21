@@ -109,12 +109,12 @@ fn snippet(ev: &Evaluated, start: usize, end: usize) -> String {
 
 fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
     let n = ev.line_of(line.span.start);
-    if let Some(v) = &line.verdict {
+    if let Some(v) = line.verdict_text() {
         return RunLine {
             line: n,
             asked: to_unicode(src),
-            answer: v.describe(),
-            plain: v.describe(),
+            answer: v.clone(),
+            plain: v,
             error: false,
             steps: vec![],
         };

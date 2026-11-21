@@ -775,6 +775,7 @@ fn plain_func(f: Func, args: &[Expr]) -> (String, Prec) {
             (format!("log_{b}({x})"), Prec::Atom)
         }
         Func::Gamma => (format!("Γ({})", plain_list(args)), Prec::Atom),
+        Func::Binomial if unicode() => (format!("C({})", plain_list(args)), Prec::Atom),
         Func::Digamma if unicode() => (format!("ψ({})", plain_list(args)), Prec::Atom),
         _ => (format!("{}({})", f.name(), plain_list(args)), Prec::Atom),
     }
