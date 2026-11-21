@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc b73f66e906e1ea8528c7dbb888d3ba950c56b303dc08942855ec8e779856004f # shrinks to e = e^(e^π)*x*sin(π), x = -1.1868750142498452, y = 0.0
