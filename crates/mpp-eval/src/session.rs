@@ -65,6 +65,9 @@ pub struct Session {
     cancel: Arc<AtomicBool>,
     /// Longest a single query (one block) may run; `None` is no limit.
     time_limit: Option<Duration>,
+    /// The run in progress keeps a stop asked for before it began (see
+    /// [`Session::update_keeping_cancel`]).
+    keep_cancel: bool,
 }
 
 /// Stops the run a [`Session`] is busy with, from any thread.
@@ -76,6 +79,18 @@ impl CancelHandle {
     /// run starts afresh (the request only affects work already in progress).
     pub fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
+    }
+
+    /// Forgets a stop asked for earlier, for a caller that runs with
+    /// [`Session::update_keeping_cancel`] and clears the request itself before it takes
+    /// the next job (so a stop asked for in between is never lost).
+    pub fn reset(&self) {
+        self.0.store(false, Ordering::Relaxed);
+    }
+
+    /// True when a stop has been asked for and not reset.
+    pub fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Relaxed)
     }
 }
 
@@ -123,6 +138,7 @@ impl Session {
             auto: AutoEval::default(),
             cancel: Arc::new(AtomicBool::new(false)),
             time_limit: None,
+            keep_cancel: false,
         }
     }
 
@@ -339,6 +355,16 @@ impl Session {
         self.update_with(src, true)
     }
 
+    /// [`Session::update`], but a stop asked for before the run began stops it too:
+    /// the caller resets the [`CancelHandle`] itself before taking its next job, so a
+    /// stop asked for between taking a job and starting it is not lost.
+    pub fn update_keeping_cancel(&mut self, src: &str) -> &Evaluated {
+        self.keep_cancel = true;
+        self.update_with(src, true);
+        self.keep_cancel = false;
+        &self.evaluated
+    }
+
     fn update_with(&mut self, src: &str, own_stack: bool) -> &Evaluated {
         let mut doc = parse_document(src);
         flag_invalid_text(&mut doc, src);
@@ -387,7 +413,9 @@ impl Session {
         let pass = if own_stack {
             // A cancel asked for before this run began belongs to the run it
             // replaced; one asked for from here on stops this run.
-            self.cancel.store(false, Ordering::Relaxed);
+            if !self.keep_cancel {
+                self.cancel.store(false, Ordering::Relaxed);
+            }
             let budget = mpp_core::budget::Budget::new(self.cancel.clone(), self.time_limit);
             with_large_stack(|| {
                 let _budget = mpp_core::budget::install(budget.clone());

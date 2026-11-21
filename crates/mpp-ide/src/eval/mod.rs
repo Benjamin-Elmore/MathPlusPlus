@@ -98,6 +98,7 @@ impl EvalWorker {
         let (done_tx, rx) = channel::<Done>();
         let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
         let cancel = session.cancel_handle();
+        let stop = session.cancel_handle();
         let indexing = Arc::new(AtomicBool::new(false));
         let indexing_flag = indexing.clone();
         let handle = std::thread::Builder::new()
@@ -114,6 +115,10 @@ impl EvalWorker {
                     return;
                 };
                 'jobs: loop {
+                    // A stop asked for from here on belongs to the run below: the edit
+                    // that asked for it has sent its job first, so it is either taken
+                    // just below or found when the run ends.
+                    stop.reset();
                     while let Ok(newer) = jobs.try_recv() {
                         job = newer;
                     }
@@ -129,10 +134,15 @@ impl EvalWorker {
                         session.set_auto_budget(s.budget);
                         applied = Some(s);
                     }
-                    let eval = session.update(&job.text).clone();
+                    let eval = session.update_keeping_cancel(&job.text).clone();
                     if let Ok(newer) = jobs.try_recv() {
                         // Stale (and perhaps stopped half way): never show it.
                         job = newer;
+                        continue 'jobs;
+                    }
+                    if stop.is_cancelled() {
+                        // Stopped for an edit whose job was already taken above: the
+                        // run may be half done, so run it again.
                         continue 'jobs;
                     }
                     let eval = Arc::new(eval);
@@ -263,13 +273,14 @@ impl EvalWorker {
             path: path.map(Path::to_path_buf),
         };
         if let Some(tx) = &self.tx {
-            // Stop what the evaluator is busy with: this edit replaces it. The stop is
-            // asked for first so it can never hit the run this job starts.
-            if self.received < self.sent - 1 {
-                self.cancel.cancel();
-            }
+            // Stop what the evaluator is busy with: this edit replaces it. The job is
+            // sent first, so a run the stop catches (even one that took this very job)
+            // is followed by a run of this job (the worker checks for both).
+            let busy = self.received < self.sent - 1;
             if tx.send(job).is_err() {
                 self.sent -= 1;
+            } else if busy {
+                self.cancel.cancel();
             }
         }
     }
