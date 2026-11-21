@@ -38,6 +38,14 @@ fn a_where_binding_goes_in_after_differentiating() {
 }
 
 #[test]
+fn an_improper_integral_with_a_parameter_diverges_at_a_zero() {
+    assert_eq!(
+        answer(r"$$ \int_0^{\infty} e^{-a x} \, dx = ? $$"),
+        "{ ∞ if a ≤ 0; 1/a otherwise }"
+    );
+}
+
+#[test]
 fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
     assert_eq!(
         answer(r"$$ \frac{d}{dx} \int_0^{x} e^{t^2} \, dt = ? $$"),

@@ -1074,8 +1074,26 @@ pub fn improper_integral(
     };
     let finite = if up { lo } else { hi };
     let sign_up = up && util::sign(hi) == Some(Ordering::Greater);
-    let at_finite = anti.subs(var, finite).simplify();
     let result = split_cases(a, 0, &mut |facts| {
+        // A case that pins a parameter (`a = 0` for `e^{-a x}`) integrates the
+        // integrand with that value put in: the general antiderivative `-e^{-a x}/a`
+        // does not hold there.
+        let pins = pinned(facts, e, var);
+        let anti = if pins.is_empty() {
+            anti.clone()
+        } else {
+            let pairs: Vec<(&str, Expr)> =
+                pins.iter().map(|(n, v)| (n.as_str(), v.clone())).collect();
+            let g = e.subs_all(&pairs).simplify();
+            match integrate_power(&g, var, facts) {
+                Some(f) => f,
+                None => match crate::calc::integrate(&g, var, None) {
+                    Ok(f) => f,
+                    Err(_) => return Outcome::Unsupported,
+                },
+            }
+        };
+        let at_finite = anti.subs(var, finite).simplify();
         let f = simplify_with(&anti, facts, None);
         if let Some(s) = undecided_condition(&f) {
             return Outcome::Need(s);
@@ -1123,6 +1141,24 @@ pub fn improper_integral(
         Outcome::Value(value)
     })?;
     Ok(result)
+}
+
+/// The parameters of `e` (names other than `var`) whose facts pin them to one value
+/// (`a ≥ 0` and `a ≤ 0`).
+fn pinned(facts: &Assumptions, e: &Expr, var: &str) -> Vec<(String, Expr)> {
+    e.free_symbols()
+        .iter()
+        .filter(|s| &***s != var)
+        .filter_map(|s| {
+            let f = facts.facts(s)?;
+            match (&f.lo, &f.hi) {
+                (Some(lo), Some(hi)) if lo.closed && hi.closed && lo.value == hi.value => {
+                    Some((s.to_string(), lo.value.clone()))
+                }
+                _ => None,
+            }
+        })
+        .collect()
 }
 
 /// For a piecewise value whose first condition the facts don't decide, the expression
