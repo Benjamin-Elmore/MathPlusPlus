@@ -8,6 +8,7 @@
 //! templates (see [`template`]) in step with the text.
 
 pub mod comment;
+mod rules;
 pub mod symbols;
 pub mod template;
 
@@ -188,6 +189,10 @@ pub struct Editor {
     next_session: u64,
     /// The template Tab just left forward, and where the caret was put.
     left: Option<(u64, usize)>,
+    /// A one-time hint from the last edit, with the revision it belongs to.
+    hint: Option<(String, u64)>,
+    /// The heading hint was shown already.
+    hinted_heading: bool,
 }
 
 impl Editor {

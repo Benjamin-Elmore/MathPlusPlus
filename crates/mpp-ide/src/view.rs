@@ -964,6 +964,18 @@ fn paint_page(
             c32(theme.placeholder_label),
         );
     }
+    // The one-time hint of the last edit, under the caret.
+    if let (Some(h), Some(s)) = (doc.editor.hint(), page.caret_stop(doc.editor.caret())) {
+        let at = Pos2::new(origin.x + s.x + 12.0, origin.y + s.bottom + 6.0);
+        crate::paint::paint_text(
+            painter,
+            h,
+            at,
+            cx.size * 0.8,
+            mpp_render::FontId::TextItalic,
+            c32(theme.placeholder_label),
+        );
+    }
     // Caret.
     if focused {
         if let Some(s) = page.caret_stop(doc.editor.caret()) {
@@ -1023,7 +1035,13 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     let in_math = pc.page.in_math(doc.editor.caret());
     for ch in text.chars().filter(|c| !c.is_control()) {
         let s = ch.to_string();
+        if !in_math {
+            doc.editor.before_type(ch);
+        }
         doc.editor.insert_text(&s);
+        if !in_math {
+            doc.editor.after_type(ch);
+        }
         if in_math && cx.insert.settings.shortcuts {
             let caret = doc.editor.caret();
             let bcx = cx.insert.settings.build_cx(doc.editor.text(), caret);
@@ -1223,6 +1241,20 @@ fn key_pressed(
             }
             Key::Enter => return doc.keep_result_at(caret),
             Key::Slash => return toggle_comment(doc),
+            Key::Num0 | Key::Num1 | Key::Num2 | Key::Num3 => {
+                let level = match key {
+                    Key::Num1 => 1,
+                    Key::Num2 => 2,
+                    Key::Num3 => 3,
+                    _ => 0,
+                };
+                let done = doc.editor.set_heading(level, in_math);
+                if done {
+                    doc.touched();
+                    doc.want_x = None;
+                }
+                return done;
+            }
             _ => return false,
         }
     }
@@ -1261,12 +1293,18 @@ fn key_pressed(
             if note_enter(doc) {
                 return true;
             }
-            doc.editor.insert_text("\n");
+            doc.editor.enter(in_math, shift);
             doc.touched();
             true
         }
         Key::Backspace | Key::Delete => {
             let fwd = key == Key::Delete;
+            if !fwd && !in_math && doc.editor.backspace_block(false) {
+                doc.touched();
+                *cx.completion = None;
+                doc.want_x = None;
+                return true;
+            }
             if !fwd && in_math && doc.editor.backspace_in_template() {
                 doc.touched();
                 *cx.completion = None;
