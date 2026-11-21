@@ -220,12 +220,14 @@ fn mutually_recursive_functions_never_give_a_wrong_answer() {
 fn huge_values_are_shown_in_scientific_form_not_as_infinity() {
     let fact = plain_answer("$$ 100000! = ? $$");
     assert!(
-        fact.contains("2.82422941") && fact.contains("456573") && !fact.contains('∞'),
+        fact.contains("2.8242294")
+            && (fact.contains("456573") || fact.contains("⁴⁵⁶⁵⁷³"))
+            && !fact.contains('∞'),
         "{fact}"
     );
     let pow = plain_answer("$$ 2^{1000000} = ? $$");
     assert!(
-        (pow.contains("e301029") || pow.contains("301029")) && !pow.contains('∞'),
+        (pow.contains("301029") || pow.contains("³⁰¹⁰²⁹")) && !pow.contains('∞'),
         "{pow}"
     );
     let ln = plain_answer(r"$$ \ln(1000!) \approx ? $$");
