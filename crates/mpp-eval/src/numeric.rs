@@ -56,8 +56,56 @@ fn approx_closed(e: &Expr) -> Result<String, EvalError> {
             Ok(format!("{open}{}{close}", parts.join(", ")))
         }
         ExprNode::Bool(b) => Ok(b.to_string()),
-        _ => scalar(e).map(|z| format_complex(z, DIGITS)),
+        _ => match precise(e) {
+            Some(text) => Ok(text),
+            None => scalar(e).map(|z| format_complex(z, DIGITS)),
+        },
     }
+}
+
+/// Largest exact rational (numerator and denominator bits together) rounded digit by
+/// digit; a bigger one (`100000!`) goes through the high-precision evaluator.
+const EXACT_BITS: u64 = 20_000;
+
+/// Digits a decimal answer is first worked out to (more when the format asks).
+const FIRST_DIGITS: usize = 20;
+
+/// A real value worked out exactly (a rational) or in high precision, so that huge
+/// values (`200!`, `e^1000`) and near-cancellations (`π − 3.14159265358979`) get every
+/// shown digit right. `None` when the high-precision evaluator cannot handle `e`.
+fn precise(e: &Expr) -> Option<String> {
+    use mpp_core::hp::{approx_closed, rational_digits, Approx, Decimal};
+    if let Some(Number::Rational(q)) = e.as_number().filter(|n| {
+        n.as_rational()
+            .is_some_and(|q| q.numer().bits() + q.denom().bits() < EXACT_BITS)
+    }) {
+        let Some(first) = rational_digits(q, FIRST_DIGITS) else {
+            return Some(format_complex(Complex64::new(0.0, 0.0), DIGITS));
+        };
+        // Every digit of an exact value is known, so it is rounded exactly (2.675 to two
+        // places is 2.68, where the nearest binary float would give 2.67).
+        let need = mpp_core::display::digits_needed(first.k, DIGITS).max(DIGITS);
+        let exact = rational_digits(q, need + 40).unwrap_or(first);
+        return Some(decimal_text(&exact));
+    }
+    let zero = || format_complex(Complex64::new(0.0, 0.0), DIGITS);
+    let value: Decimal = match approx_closed(e, FIRST_DIGITS)? {
+        Approx::Zero { .. } => return Some(zero()),
+        Approx::Value { value, .. } => value,
+    };
+    let need = mpp_core::display::digits_needed(value.k, DIGITS);
+    if need + 2 <= FIRST_DIGITS {
+        return Some(decimal_text(&value));
+    }
+    match approx_closed(e, need + 2)? {
+        Approx::Zero { .. } => Some(zero()),
+        Approx::Value { value, .. } => Some(decimal_text(&value)),
+    }
+}
+
+fn decimal_text(d: &mpp_core::hp::Decimal) -> String {
+    mpp_core::display::format_decimal(d, DIGITS)
+        .unwrap_or_else(|| mpp_core::number::format_decimal_digits(d, DIGITS))
 }
 
 /// The complex value of a closed scalar expression.

@@ -189,6 +189,23 @@ pub fn format_approx(z: Complex64, digits: usize) -> Option<String> {
     Some(render::render(&n, &fmt, digits.max(1)).0)
 }
 
+/// A high-precision decimal as text under the active format, with `digits`
+/// significant figures unless the format asks for others. `None` when no format is set.
+pub fn format_decimal(d: &crate::hp::Decimal, digits: usize) -> Option<String> {
+    let fmt = active()?;
+    Some(render::render_decimal(d, &fmt, digits.max(1)).0)
+}
+
+/// How many significant digits the active format shows for a value whose first digit
+/// is at `10^k` (`digits` when no format asks for more).
+pub fn digits_needed(k: i64, digits: usize) -> usize {
+    match active().map(|f| f.precision) {
+        Some(Precision::Sig(n)) => n as usize,
+        Some(Precision::Places(p)) => usize::try_from(k + 1 + i64::from(p)).unwrap_or(0).max(1),
+        _ => digits,
+    }
+}
+
 /// `e` (an angle in radians) as degrees: an exact number when `e` is a rational
 /// multiple of π, otherwise a decimal. `None` unless `e` is a closed expression.
 pub fn to_degrees(e: &Expr) -> Option<Expr> {

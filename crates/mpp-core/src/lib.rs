@@ -13,6 +13,7 @@ pub mod expr;
 pub mod factor;
 pub mod family;
 pub mod functions;
+pub mod hp;
 pub mod number;
 pub mod poly;
 pub mod printer;

@@ -546,6 +546,13 @@ fn place_point(neg: bool, digits: &str, k: i64) -> String {
     }
 }
 
+/// Formats decimal digits (`±d₁.d₂… × 10^k`) with `sig` significant digits, the way
+/// [`format_f64`] writes a float.
+pub fn format_decimal_digits(d: &crate::hp::Decimal, sig: usize) -> String {
+    let r = d.rounded(sig);
+    place_point(r.neg, &r.digits, r.k)
+}
+
 /// Formats an `f64` with `sig` significant digits.
 pub fn format_f64(x: f64, sig: usize) -> String {
     if x.is_nan() {
