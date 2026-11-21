@@ -8,6 +8,7 @@
 //! templates (see [`template`]) in step with the text.
 
 pub mod comment;
+pub mod mathline;
 mod rules;
 pub mod symbols;
 pub mod template;

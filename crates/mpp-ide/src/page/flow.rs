@@ -575,6 +575,10 @@ fn flow_atoms(
                     let dy = baseline - dl.baseline;
                     let before = canvas.stops.len();
                     canvas.merge(dl, x, dy, true);
+                    canvas.chips.push(egui::Rect::from_min_size(
+                        egui::pos2(x, dy),
+                        egui::vec2(dl.width, dl.total_height()),
+                    ));
                     if canvas.stops.len() == before {
                         canvas.stops.push(CaretStop {
                             x,

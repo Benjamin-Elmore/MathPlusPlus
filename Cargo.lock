@@ -2323,6 +2323,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "egui_tiles",
+ "image",
  "lyon_tessellation",
  "mpp-core",
  "mpp-eval",

@@ -66,6 +66,18 @@ pub struct Palette {
     pub edge: Color,
     /// The quick-fix light bulb.
     pub bulb: Color,
+    /// The light wash inside a maths box and behind an inline maths chip.
+    pub maths_tint: Color,
+    /// The thin outline of a maths box.
+    pub maths_outline: Color,
+    /// The ∑ marker in the margin beside a maths box.
+    pub maths_marker: Color,
+    /// The caret while it is in maths (prose keeps the ink colour).
+    pub maths_caret: Color,
+    /// The outline of the maths structure holding the caret.
+    pub focus_box: Color,
+    /// The fainter outline of that structure's parent.
+    pub focus_parent: Color,
 }
 
 impl Palette {
@@ -83,6 +95,12 @@ impl Palette {
         scrollbar: Color::rgb(0x8c, 0x8c, 0x8c),
         edge: Color::rgb(0xe4, 0xe4, 0xe0),
         bulb: Color::rgb(0xe8, 0xb0, 0x10),
+        maths_tint: Color::rgb(0xee, 0xf3, 0xfa),
+        maths_outline: Color::rgb(0x6f, 0x8b, 0xb8),
+        maths_marker: Color::rgb(0x2f, 0x5f, 0x9e),
+        maths_caret: Color::rgb(0x1d, 0x5b, 0xb0),
+        focus_box: Color::rgb(0x9b, 0x2f, 0x8a),
+        focus_parent: Color::rgb(0xb8, 0x6f, 0xae),
     };
 
     pub const DARK: Palette = Palette {
@@ -99,6 +117,12 @@ impl Palette {
         scrollbar: Color::rgb(0x88, 0x88, 0x8d),
         edge: Color::rgb(0x2a, 0x2b, 0x2e),
         bulb: Color::rgb(0xf5, 0xc8, 0x3c),
+        maths_tint: Color::rgb(0x1d, 0x23, 0x2c),
+        maths_outline: Color::rgb(0x5f, 0x7c, 0xa8),
+        maths_marker: Color::rgb(0x8f, 0xb0, 0xe0),
+        maths_caret: Color::rgb(0x7a, 0xb4, 0xff),
+        focus_box: Color::rgb(0xf0, 0x8a, 0xd0),
+        focus_parent: Color::rgb(0xa8, 0x6b, 0x98),
     };
 
     /// Pairs of (name, foreground, background) that carry text and must reach
@@ -138,6 +162,21 @@ impl Palette {
             ("warning on tooltip", t.warning, self.tooltip),
             ("info on page", t.info, t.background),
             ("info on panel", t.info, self.panel),
+            ("text in a maths box", t.text, self.maths_tint),
+            ("result in a maths box", t.result, self.maths_tint),
+            (
+                "ghost result in a maths box",
+                t.auto_result,
+                self.maths_tint,
+            ),
+            (
+                "placeholder label in a maths box",
+                t.placeholder_label,
+                self.maths_tint,
+            ),
+            ("error in a maths box", t.error, self.maths_tint),
+            ("warning in a maths box", t.warning, self.maths_tint),
+            ("maths marker on page", self.maths_marker, t.background),
         ]
     }
 
@@ -158,6 +197,28 @@ impl Palette {
             ("scrollbar on panel", self.scrollbar, self.panel),
             ("scrollbar on page", self.scrollbar, t.background),
             ("axis on page", t.axis, t.background),
+            ("maths outline on page", self.maths_outline, t.background),
+            (
+                "maths outline on its tint",
+                self.maths_outline,
+                self.maths_tint,
+            ),
+            (
+                "maths caret in a maths box",
+                self.maths_caret,
+                self.maths_tint,
+            ),
+            ("focus box in a maths box", self.focus_box, self.maths_tint),
+            (
+                "parent box in a maths box",
+                self.focus_parent,
+                self.maths_tint,
+            ),
+            (
+                "placeholder outline in a maths box",
+                t.placeholder_outline,
+                self.maths_tint,
+            ),
         ];
         const NAMES: [&str; 8] = [
             "curve 1", "curve 2", "curve 3", "curve 4", "curve 5", "curve 6", "curve 7", "curve 8",

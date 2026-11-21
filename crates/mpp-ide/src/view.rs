@@ -1044,6 +1044,8 @@ fn paint_page(
     painter.rect_filled(painter.clip_rect(), 0.0, c32(theme.background));
     let page = &pc.page;
     let off = origin.to_vec2();
+    let caret = focused.then(|| doc.editor.caret());
+    crate::page::mode::paint_maths(painter, page, origin, &cx.mode.palette(), cx.size, caret);
     if let Some(span) = doc.highlight {
         if let Some(r) = page.rect_of_span(span) {
             let c = c32(cx.mode.palette().highlight);
@@ -1175,12 +1177,16 @@ fn paint_page(
     if focused {
         if let Some(s) = page.caret_stop_on(doc.editor.caret(), doc.caret_side) {
             let x = origin.x + s.x;
+            // In maths the caret takes the maths colour and is a little wider.
+            let maths = page.in_math(doc.editor.caret());
+            let color =
+                crate::page::mode::caret_color(page, doc.editor.caret(), &cx.mode.palette());
             painter.line_segment(
                 [
                     Pos2::new(x, origin.y + s.top),
                     Pos2::new(x, origin.y + s.bottom),
                 ],
-                Stroke::new(1.6, c32(theme.text)),
+                Stroke::new(if maths { 2.0 } else { 1.6 }, color),
             );
         }
     }
@@ -1205,6 +1211,16 @@ fn handle_pointer(
         return false;
     };
     let local = pos - origin.to_vec2();
+    if pressed && resp.hovered() && !shift {
+        // A click on a ∑ marker flips its line between maths and prose.
+        let size = pc.page.blocks.first().map_or(16.0, |b| b.dl.font_size);
+        if let Some(band) = crate::page::mode::marker_at(&pc.page, local, size) {
+            if doc.editor.flip_maths(&mut doc.maths, band.at) {
+                doc.touched();
+            }
+            return true;
+        }
+    }
     if pressed && resp.hovered() {
         if let Some((o, side)) = pc.page.side_at(local) {
             if command {
@@ -1461,6 +1477,7 @@ fn key_pressed(
             }
             Key::Enter => return doc.keep_result_at(caret),
             Key::Slash => return toggle_comment(doc),
+            Key::M if !shift => return flip_maths(doc, caret),
             Key::Num0 | Key::Num1 | Key::Num2 | Key::Num3 => {
                 let level = match key {
                     Key::Num1 => 1,
@@ -1602,6 +1619,16 @@ fn key_pressed(
 }
 
 /// Tab outside a tracked template: the next (or previous) empty box on the page.
+/// Ctrl+M: flips the caret's line between maths and prose (one undo step).
+fn flip_maths(doc: &mut Doc, caret: usize) -> bool {
+    let done = doc.editor.flip_maths(&mut doc.maths, caret);
+    if done {
+        doc.touched();
+        doc.want_x = None;
+    }
+    done
+}
+
 /// Ctrl+/: comments the current block (or the selected blocks) out, or takes
 /// the comment markers off a note.
 pub fn toggle_comment(doc: &mut Doc) -> bool {

@@ -46,9 +46,14 @@ pub struct PageInput<'a> {
 }
 
 /// The column width for a window width: about 70 em, never wider than the window.
+/// Each side keeps a margin of at least 1.75 em: the ∑ marker of a maths box and
+/// the problem bars are drawn there.
 pub fn column_width(avail: f32, size: f32) -> f32 {
-    (avail - 2.0 * size).clamp(size * 10.0, size * 70.0)
+    (avail - 2.0 * MARGIN * size).clamp(size * 10.0, size * 70.0)
 }
+
+/// The smallest margin beside the column, in ems.
+pub const MARGIN: f32 = 1.75;
 
 /// Lays the document out.
 pub fn build_page(input: &PageInput<'_>) -> Page {
@@ -821,6 +826,8 @@ fn push_block(
         rect: l.rect.translate(shift),
         link: l.link.clone(),
     }));
+    page.chips
+        .extend(canvas.chips.iter().map(|r| r.translate(shift)));
     for s in &canvas.stops {
         page.stops.push(CaretStop {
             x: s.x,
@@ -990,6 +997,11 @@ fn layout_block(
                     };
                     c.merge(&dl, cx0 + shift, y, false);
                     c.chars.extend(cc.chars.iter().copied());
+                    c.chips.extend(
+                        cc.chips
+                            .iter()
+                            .map(|r| r.translate(Vec2::new(cx0 + shift, y))),
+                    );
                     for s in cc.stops {
                         c.stops.push(CaretStop {
                             x: s.x + cx0 + shift,
