@@ -383,7 +383,9 @@ impl Rng {
     }
 }
 
-const PRIMES: [i64; 6] = [2, 3, 5, 7, 11, 13];
+/// The primes tried for a name declared prime. Congruences and divisibility are decided
+/// in exact integer arithmetic, so the large powers these give are safe.
+const PRIMES: [i64; 11] = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31];
 
 /// Tests the claim at sample points (integers or decimals), skipping points that break an
 /// earlier condition on the same names.
@@ -417,6 +419,7 @@ fn sample(claim: &Claim, defs: &[Def], k: &Knowledge, domain: Domain) -> Attempt
     let mut agreed = 0usize;
     let mut tried = 0usize;
     let mut last_error = String::from("no sample point could be evaluated");
+    let mut exact_points = 0usize;
     while tried < SAMPLE_TRIES && agreed < SAMPLE_WANTED {
         tried += 1;
         let point: Vec<(String, String)> = free
@@ -453,7 +456,29 @@ fn sample(claim: &Claim, defs: &[Def], k: &Knowledge, domain: Domain) -> Attempt
             lines.push(format!("{} = ?", wrap(&c.lhs)));
             lines.push(format!("{} = ?", wrap(&c.rhs)));
         }
+        // A congruence or divisibility in exact arithmetic: the remainder must be 0.
+        let exact_line = match (claim.op, &claim.modulus) {
+            (ClaimOp::Congruent, Some(m)) => Some(format!(
+                "\\left({} - {}\\right) \\bmod {} = ?",
+                wrap(&claim.lhs),
+                wrap(&claim.rhs),
+                wrap(m)
+            )),
+            (ClaimOp::Divides, _) => Some(format!(
+                "{} \\bmod {} = ?",
+                wrap(&claim.rhs),
+                wrap(&claim.lhs)
+            )),
+            _ => None,
+        };
+        if let Some(l) = &exact_line {
+            lines.push(l.clone());
+        }
         let out = cas::run(&all, &lines);
+        let exact: Option<bool> = exact_line.as_ref().and_then(|_| match out.last() {
+            Some(LineOut::Value(v)) if v.is_number() => Some(v.is_zero()),
+            _ => None,
+        });
         let base = if claim.modulus.is_some() { 3 } else { 2 };
         // The point must satisfy every condition that could be evaluated.
         let mut ok = true;
@@ -490,8 +515,9 @@ fn sample(claim: &Claim, defs: &[Def], k: &Knowledge, domain: Domain) -> Attempt
         if matches!(claim.op, ClaimOp::Congruent) && m.is_none() {
             return Attempt::Unknown("a congruence needs `\\pmod{n}` to be checked".into());
         }
-        if holds(claim.op, l, r, m) {
+        if exact.unwrap_or_else(|| holds(claim.op, l, r, m)) {
             agreed += 1;
+            exact_points += usize::from(exact.is_some());
         } else {
             let at: Vec<String> = point.iter().map(|(n, v)| format!("{n} = {v}")).collect();
             let mut msg = format!(
@@ -511,7 +537,12 @@ fn sample(claim: &Claim, defs: &[Def], k: &Knowledge, domain: Domain) -> Attempt
             Domain::Integers => "integer",
             Domain::Reals => "random",
         };
-        Attempt::Holds(format!("agrees at {agreed} {what} points"))
+        let how = if exact_points == agreed {
+            " (in exact integer arithmetic)"
+        } else {
+            ""
+        };
+        Attempt::Holds(format!("agrees at {agreed} {what} points{how}"))
     } else {
         Attempt::Unknown(last_error)
     }
@@ -843,5 +874,27 @@ mod tests {
         let mut c = claim("a^{p-1}", ClaimOp::Congruent, "1", &["a", "p"]);
         c.modulus = Some("p".into());
         assert!(matches!(check_claim(&c, &k), ClaimOutcome::Numeric(_)));
+    }
+
+    #[test]
+    fn congruences_are_exact_for_large_powers() {
+        // 7^31 is far past f64 precision; the remainder is computed exactly.
+        let k = Knowledge::default();
+        let mut c = claim("7^{31}", ClaimOp::Congruent, "7", &[]);
+        c.modulus = Some("31".into());
+        assert_eq!(
+            sample(&c, &[], &k, Domain::Integers),
+            Attempt::Holds("agrees at 8 integer points (in exact integer arithmetic)".into())
+        );
+        c.rhs = "8".into();
+        assert!(matches!(
+            sample(&c, &[], &k, Domain::Integers),
+            Attempt::Fails(_)
+        ));
+        let d = claim("31", ClaimOp::Divides, "7^{31} - 7", &[]);
+        assert!(matches!(
+            sample(&d, &[], &k, Domain::Integers),
+            Attempt::Holds(_)
+        ));
     }
 }
