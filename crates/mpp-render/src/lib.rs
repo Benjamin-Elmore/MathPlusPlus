@@ -12,6 +12,8 @@
 //! page, through the [`ResultProvider`] trait), so the evaluator plugs in
 //! without this crate depending on it.
 
+#![forbid(unsafe_code)]
+
 pub mod display;
 pub mod font;
 mod html;

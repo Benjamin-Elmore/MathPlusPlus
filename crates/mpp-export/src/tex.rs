@@ -129,6 +129,61 @@ pub(crate) fn texify_math(src: &str) -> String {
             c => o.push(c),
         }
     }
+    neutralise_file_commands(&o)
+}
+
+/// LaTeX commands that read or write files or run programs. A shared `.mpp` must not be
+/// able to smuggle them into a `.tex` file someone compiles, so each is turned into the
+/// text of its own name.
+const FILE_COMMANDS: &[&str] = &[
+    "input",
+    "include",
+    "includeonly",
+    "openin",
+    "openout",
+    "read",
+    "readline",
+    "write",
+    "immediate",
+    "closein",
+    "closeout",
+    "newwrite",
+    "newread",
+    "catcode",
+    "usepackage",
+    "documentclass",
+    "csname",
+    "InputIfFileExists",
+    "verbatiminput",
+    "lstinputlisting",
+];
+
+/// Replaces each control word of [`FILE_COMMANDS`] by `\backslash` and its letters.
+pub(crate) fn neutralise_file_commands(src: &str) -> String {
+    let mut o = String::with_capacity(src.len());
+    let mut rest = src;
+    while let Some(at) = rest.find('\\') {
+        o.push_str(&rest[..at]);
+        let after = &rest[at + 1..];
+        let word_len = after.chars().take_while(char::is_ascii_alphabetic).count();
+        let word = &after[..word_len];
+        if FILE_COMMANDS.contains(&word) {
+            o.push_str("\\backslash ");
+            o.push_str(word);
+            rest = &after[word_len..];
+        } else if word_len == 0 {
+            // `\\`, `\{` ...: a control symbol, kept whole so `\\input` is not misread.
+            let sym = after.chars().next().map_or(0, char::len_utf8);
+            o.push('\\');
+            o.push_str(&after[..sym]);
+            rest = &after[sym..];
+        } else {
+            o.push('\\');
+            o.push_str(word);
+            rest = &after[word_len..];
+        }
+    }
+    o.push_str(rest);
     o
 }
 
@@ -738,5 +793,30 @@ impl Writer<'_> {
             }
         }
         out
+    }
+}
+
+#[cfg(test)]
+mod neutralise_tests {
+    use super::*;
+
+    #[test]
+    fn file_commands_become_plain_text() {
+        let out = texify_math(r"x + \input{/etc/passwd} + \immediate\write18{ls}");
+        assert!(
+            !out.contains("\\input") && !out.contains("\\write") && !out.contains("\\immediate")
+        );
+        assert!(out.contains("\\backslash input"));
+    }
+
+    #[test]
+    fn ordinary_maths_is_untouched() {
+        let src = r"\frac{a}{b} \\ \sqrt{x} \{ \} \inputx";
+        assert_eq!(neutralise_file_commands(src), src);
+    }
+
+    #[test]
+    fn a_line_break_before_the_word_input_is_not_a_command() {
+        assert_eq!(neutralise_file_commands(r"a \\input"), r"a \\input");
     }
 }

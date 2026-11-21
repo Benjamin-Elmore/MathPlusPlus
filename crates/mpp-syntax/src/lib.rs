@@ -3,6 +3,8 @@
 //! [`document::parse_document`] reads a whole `.mpp` file; [`math::parse_math`] reads the maths between `$ … $`; every node carries a
 //! [`Span`] into the whole file and problems come back as [`Diagnostic`]s.
 
+#![forbid(unsafe_code)]
+
 pub mod document;
 pub mod lexer;
 pub mod math;
