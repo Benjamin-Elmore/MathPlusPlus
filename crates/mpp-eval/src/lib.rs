@@ -71,7 +71,7 @@ pub use result::{
     is_internal_name, BlockResult, DefinitionKind, Evaluated, ImportInfo, LineIndex, LineKind,
     LineResult, RangeInfo, RangeKind,
 };
-pub use session::{CancelHandle, Session, DEFAULT_TIME_LIMIT};
+pub use session::{defined_names, CancelHandle, Session, DEFAULT_TIME_LIMIT};
 pub use value::{Binding, Env, Origin, Sequence, Value, VarKind};
 #[cfg(feature = "watch")]
 pub use watch::FileWatcher;

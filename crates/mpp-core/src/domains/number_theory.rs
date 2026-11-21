@@ -7,7 +7,7 @@ use num_integer::Integer;
 use num_traits::{One, Signed, Zero};
 
 use crate::budget;
-use crate::domains::util::{expect_args, int_arg};
+use crate::domains::util::{expect_args, int_arg, integer};
 use crate::domains::{Ctx, Domain, Value};
 use crate::error::{MathError, MathResult};
 use crate::expr::{Expr, ExprNode};
@@ -327,6 +327,15 @@ fn apply(op: &str, args: &[Value]) -> MathResult<Value> {
     match op {
         "mod" => {
             expect_args(op, args, 2)?;
+            // `mod(2^{1000000}, 7)`: a power too large to write out is reduced by
+            // modular exponentiation.
+            if let ExprNode::Pow(base, exp) = args[0].node() {
+                if let (Some(b), Some(e), Ok(m)) = (integer(base), integer(exp), int(1)) {
+                    if !e.is_negative() && !m.is_zero() {
+                        return Ok(Expr::bigint(modulo(&powmod(&b, &e, &m)?, &m)?));
+                    }
+                }
+            }
             Ok(Expr::bigint(modulo(&int(0)?, &int(1)?)?))
         }
         "modinv" => {

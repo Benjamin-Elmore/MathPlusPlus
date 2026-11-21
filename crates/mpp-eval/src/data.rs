@@ -12,6 +12,9 @@
 //! The figure structs at the end are the contract with `mpp-plot` (see
 //! `work/lanes/N5.mpp`): plain numbers, ready to draw.
 
+use std::hash::{Hash, Hasher};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+
 use mpp_core::domains::regression::{self, Fit};
 use mpp_core::{Expr, ExprNode, MathError, MathResult, Number};
 
@@ -33,11 +36,25 @@ impl Column {
     pub fn to_expr(&self) -> MathResult<Expr> {
         let items = match &self.unit {
             None => self.values.clone(),
-            Some(u) => self
-                .values
-                .iter()
-                .map(|v| units_wire::quantity_expr(v.clone(), u))
-                .collect::<MathResult<Vec<_>>>()?,
+            Some(u) => {
+                // The unit is read once for the whole column.
+                let unit = mpp_core::units::parse_unit(u)?;
+                if unit.is_one() {
+                    self.values.clone()
+                } else {
+                    let factor = units_wire::factor(&unit);
+                    self.values
+                        .iter()
+                        .map(|v| {
+                            if v.is_zero() {
+                                units_wire::quantity_expr(v.clone(), u)
+                            } else {
+                                Ok(v.clone() * factor.clone())
+                            }
+                        })
+                        .collect::<MathResult<Vec<_>>>()?
+                }
+            }
         };
         Ok(Expr::new(ExprNode::Tuple(items)))
     }
@@ -108,9 +125,39 @@ pub fn header_key(text: &str) -> Option<String> {
     crate::names::node_key(&node)
 }
 
+/// A number in a CSV cell. Data files hold measurements, so a cell written with a
+/// decimal point or an exponent (`181.145`, `3e-4`) is read as a decimal (floating
+/// point) value; whole numbers and fractions (`12`, `1/3`) stay exact.
+fn csv_cell(text: &str) -> Option<Expr> {
+    let t = text.trim().trim_start_matches('+');
+    if t.is_empty() {
+        return None;
+    }
+    if t.bytes().all(|b| b.is_ascii_digit() || b == b'-') {
+        if let Ok(n) = t.parse::<i64>() {
+            return Some(Expr::int(n));
+        }
+    }
+    if t.contains(['.', 'e', 'E']) && !t.contains('/') {
+        let t = t.replace('\u{2212}', "-");
+        let looks_numeric = t
+            .bytes()
+            .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'-' | b'+' | b'e' | b'E'));
+        if looks_numeric {
+            if let Ok(x) = t.parse::<f64>() {
+                if x.is_finite() {
+                    return Some(Expr::float(x));
+                }
+            }
+        }
+    }
+    parse_cell(t)
+}
+
 /// Reads a CSV file: a header row of names (with optional units) and rows of numbers.
 /// Commas, semicolons or tabs separate the fields; blank lines are skipped.
 pub fn parse_csv(text: &str) -> Result<DataTable, String> {
+    let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
     let mut lines = text
         .lines()
         .enumerate()
@@ -146,8 +193,14 @@ pub fn parse_csv(text: &str) -> Result<DataTable, String> {
             values: Vec::new(),
         });
     }
+    let mut fields: Vec<String> = Vec::with_capacity(columns.len());
     for (line_no, line) in lines {
-        let fields = split_fields(line, sep);
+        fields.clear();
+        if line.contains('"') {
+            fields.extend(split_fields(line, sep));
+        } else {
+            fields.extend(line.split(sep).map(|f| f.trim().to_string()));
+        }
         if fields.len() != columns.len() {
             return Err(format!(
                 "line {line_no} has {} values, but the header names {} columns",
@@ -156,7 +209,7 @@ pub fn parse_csv(text: &str) -> Result<DataTable, String> {
             ));
         }
         for (c, f) in columns.iter_mut().zip(&fields) {
-            let v = parse_cell(f)
+            let v = csv_cell(f)
                 .ok_or_else(|| format!("line {line_no}: `{}` is not a number", f.trim()))?;
             c.values.push(v);
         }
@@ -168,6 +221,60 @@ pub fn parse_csv(text: &str) -> Result<DataTable, String> {
         return Err("the file has a header but no rows".into());
     }
     Ok(DataTable { columns })
+}
+
+/// A CSV file read and turned into values, ready to define.
+#[derive(Debug)]
+pub struct LoadedTable {
+    pub table: DataTable,
+    /// Each column as a value (see [`Column::to_expr`]), in column order.
+    pub values: Vec<MathResult<Expr>>,
+    /// The whole table as a matrix.
+    pub matrix: Option<Expr>,
+}
+
+/// Files kept by [`load_csv`].
+const CSV_CACHE_FILES: usize = 8;
+
+type CsvCache = Vec<(u64, usize, Arc<LoadedTable>)>;
+
+fn csv_cache() -> &'static Mutex<CsvCache> {
+    static CACHE: OnceLock<Mutex<CsvCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// [`parse_csv`] and the column values, remembered by the file's contents: a live edit
+/// of the document re-runs the `Data:` block, but a file that has not changed is not
+/// parsed again.
+pub fn load_csv(text: &str) -> Result<Arc<LoadedTable>, String> {
+    let key = {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        text.hash(&mut h);
+        h.finish()
+    };
+    let lock = || csv_cache().lock().unwrap_or_else(PoisonError::into_inner);
+    let hit = lock()
+        .iter()
+        .find(|(k, len, _)| *k == key && *len == text.len())
+        .map(|(_, _, t)| t.clone());
+    if let Some(t) = hit {
+        return Ok(t);
+    }
+    let table = parse_csv(text)?;
+    let values = table.columns.iter().map(Column::to_expr).collect();
+    let matrix = table.to_matrix();
+    let loaded = Arc::new(LoadedTable {
+        table,
+        values,
+        matrix,
+    });
+    let mut cache = lock();
+    cache.retain(|(k, _, _)| *k != key);
+    if cache.len() >= CSV_CACHE_FILES {
+        cache.remove(0);
+    }
+    cache.push((key, text.len(), loaded.clone()));
+    Ok(loaded)
 }
 
 /// Fields of one CSV line; a field in double quotes may hold the separator.
@@ -373,7 +480,9 @@ mod tests {
         assert_eq!(t.rows(), 3);
         assert_eq!(t.columns[0].name, "t");
         assert_eq!(t.columns[0].unit.as_deref(), Some("s"));
-        assert_eq!(t.columns[1].values[1], Expr::rational(49, 10));
+        // Decimals in a data file are measurements: read as decimals, not fractions.
+        assert_eq!(t.columns[1].values[1], Expr::float(4.9));
+        assert_eq!(t.columns[0].values[1], Expr::int(1));
         let t = parse_csv("theta;v_0\n1;2\n").unwrap();
         assert_eq!(t.columns[0].name, "θ");
         assert_eq!(t.columns[1].name, "v_0");

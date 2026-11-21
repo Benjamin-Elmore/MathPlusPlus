@@ -50,7 +50,8 @@ pub struct Exports {
     pub bindings: BTreeMap<String, Arc<Binding>>,
     /// Everything reported while running the file, and the files it imports.
     pub diagnostics: Vec<FileDiagnostic>,
-    /// How many errors the file itself has (the summary on the import line).
+    /// How many distinct errors the file and the files it imports have (the summary on
+    /// the import line).
     pub error_count: usize,
     /// Every file that went into these exports (itself first), for watching.
     pub files: Vec<PathBuf>,
@@ -101,6 +102,14 @@ impl fmt::Display for ImportError {
 }
 
 impl std::error::Error for ImportError {}
+
+/// True for the "2 errors in mechanics.mpp" summary an import line carries; the errors
+/// it points at are listed separately.
+pub fn is_import_summary(d: &Diagnostic) -> bool {
+    let rest = d.message.trim_start_matches(|c: char| c.is_ascii_digit());
+    rest.len() < d.message.len()
+        && (rest.starts_with(" error in ") || rest.starts_with(" errors in "))
+}
 
 /// Where an import is made from.
 pub struct ImportContext<'a> {

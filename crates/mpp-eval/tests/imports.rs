@@ -568,3 +568,43 @@ fn the_watcher_invalidates_and_reports_changes() {
     let src = fs::read_to_string(&main).expect("read");
     assert_eq!(exact(answers(s.update(&src))[0]), "8");
 }
+
+#[test]
+fn an_error_under_a_diamond_of_imports_is_reported_once() {
+    // Each file imports the two files below it; the bottom one has one syntax error.
+    // The summaries used to be rebuilt per path, doubling time and memory per layer.
+    let dir = TempDir::new().expect("temp dir");
+    let layers = 20;
+    write(dir.path(), &format!("d{layers}.mpp"), "$$ z := 1 + $$\n");
+    write(dir.path(), &format!("e{layers}.mpp"), "$$ w := 2 $$\n");
+    for i in (0..layers).rev() {
+        let n = i + 1;
+        let imports = format!("![[d{n}.mpp]]\n\n![[e{n}.mpp]]\n\n");
+        write(
+            dir.path(),
+            &format!("d{i}.mpp"),
+            &format!("{imports}$$ x_{{{i}}} := 1 $$\n"),
+        );
+        write(
+            dir.path(),
+            &format!("e{i}.mpp"),
+            &format!("{imports}$$ y_{{{i}}} := 1 $$\n"),
+        );
+    }
+    let start = std::time::Instant::now();
+    let (_, ev) = run_file(&dir.path().join("d0.mpp"));
+    assert!(
+        start.elapsed() < std::time::Duration::from_secs(20),
+        "{:?}",
+        start.elapsed()
+    );
+    let errs = errors(&ev);
+    assert_eq!(errs.len(), 2, "{errs:?}");
+    assert!(
+        errs.iter()
+            .all(|m| m.starts_with("1 error in ") && m.contains("d20.mpp")),
+        "{errs:?}"
+    );
+    let full = full_messages(&ev);
+    assert!(full.len() < 200, "{} copies", full.len());
+}

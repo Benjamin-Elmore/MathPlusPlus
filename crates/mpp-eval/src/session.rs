@@ -52,6 +52,7 @@ pub struct Session {
     called: BTreeSet<String>,
     /// Names differentiated in an equation somewhere in the document.
     ode_unknowns: BTreeSet<String>,
+    functions: BTreeSet<String>,
     /// The document has a proof, so its displayed statements are the proof checker's.
     has_proofs: bool,
     number_format: mpp_core::display::NumberFormat,
@@ -114,6 +115,7 @@ impl Session {
             sequences: BTreeSet::new(),
             called: BTreeSet::new(),
             ode_unknowns: BTreeSet::new(),
+            functions: BTreeSet::new(),
             has_proofs: false,
             number_format: mpp_core::display::NumberFormat::default(),
             evaluated: Evaluated::empty(),
@@ -341,12 +343,13 @@ impl Session {
         let mut doc = parse_document(src);
         check_references_file(&mut doc, self.importer.as_ref(), self.base_dir.as_deref());
         let lines = LineIndex::new(src);
-        let sequences = sequence_names(&doc);
+        let (sequences, functions) = sequence_names(&doc);
         let (called, ode_unknowns) = called_names(&doc);
         let has_proofs = has_proofs(&doc);
         if sequences != self.sequences
             || called != self.called
             || ode_unknowns != self.ode_unknowns
+            || functions != self.functions
             || has_proofs != self.has_proofs
         {
             // Whether `a_1` is an initial term, and whether a differential equation
@@ -355,12 +358,14 @@ impl Session {
             self.sequences = sequences;
             self.called = called;
             self.ode_unknowns = ode_unknowns;
+            self.functions = functions;
             self.has_proofs = has_proofs;
         }
         let inputs = Inputs {
             sequences: &self.sequences,
             called: &self.called,
             ode_unknowns: &self.ode_unknowns,
+            functions: &self.functions,
             source: src,
             holders: &self.holders,
             importer: self.importer.as_ref(),
@@ -652,22 +657,28 @@ fn missing_part(message: &str) -> Option<String> {
     (!part.is_empty() && !part.contains('`')).then(|| part.to_string())
 }
 
-/// Every name with a recurrence `a_{n+1} := …` anywhere in the document.
-fn sequence_names(doc: &Document) -> BTreeSet<String> {
+/// Every name with a recurrence `a_{n+1} := …` anywhere in the document, and every
+/// name defined as a function (`f(x) := …`) anywhere in it.
+fn sequence_names(doc: &Document) -> (BTreeSet<String>, BTreeSet<String>) {
     let mut names = BTreeSet::new();
+    let mut functions = BTreeSet::new();
     let mut scan = |ast: &MathAst| {
         for line in &ast.lines {
-            if let Statement::Definition {
-                head: DefHead::Recurrence { name, .. },
-                ..
-            } = &line.statement
-            {
-                names.extend(node_key(name));
+            match &line.statement {
+                Statement::Definition {
+                    head: DefHead::Recurrence { name, .. },
+                    ..
+                } => names.extend(node_key(name)),
+                Statement::Definition {
+                    head: DefHead::Function { name, .. },
+                    ..
+                } => functions.extend(node_key(name)),
+                _ => {}
             }
         }
     };
     doc.walk(&mut |b| for_each_math(b, &mut scan));
-    names
+    (names, functions)
 }
 
 /// Names called with an argument (`N(10\,\mathrm{yr})`, `x(T)`, `V_C(\tau)`) in a line
@@ -756,6 +767,66 @@ fn called_names(doc: &Document) -> (BTreeSet<String>, BTreeSet<String>) {
         }
     });
     (names, unknowns)
+}
+
+/// The names a document defines, read from its syntax alone: nothing is evaluated, so
+/// this stays fast however slow the document's queries are. It covers `:=` and `≡`
+/// definitions anywhere in maths, `Let $a = 3$.` sentences and `Data:` tables; names
+/// only the evaluator creates (random variables, a table's columns) are not listed.
+pub fn defined_names(src: &str) -> Vec<String> {
+    use mpp_syntax::math::{NodeKind, RelOp};
+    let doc = parse_document(src);
+    let (sequences, _) = sequence_names(&doc);
+    let mut out: Vec<String> = Vec::new();
+    let heads = |ast: &MathAst, lets: bool, out: &mut Vec<String>| {
+        for line in &ast.lines {
+            match &line.statement {
+                Statement::Definition { head, .. } => {
+                    let key = match head {
+                        DefHead::Name(n) => node_key(n),
+                        DefHead::Function { name, .. } | DefHead::Recurrence { name, .. } => {
+                            node_key(name)
+                        }
+                        // `v_0 := 20` is the variable `v_0` unless `v` has a recurrence.
+                        DefHead::Initial { name, index } => node_key(name).and_then(|k| {
+                            if sequences.contains(&k) {
+                                Some(k)
+                            } else {
+                                crate::names::sub_text(index).map(|i| format!("{k}_{i}"))
+                            }
+                        }),
+                        _ => None,
+                    };
+                    out.extend(key);
+                }
+                Statement::Relation(node) if lets => {
+                    if let NodeKind::Relation { first, rest } = &node.kind {
+                        if let [(RelOp::Eq, _)] = rest.as_slice() {
+                            let key = node_key(first).or_else(|| match &first.kind {
+                                NodeKind::Call { callee, .. } => node_key(callee),
+                                _ => None,
+                            });
+                            out.extend(key);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    };
+    doc.walk(&mut |b| match &b.kind {
+        BlockKind::Data(d) => out.extend(node_key(&d.name)),
+        BlockKind::Let(l) => {
+            for m in l.math() {
+                heads(&m.ast, true, &mut out);
+            }
+        }
+        _ => for_each_math(b, &mut |ast| heads(ast, false, &mut out)),
+    });
+    out.retain(|n| !crate::result::is_internal_name(n));
+    out.sort();
+    out.dedup();
+    out
 }
 
 /// Calls `f` on every maths span directly inside `block`.

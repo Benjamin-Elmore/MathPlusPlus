@@ -12,7 +12,10 @@ use mpp_syntax::math::Statement;
 use mpp_syntax::Span;
 
 use super::{Locals, Run};
-use crate::data::{self, Column, DataTable};
+
+/// Longest data column shown entry by entry; longer ones are summarised.
+const SHOWN_ENTRIES: usize = 200;
+use crate::data::{self, Column};
 use crate::error::{EvalError, Located};
 use crate::names::node_key;
 use crate::result::{DefinitionKind, ImportInfo, LineKind, LineResult};
@@ -62,7 +65,7 @@ impl Run<'_, '_> {
                     return true;
                 }
             }
-            self.define_column(column, *span);
+            self.define_column(column, column.to_expr(), *span);
         }
         true
     }
@@ -90,11 +93,11 @@ impl Run<'_, '_> {
         }
     }
 
-    fn define_column(&mut self, column: &Column, span: Span) {
+    fn define_column(&mut self, column: &Column, value: mpp_core::MathResult<Expr>, span: Span) {
         if self.blocked(&column.name, span) {
             return;
         }
-        let value = match column.to_expr() {
+        let value = match value {
             Ok(v) => v,
             Err(e) => return self.error(span, EvalError::Math(e)),
         };
@@ -114,7 +117,26 @@ impl Run<'_, '_> {
             },
         );
         lr.input = Some(value.clone());
-        if !self.present_units(&mut lr, &value, mpp_syntax::math::QueryMode::Exact, span) {
+        if column.values.len() > SHOWN_ENTRIES {
+            // A long column is summarised: printing 100 000 entries in three forms on
+            // every edit used to take seconds.
+            let n = column.values.len();
+            let unit = column
+                .unit
+                .as_deref()
+                .map_or(String::new(), |u| format!(" in {u}"));
+            let summary = format!("{n} values{unit}");
+            lr.latex = Some(format!("\\text{{{summary}}}"));
+            lr.text = Some(summary.clone());
+            lr.plain = Some(summary);
+            lr.value = Some(Value::from_expr(value));
+            // A presentation of its own: number formats leave it as it is.
+            lr.number_format = Some(crate::numfmt::Shown {
+                format: mpp_core::display::NumberFormat::default(),
+                derived: false,
+                angle: false,
+            });
+        } else if !self.present_units(&mut lr, &value, mpp_syntax::math::QueryMode::Exact, span) {
             lr.set_value(Value::from_expr(value));
         }
         self.push(lr);
@@ -156,7 +178,7 @@ impl Run<'_, '_> {
         info.file = Some(Arc::from(path.as_path()));
         info.files = vec![path.clone()];
         self.result.imports.push(info);
-        let table: DataTable = match data::parse_csv(&text) {
+        let loaded = match data::load_csv(&text) {
             Ok(t) => t,
             Err(msg) => {
                 let file = Path::new(&d.path)
@@ -165,10 +187,10 @@ impl Run<'_, '_> {
                 return self.error(d.path_span, EvalError::Invalid(format!("{file}: {msg}")));
             }
         };
-        for column in &table.columns {
-            self.define_column(column, d.path_span);
+        for (column, value) in loaded.table.columns.iter().zip(&loaded.values) {
+            self.define_column(column, value.clone(), d.path_span);
         }
-        if let Some(m) = table.to_matrix() {
+        if let Some(m) = loaded.matrix.clone() {
             if !self.blocked(&table_name, d.name.span) {
                 self.define(
                     &table_name,
