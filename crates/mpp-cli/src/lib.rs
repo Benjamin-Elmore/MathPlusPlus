@@ -91,8 +91,19 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
     items.into_iter().map(|(_, r)| r).collect()
 }
 
+/// Longest source text echoed back for one line, in characters.
+const MAX_SNIPPET: usize = 400;
+
 fn snippet(ev: &Evaluated, start: usize, end: usize) -> String {
     let text = ev.source().get(start..end).unwrap_or("");
+    // A huge line is shortened (its start and end), never echoed whole.
+    if text.len() > 4 * MAX_SNIPPET {
+        let head: String = text.chars().take(MAX_SNIPPET / 2).collect();
+        let tail: Vec<char> = text.chars().rev().take(MAX_SNIPPET / 4).collect();
+        let tail: String = tail.into_iter().rev().collect();
+        let join = |t: &str| t.split_whitespace().collect::<Vec<_>>().join(" ");
+        return format!("{} … {}", join(&head), join(&tail));
+    }
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 

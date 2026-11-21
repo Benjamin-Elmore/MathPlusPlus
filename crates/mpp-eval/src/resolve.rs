@@ -33,7 +33,7 @@ const MAX_CALL_DEPTH: usize = 1000;
 /// Most nodes visited for one statement.
 const MAX_WORK: usize = 400_000;
 /// Most terms of a sequence computed for one statement.
-const MAX_SEQUENCE_TERMS: i64 = 10_000;
+const MAX_SEQUENCE_TERMS: i64 = mpp_core::calc::recurrence::MAX_TERMS;
 /// Largest intermediate result kept from a call or sequence term.
 const MAX_SIZE: usize = 50_000;
 
@@ -543,7 +543,7 @@ impl<'a> Resolver<'a> {
             )));
         }
         if k - first > MAX_SEQUENCE_TERMS {
-            return Err(EvalError::TooDeep(name.to_string()));
+            return Err(beyond_limit(name, k));
         }
         if self.computing.iter().any(|c| c == name) {
             return Err(EvalError::Invalid(format!(
@@ -569,7 +569,7 @@ impl<'a> Resolver<'a> {
             return Ok(None);
         }
         if k - rec.start() > MAX_SEQUENCE_TERMS {
-            return Err(EvalError::TooDeep(name.to_string()));
+            return Err(beyond_limit(name, k));
         }
         let value = rec.nth(k).map_err(EvalError::Math)?;
         if self.ctx.logging() {
@@ -1035,6 +1035,13 @@ fn replace_members(e: &Expr, f: &mut impl FnMut(&Expr) -> Option<Expr>) -> Expr 
 /// True when `e` still holds an unevaluated derivative somewhere.
 fn has_derivative(e: &Expr) -> bool {
     matches!(e.node(), ExprNode::Derivative { .. }) || e.children().into_iter().any(has_derivative)
+}
+
+/// The error for a term past the recurrence limit.
+fn beyond_limit(name: &str, k: i64) -> EvalError {
+    EvalError::Invalid(format!(
+        "{name}_{k} is beyond the {MAX_SEQUENCE_TERMS}-term limit for recurrences"
+    ))
 }
 
 /// True for a long list of numbers and quantities (`3`, `1.5 · m`): a data column.

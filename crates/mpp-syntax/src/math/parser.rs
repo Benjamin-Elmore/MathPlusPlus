@@ -28,6 +28,9 @@ const MAX_DEPTH: usize = 2 * 256 + 8;
 /// the apps' main threads).
 const MAX_CHAIN: usize = 10_000;
 
+/// Longest maths line (between `\\` breaks) read at all, in bytes.
+const MAX_LINE_BYTES: usize = 1 << 20;
+
 /// Stack for parsing deep input: room for [`MAX_DEPTH`] levels with a wide margin.
 const DEEP_STACK: usize = 64 << 20;
 
@@ -95,6 +98,21 @@ fn on_parse_stack<T: Send>(deep: bool, f: impl FnOnce(usize) -> T + Send) -> T {
 ///
 /// `base_offset` is where `src` starts in the file, so every span indexes the file.
 pub fn parse_math(src: &str, base_offset: usize) -> (MathAst, Vec<Diagnostic>) {
+    // A line this long is always rejected as too long; saying so before the tokens and
+    // the tree are built keeps a pasted megabyte line from costing hundreds of MB.
+    if src.split("\\\\").any(|line| line.len() > MAX_LINE_BYTES) {
+        let span = Span::new(base_offset, base_offset + src.len());
+        let ast = MathAst {
+            lines: Vec::new(),
+            label: None,
+            aligned: false,
+            span,
+        };
+        let message = "this expression is too long; split it over several lines";
+        let diag =
+            Diagnostic::error(Span::point(base_offset), message).expecting([r"`\\`".to_string()]);
+        return (ast, vec![diag]);
+    }
     let (tokens, lex_diags) = lex(src, base_offset);
     on_parse_stack(is_deep(&tokens), move |limit| {
         let mut parser = Parser::new(src, base_offset, tokens).with_max_depth(limit);

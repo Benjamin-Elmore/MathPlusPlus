@@ -45,3 +45,18 @@ fn units_after_numbers_still_parse() {
         assert!(diags.is_empty(), "{src}: {diags:?}");
     }
 }
+
+#[test]
+fn a_megabyte_line_is_rejected_before_it_is_tokenised() {
+    // 3 million terms used to take 3.6 s and 640 MB before the same error.
+    let src = format!("{}1 = ?", "1+".repeat(1_500_000));
+    let start = Instant::now();
+    let (_, diags) = parse_math(&src, 0);
+    assert!(
+        start.elapsed() < Duration::from_secs(2),
+        "{:?}",
+        start.elapsed()
+    );
+    assert_eq!(diags.len(), 1);
+    assert!(diags[0].message.contains("too long"), "{diags:?}");
+}

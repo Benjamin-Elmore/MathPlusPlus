@@ -227,3 +227,32 @@ fn huge_values_are_shown_in_scientific_form_not_as_infinity() {
     let m = plain_answer(r"$$ \operatorname{mod}(2^{1000000}, 7) = ? $$");
     assert!(m.ends_with('2'), "{m}");
 }
+
+#[test]
+fn recurrences_run_to_their_term_limit_with_a_clear_message_past_it() {
+    // Terms past 10 000 used to fail with "`a` calls itself too deeply".
+    let ev = timed(
+        "$$ a_0 := 1 $$\n\n$$ a_{n+1} := a_n + 1 $$\n\n$$ a_{50000} = ? $$\n",
+        Duration::from_secs(30),
+    );
+    assert_eq!(answer_of(&ev), "50001");
+    // Fibonacci terms with thousands of digits stay quick (big-integer steps).
+    let ev = timed(
+        "$$ a_0 := 1 $$\n\n$$ a_1 := 1 $$\n\n$$ a_{n+1} := a_n + a_{n-1} $$\n\n$$ a_{30000} = ? $$\n",
+        Duration::from_secs(30),
+    );
+    assert!(answer_of(&ev).len() > 6000);
+    let ev = run("$$ a_0 := 1 $$\n\n$$ a_{n+1} := a_n + 1 $$\n\n$$ a_{1000000} = ? $$\n");
+    let errs = errors(&ev);
+    assert!(
+        errs.iter().any(|e| e.contains("100000-term limit")),
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn a_product_too_long_to_compute_is_called_a_product() {
+    let ev = run(r"$$ \prod_{k=1}^{1000000000} (1 + \frac{1}{k^2}) \approx ? $$");
+    let errs = errors(&ev);
+    assert!(errs.iter().any(|e| e.contains("this product")), "{errs:?}");
+}
