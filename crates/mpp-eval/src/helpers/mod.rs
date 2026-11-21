@@ -133,6 +133,42 @@ fn is_empty(e: &Expr) -> bool {
     matches!(e.node(), ExprNode::Tuple(items) if items.is_empty())
 }
 
+/// `range(u)` of a data list or column: `max − min`. `None` when `e` is not data (a
+/// function, whose range is a set of values).
+fn data_range(e: &Expr) -> Option<MathResult<Expr>> {
+    let values = match e.node() {
+        ExprNode::Tuple(v) | ExprNode::Set(v) if !v.is_empty() => v.clone(),
+        ExprNode::Matrix { rows, cols, data } if *rows == 1 || *cols == 1 => data.clone(),
+        _ => return None,
+    };
+    if !values.iter().all(Expr::is_constant) {
+        return None;
+    }
+    let mut lo = values[0].clone();
+    let mut hi = values[0].clone();
+    for v in &values[1..] {
+        match (
+            mpp_core::domains::util::compare(v, &lo),
+            mpp_core::domains::util::compare(v, &hi),
+        ) {
+            (Some(a), Some(b)) => {
+                if a.is_lt() {
+                    lo = v.clone();
+                }
+                if b.is_gt() {
+                    hi = v.clone();
+                }
+            }
+            _ => {
+                return Some(Err(MathError::Unsupported(
+                    "the range of data that can't be put in order".into(),
+                )))
+            }
+        }
+    }
+    Some(Ok((hi - lo).simplify()))
+}
+
 /// The holder a helper sentence means: `operatorname(op, sub, (), (target))`, with the
 /// interval or the `at` point as the subscript.
 pub fn sentence_holder(op: &str, target: Expr, interval: Option<Expr>, at: Option<Expr>) -> Expr {
@@ -238,6 +274,12 @@ fn needs_interval(op: Op) -> bool {
 fn run(op: Op, f: &Expr, sub: &Expr, sup: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
     let (f, denominators) = unwrap_where_defined(f);
     let f = &f;
+    if op == Op::Range {
+        if let Some(r) = data_range(f) {
+            ctx.note("the range of data: the largest value minus the smallest");
+            return r;
+        }
+    }
     let point = point_of(sub);
     let at =
         match (&point, needs_point(op)) {

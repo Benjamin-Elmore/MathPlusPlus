@@ -59,6 +59,20 @@ fn classify_finds_the_real_critical_points() {
 }
 
 #[test]
+fn range_of_data_and_range_of_a_function() {
+    let doc = concat!(
+        "| $u$ |\n|---|\n| 1 |\n| 2 |\n| 3 |\n| 4 |\n| 5 |\n| 10 |\n\n",
+        r"$$ \operatorname{range}(u) = ? $$",
+        "\n"
+    );
+    assert_eq!(answer(doc), "9");
+    assert_eq!(
+        answer(r"$$ \operatorname{range} x^3 - 3x = ? $$"),
+        "(-∞, ∞)"
+    );
+}
+
+#[test]
 fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
     assert_eq!(
         answer(r"$$ \frac{d}{dx} \int_0^{x} e^{t^2} \, dt = ? $$"),
@@ -71,6 +85,18 @@ fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
     assert_eq!(
         answer(r"$$ \frac{d}{dx} \int_0^{x^2} \sin t \, dt = ? $$"),
         "2x sin(x²)"
+    );
+}
+
+#[test]
+fn set_builder_with_several_conditions() {
+    assert_eq!(
+        answer(r"$$ \{x \in \mathbb{R} : \sin x = 0, 0 \le x \le 7\} = ? $$"),
+        "{0, π, 2π}"
+    );
+    assert_eq!(
+        answer(r"$$ \{x \in \mathbb{R} : x^2 = 4, x > 0\} = ? $$"),
+        "{2}"
     );
 }
 

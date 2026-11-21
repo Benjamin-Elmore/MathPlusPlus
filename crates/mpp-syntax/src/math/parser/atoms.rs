@@ -14,6 +14,27 @@ use crate::symbols::{lookup_name, Font, Symbol, SymbolKind};
 
 const EXPR: &[&str] = &["a number", "a name", "`(`"];
 
+/// `\operatorname` names that act on a whole function, so an unbracketed argument runs
+/// to the end of the sum (`\operatorname{range} x^3 - 3x` is the range of `x³ − 3x`).
+const WHOLE_FUNCTION_OPS: &[&str] = &[
+    "domain",
+    "range",
+    "intercepts",
+    "crit",
+    "critical",
+    "extrema",
+    "localextrema",
+    "absextrema",
+    "increasing",
+    "decreasing",
+    "monotonicity",
+    "concavity",
+    "inflection",
+    "asymptotes",
+    "analyse",
+    "analyze",
+];
+
 impl Parser<'_> {
     /// One atom (grammar `atom`), including big operators and derivatives.
     pub(super) fn parse_atom(&mut self) -> Node {
@@ -536,7 +557,13 @@ impl Parser<'_> {
             let (args, _, end) = self.call_args();
             (args, true, end)
         } else if self.can_start_factor() || self.at(is_sign) {
-            let arg = self.parse_signed_term();
+            // An operator on a whole function (`\operatorname{range} x^3 - 3x`) takes
+            // the whole sum; others (`\operatorname{sgn} x + 1`) the next term.
+            let arg = if WHOLE_FUNCTION_OPS.contains(&name.as_str()) {
+                self.parse_additive()
+            } else {
+                self.parse_signed_term()
+            };
             let end = arg.span;
             (vec![arg], false, end)
         } else {
@@ -844,6 +871,27 @@ impl Parser<'_> {
         if open == Delim::Brace {
             if let [only] = elems.as_slice() {
                 if let Some(builder) = set_builder(only, span) {
+                    return builder;
+                }
+            }
+            // `{x ∈ ℝ : sin x = 0, 0 ≤ x ≤ 7}`: the commas after the colon join more
+            // conditions, as `∧`.
+            if let Some((first, more)) = elems.split_first() {
+                if let Some(mut builder) = set_builder(first, span) {
+                    if let NodeKind::SetBuilder { condition, .. } = &mut builder.kind {
+                        for extra in more {
+                            let cspan = condition.span.join(extra.span);
+                            let lhs = (**condition).clone();
+                            **condition = Node::new(
+                                NodeKind::Binary {
+                                    op: BinOp::And,
+                                    lhs: Box::new(lhs),
+                                    rhs: Box::new(extra.clone()),
+                                },
+                                cspan,
+                            );
+                        }
+                    }
                     return builder;
                 }
             }
