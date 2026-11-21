@@ -36,8 +36,13 @@ mod tests {
         let m = q(Expr::int(70), "kg");
         let v = q(Expr::int(100), "km/h");
         let t = q(Expr::int(12), "s");
+        // g was typed as the decimal 9.81, so its product is shown as a decimal.
+        let decimal = crate::display::NumberFormat {
+            style: crate::display::Style::Decimal,
+            ..crate::display::NumberFormat::default()
+        };
         let mut got: Vec<String> = vec![
-            m.mul(&g).unwrap().to_string(),
+            crate::display::with_format(&decimal, || m.mul(&g).unwrap().to_string()),
             v.convert_to(&unit("m/s")).unwrap().to_string(),
             v.mul(&t)
                 .unwrap()

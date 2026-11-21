@@ -25,7 +25,7 @@
 47: \operatorname{average}(x^2, [0, 3]) = ?
     = 3
 51: \operatorname{work}(5x, [0, 0.2]) = ?
-    = 1/10
+    = 0.1
 53: \operatorname{centroid}(x, x^2, [0, 1]) = ?
     = (1/2, 2/5)
 57: \operatorname{centreofmass}(1 + x, [0, 2]) = ?

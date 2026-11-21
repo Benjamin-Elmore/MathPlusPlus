@@ -93,6 +93,10 @@ pub struct LineResult {
     pub pending: bool,
     /// Why no answer is shown yet, such as "fill in: upper bound" for an empty box.
     pub hint: Option<String>,
+    /// The line uses a decimal the user typed (`9.81 + 1`, `g + 1` after
+    /// `g \equiv 9.81`): unless the file asks for `%exact`, its answer is shown as a
+    /// decimal too (10.81, not 1081/100).
+    pub decimal_input: bool,
 }
 
 impl LineResult {
@@ -116,6 +120,7 @@ impl LineResult {
             auto: false,
             pending: false,
             hint: None,
+            decimal_input: false,
         }
     }
 

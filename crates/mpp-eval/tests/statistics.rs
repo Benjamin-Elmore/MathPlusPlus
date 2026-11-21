@@ -179,7 +179,8 @@ $$ \operatorname{chi2cdf}(3.841, 1) \approx ? $$
             "0.9750021049",
             "0.6826894921",
             "1.959963985",
-            "63/256",
+            // p was typed as the decimal 0.5, so the answer is a decimal.
+            "0.24609375",
             "17/(2*e^3)",
             "2.228138852",
             "0.9499863162"

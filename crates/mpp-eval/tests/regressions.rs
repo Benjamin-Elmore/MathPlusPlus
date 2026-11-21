@@ -683,8 +683,8 @@ $$ g = ? \qquad k = ? \qquad 2k = ? $$";
         .as_deref()
         .is_some_and(|l| l.starts_with(r"9.81\,")));
     assert_eq!(shown[1].0.as_deref(), Some("0.1"));
-    // A computed value is exact as usual.
-    assert_eq!(shown[2].0.as_deref(), Some("1/5"));
+    // A value computed from a decimal is shown as a decimal too.
+    assert_eq!(shown[2].0.as_deref(), Some("0.2"));
 }
 
 #[test]
@@ -712,4 +712,22 @@ fn a_spelled_out_name_can_be_defined_and_used() {
         answer("$$ x := 2 $$\n\n$$ y := 5 $$\n\n$$ xy = ? $$\n"),
         "10"
     );
+}
+
+/// A decimal the user typed gives decimal answers: `g + 1` after `g := 9.81` is
+/// 10.81, not 1081/100, and so is a name worked out from it. `%exact` asks for the
+/// fraction again; exact input stays exact.
+#[test]
+fn decimals_in_give_decimals_out() {
+    assert_eq!(answer("$$ g := 9.81 $$\n\n$$ g + 1 = ? $$\n"), "10.81");
+    assert_eq!(answer("$$ 9.81 + 1 = ? $$\n"), "10.81");
+    assert_eq!(
+        answer("$$ g := 9.81 $$\n\n$$ h := 2 g $$\n\n$$ h + 1 = ? $$\n"),
+        "20.62"
+    );
+    assert_eq!(
+        answer("%exact\n\n$$ g := 9.81 $$\n\n$$ g + 1 = ? $$\n"),
+        "1081/100"
+    );
+    assert_eq!(answer("$$ 1/3 + 1 = ? $$\n"), "4/3");
 }

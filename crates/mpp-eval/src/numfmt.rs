@@ -67,9 +67,11 @@ pub fn apply_option(fmt: &mut NumberFormat, option: DisplayOption) {
 /// Reads the display directives of the run document and re-shows every result.
 /// Malformed directives become error diagnostics.
 pub(crate) fn apply(ev: &mut Evaluated, base: &NumberFormat) {
-    let mut formats: HashMap<BlockId, NumberFormat> = HashMap::new();
+    let mut formats: HashMap<BlockId, (NumberFormat, bool)> = HashMap::new();
     let mut problems: Vec<Diagnostic> = Vec::new();
     let mut current = *base;
+    // `%exact` was asked for: decimals the user typed then give exact answers too.
+    let mut exact_asked = false;
     let mut pending: Vec<DisplayOption> = Vec::new();
     let mut flat = Vec::new();
     ev.document
@@ -79,7 +81,12 @@ pub(crate) fn apply(ev: &mut Evaluated, base: &NumberFormat) {
             if d.kind == DirectiveKind::Display {
                 match parse_display_directive(&d.text) {
                     Some(Ok(dir)) if dir.block_only => pending.push(dir.option),
-                    Some(Ok(dir)) => apply_option(&mut current, dir.option),
+                    Some(Ok(dir)) => {
+                        if matches!(dir.option, DisplayOption::Exact | DisplayOption::Decimal) {
+                            exact_asked = dir.option == DisplayOption::Exact;
+                        }
+                        apply_option(&mut current, dir.option);
+                    }
                     Some(Err(message)) => problems.push(Diagnostic::error(span, message)),
                     None => {}
                 }
@@ -88,18 +95,30 @@ pub(crate) fn apply(ev: &mut Evaluated, base: &NumberFormat) {
         }
         let has_values = ev.blocks.iter().any(|r| r.id == id && !r.values.is_empty());
         let mut fmt = current;
+        let mut exact = exact_asked;
         if has_values {
             for option in pending.drain(..) {
+                if matches!(option, DisplayOption::Exact | DisplayOption::Decimal) {
+                    exact = option == DisplayOption::Exact;
+                }
                 apply_option(&mut fmt, option);
             }
         }
-        formats.insert(id, fmt);
+        formats.insert(id, (fmt, exact));
     }
     ev.diagnostics.extend(problems);
     for block in &mut ev.blocks {
-        let fmt = formats.get(&block.id).copied().unwrap_or(current);
+        let (fmt, exact) = formats
+            .get(&block.id)
+            .copied()
+            .unwrap_or((current, exact_asked));
         for line in &mut block.values {
             let angle = is_angle_source(&ev.source, line);
+            let mut fmt = fmt;
+            // Decimal in, decimal out: `g + 1` after `g \equiv 9.81` is 10.81.
+            if line.decimal_input && fmt.style == Style::Exact && !exact {
+                fmt.style = Style::Decimal;
+            }
             line.refresh(&fmt, Some(angle));
         }
     }
