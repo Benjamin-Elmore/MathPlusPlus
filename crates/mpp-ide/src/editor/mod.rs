@@ -483,9 +483,8 @@ impl Editor {
         };
         if let Some(si) = self.session_index(id) {
             let s = &mut self.sessions[si];
-            let first = s.primary.and_then(|i| s.tab_pos(i)).unwrap_or(0);
-            if s.tab_pos(index).is_some_and(|p| p < first) {
-                s.lead_seen = true;
+            if s.primary != Some(index) {
+                s.walked = true;
             }
         }
         if b.is_empty() {
@@ -496,9 +495,13 @@ impl Editor {
     }
 
     /// Tab (or Shift+Tab when `!forward`) inside a template: moves to the next
-    /// box in reading order; past the last box the caret leaves the template
-    /// (and empty optional parts are removed). Returns false when the caret is
-    /// not in a template.
+    /// box in the Tab order, which is reading order (an integral's bounds, then
+    /// its integrand, then its variable); past the last box the caret leaves the
+    /// template (and empty optional parts are removed). Shift+Tab walks the same
+    /// order backwards. The caret starts in the primary box (the integrand), so
+    /// until it has been anywhere else the first Tab from there goes to the first
+    /// box of the order when an earlier box is still empty. Returns false when
+    /// the caret is not in a template.
     pub fn tab(&mut self, forward: bool) -> bool {
         let caret = self.selection().map_or(self.caret, |r| r.start);
         let Some(s) = self.session_at(caret) else {
@@ -506,27 +509,21 @@ impl Editor {
         };
         let id = s.id;
         let cur = s.box_at(caret).and_then(|i| s.tab_pos(i));
+        let start = s.primary.and_then(|i| s.tab_pos(i));
+        // Boxes before the starting one that still need filling (an integral's
+        // bounds; a sum's index and limits come with defaults).
+        let lead_open = |p: usize| s.tab[..p].iter().any(|&i| s.boxes[i].range.is_empty());
         let next = match (cur, forward) {
+            (Some(p), true) if !s.walked && Some(p) == start && lead_open(p) => Some(0),
             (Some(p), true) => Some(p + 1),
             (Some(p), false) => p.checked_sub(1),
             (None, true) => s.tab.iter().position(|&i| s.boxes[i].range.start > caret),
             (None, false) => s.tab.iter().rposition(|&i| s.boxes[i].range.end < caret),
         };
-        // The caret starts in the primary box, so the boxes before it in the Tab
-        // order (an integral's bounds) would be passed by. Tab on from the last box
-        // goes to the first of them that is still empty, and on from those leaves.
-        let first = s.primary.and_then(|i| s.tab_pos(i)).unwrap_or(0);
-        let next = match (cur, next) {
-            (Some(p), Some(n)) if forward && s.wrapped && p < first && n == first => None,
-            (Some(_), Some(n)) if forward && n >= s.tab.len() && !s.lead_seen => s.tab[..first]
-                .iter()
-                .position(|&i| s.boxes[i].range.is_empty())
-                .or(Some(n)),
-            _ => next,
-        };
-        let wraps = forward && matches!((cur, next), (Some(p), Some(n)) if n < p);
-        if let (true, Some(si)) = (wraps, self.session_index(id)) {
-            self.sessions[si].wrapped = true;
+        if let (Some(p), Some(si)) = (cur, self.session_index(id)) {
+            if Some(p) != start {
+                self.sessions[si].walked = true;
+            }
         }
         let Some(s) = self.session(id) else {
             return false;

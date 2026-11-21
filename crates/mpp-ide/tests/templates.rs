@@ -1365,6 +1365,113 @@ fn shift_tab_goes_back_and_templates_nest() {
     assert!(doc.errors().next().is_none(), "{}", ed.text());
 }
 
+/// The label of the box the caret (or selection) is in.
+fn label_now(ed: &Editor, sid: u64) -> String {
+    let s = ed.session(sid).expect("session");
+    let at = ed.selection().map_or(ed.caret(), |r| r.start);
+    s.box_at(at)
+        .map(|i| s.boxes[i].label.clone())
+        .unwrap_or_default()
+}
+
+/// Tab (or Shift+Tab) `n` times, giving the label after each press.
+fn walk(ed: &mut Editor, sid: u64, forward: bool, n: usize) -> Vec<String> {
+    (0..n)
+        .map(|_| {
+            assert!(ed.tab(forward));
+            label_now(ed, sid)
+        })
+        .collect()
+}
+
+#[test]
+fn shift_tab_is_exactly_tab_backwards_in_every_template() {
+    let mut runs: Vec<(String, Option<Knobs>)> = catalogue()
+        .iter()
+        .filter(|t| !t.is_symbol() && !t.is_text())
+        .map(|t| (t.id.clone(), None))
+        .collect();
+    for id in ["int.double", "int.triple"] {
+        runs.push((id.into(), Some(knobs(0, 0, 1, 0, false))));
+    }
+    for (id, kn) in runs {
+        let mut ed = Editor::new("");
+        let sid = insert_into(&mut ed, &id, kn);
+        let s = ed.session(sid).expect("session").clone();
+        let order: Vec<String> = s.tab_boxes().map(|b| b.label.clone()).collect();
+        let n = order.len();
+        if n == 0 {
+            continue;
+        }
+        // Forward from the first box: every box in order, then out.
+        ed.focus_box(sid, s.tab[0]);
+        let fwd = walk(&mut ed, sid, true, n - 1);
+        assert_eq!(fwd, order[1..].to_vec(), "{id}: Tab order");
+        ed.tab(true);
+        let end = ed.session(sid).expect("session").range.end;
+        assert_eq!(ed.caret(), end, "{id}: Tab past the last box leaves");
+
+        // Backward from the last box: the same boxes reversed, then out.
+        let mut ed = Editor::new("");
+        let sid = insert_into(&mut ed, &id, kn);
+        let s = ed.session(sid).expect("session").clone();
+        ed.focus_box(sid, s.tab[n - 1]);
+        let back = walk(&mut ed, sid, false, n - 1);
+        let mut want: Vec<String> = order[..n - 1].to_vec();
+        want.reverse();
+        assert_eq!(back, want, "{id}: Shift+Tab is Tab reversed");
+        ed.tab(false);
+        let start = ed.session(sid).expect("session").range.start;
+        assert_eq!(
+            ed.caret(),
+            start,
+            "{id}: Shift+Tab before the first box leaves"
+        );
+    }
+}
+
+#[test]
+fn integrals_tab_from_the_integrand_through_the_slot_table_order() {
+    let bounds = Some(knobs(0, 0, 1, 0, false));
+    for (id, kn) in [
+        ("int.def", None),
+        ("int.improper", None),
+        ("int.double", None),
+        ("int.double", bounds),
+        ("int.triple", None),
+        ("int.triple", bounds),
+    ] {
+        let mut ed = Editor::new("");
+        let sid = insert_into(&mut ed, id, kn);
+        let s = ed.session(sid).expect("session").clone();
+        let order: Vec<String> = s.tab_boxes().map(|b| b.label.clone()).collect();
+        // The caret starts in the integrand …
+        assert_eq!(
+            label_now(&ed, sid),
+            "integrand",
+            "{id}: starts in the integrand"
+        );
+        // … and Tab walks the table's order from its first box (bounds or
+        // region, integrand, differential), then leaves.
+        let got = walk(&mut ed, sid, true, order.len());
+        assert_eq!(got, order, "{id}: Tab from the start");
+        ed.tab(true);
+        let end = ed.session(sid).expect("session").range.end;
+        assert_eq!(ed.caret(), end, "{id}: then out of the template");
+    }
+    // Shift+Tab from the integrand goes back through the bounds, then out.
+    let mut ed = Editor::new("");
+    let sid = insert_into(&mut ed, "int.def", None);
+    assert_eq!(walk(&mut ed, sid, false, 2), ["upper", "lower"]);
+    // A sum's index and limits have defaults: Tab from the term leaves.
+    let mut ed = Editor::new("");
+    let sid = insert_into(&mut ed, "sum", None);
+    ed.insert_text("n");
+    ed.tab(true);
+    let end = ed.session(sid).expect("session").range.end;
+    assert_eq!(ed.caret(), end, "sum: Tab from the term leaves");
+}
+
 #[test]
 fn typing_after_leaving_a_template_stays_outside_it() {
     let mut ed = Editor::new("");
