@@ -332,7 +332,8 @@ fn check_steps(steps: usize) -> MathResult<()> {
 }
 
 /// RK4 for `y' = f(x, y)` from `(x0, y0)` to `x1` in `steps` equal steps; returns every
-/// point, the initial one included.
+/// point, the initial one included. The steps are taken by
+/// [`rk4_march`](crate::tools_b::numerics::rk4_march), the one RK4 stepper.
 pub fn rk4(
     f: &Expr,
     x: &str,
@@ -350,25 +351,15 @@ pub fn rk4(
             values: [xv, yv],
         })
     };
-    let mut out = Vec::with_capacity(steps + 1);
-    let (mut xv, mut yv) = (x0, y0);
-    out.push((xv, yv));
-    for i in 0..steps {
-        crate::budget::check()?;
-        let k1 = eval(xv, yv)?;
-        let k2 = eval(xv + h / 2.0, yv + h * k1 / 2.0)?;
-        let k3 = eval(xv + h / 2.0, yv + h * k2 / 2.0)?;
-        let k4 = eval(xv + h, yv + h * k3)?;
-        yv += h * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0;
-        xv = x0 + h * (i + 1) as f64;
-        if !yv.is_finite() {
-            return Err(MathError::Undefined(format!(
-                "the solution at {xv} (it blew up)"
-            )));
-        }
-        out.push((xv, yv));
-    }
-    Ok(out)
+    crate::tools_b::numerics::rk4_march(
+        eval,
+        x0,
+        y0,
+        h,
+        steps,
+        |_, _, _, _| {},
+        |xv| MathError::Undefined(format!("the solution at {xv} (it blew up)")),
+    )
 }
 
 /// RK4 for a system `yᵢ' = fᵢ(t, y₁, …, yₙ)`.

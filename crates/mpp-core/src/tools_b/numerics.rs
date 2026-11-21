@@ -522,15 +522,7 @@ pub fn rk4(
     mut steps: Option<&mut Steps>,
 ) -> MathResult<OdeTable> {
     check_ode_args(rhs, x, y, h, n)?;
-    let mut rows = vec![(x0, y0)];
-    let (mut xv, mut yv) = (x0, y0);
-    for i in 0..n {
-        crate::budget::check()?;
-        let k1 = rhs_at(rhs, x, y, xv, yv)?;
-        let k2 = rhs_at(rhs, x, y, xv + h / 2.0, yv + h * k1 / 2.0)?;
-        let k3 = rhs_at(rhs, x, y, xv + h / 2.0, yv + h * k2 / 2.0)?;
-        let k4 = rhs_at(rhs, x, y, xv + h, yv + h * k3)?;
-        let next = yv + h / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+    let each = |i: usize, yv: f64, [k1, k2, k3, k4]: [f64; 4], next: f64| {
         if i < 20 {
             Steps::record(
                 &mut steps,
@@ -549,20 +541,57 @@ pub fn rk4(
                 )),
             );
         }
-        xv = x0 + h * (i + 1) as f64;
-        yv = next;
-        if !yv.is_finite() {
-            return Err(MathError::Domain {
-                function: "RK4".into(),
-                detail: "the solution blew up; try a smaller step".into(),
-            });
-        }
-        rows.push((xv, yv));
-    }
+    };
+    let rows = rk4_march(
+        |xv, yv| rhs_at(rhs, x, y, xv, yv),
+        x0,
+        y0,
+        h,
+        n,
+        each,
+        |_| MathError::Domain {
+            function: "RK4".into(),
+            detail: "the solution blew up; try a smaller step".into(),
+        },
+    )?;
     Ok(OdeTable {
         method: "classical Runge–Kutta (RK4)",
         rows,
     })
+}
+
+/// The classical fourth-order Runge–Kutta method for `y′ = slope(x, y)` from `(x0, y0)`,
+/// `n` steps of size `h`: every RK4 answer in Math++ comes from here. Returns every point,
+/// the initial one included. `each(i, yᵢ, [k₁, k₂, k₃, k₄], yᵢ₊₁)` sees each step (for the
+/// working); `blew_up(x)` is the error when the solution stops being finite at `x`.
+pub fn rk4_march(
+    slope: impl Fn(f64, f64) -> MathResult<f64>,
+    x0: f64,
+    y0: f64,
+    h: f64,
+    n: usize,
+    mut each: impl FnMut(usize, f64, [f64; 4], f64),
+    blew_up: impl Fn(f64) -> MathError,
+) -> MathResult<Vec<(f64, f64)>> {
+    let mut rows = Vec::with_capacity(n + 1);
+    rows.push((x0, y0));
+    let (mut xv, mut yv) = (x0, y0);
+    for i in 0..n {
+        crate::budget::check()?;
+        let k1 = slope(xv, yv)?;
+        let k2 = slope(xv + h / 2.0, yv + h * k1 / 2.0)?;
+        let k3 = slope(xv + h / 2.0, yv + h * k2 / 2.0)?;
+        let k4 = slope(xv + h, yv + h * k3)?;
+        let next = yv + h / 6.0 * (k1 + 2.0 * k2 + 2.0 * k3 + k4);
+        each(i, yv, [k1, k2, k3, k4], next);
+        xv = x0 + h * (i + 1) as f64;
+        yv = next;
+        if !yv.is_finite() {
+            return Err(blew_up(xv));
+        }
+        rows.push((xv, yv));
+    }
+    Ok(rows)
 }
 
 /// A Taylor polynomial with its Lagrange error bound.
