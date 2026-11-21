@@ -137,7 +137,12 @@ fn layout_line(
     // Index into `atoms` of the relation to align on.
     let mut align_at: Option<usize> = None;
     match &line.statement {
-        Statement::Definition { head, kind, body } => {
+        Statement::Definition {
+            head,
+            kind,
+            body,
+            query,
+        } => {
             match head {
                 DefHead::Name(n) | DefHead::Invalid(n) => {
                     atoms.push(e.atom(n, st, &sl.next(), Some("name")));
@@ -177,6 +182,23 @@ fn layout_line(
             };
             atoms.push(Atom::new(Class::Rel, e.sym_str(sym, st)));
             atoms.push(e.atom(body, st, &sl.next(), Some("value")));
+            // `T_0 := … ≈ ?`: the answer (or the `?`) after the value.
+            if let Some(mode) = query {
+                let own = match mode {
+                    QueryMode::Exact => RelOp::Eq,
+                    QueryMode::Approx => RelOp::Approx,
+                };
+                match result {
+                    Some(r) => {
+                        atoms.push(e.rel(r.relation.unwrap_or(own), st));
+                        atoms.push(result_atom(e, r, index, line, st));
+                    }
+                    None => {
+                        atoms.push(e.rel(own, st));
+                        atoms.push(Atom::ord(e.sym('?', st)));
+                    }
+                }
+            }
         }
         Statement::Query { expr, mode, .. } => {
             atoms.push(e.atom(expr, st, &sl.next(), Some("expression")));

@@ -125,6 +125,14 @@ pub fn after_number(text: &str) -> Option<Found> {
             plain: false,
         });
     }
+    if let Some((len, unit)) = braceless_roman(rest) {
+        return Some(Found {
+            len: lead + len,
+            lead,
+            text: unit,
+            plain: false,
+        });
+    }
     if let Some((len, unit)) = degrees(rest) {
         return Some(Found {
             len: lead + len,
@@ -241,6 +249,27 @@ fn degrees(text: &str) -> Option<(usize, String)> {
         None => "°",
     };
     Some((k, unit.to_string()))
+}
+
+/// `\mathrm K`, `\mathrm m^2`: `\mathrm` takes one letter without braces, as in TeX.
+/// The unit comes back braced (`\mathrm{K}`).
+fn braceless_roman(text: &str) -> Option<(usize, String)> {
+    let after = text.strip_prefix("\\mathrm")?;
+    let spaces = after.len() - after.trim_start().len();
+    let r = &after[spaces..];
+    let letter = r.chars().next().filter(char::is_ascii_alphabetic)?;
+    // `\mathrm{` is the braced form; the letter itself must be a unit.
+    if !is_unit_text(&letter.to_string(), true) {
+        return None;
+    }
+    let mut k = "\\mathrm".len() + spaces + 1;
+    // The letter must end the word (`\mathrm K` but not `\mathrm Km`).
+    if text[k..].starts_with(|c: char| c.is_alphanumeric()) {
+        return None;
+    }
+    let letter_end = k;
+    k += power(&text[k..]).unwrap_or(0);
+    Some((k, format!("\\mathrm{{{letter}}}{}", &text[letter_end..k])))
 }
 
 /// `\mathrm{…}` pieces with optional powers, joined by `\,`, `\cdot`, `·` or `/`, whose

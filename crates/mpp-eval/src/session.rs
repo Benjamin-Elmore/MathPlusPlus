@@ -39,6 +39,8 @@ pub struct Session {
     doc_name: Option<Arc<str>>,
     cache: HashMap<BlockId, Cached>,
     sequences: BTreeSet<String>,
+    /// Names called with an argument somewhere they are not differentiated.
+    called: BTreeSet<String>,
     number_format: mpp_core::display::NumberFormat,
     evaluated: Evaluated,
     /// "Show steps": every `= ?` query records its working, as if written `= ?!`.
@@ -75,6 +77,7 @@ impl Session {
             doc_name: None,
             cache: HashMap::new(),
             sequences: BTreeSet::new(),
+            called: BTreeSet::new(),
             number_format: mpp_core::display::NumberFormat::default(),
             evaluated: Evaluated::empty(),
             show_steps: false,
@@ -269,13 +272,17 @@ impl Session {
         let doc = parse_document(src);
         let lines = LineIndex::new(src);
         let sequences = sequence_names(&doc);
-        if sequences != self.sequences {
-            // Whether `a_1` is an initial term depends on the whole document.
+        let called = called_names(&doc);
+        if sequences != self.sequences || called != self.called {
+            // Whether `a_1` is an initial term, and whether a differential equation
+            // defines its unknown, depend on the whole document.
             self.cache.clear();
             self.sequences = sequences;
+            self.called = called;
         }
         let inputs = Inputs {
             sequences: &self.sequences,
+            called: &self.called,
             holders: &self.holders,
             importer: self.importer.as_ref(),
             base_dir: self.base_dir.as_deref(),
@@ -483,6 +490,77 @@ fn sequence_names(doc: &Document) -> BTreeSet<String> {
         }
     };
     doc.walk(&mut |b| for_each_math(b, &mut scan));
+    names
+}
+
+/// Names called with an argument (`N(10\,\mathrm{yr})`, `x(T)`, `V_C(\tau)`) in a line
+/// or figure where the same name is not differentiated: a differential equation in
+/// such a name defines it for those uses. A name only ever met inside differential
+/// equations (with their conditions `y(0) = 1`) stays an unknown of each equation.
+fn called_names(doc: &Document) -> BTreeSet<String> {
+    use mpp_syntax::math::{visit, Accent, Clause, Line, Node, NodeKind};
+    fn walk(n: &Node, calls: &mut Vec<String>, diffs: &mut Vec<String>) {
+        match &n.kind {
+            NodeKind::Call { callee, args, .. } if !args.is_empty() => {
+                if let Some(k) = node_key(callee) {
+                    calls.push(k);
+                }
+            }
+            NodeKind::Prime { base, .. } => diffs.extend(node_key(base)),
+            NodeKind::Derivative(d) => {
+                if let Some(of) = &d.of {
+                    diffs.extend(node_key(of.ungrouped()));
+                }
+            }
+            NodeKind::Accented {
+                accent: Accent::Dot | Accent::DDot,
+                inner,
+            } => diffs.extend(node_key(inner)),
+            NodeKind::Name(name) if matches!(name.accent, Some(Accent::Dot | Accent::DDot)) => {
+                diffs.push(name.base.clone());
+            }
+            _ => {}
+        }
+        visit::children(n, &mut |c| walk(c, calls, diffs));
+    }
+    fn line_calls(line: &Line, out: &mut BTreeSet<String>) {
+        let (mut calls, mut diffs) = (Vec::new(), Vec::new());
+        let mut nodes: Vec<&Node> = Vec::new();
+        match &line.statement {
+            Statement::Definition { body, .. } => nodes.push(body),
+            Statement::Query { expr, .. } | Statement::Relation(expr) => nodes.push(expr),
+            Statement::Check { lhs, rhs } => {
+                nodes.push(lhs);
+                nodes.push(rhs);
+            }
+            _ => {}
+        }
+        for c in &line.clauses {
+            if let Clause::Condition(n) | Clause::Where { value: n, .. } = c {
+                nodes.push(n);
+            }
+        }
+        for n in nodes {
+            walk(n, &mut calls, &mut diffs);
+        }
+        out.extend(calls.into_iter().filter(|c| !diffs.contains(c)));
+    }
+    let mut names = BTreeSet::new();
+    let mut scan = |ast: &MathAst| {
+        for line in &ast.lines {
+            line_calls(line, &mut names);
+        }
+    };
+    doc.walk(&mut |b| {
+        for_each_math(b, &mut scan);
+        if let BlockKind::Figure(f) = &b.kind {
+            for item in &f.items {
+                if let mpp_syntax::document::FigureItemKind::Expr(ast) = &item.kind {
+                    scan(ast);
+                }
+            }
+        }
+    });
     names
 }
 

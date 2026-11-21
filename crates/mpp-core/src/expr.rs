@@ -526,7 +526,13 @@ impl Expr {
     pub fn is_constant(&self) -> bool {
         match self.node() {
             ExprNode::Num(_) | ExprNode::Const(_) => true,
-            ExprNode::Sym(_) | ExprNode::Apply(..) => false,
+            // γ, K(1/2), J_0(1): a special function with a numeric value at constant
+            // arguments is a constant; any other application (a user function) is not.
+            ExprNode::Apply(name, args) => {
+                crate::domains::special::has_numeric_value(name)
+                    && args.iter().all(Expr::is_constant)
+            }
+            ExprNode::Sym(_) => false,
             ExprNode::Add(v) | ExprNode::Mul(v) | ExprNode::Func(_, v) => {
                 v.iter().all(Expr::is_constant)
             }

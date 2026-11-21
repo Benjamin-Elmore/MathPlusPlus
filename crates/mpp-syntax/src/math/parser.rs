@@ -111,6 +111,8 @@ pub(crate) struct Parser<'a> {
     too_deep_reported: bool,
     too_long_reported: bool,
     ctx: Ctx,
+    /// The line just read stopped where another statement starts on the same line.
+    continues: bool,
 }
 
 impl<'a> Parser<'a> {
@@ -125,6 +127,7 @@ impl<'a> Parser<'a> {
             diags: Vec::new(),
             depth: 0,
             too_deep_reported: false,
+            continues: false,
             too_long_reported: false,
             ctx: Ctx::default(),
         }

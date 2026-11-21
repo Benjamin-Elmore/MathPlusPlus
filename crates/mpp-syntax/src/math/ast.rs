@@ -40,11 +40,13 @@ pub struct Line {
 /// The core of a statement line.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Statement {
-    /// `head := body` or `head ≡ body`.
+    /// `head := body` or `head ≡ body`, optionally asking for the value straight away
+    /// (`T_0 := 2\pi\sqrt{L/g} \approx ?`).
     Definition {
         head: DefHead,
         kind: DefKind,
         body: Node,
+        query: Option<QueryMode>,
     },
     /// `expr = ?`, `expr ≈ ?` or `expr = ?!`.
     Query {

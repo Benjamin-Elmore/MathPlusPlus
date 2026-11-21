@@ -188,6 +188,29 @@ fn order(op: &str, x: f64) -> MathResult<i64> {
     Ok(x as i64)
 }
 
+/// True for the names [`call_real`] evaluates.
+pub fn has_numeric_value(name: &str) -> bool {
+    matches!(
+        name,
+        crate::expr::EULER_GAMMA
+            | "polygamma"
+            | "erf"
+            | "erfc"
+            | "lambertw"
+            | "besselj"
+            | "beta"
+            | "legendrep"
+            | "chebyshevt"
+            | "chebyshevu"
+            | "ellipk"
+            | "ellipe"
+            | "heaviside"
+            | "H"
+            | "dirac"
+            | "delta"
+    )
+}
+
 /// Numeric values of the special functions (and the distributions of the analysis
 /// domain) by name, for evaluating them inside larger expressions. `None` when the
 /// name is not one of them.

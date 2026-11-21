@@ -36,7 +36,8 @@ impl Parser<'_> {
         match tok {
             Tok::Number(text) => {
                 self.bump();
-                Node::new(NodeKind::Number(text), span)
+                let (text, end) = self.digit_groups(text, span);
+                Node::new(NodeKind::Number(text), span.join(end))
             }
             Tok::Letter(c) => {
                 self.bump();
@@ -251,6 +252,33 @@ impl Parser<'_> {
             _ => NodeKind::Symbol(sym.unicode),
         };
         Node::new(kind, span)
+    }
+
+    /// `10\,000` and `1\,234\,567.5`: groups of three digits joined by a thin space
+    /// are one number, as in printed tables. Returns the digits and the last span.
+    fn digit_groups(&mut self, mut text: String, mut end: Span) -> (String, Span) {
+        if text.contains('.') {
+            return (text, end);
+        }
+        while let Some(Tok::Number(next)) = self.peek().cloned() {
+            let at = self.cur_span();
+            let between = self
+                .src
+                .get(end.end.saturating_sub(self.base)..at.start.saturating_sub(self.base))
+                .unwrap_or("");
+            let thin = matches!(between, "\\," | "\\ " | "{,}" | "\u{2009}" | "\u{202F}");
+            let group = next.split('.').next().unwrap_or("");
+            if !thin || group.len() != 3 || !group.chars().all(|c| c.is_ascii_digit()) {
+                break;
+            }
+            self.bump();
+            text.push_str(&next);
+            end = at;
+            if next.contains('.') {
+                break;
+            }
+        }
+        (text, end)
     }
 
     /// A known function after its name: scripts, then bracketed or bare arguments.

@@ -40,6 +40,9 @@ use crate::value::{Binding, Env, Origin, Sequence, Value, VarKind};
 pub(crate) struct Inputs<'a> {
     /// Sequences with a recurrence anywhere in the document.
     pub sequences: &'a BTreeSet<String>,
+    /// Names called with an argument where they are not differentiated (see
+    /// `Run::define_ode_solution`).
+    pub called: &'a BTreeSet<String>,
     pub holders: &'a Arc<Holders>,
     pub importer: &'a dyn Importer,
     pub base_dir: Option<&'a Path>,
@@ -560,8 +563,16 @@ impl Run<'_, '_> {
             conditions: &conditions,
         };
         match &line.statement {
-            Statement::Definition { head, kind, body } => {
-                self.definition(line, head, *kind, body, &scope)
+            Statement::Definition {
+                head,
+                kind,
+                body,
+                query,
+            } => {
+                self.definition(line, head, *kind, body, &scope);
+                if let Some(mode) = query {
+                    self.definition_query(line, head, body, *mode, &scope, noeval);
+                }
             }
             Statement::Query { expr, mode, steps } => {
                 self.query(line, expr, *mode, *steps, &scope, noeval)
@@ -941,6 +952,46 @@ impl Run<'_, '_> {
         self.push(lr);
     }
 
+    /// `T_0 := 2\pi\sqrt{L/g} \approx ?`: after the definition, the value of the name
+    /// just defined. The definition keeps the part before `≈ ?`; the answer belongs to
+    /// the whole line.
+    fn definition_query(
+        &mut self,
+        line: &Line,
+        head: &DefHead,
+        body: &Node,
+        mode: QueryMode,
+        s: &Scope,
+        noeval: bool,
+    ) {
+        let name = match head {
+            DefHead::Name(n) => n.clone(),
+            DefHead::Initial { name, index } => {
+                let key = node_key(name)
+                    .filter(|b| !self.inputs.sequences.contains(b))
+                    .and_then(|b| subscripted(&b, index));
+                match key {
+                    Some(k) => Node::new(NodeKind::Name(mpp_syntax::math::Name::simple(k)), name.span.join(index.span)),
+                    None => return,
+                }
+            }
+            _ => {
+                return self.error(
+                    line.span,
+                    EvalError::Unsupported(
+                        "asking for the value of a function as it is defined (ask for f(2) on a line of its own)".into(),
+                    ),
+                )
+            }
+        };
+        if let Some(last) = self.result.values.last_mut() {
+            if last.span == line.span {
+                last.span = Span::new(line.span.start, body.span.end.max(line.span.start));
+            }
+        }
+        self.query(line, &name, mode, false, s, noeval);
+    }
+
     /// `Let $a = 3$.` and `Let $f(x) = x^2$.` define.
     fn let_definition(&mut self, line: &Line, node: &Node, s: &Scope) -> bool {
         let NodeKind::Relation { first, rest } = &node.kind else {
@@ -1229,10 +1280,90 @@ impl Run<'_, '_> {
                 lr.conditions.push(e);
             }
         }
-        if let (Some(e), true) = (lowered, lr.auto_eval) {
-            self.auto_evaluate(&mut lr, node, &e, s);
+        if let (Some(e), true) = (&lowered, lr.auto_eval) {
+            self.auto_evaluate(&mut lr, node, e, s);
         }
         self.push(lr);
+        // After the line's own preview, so it still sees the unknowns as unknowns.
+        if let (Some(e), true) = (&lowered, display && !noeval) {
+            self.define_ode_solution(line, e, s);
+        }
+    }
+
+    /// `\frac{dN}{dt} = -\lambda N, \quad N(0) = N_0` written as a statement: when the
+    /// equation (or system) and its conditions determine the unknown functions
+    /// exactly, the solution defines them, so later lines can use `N(t)`, `N(10)` or
+    /// solve for a time. A general solution with free constants defines nothing (a
+    /// note says which conditions are missing).
+    fn define_ode_solution(&mut self, line: &Line, e: &Expr, s: &Scope) {
+        if self.unknown_fns.is_empty() {
+            return;
+        }
+        let Some(call) = self.ode_input(e, s) else {
+            return;
+        };
+        let r = self.resolve_full(&call, s.locals, &[], false, false);
+        let Ok(value) = r.value.and_then(|v| self.finish_value(v)) else {
+            return;
+        };
+        let solutions: Vec<Expr> = match value.node() {
+            ExprNode::Tuple(items) => items.clone(),
+            _ => vec![value.clone()],
+        };
+        let mut found = Vec::new();
+        for sol in &solutions {
+            let ExprNode::Relation(mpp_core::RelOp::Eq, lhs, rhs) = sol.node() else {
+                return;
+            };
+            let ExprNode::Apply(name, args) = lhs.node() else {
+                return;
+            };
+            let [var] = args.as_slice() else {
+                return;
+            };
+            let (Some(t), true) = (var.as_sym(), self.unknown_fns.iter().any(|u| u == &**name))
+            else {
+                return;
+            };
+            // Only a function the document goes on to use (`N(10\,\mathrm{yr})`) is
+            // defined; one met only in differential equations stays their unknown.
+            if !self.inputs.called.contains(&**name) {
+                return;
+            }
+            let free_constants: Vec<String> = rhs
+                .free_symbols()
+                .iter()
+                .filter(|c| {
+                    let c: &str = c;
+                    (c == "C"
+                        || c.strip_prefix("C_")
+                            .is_some_and(|k| k.parse::<u32>().is_ok()))
+                        && !e.contains_sym(c)
+                })
+                .map(|c| c.to_string())
+                .collect();
+            if !free_constants.is_empty() {
+                self.warn(
+                    line.span,
+                    format!(
+                        "{name} is not determined yet ({} left free): give its initial conditions to define it",
+                        free_constants.join(", ")
+                    ),
+                );
+                return;
+            }
+            found.push((name.to_string(), t.to_string(), rhs.clone()));
+        }
+        for (name, t, body) in found {
+            self.define(
+                &name,
+                Binding::Function {
+                    params: vec![t],
+                    body,
+                    origin: self.origin(line.span),
+                },
+            );
+        }
     }
 
     // ---- figures and imports -------------------------------------------------

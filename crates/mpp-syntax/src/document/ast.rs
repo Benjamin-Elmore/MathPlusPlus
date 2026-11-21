@@ -151,6 +151,9 @@ pub struct Figure {
     pub items: Vec<FigureItem>,
     /// The text after the first `. `; empty when there is none.
     pub caption: Vec<Inline>,
+    /// Words written between the items that describe them rather than draw anything
+    /// (`and the drag-free path`, `with the half-lives marked`, `against`).
+    pub words: Vec<Span>,
 }
 
 /// One comma-separated item of a figure.

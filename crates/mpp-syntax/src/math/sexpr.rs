@@ -98,13 +98,27 @@ impl Printer {
 
     fn statement(&self, s: &Statement) -> String {
         match s {
-            Statement::Definition { head, kind, body } => {
+            Statement::Definition {
+                head,
+                kind,
+                body,
+                query,
+            } => {
                 let op = match kind {
                     DefKind::Assign => ":=",
                     DefKind::Const => "≡",
                 };
                 let mut list = List::new("def");
                 list.push(op).push(self.head(head)).push(self.node(body));
+                match query {
+                    Some(QueryMode::Exact) => {
+                        list.push("=?");
+                    }
+                    Some(QueryMode::Approx) => {
+                        list.push("≈?");
+                    }
+                    None => {}
+                }
                 list.finish()
             }
             Statement::Query { expr, mode, steps } => {

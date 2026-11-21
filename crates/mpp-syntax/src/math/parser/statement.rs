@@ -29,7 +29,7 @@ const ALIGN_ENVS: &[&str] = &[
 ];
 
 /// Per-line facts pulled out of the token stream before parsing.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct LineMeta {
     noeval: bool,
     align: Vec<usize>,
@@ -41,15 +41,20 @@ impl Parser<'_> {
         let (metas, label, aligned) = self.preprocess();
         let mut lines = Vec::new();
         let mut metas = metas.into_iter();
+        let mut meta = metas.next().unwrap_or_default();
         loop {
             let mut line = self.parse_line();
-            let meta = metas.next().unwrap_or_default();
             line.noeval = meta.noeval;
-            line.align = meta.align;
+            line.align = meta.align.clone();
             lines.push(line);
+            if std::mem::take(&mut self.continues) {
+                // Several statements on one line, each asking for its answer.
+                continue;
+            }
             if self.eat(|t| matches!(t, Tok::NewLine)).is_none() {
                 break;
             }
+            meta = metas.next().unwrap_or_default();
         }
         // A trailing `\\` leaves an empty last line; drop it.
         if lines.len() > 1
@@ -141,6 +146,23 @@ impl Parser<'_> {
         let mut clauses = Vec::new();
         loop {
             if self.at_line_end() {
+                break;
+            }
+            // `a \approx ? \qquad b \approx ?`: another statement starts here.
+            if Self::asks(&statement)
+                && clauses.is_empty()
+                && !self.at(|t| matches!(t, Tok::Comma | Tok::Period | Tok::Bang))
+                && !self.at(|t| {
+                    matches!(
+                        t,
+                        Tok::Open {
+                            delim: Delim::Paren,
+                            ..
+                        }
+                    )
+                })
+            {
+                self.continues = true;
                 break;
             }
             if let Some(cond) = self.bracketed_assumption(&statement) {
@@ -242,13 +264,19 @@ impl Parser<'_> {
         match self.peek() {
             Some(Tok::Assign) => {
                 self.bump();
-                let mut body = self.parse_body("the value after `:=`");
+                let mut body = if self.at_line_end() || self.at(|t| matches!(t, Tok::Comma)) {
+                    self.missing("the value after `:=`", &["an expression"])
+                } else {
+                    self.parse_line_relation()
+                };
                 let head = self.def_head(lhs, ":=");
                 rebind_params(&head, &mut body);
+                let query = self.definition_query();
                 Statement::Definition {
                     head,
                     kind: DefKind::Assign,
                     body,
+                    query,
                 }
             }
             Some(Tok::CheckEq) => {
@@ -277,6 +305,27 @@ impl Parser<'_> {
         }
     }
 
+    /// `≈ ?` or `= ?` after a definition: show the value just defined.
+    fn definition_query(&mut self) -> Option<QueryMode> {
+        let mode = match (self.peek(), self.peek_n(1)) {
+            (Some(Tok::Rel(RelOp::Eq)), Some(Tok::Question)) => QueryMode::Exact,
+            (Some(Tok::Rel(RelOp::Approx)), Some(Tok::Question)) => QueryMode::Approx,
+            _ => return None,
+        };
+        self.bump();
+        self.bump();
+        Some(mode)
+    }
+
+    /// True when the statement just read asked for an answer (`= ?`, `≈ ?`), so what
+    /// follows on the line (after `\qquad`) is a statement of its own.
+    fn asks(statement: &Statement) -> bool {
+        matches!(
+            statement,
+            Statement::Query { .. } | Statement::Definition { query: Some(_), .. }
+        )
+    }
+
     /// The right side of `:=` or a check, or an error node if it is missing.
     fn parse_body(&mut self, what: &str) -> Node {
         if self.at_line_end() || self.at(|t| matches!(t, Tok::Comma)) {
@@ -299,10 +348,12 @@ impl Parser<'_> {
             let (_, mut body) = rest.remove(0);
             let head = self.def_head(*first, "≡");
             rebind_params(&head, &mut body);
+            let query = self.definition_query();
             return Statement::Definition {
                 head,
                 kind: DefKind::Const,
                 body,
+                query,
             };
         }
         Statement::Relation(Node::new(NodeKind::Relation { first, rest }, lhs.span))

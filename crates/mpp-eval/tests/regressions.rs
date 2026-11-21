@@ -286,3 +286,102 @@ fn results_read_as_unicode_text_with_a_stable_plain_form() {
     assert_eq!(text(r"$$ 2 \cdot 3^x = ? $$"), "2·3^x");
     assert_eq!(text(r"$$ \frac{d}{dx} J_0(x) = ? $$"), "-J₁(x)");
 }
+
+/// Every `≈ ?`/`= ?` answer of a document, in order (no errors allowed).
+fn approx_all(src: &str) -> Vec<String> {
+    let ev = run(src);
+    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    assert!(errs.is_empty(), "{src}: {errs:?}");
+    ev.queries()
+        .map(|(_, l)| l.plain_answer().unwrap_or_default())
+        .collect()
+}
+
+#[test]
+fn a_definition_can_ask_for_its_value_and_share_a_line() {
+    let src = concat!(
+        r"Let $v := 20\,\mathrm{m/s}$ and $g \equiv 9.81\,\mathrm{m/s^2}$.",
+        "\n\n",
+        r"$$ R := \frac{v^2}{g} \approx ? \qquad T := \frac{2v}{g} \approx ? $$",
+        "\n\n",
+        r"$$ R + 1\,\mathrm m \approx ? $$",
+    );
+    assert_eq!(
+        approx_all(src),
+        vec!["≈ 40.77471967 m", "≈ 4.077471967 s", "≈ 41.77471967 m"]
+    );
+}
+
+#[test]
+fn figure_lines_may_describe_their_items_in_words() {
+    let src = concat!(
+        r"$$ f(x) := x^2 $$",
+        "\n\n",
+        r"Figure: $f(x)$ and the line $2x$, $x \in [0, 2]$, with the crossing marked. Both curves.",
+        "\n\n",
+        r"Figure: the first 2000 points, inside and outside the quarter circle.",
+    );
+    assert!(errors(src).is_empty(), "{:?}", errors(src));
+}
+
+#[test]
+fn units_written_like_a_lab_report() {
+    // `\mathrm K` without braces is the kelvin, and a product of units with a name of
+    // its own is written with it.
+    let src = concat!(
+        r"Let $T := 298.15\,\mathrm K$, $n := 0.04\,\mathrm{mol}$ and $R \equiv 8.314\,\mathrm{J/(mol\,K)}$.",
+        "\n\n",
+        r"$$ nRT \approx ? $$",
+    );
+    assert_eq!(approx_all(src), vec!["≈ 99.152764 J"]);
+    assert_eq!(
+        answer(r"$$ 10\,\mathrm{k\Omega} \cdot 100\,\mathrm{\mu F} = ? $$"),
+        "1 s"
+    );
+    // Digit groups: 10\,000 is ten thousand (it used to read as 10 · 000 = 0).
+    assert_eq!(answer(r"$$ 10\,000 + 1 = ? $$"), "10001");
+    assert_eq!(answer(r"$$ 3\, x = ?, \quad x = 2 $$"), "6");
+    // A special function of a dimensionless quantity, and of an angle.
+    let src = concat!(
+        r"Let $\theta := 30°$.",
+        "\n\n",
+        r"$$ K\Big(\sin\frac{\theta}{2}\Big) \approx ? $$",
+    );
+    assert_eq!(approx_all(src), vec!["≈ 1.598142002"]);
+    // A quantity whose value still has a name in it is not a number.
+    let errs = errors(concat!(
+        r"Let $R \equiv 8.314\,\mathrm{J/(mol\,K)}$.",
+        "\n\n",
+        r"$$ \frac{a}{R} \approx ? $$"
+    ));
+    assert!(errs.iter().any(|e| e.contains("`a`")), "{errs:?}");
+}
+
+#[test]
+fn a_differential_equation_statement_defines_its_solution_for_later_use() {
+    let src = concat!(
+        r"Let $V_0 := 5\,\mathrm V$, $R := 10\,\mathrm{k\Omega}$ and $C := 100\,\mathrm{\mu F}$.",
+        "\n\n",
+        r"$$ RC\,\frac{dV_C}{dt} + V_C = V_0, \quad V_C(0) = 0 $$",
+        "\n\n",
+        r"$$ V_C(RC) \approx ? $$",
+        "\n\n",
+        r"$$ \operatorname{solve}_t \big(V_C(t) = 0.99\, V_0\big) \approx ? $$",
+    );
+    assert_eq!(
+        approx_all(src),
+        vec!["≈ 3.160602794 V", "≈ {4.605170186 s}"]
+    );
+    // Starting values may be names.
+    assert_eq!(
+        answer(r"$$ \operatorname{dsolve}(y' = -y, (0, a)) = ? $$"),
+        "y(x) = e^(-x)*a"
+    );
+    // A name met only inside differential equations stays the unknown of each.
+    let src = concat!(
+        r"$$ y' = 2y, \quad y(0) = 1 $$",
+        "\n\n",
+        r"$$ y' = 3y = ?, \quad y(0) = 2 $$",
+    );
+    assert_eq!(approx_all(src), vec!["= y(x) = 2*e^(3*x)"]);
+}
