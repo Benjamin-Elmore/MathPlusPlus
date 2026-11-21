@@ -948,7 +948,7 @@ fn cases() -> Vec<Case> {
         ),
         case(
             "graph.scatter",
-            &[("xcolumn", "", R), ("ycolumn", "", R)],
+            &[("x column", "", R), ("y column", "", R)],
             &[r"t", r"x"],
             r"Figure: scatter ${t}, {x}$.",
             None,

@@ -4,7 +4,7 @@
 pub const WELCOME: &str = "\
 # Welcome to Math++
 
-Click anywhere on the page and type. Results fill in as you work, and Greek letters appear as you type their names: try *alpha*.
+Click anywhere on the page and type. Results fill in as you work, and in an equation, Greek letters appear as you type their names: try *alpha* in one of the equations below.
 
 ## A first problem
 

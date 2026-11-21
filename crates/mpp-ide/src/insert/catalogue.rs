@@ -612,7 +612,7 @@ fn graph_h_newton(_: Knobs, _: &BuildCx) -> String {
 }
 
 fn graph_h_scatter(_: Knobs, _: &BuildCx) -> String {
-    let mut s = String::from(r"Figure: scatter ${⟨*xcolumn#xcol⟩}, {⟨*ycolumn#ycol⟩}$");
+    let mut s = String::from(r"Figure: scatter ${⟨*x column#xcol⟩}, {⟨*y column#ycol⟩}$");
     s.push('.');
     s
 }
@@ -1545,7 +1545,7 @@ fn build_catalogue() -> Vec<Template> {
             &[Linear],
             "Vector",
             r"\begin{pmatrix} x \\ y \\ z \end{pmatrix}",
-            "vector column",
+            "vector column matrix",
             math(matrix),
             Knobs {
                 rows: 3,
@@ -1558,7 +1558,7 @@ fn build_catalogue() -> Vec<Template> {
             &[Linear],
             "Determinant",
             r"\det A",
-            "determinant det",
+            "determinant det matrix",
             math(fixed!(r"\det\left( {⟨*matrix⟩} \right)")),
             k(),
         ),
@@ -1585,7 +1585,7 @@ fn build_catalogue() -> Vec<Template> {
             &[Linear],
             "Eigenvalues",
             r"\operatorname{eig} A",
-            "eigenvalues eigenvectors eigen",
+            "eigenvalues eigenvectors eigen matrix",
             math(fixed!(r"\operatorname{eig}\left( {⟨*matrix⟩} \right)")),
             k(),
         ),
@@ -2464,6 +2464,13 @@ mod tests {
         assert!(t.matches("def int"));
         assert!(!t.matches("matrix"));
         assert!(find("sym.alpha").is_some_and(|t| t.matches("alpha")));
+        // Searching "matrix" finds everything made of or from a matrix.
+        for id in ["vector", "det", "eigen", "inverse", "transpose"] {
+            assert!(
+                find(id).is_some_and(|t| t.matches("matrix")),
+                "{id} is found by matrix"
+            );
+        }
     }
 
     #[test]

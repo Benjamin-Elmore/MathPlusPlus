@@ -216,6 +216,12 @@ fn go_to_definition_across_two_files() {
     );
     assert!(d.highlight.is_some(), "the definition is highlighted");
     assert_eq!(h.state().docs.len(), 2);
+    // The highlight goes with the next key.
+    key(&mut h, Key::ArrowRight);
+    assert!(
+        h.state().doc().expect("doc").highlight.is_none(),
+        "the highlight clears"
+    );
     let _ = std::fs::remove_dir_all(&dir);
 }
 

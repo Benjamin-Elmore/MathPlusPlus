@@ -1085,6 +1085,14 @@ fn handle_keys(
     let input = ui.input(|i| i.events.clone());
     let mut moved = false;
     for ev in input {
+        // The go-to-definition highlight lasts until the next key or edit.
+        if matches!(
+            ev,
+            Event::Text(_) | Event::Paste(_) | Event::Cut | Event::Key { pressed: true, .. }
+        ) && !matches!(ev, Event::Key { key: Key::F12, .. })
+        {
+            doc.highlight = None;
+        }
         match ev {
             Event::Text(t) => {
                 type_text(doc, pc, cx, &t);
