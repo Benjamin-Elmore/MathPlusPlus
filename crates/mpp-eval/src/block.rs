@@ -1344,6 +1344,15 @@ impl Run<'_, '_> {
         // `y'' + y = 0 = ?`: a differential equation goes to the solver with the
         // line's conditions.
         let input = self.ode_input(&input, s).unwrap_or(input);
+        if let Some(name) = self.defined_dsolve_unknown(&input) {
+            self.error(
+                expr.span,
+                EvalError::Invalid(format!(
+                    "`{name}` is already defined above, so dsolve cannot solve for it; use another name for the unknown function"
+                )),
+            );
+            return self.push(lr);
+        }
         let numeric = mode == QueryMode::Approx;
         let logging = steps || self.inputs.show_steps;
         let mut resolved = self.resolve_full(&input, s.locals, &[], logging, numeric);
@@ -1480,6 +1489,31 @@ impl Run<'_, '_> {
         self.push(lr);
     }
 
+    /// The unknown function of a `dsolve` call when the document already defines that
+    /// name (`y(t) := 3t` and then `dsolve(y' = y, y, x)`).
+    fn defined_dsolve_unknown(&self, input: &Expr) -> Option<String> {
+        fn find(e: &Expr, out: &mut Vec<String>) {
+            if let ExprNode::Apply(name, args) = e.node() {
+                if matches!(&**name, "dsolve" | "odesolve" | "ode") {
+                    // The unknown is written `y` or `y(t)`.
+                    match args.get(1).map(Expr::node) {
+                        Some(ExprNode::Apply(y, _)) => out.push(y.to_string()),
+                        Some(ExprNode::Sym(y)) => out.push(y.to_string()),
+                        _ => {}
+                    }
+                }
+            }
+            for c in e.children() {
+                find(c, out);
+            }
+        }
+        let mut names = Vec::new();
+        find(input, &mut names);
+        names
+            .into_iter()
+            .find(|n| self.view().get(n, false).is_some())
+    }
+
     /// Calls that came back exactly as they were asked (`taylor(e^x, x, 0, 4)`), by
     /// a name that is not a built-in function, a definition of the document or an
     /// unknown function of a differential equation: nothing evaluated them.
@@ -1505,6 +1539,9 @@ impl Run<'_, '_> {
             let known = name.contains(':')
                 || name.chars().count() == 1
                 || crate::lower::is_builtin(&name)
+                // The special functions evaluate numerically (`≈` shows the value):
+                // the same list the evaluator uses.
+                || mpp_core::domains::special::has_numeric_value(&name)
                 || self.view().get(&name, false).is_some()
                 || self.inputs.ode_unknowns.contains(&name)
                 || self.inputs.sequences.contains(&name);

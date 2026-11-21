@@ -19,6 +19,12 @@ mod multivar;
 mod numerics;
 mod ode;
 mod operator_args;
+
+/// True for a word that selects a method or variant of a calculus operator (`left`,
+/// `shell`, `simpson` ...), the words the helpers accept as options.
+pub fn is_option_word(word: &str) -> bool {
+    operator_args::KEYWORDS.contains(&word)
+}
 mod transforms;
 
 pub use analysis::{

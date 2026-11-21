@@ -388,3 +388,46 @@ fn an_empty_box_message_names_brackets_in_words() {
     );
     assert!(expected.contains("bracketed expression"), "{expected}");
 }
+
+/// `sinn(2)` offers the function `sin` first, then the other readings.
+#[test]
+fn a_mistyped_function_offers_the_function() {
+    let src = "$$ sinn(2) = ? $$\n";
+    let (ps, _) = problems_of(src);
+    let p = ps
+        .iter()
+        .find(|p| matches!(&p.kind, Kind::LetterRun { .. }))
+        .expect("a warning on sinn");
+    let doc = mpp_syntax::document::parse_document(src);
+    let fixes = fixes::quick_fixes(p, src, &doc);
+    let edits: Vec<String> = fixes
+        .iter()
+        .filter_map(|f| match &f.action {
+            fixes::FixAction::Replace { with, .. } => Some(with.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(edits, [r"\sin", r"\mathrm{sinn}", "s i n n"]);
+    assert_eq!(fixes[0].title.plain(), "Use the name sin");
+}
+
+/// The option words a helper accepts (`left`, `shell`) are not products of letters.
+#[test]
+fn option_words_of_a_helper_are_not_read_as_products() {
+    let src = concat!(
+        r"$$ \operatorname{riemann}_{left}(x^2, [0, 1], 4) = ? $$",
+        "\n\n",
+        r"$$ \operatorname{volume}_{shell}(x - x^2, [0, 1], x = 0) = ? $$",
+        "\n\n",
+        r"$$ \operatorname{volume}_{disk}(x, [0, 1]) = ? $$",
+        "\n",
+    );
+    let (ps, _) = problems_of(src);
+    assert!(
+        !ps.iter().any(|p| matches!(p.kind, Kind::LetterRun { .. })),
+        "{ps:#?}"
+    );
+    // Outside a helper the same letters are still a product.
+    let (ps, _) = problems_of("$$ left + 1 = ? $$\n");
+    assert!(ps.iter().any(|p| matches!(p.kind, Kind::LetterRun { .. })));
+}

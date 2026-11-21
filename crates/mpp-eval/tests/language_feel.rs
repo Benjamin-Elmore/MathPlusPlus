@@ -254,3 +254,37 @@ fn a_variable_after_a_number_in_an_integral_is_the_variable() {
     assert!(messages(&ev, Severity::Warning).is_empty());
     assert_eq!(answers(&ev)[0].as_deref(), Some("1"));
 }
+
+#[test]
+fn special_functions_the_evaluator_knows_are_not_called_unknown() {
+    let ev = run(concat!(
+        r"$$ \operatorname{lambertw}(1) = ? $$",
+        "\n\n",
+        r"$$ \operatorname{besselj}(0, 1) = ? $$",
+        "\n\n",
+        r"$$ \operatorname{ellipk}(1/2) = ? $$",
+    ));
+    let warnings = messages(&ev, Severity::Warning);
+    assert!(
+        !warnings.iter().any(|w| w.contains("is not a function")),
+        "{warnings:?}"
+    );
+    assert!(answers(&ev).iter().all(Option::is_some));
+}
+
+#[test]
+fn dsolve_for_a_name_the_document_defined_says_so() {
+    let ev = run(concat!(
+        r"$$ y(t) := 3 t $$",
+        "\n\n",
+        r"$$ \operatorname{dsolve}(y' = y, y, x) = ? $$",
+    ));
+    let errors = messages(&ev, Severity::Error);
+    assert!(
+        errors.iter().any(|e| e.contains("already defined")),
+        "{errors:?}"
+    );
+    // With a fresh name it solves.
+    let ev = run(r"$$ \operatorname{dsolve}(w' = w, w, x) = ? $$");
+    assert!(messages(&ev, Severity::Error).is_empty());
+}
