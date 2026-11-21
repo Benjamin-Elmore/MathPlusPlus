@@ -987,11 +987,14 @@ pub(crate) fn lines_with_letter_runs(m: &DisplayMath, known: &[String]) -> Vec<u
 fn line_letter_runs(line: &mpp_syntax::math::Line, known: &[String], out: &mut Vec<Problem>) {
     use mpp_syntax::math::letters::{implicit_factors, letter_runs as runs, plain_letter};
     use mpp_syntax::math::{visit, DefHead, Node, NodeKind, Statement};
-    fn walk(n: &Node, known: &[String], out: &mut Vec<Problem>) {
+    fn walk(n: &Node, known: &[String], in_op: bool, out: &mut Vec<Problem>) {
+        let in_op = in_op || matches!(n.kind, NodeKind::NamedOp(_));
         let factors = implicit_factors(n);
         if factors.len() > 1 {
             for r in runs(&factors) {
-                if r.word.len() >= 3 && !known.contains(&r.word) {
+                // The words a helper takes as options (`left`, `shell`) are not products.
+                let option = in_op && mpp_eval::helpers::is_option_word(&r.word);
+                if r.word.len() >= 3 && !known.contains(&r.word) && !option {
                     // `sinn(2)`: the last letter is the name of a call; it belongs
                     // to the word the reader typed.
                     let (mut word, mut span) = (r.word.clone(), r.span);
@@ -1023,10 +1026,10 @@ fn line_letter_runs(line: &mpp_syntax::math::Line, known: &[String], out: &mut V
                 }
             }
             for f in factors {
-                visit::children(f, &mut |c| walk(c, known, out));
+                visit::children(f, &mut |c| walk(c, known, in_op, out));
             }
         } else {
-            visit::children(n, &mut |c| walk(c, known, out));
+            visit::children(n, &mut |c| walk(c, known, in_op, out));
         }
     }
     let mut roots: Vec<&Node> = vec![];
@@ -1048,7 +1051,7 @@ fn line_letter_runs(line: &mpp_syntax::math::Line, known: &[String], out: &mut V
         if matches!(r.kind, NodeKind::Error) {
             continue;
         }
-        walk(r, known, out);
+        walk(r, known, false, out);
     }
 }
 

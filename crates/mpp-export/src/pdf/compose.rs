@@ -781,7 +781,10 @@ impl Composer<'_> {
                 *c = 0;
             }
             let t: Vec<String> = self.counters[..=idx].iter().map(u32::to_string).collect();
-            label = format!("{}  ", t.join("."));
+            // A heading that already starts with its number keeps it, unduplicated.
+            if !mpp_syntax::document::heading_has_number(content) {
+                label = format!("{}  ", t.join("."));
+            }
             if idx == 0 {
                 self.theorem_count = 0;
             }

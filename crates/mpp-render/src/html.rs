@@ -258,7 +258,14 @@ impl Renderer<'_> {
         match &b.kind {
             BlockKind::Heading { level, content } => {
                 let l = (*level).clamp(1, 6);
+                // A heading that already starts with its number is not numbered twice
+                // (the count still advances, so theorem numbers stay right).
                 let number = self.heading_number(l);
+                let number = if mpp_syntax::document::heading_has_number(content) {
+                    String::new()
+                } else {
+                    number
+                };
                 let _ = writeln!(out, "<h{l}>{number}{}</h{l}>", self.inlines(content));
             }
             BlockKind::Paragraph(content) => {

@@ -942,8 +942,19 @@ fn paint_page(
                 .fold(0.0f32, f32::max);
         let size = cx.size * 0.85;
         let w = crate::page::text_width(mpp_render::FontId::TextItalic, &hint) * size;
-        let x = (right + cx.size).min(page.width - w).max(0.0);
-        let y = origin.y + b.top + b.height / 2.0 + size * 0.3;
+        // Beside the equation when there is room; otherwise on its own line in the
+        // gap under the block, so it never lands on the words or runs off the page.
+        let beside = right + cx.size + w <= page.width;
+        let x = if beside {
+            right + cx.size
+        } else {
+            (page.width - w).clamp(0.0, cx.size)
+        };
+        let y = if beside {
+            origin.y + b.top + b.height / 2.0 + size * 0.3
+        } else {
+            origin.y + b.top + b.height + size * 0.62
+        };
         paint_text(
             painter,
             &hint,

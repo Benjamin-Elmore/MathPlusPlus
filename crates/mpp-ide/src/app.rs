@@ -350,6 +350,15 @@ impl IdeApp {
             .unwrap_or_default()
     }
 
+    /// The laid-out page of the active file at a column width (for checks of what
+    /// is drawn where).
+    pub fn page_at(&mut self, width: f32) -> Option<std::sync::Arc<crate::PageCache>> {
+        let (size, mode) = (self.size, self.mode);
+        self.docs
+            .get_mut(self.active)
+            .map(|d| d.page(width, size, mode))
+    }
+
     /// The text of the typeset page: every glyph shown on it, block by block.
     /// (This is what a reader sees, never the source.)
     pub fn visible_text(&mut self, width: f32) -> String {

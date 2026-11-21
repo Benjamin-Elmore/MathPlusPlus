@@ -315,3 +315,14 @@ fn write_page(name: &str, html: &str) {
     let dark = html.replacen("<html lang=\"en\">", "<html lang=\"en\" class=\"dark\">", 1);
     let _ = std::fs::write(dir.join(format!("{name}-dark.html")), dark);
 }
+
+#[test]
+fn a_heading_that_already_has_its_number_is_not_numbered_twice() {
+    let html = page(
+        "# Notes\n\n%number sections\n\n## 1. Intro\n\n## A falling stone\n\n## 3 Last\n",
+        &opts(),
+    );
+    assert!(html.contains("<h2>1. Intro</h2>"), "{html}");
+    assert!(html.contains("<h2><span class=\"sec-num\">2</span> A falling stone</h2>"));
+    assert!(html.contains("<h2>3 Last</h2>"), "{html}");
+}

@@ -170,7 +170,10 @@ pub fn outline_full(
         }
         BlockKind::Heading { level, content } => {
             let mut latex = inlines_latex(content, src);
-            if let Some(n) = paper.heading_number(*level) {
+            let number = paper
+                .heading_number(*level)
+                .filter(|_| !mpp_syntax::document::heading_has_number(content));
+            if let Some(n) = number {
                 latex = format!("\\text{{{n}\u{2003}}}{latex}");
             }
             if !latex.is_empty() {
