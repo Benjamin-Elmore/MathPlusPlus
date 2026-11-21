@@ -581,6 +581,11 @@ impl Doc {
         self.last_edit = Instant::now();
     }
 
+    /// True while the evaluator is working on this file (not while it waits for typing to pause).
+    pub fn running(&self) -> bool {
+        self.worker.evaluating()
+    }
+
     /// True while an evaluation is running or waiting to start.
     pub fn evaluating(&self) -> bool {
         self.worker.evaluating() || self.submitted != Some(self.editor.revision())

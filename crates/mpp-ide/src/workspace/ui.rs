@@ -11,7 +11,6 @@ use mpp_render::Theme;
 
 use super::PendingClose;
 use crate::app::IdeApp;
-use crate::defs;
 use crate::explorer::outline::{OutlineItem, OutlineKind};
 use crate::explorer::panel::text_galley;
 use crate::explorer::{self, icons, quick_open, ExplorerCtx, OpenFile};
@@ -528,16 +527,31 @@ impl IdeApp {
     pub(crate) fn status_ui(&mut self, ui: &mut Ui) {
         let theme = self.mode.theme();
         let imports = self.current_imports();
-        let ndefs = self
-            .doc()
-            .and_then(|d| d.eval.as_ref())
-            .map(|e| defs::all(e).iter().filter(|d| d.file.is_none()).count())
-            .unwrap_or(0);
-        let evaluating = self.doc().is_some_and(crate::doc::Doc::evaluating);
-        let counts = self
-            .doc()
-            .map(crate::doc::Doc::problem_counts)
-            .unwrap_or_default();
+        // Calm numbers: they change when a run finishes, and "Working…" shows
+        // only for a run that takes more than a second.
+        let id = self.doc().map(|d| d.id);
+        let running = self.doc().is_some_and(crate::doc::Doc::running);
+        let settled = self.doc().is_some_and(|d| !d.evaluating());
+        let doc = self.docs.get_mut(self.active);
+        let shown = self
+            .ws
+            .status
+            .update(id, running, settled, std::time::Instant::now(), || {
+                let Some(d) = doc else {
+                    return Default::default();
+                };
+                let counts = if settled {
+                    d.problem_counts_now()
+                } else {
+                    d.problem_counts()
+                };
+                let defs = d.eval.as_deref().map_or(0, super::status::definitions);
+                (counts, defs)
+            });
+        if let Some(w) = shown.wake {
+            ui.ctx().request_repaint_after(w);
+        }
+        let (ndefs, evaluating, counts) = (shown.defs, shown.working, shown.counts);
         let mut open_import = None;
         let mut show_outline = false;
         let mut show_problems = false;

@@ -2,6 +2,7 @@
 //! the app. Everything here is `impl IdeApp` glue over the explorer, tabs and
 //! settings modules, so `app.rs` only calls into it.
 
+pub mod status;
 mod tools;
 mod ui;
 
@@ -60,6 +61,8 @@ pub struct Workspace {
     pub vars: crate::layout::panes::VarEdit,
     pub autosave: crate::autosave::AutosaveState,
     pub pending_close: Option<PendingClose>,
+    /// The status bar's calm numbers.
+    pub status: status::StatusMemo,
     pub outline_cache: Option<(u64, u64, Vec<OutlineItem>)>,
     pub settings_dir: Option<PathBuf>,
     pub settings: Settings,
@@ -83,6 +86,7 @@ impl Default for Workspace {
             vars: Default::default(),
             autosave: Default::default(),
             pending_close: None,
+            status: status::StatusMemo::default(),
             outline_cache: None,
             settings_dir: None,
             settings: s,
