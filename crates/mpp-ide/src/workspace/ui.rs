@@ -399,7 +399,7 @@ impl IdeApp {
                 let known: Vec<String> = self
                     .doc()
                     .and_then(|d| d.eval.as_ref())
-                    .map(|e| e.bindings.keys().cloned().collect())
+                    .map(|e| e.user_names())
                     .unwrap_or_default();
                 let guesses = crate::suggest::Suggester.names(&q, &known);
                 if !guesses.is_empty() {

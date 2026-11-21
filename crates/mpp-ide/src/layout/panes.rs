@@ -200,6 +200,9 @@ impl IdeApp {
                 let Binding::Variable { kind, origin, .. } = &**b else {
                     continue;
                 };
+                if mpp_eval::is_internal_name(name) {
+                    continue;
+                }
                 let local = origin.file.is_none();
                 let Some(info) = defs::describe(ev, name) else {
                     continue;

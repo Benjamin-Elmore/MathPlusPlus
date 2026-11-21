@@ -67,8 +67,8 @@ pub use import::{
 pub use mpp_core::display::NumberFormat;
 pub use mpp_syntax::math::QueryMode;
 pub use result::{
-    BlockResult, DefinitionKind, Evaluated, ImportInfo, LineIndex, LineKind, LineResult, RangeInfo,
-    RangeKind,
+    is_internal_name, BlockResult, DefinitionKind, Evaluated, ImportInfo, LineIndex, LineKind,
+    LineResult, RangeInfo, RangeKind,
 };
 pub use session::Session;
 pub use value::{Binding, Env, Origin, Sequence, Value, VarKind};

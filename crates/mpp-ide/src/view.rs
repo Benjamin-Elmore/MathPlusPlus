@@ -1016,7 +1016,7 @@ fn update_completion(doc: &Doc, in_math: bool, cx: &mut ViewCtx<'_>) {
     let mut names: Vec<String> = doc
         .eval
         .as_ref()
-        .map(|e| e.bindings.keys().cloned().collect())
+        .map(|e| e.user_names())
         .unwrap_or_default();
     // Names from the standard library come after the file's own.
     names.extend(crate::library::names().iter().cloned());

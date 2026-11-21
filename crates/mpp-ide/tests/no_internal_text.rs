@@ -112,3 +112,55 @@ fn no_document_shows_internal_text() {
     }
     assert!(bad.is_empty(), "internal text shown:\n{}", bad.join("\n"));
 }
+
+/// The outline entries, the variables panel lines (as the LaTeX they are typeset
+/// from) and the names autocomplete offers.
+fn panels(src: &str, doc: &Document, ev: &Evaluated) -> Vec<String> {
+    let mut out: Vec<String> = mpp_ide::explorer::outline::outline(doc, src, Some(ev))
+        .into_iter()
+        .map(|i| i.latex)
+        .collect();
+    for d in mpp_ide::defs::all(ev) {
+        out.push(mpp_ide::defs::summary_latex(&d));
+        out.push(d.name.clone());
+    }
+    out.extend(ev.user_names());
+    out
+}
+
+#[test]
+fn panels_list_only_user_definitions() {
+    let mut bad = vec![];
+    let mut docs: Vec<(PathBuf, String)> = documents()
+        .into_iter()
+        .map(|p| {
+            let s = std::fs::read_to_string(&p).unwrap();
+            (p, s)
+        })
+        .collect();
+    docs.push((root().join("examples/units-fixture.mpp"), UNITS.to_string()));
+    for (path, src) in &docs {
+        let (doc, ev) = evaluate(src, path);
+        for line in panels(src, &doc, &ev) {
+            if let Some(m) = internal_marker(&line) {
+                bad.push(format!("{}: {m:?} in {line}", path.display()));
+            }
+        }
+    }
+    assert!(bad.is_empty(), "internal names listed:\n{}", bad.join("\n"));
+    // A random variable is listed as its declaration, under its own name; the
+    // denominators a function was written with are not listed at all.
+    let src = r"$$ R(g) := \frac{1}{g} $$
+$$ X_j \sim \mathrm{Uniform}[0, 1] $$
+$$ R(2) = ? $$
+";
+    let path = root().join("examples/panels-fixture.mpp");
+    let (doc, ev) = evaluate(src, &path);
+    let listed = panels(src, &doc, &ev);
+    assert!(listed.iter().any(|l| l.contains(r"\sim")), "{listed:?}");
+    assert!(ev.user_names().contains(&"X".to_string()));
+    assert!(
+        !listed.iter().any(|l| l.contains("denominators")),
+        "{listed:?}"
+    );
+}

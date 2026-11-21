@@ -27,6 +27,29 @@ fn name_latex(name: &str) -> String {
 /// The definition and value of one name.
 pub fn describe(ev: &Evaluated, name: &str) -> Option<DefInfo> {
     let binding = ev.bindings.get(name)?;
+    if mpp_eval::random::is_random_key(name) {
+        // `X \sim \mathrm{Uniform}[0, 1]`: shown as the declaration, under X.
+        let Binding::Variable { value, .. } = &**binding else {
+            return None;
+        };
+        let (shown, latex) = mpp_eval::random::declaration_latex(name, value)?;
+        let origin = binding.origin();
+        return Some(DefInfo {
+            name: shown,
+            definition: latex,
+            value: None,
+            file: origin
+                .path
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned())
+                .or_else(|| origin.file.as_ref().map(|f| f.to_string())),
+            span: origin.span,
+        });
+    }
+    // The evaluator's hidden keys are never shown.
+    if mpp_eval::is_internal_name(name) {
+        return None;
+    }
     let origin = binding.origin();
     let n = name_latex(name);
     let (definition, own_value) = match &**binding {

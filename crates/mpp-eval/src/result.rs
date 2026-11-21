@@ -357,7 +357,36 @@ pub struct Evaluated {
     pub(crate) lines: LineIndex,
 }
 
+/// True for the evaluator's own hidden keys in the environment (the document seed,
+/// a function's denominators as written, random-variable declarations …). Names
+/// read from a document never contain `:`, so they never collide with these.
+pub fn is_internal_name(name: &str) -> bool {
+    name.contains(':')
+}
+
 impl Evaluated {
+    /// The names a reader defined, in order, as the outline, the variables panel and
+    /// autocomplete offer them: hidden keys are left out, and a random-variable
+    /// declaration is offered under its variable's own name.
+    pub fn user_names(&self) -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for name in self.bindings.keys() {
+            let shown = if crate::random::is_random_key(name) {
+                name.split_once(':').map(|(_, n)| n.to_string())
+            } else if is_internal_name(name) {
+                None
+            } else {
+                Some(name.clone())
+            };
+            if let Some(n) = shown {
+                if !out.contains(&n) {
+                    out.push(n);
+                }
+            }
+        }
+        out
+    }
+
     /// The result of an empty document.
     pub fn empty() -> Self {
         Evaluated {

@@ -334,7 +334,9 @@ fn known_names(ev: Option<&Evaluated>) -> Vec<String> {
     ev.map(|e| {
         e.bindings
             .iter()
-            .filter(|(_, b)| !matches!(***b, Binding::Imported { .. }))
+            .filter(|(k, b)| {
+                !matches!(***b, Binding::Imported { .. }) && !mpp_eval::is_internal_name(k)
+            })
             .map(|(k, _)| k.clone())
             .collect()
     })
@@ -795,7 +797,10 @@ pub fn checks(doc: &Document, ev: &Evaluated) -> Vec<Problem> {
             .collect();
         for (name, binding) in &ev.bindings {
             let origin = binding.origin();
-            if origin.file.is_some() || matches!(**binding, Binding::Imported { .. }) {
+            if origin.file.is_some()
+                || matches!(**binding, Binding::Imported { .. })
+                || mpp_eval::is_internal_name(name)
+            {
                 continue;
             }
             if used.contains(name.as_str()) {

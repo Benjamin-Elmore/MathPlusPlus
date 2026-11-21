@@ -174,6 +174,13 @@ impl FileCache {
             .blocks
             .iter()
             .flat_map(|b| b.defines.iter().cloned())
+            .filter_map(|n| {
+                if mpp_eval::random::is_random_key(&n) {
+                    n.split_once(':').map(|(_, v)| v.to_string())
+                } else {
+                    (!mpp_eval::is_internal_name(&n)).then_some(n)
+                }
+            })
             .collect();
         names.sort();
         names.dedup();
