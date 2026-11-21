@@ -26,7 +26,7 @@ use crate::session::Session;
 use crate::value::Binding;
 
 /// Imports nested deeper than this are refused.
-const MAX_DEPTH: usize = 64;
+const MAX_DEPTH: usize = 1000;
 
 /// A file whose modification time is closer than this to the moment it was read
 /// might still change without its time changing, so its content is compared.
@@ -431,6 +431,10 @@ impl FileImporter {
             );
         }
         let mut files = vec![loc.key.clone()];
+        // A set beside the list: a long import chain lists every file below, and a
+        // linear search per file made loading the chain take cubic time.
+        let mut listed: HashSet<&Path> = HashSet::new();
+        listed.insert(&loc.key);
         let mut uncacheable = false;
         for block in &ev.blocks {
             for import in &block.imports {
@@ -438,7 +442,7 @@ impl FileImporter {
                     push(d.clone(), &mut diagnostics);
                 }
                 for f in &import.files {
-                    if !files.contains(f) {
+                    if listed.insert(f) {
                         files.push(f.clone());
                     }
                 }
