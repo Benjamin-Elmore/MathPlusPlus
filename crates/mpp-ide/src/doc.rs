@@ -167,7 +167,7 @@ impl Doc {
 
     /// Reads a file.
     pub fn open(path: &Path) -> std::io::Result<Self> {
-        let text = std::fs::read_to_string(path)?;
+        let text = mpp_eval::read_text(path)?;
         Ok(Doc::with_text(&text, Some(path.to_path_buf())))
     }
 

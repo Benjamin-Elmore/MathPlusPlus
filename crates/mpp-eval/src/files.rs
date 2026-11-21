@@ -49,6 +49,16 @@ pub struct Location {
     pub dir: Option<PathBuf>,
 }
 
+/// Reads a text file. Bytes that are not valid UTF-8 become U+FFFD instead of
+/// refusing the whole file; the evaluator reports where they are.
+pub fn read_text(path: impl AsRef<Path>) -> std::io::Result<String> {
+    let bytes = std::fs::read(path)?;
+    Ok(match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
+    })
+}
+
 /// Finds and reads the text of imported files.
 pub trait SourceProvider: Send + Sync {
     /// Finds `path` (as written in an import) relative to `base`, without reading
@@ -117,7 +127,7 @@ impl SourceProvider for FsSource {
     }
 
     fn read(&self, key: &Path) -> Result<String, String> {
-        std::fs::read_to_string(key).map_err(|e| format!("cannot read {}: {e}", key.display()))
+        read_text(key).map_err(|e| format!("cannot read {}: {e}", key.display()))
     }
 
     fn stamp(&self, key: &Path) -> Option<Stamp> {

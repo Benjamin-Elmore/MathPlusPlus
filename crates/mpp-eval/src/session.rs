@@ -299,7 +299,7 @@ impl Session {
     /// Reads and runs a file; imports are resolved against its folder.
     pub fn run_file(&mut self, path: impl AsRef<Path>) -> std::io::Result<&Evaluated> {
         let path = path.as_ref();
-        let text = std::fs::read_to_string(path)?;
+        let text = crate::files::read_text(path)?;
         self.set_file(path);
         Ok(self.run_str(&text))
     }
@@ -341,6 +341,7 @@ impl Session {
 
     fn update_with(&mut self, src: &str, own_stack: bool) -> &Evaluated {
         let mut doc = parse_document(src);
+        flag_invalid_text(&mut doc, src);
         check_references_file(&mut doc, self.importer.as_ref(), self.base_dir.as_deref());
         let lines = LineIndex::new(src);
         let (sequences, functions) = sequence_names(&doc);
@@ -609,6 +610,33 @@ fn check_references_file(doc: &mut Document, importer: &dyn Importer, base: Opti
         extra.extend(citation_diagnostics(doc, &entries));
     }
     doc.diagnostics.extend(extra);
+    doc.diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
+}
+
+/// Marks each run of U+FFFD, which is what bytes that were not valid UTF-8 become
+/// when a file is read, so the reader sees where the file is damaged.
+fn flag_invalid_text(doc: &mut Document, src: &str) {
+    const BAD: char = '\u{FFFD}';
+    if !src.contains(BAD) {
+        return;
+    }
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    for (at, c) in src.char_indices() {
+        if c != BAD {
+            continue;
+        }
+        let end = at + c.len_utf8();
+        match runs.last_mut() {
+            Some(run) if run.1 == at => run.1 = end,
+            _ => runs.push((at, end)),
+        }
+    }
+    for (start, end) in runs {
+        doc.diagnostics.push(Diagnostic::warning(
+            mpp_syntax::Span::new(start, end),
+            "bytes here are not valid UTF-8 text (shown as \u{FFFD}); save the file as UTF-8",
+        ));
+    }
     doc.diagnostics.sort_by_key(|d| (d.span.start, d.span.end));
 }
 

@@ -282,3 +282,46 @@ fn user_functions_recurse_thousands_of_levels_with_a_clear_limit_past_that() {
         "{errs:?}"
     );
 }
+#[test]
+fn a_bad_byte_is_flagged_and_the_rest_of_the_file_still_runs() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut bytes = b"$$ x := 3 $$\n\nSome prose with a Latin-1 degree sign: 20".to_vec();
+    bytes.push(0xB0);
+    bytes.extend_from_slice(b"C.\n\n$$ x + 1 = ? $$\n");
+    let path = dir.path().join("doc.mpp");
+    std::fs::write(&path, &bytes).expect("write");
+    let mut s = Session::new().with_importer(Arc::new(mpp_eval::FileImporter::new()));
+    let ev = s
+        .run_file(&path)
+        .expect("a bad byte no longer refuses the file")
+        .clone();
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.plain.as_deref(), Some("4"));
+    let warnings: Vec<_> = ev
+        .all_diagnostics()
+        .into_iter()
+        .filter(|d| d.message.contains("not valid UTF-8"))
+        .collect();
+    assert_eq!(warnings.len(), 1, "{:?}", ev.all_diagnostics());
+    let at = warnings[0].span.start;
+    assert_eq!(&ev.source()[at..warnings[0].span.end], "\u{FFFD}");
+    assert!(ev.source()[..at].ends_with("sign: 20"));
+
+    // An imported file with a bad byte loads too, next to a data file.
+    let mut lib = b"$$ y := 2 $$\n\n% caf".to_vec();
+    lib.push(0xE9);
+    lib.push(b'\n');
+    std::fs::write(dir.path().join("lib.mpp"), &lib).expect("write");
+    let mut csv = b"t (s), v\n".to_vec();
+    csv.extend_from_slice(b"1, 2\n2, 4\n");
+    std::fs::write(dir.path().join("d.csv"), &csv).expect("write");
+    let main = dir.path().join("main.mpp");
+    std::fs::write(
+        &main,
+        "![[lib.mpp]]\n\nData: $D$ from [[d.csv]].\n\n$$ y + \\bar{v} = ? $$\n",
+    )
+    .expect("write");
+    let ev = s.run_file(&main).expect("run").clone();
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.plain.as_deref(), Some("5"));
+}

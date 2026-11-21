@@ -118,7 +118,7 @@ pub struct Loaded {
 
 /// Reads and runs the file at `path` (imports resolve against its folder).
 pub fn load(path: &Path) -> Result<Loaded, ExportError> {
-    let src = std::fs::read_to_string(path)
+    let src = mpp_eval::read_text(path)
         .map_err(|e| ExportError::Io(format!("could not read {}: {e}", path.display())))?;
     let mut session = Session::new().with_importer(Arc::new(FileImporter::new()));
     session.set_file(path);

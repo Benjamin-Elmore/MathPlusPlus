@@ -157,6 +157,16 @@ fn csv_cell(text: &str) -> Option<Expr> {
 /// Reads a CSV file: a header row of names (with optional units) and rows of numbers.
 /// Commas, semicolons or tabs separate the fields; blank lines are skipped.
 pub fn parse_csv(text: &str) -> Result<DataTable, String> {
+    parse_csv_text(text).map_err(|e| {
+        if text.contains('\u{FFFD}') {
+            format!("{e} (the file has bytes that are not valid UTF-8; save it as UTF-8)")
+        } else {
+            e
+        }
+    })
+}
+
+fn parse_csv_text(text: &str) -> Result<DataTable, String> {
     let text = text.strip_prefix('\u{FEFF}').unwrap_or(text);
     let mut lines = text
         .lines()
@@ -494,6 +504,12 @@ mod tests {
         assert!(parse_csv("1+,y\n1,2\n").is_err());
         assert!(parse_csv("").is_err());
         assert_eq!(split_fields("\"a,b\",c", ','), vec!["a,b", "c"]);
+    }
+
+    #[test]
+    fn a_bad_byte_in_a_data_file_is_named_in_the_error() {
+        let e = parse_csv("x\n1\n2\u{FFFD}\n").unwrap_err();
+        assert!(e.contains("line 3") && e.contains("UTF-8"), "{e}");
     }
 
     #[test]

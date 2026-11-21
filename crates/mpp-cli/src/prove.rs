@@ -30,7 +30,7 @@ fn extra_references(doc: &Document, base: Option<&Path>) -> Vec<mpp_syntax::docu
         if let BlockKind::References(r) = &b.kind {
             if let Some((path, _)) = &r.from {
                 let file = base.map_or_else(|| PathBuf::from(path), |d| d.join(path));
-                if let Ok(text) = std::fs::read_to_string(file) {
+                if let Ok(text) = mpp_eval::read_text(file) {
                     refs.extend(parse_reference_entries(&text));
                 }
             }
@@ -114,7 +114,7 @@ pub fn prove(
         let _ = writeln!(io.err, "error: set a spend cap of at least $0.01 (--cap)");
         return ProveOutcome::Error;
     }
-    let source = match std::fs::read_to_string(args.path) {
+    let source = match mpp_eval::read_text(args.path) {
         Ok(s) => s,
         Err(e) => {
             let _ = writeln!(io.err, "error: could not read {}: {e}", args.path.display());
@@ -252,8 +252,8 @@ pub fn split_target(arg: &str) -> (PathBuf, Option<String>) {
 
 /// `mpp lean file.mpp`: writes the Lean project; with `build`, runs `lake build`.
 pub fn lean(path: &Path, out_dir: &Path, build: bool) -> Result<String, String> {
-    let src = std::fs::read_to_string(path)
-        .map_err(|e| format!("could not read {}: {e}", path.display()))?;
+    let src =
+        mpp_eval::read_text(path).map_err(|e| format!("could not read {}: {e}", path.display()))?;
     let doc = parse_document(&src);
     let check = check_proofs(&src, path.parent());
     let module = path.file_stem().map_or_else(
