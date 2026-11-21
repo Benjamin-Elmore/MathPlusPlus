@@ -325,18 +325,87 @@ pub fn shortcut(editor: &mut Editor, typed: char, cx: &BuildCx) -> bool {
     false
 }
 
-/// The start of the operand just before `end`: a run of letters and digits,
-/// or one Greek letter.
+/// The start of the operand just before `end`: a bracketed group with the function
+/// name before it (`\sin(x)`, `(x + 1)`, `\sqrt{x}`), or a run of letters and
+/// digits (with the backslash of a command such as `\pi`).
 fn operand_before(text: &str, end: usize) -> usize {
+    let before = &text[..end];
+    if before.ends_with([')', ']', '}']) {
+        let Some(open) = matching_open(before) else {
+            return end;
+        };
+        let mut start = open;
+        if before[..start].ends_with(r"\left") {
+            start -= r"\left".len();
+        }
+        // A command's argument (`\sqrt{x}`, `\frac{a}{b}`): take the whole command.
+        if before.ends_with('}') {
+            while before[..start].ends_with('}') {
+                match matching_open(&before[..start]) {
+                    Some(o) => start = o,
+                    None => break,
+                }
+            }
+        }
+        // The function the brackets belong to: `\sin`, `f`, `\sin^2`.
+        let name = word_before(before, start);
+        return if name < start { name } else { start };
+    }
+    word_before(before, end)
+}
+
+/// The start of the letters and digits just before `end`, with a command's
+/// backslash and its scripts (`\sin^2`).
+fn word_before(text: &str, end: usize) -> usize {
+    let mut end = end;
+    // Scripts written before the bracket: `\sin^{2}(x)`, `f^2(x)`.
+    loop {
+        let t = &text[..end];
+        if let Some(o) = t.strip_suffix('}').and_then(|_| matching_open(t)) {
+            if text[..o].ends_with(['^', '_']) {
+                end = o - 1;
+                continue;
+            }
+        }
+        let mut cs = t.char_indices().rev();
+        if let (Some((_, d)), Some((i, m))) = (cs.next(), cs.next()) {
+            if d.is_ascii_alphanumeric() && (m == '^' || m == '_') {
+                end = i;
+                continue;
+            }
+        }
+        break;
+    }
     let mut start = end;
     for (i, c) in text[..end].char_indices().rev() {
         if c.is_ascii_alphanumeric() || c == '.' || (!c.is_ascii() && c.is_alphabetic()) {
             start = i;
         } else {
+            if c == '\\' && start < end {
+                start = i;
+            }
             break;
         }
     }
     start
+}
+
+/// The byte offset of the bracket that opens the one `text` ends with.
+fn matching_open(text: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in text.char_indices().rev() {
+        match c {
+            ')' | ']' | '}' => depth += 1,
+            '(' | '[' | '{' => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// The longer name used in the "fill in" hint.
@@ -412,6 +481,23 @@ mod tests {
     }
 
     #[test]
+    fn slash_takes_the_group_or_function_before_it() {
+        for (text, operand) in [
+            (r"y = \sin(x)", r"\sin(x)"),
+            (r"\sin\left(x\right)", r"\sin\left(x\right)"),
+            ("2 + (x + 1)", "(x + 1)"),
+            ("f(x)", "f(x)"),
+            (r"\sin^{2}(x)", r"\sin^{2}(x)"),
+            (r"1 + \sqrt{x}", r"\sqrt{x}"),
+            (r"a + \pi", r"\pi"),
+            ("3 + x2", "x2"),
+        ] {
+            let start = operand_before(text, text.len());
+            assert_eq!(&text[start..], operand, "{text}");
+        }
+    }
+
+    #[test]
     fn prose_lines_become_maths_blocks() {
         let (r, b, a) = display_place("", 0);
         assert_eq!((r, b.as_str(), a.as_str()), (0..0, "$$ ", " $$"));
@@ -428,6 +514,7 @@ mod tests {
     fn operands_before_a_slash() {
         assert_eq!(operand_before("1 + 23", 6), 4);
         assert_eq!(operand_before("x + α", "x + α".len()), 4);
-        assert_eq!(operand_before("(a)", 3), 3);
+        // A bracketed group is the numerator (it used to leave an empty one).
+        assert_eq!(operand_before("(a)", 3), 0);
     }
 }
