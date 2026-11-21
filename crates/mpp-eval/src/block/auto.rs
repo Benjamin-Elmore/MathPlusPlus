@@ -195,7 +195,15 @@ impl Run<'_, '_> {
                 return;
             }
         }
-        for note in &out.notes {
+        // The preview is the editor's grey answer to a line that asked nothing, never
+        // part of the document: remarks that only say how it was found (the method, a
+        // check that passed, the units it was solved in) are not problems with the
+        // file, so they are not reported. A convention the answer depends on is.
+        for note in out
+            .notes
+            .iter()
+            .filter(|n| !super::is_success_note(n) && !n.starts_with("solved in units"))
+        {
             self.warn(lr.span, note.clone());
         }
         lr.auto = true;

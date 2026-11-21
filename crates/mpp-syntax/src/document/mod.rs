@@ -14,6 +14,7 @@ pub mod display;
 pub mod dump;
 mod figure;
 mod inline;
+mod letters;
 mod list;
 pub mod proof;
 mod refs;
@@ -41,6 +42,7 @@ pub fn parse_document(src: &str) -> Document {
     for b in &mut blocks {
         resolve_block(b, &labels, &mut diagnostics);
     }
+    letters::bind_unit_letters(&mut blocks, src);
     assign_ids(&mut blocks, src);
     let mut doc = Document {
         blocks,
@@ -282,6 +284,29 @@ impl Document {
         out
     }
 
+    /// The heading level that numbers as a section (`1`, `2` …) under `%number
+    /// sections`: the top level the document uses, so a file written with `##`
+    /// headings only numbers them 1, 2, 3 rather than 0.1, 0.2. A single `#` heading
+    /// above deeper ones is the document's title, and the level below it is the section.
+    pub fn section_base_level(&self) -> u8 {
+        let mut h1 = 0;
+        let mut top_deeper: Option<u8> = None;
+        self.walk(&mut |b: &Block| {
+            if let BlockKind::Heading { level, .. } = &b.kind {
+                if *level == 1 {
+                    h1 += 1;
+                } else {
+                    top_deeper = Some(top_deeper.map_or(*level, |t| t.min(*level)));
+                }
+            }
+        });
+        match (h1, top_deeper) {
+            (0, Some(l)) => l,
+            (1, Some(l)) => l,
+            _ => 1,
+        }
+    }
+
     /// The entries written as a list under a `References` (or `Bibliography`) heading,
     /// one item per entry starting with its key: `- [@key] Author, *Title*, year.` The
     /// text after the key is kept whole as the entry's `title`; `author` is empty.
@@ -336,7 +361,7 @@ impl Document {
 
 /// True for a heading that reads "References" or "Bibliography" (any case, with or
 /// without a section number in front).
-fn is_references_heading(content: &[Inline]) -> bool {
+pub fn is_references_heading(content: &[Inline]) -> bool {
     let mut text = String::new();
     for i in content {
         if let InlineKind::Text(t) = &i.kind {
@@ -351,7 +376,7 @@ fn is_references_heading(content: &[Inline]) -> bool {
 }
 
 /// The entry in a reference-list item that starts with `[@key]`.
-fn list_item_reference(item: &ListItem) -> Option<Reference> {
+pub fn list_item_reference(item: &ListItem) -> Option<Reference> {
     let mut parts = item
         .content
         .iter()

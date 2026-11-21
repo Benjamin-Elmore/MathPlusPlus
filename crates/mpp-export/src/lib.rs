@@ -181,6 +181,7 @@ pub fn html_page(ev: &Evaluated, provider: &EvalProvider<'_>, opts: &ExportOptio
         theme: if opts.dark { Theme::DARK } else { Theme::LIGHT },
         dark_theme: None,
         include_comments: opts.include_comments,
+        include_steps: opts.include_steps,
         ..HtmlOptions::default()
     };
     mpp_render::render_html_with(&ev.document, provider, &html_opts)

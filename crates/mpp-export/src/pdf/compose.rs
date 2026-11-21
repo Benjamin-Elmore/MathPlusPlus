@@ -288,7 +288,6 @@ impl Composer<'_> {
 
     fn scan(&mut self) {
         let doc = &self.ev.document;
-        let (mut h1, mut deeper) = (0, false);
         let mut files = vec![];
         let mut refs: Vec<Reference> = vec![];
         let mut number_sections = false;
@@ -298,13 +297,6 @@ impl Composer<'_> {
                 kind: DirectiveKind::NumberSections,
                 ..
             }) => number_sections = true,
-            BlockKind::Heading { level, .. } => {
-                if *level == 1 {
-                    h1 += 1;
-                } else {
-                    deeper = true;
-                }
-            }
             BlockKind::FootnoteDef { name, content } => {
                 notes.insert(name.clone(), content.clone());
             }
@@ -324,7 +316,7 @@ impl Composer<'_> {
         }
         self.number_sections = number_sections;
         self.notes = notes;
-        self.base_level = if h1 == 1 && deeper { 2 } else { 1 };
+        self.base_level = doc.section_base_level();
         let mut order: Vec<String> = vec![];
         doc.walk_inlines(&mut |i| {
             if let InlineKind::Cite(cites) = &i.kind {
@@ -347,7 +339,7 @@ impl Composer<'_> {
     fn run(&mut self) {
         let blocks = self.ev.document.blocks.clone();
         let has_title = blocks.iter().any(|b| matches!(b.kind, BlockKind::Title(_)));
-        let mut skip_h1 = self.base_level == 2 && !has_title;
+        let mut skip_h1 = self.base_level >= 2 && !has_title;
         for b in &blocks {
             if skip_h1 {
                 if let BlockKind::Heading { level: 1, content } = &b.kind {

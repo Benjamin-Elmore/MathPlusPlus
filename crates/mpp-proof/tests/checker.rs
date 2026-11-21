@@ -267,3 +267,23 @@ fn induction_read_from_earlier_steps_is_structure_at_best() {
         c.report()
     );
 }
+
+#[test]
+fn a_direct_proof_from_the_hypothesis_has_no_open_assumption() {
+    // The theorem's own hypothesis, used in step 1, is discharged by the conclusion.
+    for reason in ["by assumption", "by hypothesis"] {
+        let src = format!(
+            "**Theorem 1.** If $p$ is an odd integer, then $p^2$ is odd.\n\n**Proof.**\n\
+             1. $p = 2m + 1$ — {reason}.\n\
+             2. $p^2 = 4m^2 + 4m + 1$ — by algebra.\n\
+             3. $p^2 = 2(2m^2 + 2m) + 1$ — by algebra.\n\
+             4. $p^2$ is odd — by definition. ∎\n"
+        );
+        assert_eq!(verdict(&src, "Theorem 1"), Verdict::Proved, "{reason}");
+    }
+    // An assumption made for a contradiction that never comes is still open.
+    let src = "**Theorem 1.** If $p$ is prime, then $p > 1$.\n\n**Proof.**\n\
+               1. Suppose $p$ is not above 1 — by assumption.\n\
+               2. $p^2 = p p$ — by algebra.\n∎\n";
+    assert!(matches!(verdict(src, "Theorem 1"), Verdict::Gaps(_)));
+}

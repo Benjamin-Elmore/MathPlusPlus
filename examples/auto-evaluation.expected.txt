@@ -70,10 +70,8 @@
     = {(x = -sqrt(2)/2, y = -sqrt(2)/2, λ = 1/2), (x = sqrt(2)/2, y = sqrt(2)/2, λ = 1/2), (x = -sqrt(2)/2, y = sqrt(2)/2, λ = -1/2), (x = sqrt(2)/2, y = -sqrt(2)/2, λ = -1/2)}
 97: y'' + y = 0, \quad y(0) = 1, y'(0) = 0
     = y(x) = cos(x)
-    note: constant coefficients: substituting it back gives 0 exactly
 99: \frac{dy}{dx} = x y
     = y(x) = e^(x^2/2)*C
-    note: separable: substituting it back gives 0 exactly
 103: \det \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}
     = -2
 105: \begin{pmatrix} 1 & 2 \\ 3 & 4 \end{pmatrix}^{-1}

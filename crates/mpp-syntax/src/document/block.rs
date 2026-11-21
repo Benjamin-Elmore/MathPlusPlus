@@ -41,7 +41,109 @@ pub(crate) fn split_lines(src: &str) -> Vec<Line> {
     if src.ends_with('\n') {
         lines.pop();
     }
-    lines
+    split_trailing_displays(src, lines)
+}
+
+/// Byte offsets of the unescaped `$$` pairs in `text`.
+fn display_marks(text: &str) -> Vec<usize> {
+    let b = text.as_bytes();
+    let mut out = Vec::new();
+    let mut k = 0;
+    while k < b.len() {
+        match b[k] {
+            b'\\' => k += 2,
+            b'$' if b.get(k + 1) == Some(&b'$') => {
+                out.push(k);
+                k += 2;
+            }
+            _ => k += 1,
+        }
+    }
+    out
+}
+
+/// Where a `$$` display starts part-way along a prose line (`4. $$ … $$`,
+/// `Partial fractions: $$ … $$`): the offset of that `$$` in `text`. The
+/// text before it must have its inline `$…$` closed, and the display must
+/// either close on the same line or run on from the end of it.
+fn trailing_display(text: &str) -> Option<usize> {
+    let marks = display_marks(text);
+    let &open = marks.first()?;
+    if open == 0 || text[..open].trim().is_empty() {
+        return None;
+    }
+    let before = &text.as_bytes()[..open];
+    let mut singles = 0;
+    let mut k = 0;
+    while k < before.len() {
+        match before[k] {
+            b'\\' => k += 1,
+            b'$' => singles += 1,
+            _ => {}
+        }
+        k += 1;
+    }
+    if singles % 2 == 1 {
+        return None;
+    }
+    let closes_here = marks.len() >= 2;
+    let runs_on = text[open + 2..].trim().is_empty();
+    (closes_here || runs_on).then_some(open)
+}
+
+/// Splits a prose line that carries a display after its text (`4. $$ x = ? $$`)
+/// into two lines, so the display is read as a display block of its own and is
+/// evaluated. Code fences, comments and the inside of multi-line displays are
+/// left alone.
+fn split_trailing_displays(src: &str, lines: Vec<Line>) -> Vec<Line> {
+    let mut out = Vec::with_capacity(lines.len());
+    let mut fence = false;
+    let mut display = false;
+    for line in lines {
+        let text = src.get(line.start..line.end).unwrap_or("");
+        let t = text.trim_start();
+        if fence {
+            fence = !t.starts_with("```");
+            out.push(line);
+            continue;
+        }
+        if display {
+            // A blank line or the closing `$$` ends the display.
+            display = !(t.trim().is_empty() || display_marks(text).len() % 2 == 1);
+            out.push(line);
+            continue;
+        }
+        if t.starts_with("```") {
+            fence = true;
+            out.push(line);
+            continue;
+        }
+        if t.starts_with('%') {
+            out.push(line);
+            continue;
+        }
+        if t.starts_with("$$") {
+            display = display_marks(text).len() % 2 == 1;
+            out.push(line);
+            continue;
+        }
+        match trailing_display(text) {
+            Some(at) => {
+                let p = line.start + at;
+                out.push(Line {
+                    start: line.start,
+                    end: p,
+                });
+                out.push(Line {
+                    start: p,
+                    end: line.end,
+                });
+                display = display_marks(&text[at..]).len() % 2 == 1;
+            }
+            None => out.push(line),
+        }
+    }
+    out
 }
 
 /// State shared by every block of one document.

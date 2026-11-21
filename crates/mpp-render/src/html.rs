@@ -49,6 +49,28 @@ pub trait ResultProvider {
     fn references_source(&self, _path: &str) -> Option<String> {
         None
     }
+
+    /// The working of the block's `= ?!` queries, one list of steps per query.
+    fn display_steps(&self, _block: &Block) -> Vec<Vec<StepLine>> {
+        vec![]
+    }
+
+    /// Why questions in the block got no answer: the sentence shown under the line.
+    fn display_errors(&self, _block: &Block) -> Vec<String> {
+        vec![]
+    }
+}
+
+/// One step of the working of a `= ?!` query.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct StepLine {
+    /// The rule used, such as "integration by parts".
+    pub rule: String,
+    /// The maths before and after the step, as LaTeX.
+    pub before: String,
+    pub after: String,
+    /// A remark on the step.
+    pub note: Option<String>,
 }
 
 /// A table read for a `Data:` block, ready to typeset.
@@ -85,6 +107,8 @@ pub struct HtmlOptions {
     /// Show formatted comments (`% note`, `%{ … %}`) as notes. Off by default:
     /// an export is the finished page, without the author's notes.
     pub include_comments: bool,
+    /// Show the working of `= ?!` queries under their equations.
+    pub include_steps: bool,
 }
 
 impl Default for HtmlOptions {
@@ -97,6 +121,7 @@ impl Default for HtmlOptions {
             theme: Theme::LIGHT,
             dark_theme: Some(Theme::DARK),
             include_comments: false,
+            include_steps: false,
         }
     }
 }
@@ -355,22 +380,19 @@ impl Renderer<'_> {
                     esc(&head)
                 );
                 let mut body = String::new();
-                self.blocks(&t.body, &mut body);
                 if proof {
-                    // Set the closing ∎ flush right, whether it was written or not.
+                    // One end mark, set flush right: a typed ∎ (at the end of a
+                    // paragraph or of the last step of a list) is absorbed into it.
+                    let blocks = mpp_syntax::document::proof::without_closing_qed(&t.body);
+                    self.blocks(&blocks, &mut body);
                     let trimmed = body.trim_end();
-                    let written = ["∎</p>", "\\qed</p>"]
-                        .into_iter()
-                        .find(|end| trimmed.ends_with(end));
-                    if let Some(end) = written {
-                        let cut = trimmed.len() - end.len();
-                        body = format!(
-                            "{}<span class=\"qed\">∎</span></p>\n",
-                            trimmed[..cut].trim_end()
-                        );
+                    if let Some(open) = trimmed.strip_suffix("</p>") {
+                        body = format!("{}<span class=\"qed\">∎</span></p>\n", open.trim_end());
                     } else {
                         body.push_str("<span class=\"qed\">∎</span>\n");
                     }
+                } else {
+                    self.blocks(&t.body, &mut body);
                 }
                 out.push_str(&body);
                 out.push_str("</div>\n");
@@ -426,6 +448,33 @@ impl Renderer<'_> {
             .map(|n| format!("<span class=\"eq-num\">({n})</span>"))
             .unwrap_or_default();
         let _ = writeln!(out, "<div class=\"eq\"{id}>{svg}{num}</div>");
+        if self.in_comment {
+            return;
+        }
+        for e in self.results.display_errors(b) {
+            let _ = writeln!(out, "<p class=\"eq-error\">✗ {}</p>", esc(&e));
+        }
+        if self.opts.include_steps {
+            for steps in self.results.display_steps(b) {
+                out.push_str("<ol class=\"steps\">\n");
+                for st in steps {
+                    let text = self.math_opts(MathStyle::Text);
+                    let before = self.svg(&layout_latex(&st.before, &text), "m");
+                    let after = self.svg(&layout_latex(&st.after, &text), "m");
+                    let note = st
+                        .note
+                        .as_deref()
+                        .map(|n| format!(" <span class=\"step-note\">({})</span>", esc(n)))
+                        .unwrap_or_default();
+                    let _ = writeln!(
+                        out,
+                        "<li><em>{}</em>: {before} → {after}{note}</li>",
+                        esc(&st.rule)
+                    );
+                }
+                out.push_str("</ol>\n");
+            }
+        }
     }
 
     fn figure(&mut self, b: &Block, f: &Figure, out: &mut String) {
@@ -534,7 +583,11 @@ impl Renderer<'_> {
             .unwrap_or_default();
         let _ = writeln!(out, "<{tag}{start}>");
         for item in &list.items {
-            let _ = write!(out, "<li>{}", self.inlines(&item.content));
+            // An entry of a reference list is the target of its citations.
+            let id = mpp_syntax::document::list_item_reference(item)
+                .map(|r| format!(" id=\"ref-{}\"", esc(&slug(&r.key))))
+                .unwrap_or_default();
+            let _ = write!(out, "<li{id}>{}", self.inlines(&item.content));
             for child in &item.children {
                 out.push('\n');
                 self.list(child, out);
@@ -838,6 +891,8 @@ svg.m {{ display: inline; }}
 .thm-head {{ font-weight: bold; margin-right: 0.4em; }}
 .proof .thm-head {{ font-weight: normal; font-style: italic; }}
 .qed {{ float: right; }}
+.eq-error {{ color: var(--mpp-error); text-align: center; margin: -0.4em 0 0.9em; }}
+ol.steps {{ font-size: 0.9em; color: var(--mpp-muted); margin: -0.4em 0 1em 2em; }}
 .import, .helper, .assume {{ color: var(--mpp-muted); }}
 .assume {{ font-style: italic; }}
 .unit {{ font-size: 0.85em; color: var(--mpp-muted); }}

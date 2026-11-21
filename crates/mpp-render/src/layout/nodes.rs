@@ -414,8 +414,13 @@ impl Engine<'_> {
             self.font = name.font;
         }
         let mut chars = name.base.chars();
-        let base = match (chars.next(), chars.next()) {
-            (Some(c), None) => self.letter(c, st, false),
+        let base = match (chars.next(), chars.next(), chars.next()) {
+            (Some(c), None, _) => self.letter(c, st, false),
+            // `\Delta x`, `\delta t`: one name, set as the two letters it is written with.
+            (Some(d @ ('Δ' | 'δ')), Some(c), None) if c.is_alphabetic() => LBox::hlist(vec![
+                self.letter(d, st, d == 'Δ'),
+                self.letter(c, st, false),
+            ]),
             _ => self.word(&name.base, st),
         };
         self.font = saved;
@@ -1078,5 +1083,6 @@ fn bracket_chars(b: Bracket) -> (Option<char>, Option<char>) {
         Bracket::Brace => (Some('{'), Some('}')),
         Bracket::Angle => (Some('⟨'), Some('⟩')),
         Bracket::TexGroup | Bracket::None => (None, None),
+        Bracket::EvalBar => (None, Some('|')),
     }
 }

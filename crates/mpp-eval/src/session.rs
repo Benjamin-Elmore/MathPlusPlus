@@ -402,8 +402,9 @@ impl Session {
         } = pass;
         self.cache = cache;
 
-        let diagnostics = attach_parse_diagnostics(&doc, &mut blocks);
+        let mut diagnostics = attach_parse_diagnostics(&doc, &mut blocks);
         fill_in_hints(&mut blocks);
+        crate::unanswered::flag_unanswered(src, &lines, &mut blocks, &mut diagnostics);
         let graph = DepGraph::build(&blocks);
         let mut evaluated = Evaluated {
             document: doc,

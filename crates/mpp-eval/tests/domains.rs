@@ -213,5 +213,5 @@ fn differential_equations_use_the_full_integrator() {
     let a = answer(r"$$ \operatorname{dsolve}(y' = x e^{x^2}, y, x) = ? $$");
     assert!(a.contains("e^(x^2)/2") && a.contains('C'), "{a}");
     let b = answer(r"$$ \operatorname{dsolve}(\frac{dy}{dx} = y, y, x, (0, 2)) = ? $$");
-    assert_eq!(b, "y = 2*e^x");
+    assert_eq!(b, "y(x) = 2*e^x");
 }

@@ -248,6 +248,15 @@ impl Parser<'_> {
     fn symbol_atom(&mut self, sym: &'static Symbol, span: Span) -> Node {
         let kind = match sym.kind {
             SymbolKind::Letter if sym.name == "pi" => NodeKind::Constant(Constant::Pi),
+            // `\Delta x`, `\Delta t`, `ΔV`: a change in a quantity is one name.
+            SymbolKind::Letter if sym.name == "Delta" => {
+                if let Some(Tok::Letter(c)) = self.peek().cloned() {
+                    self.bump();
+                    let span = span.join(self.prev_span());
+                    return Node::new(NodeKind::Name(Name::simple(format!("Δ{c}"))), span);
+                }
+                NodeKind::Name(Name::simple(sym.unicode))
+            }
             SymbolKind::Letter => NodeKind::Name(Name::simple(sym.unicode)),
             SymbolKind::Function if sym.name == "sqrt" => {
                 let command = self.text(span).starts_with('\\');
@@ -862,6 +871,7 @@ impl Parser<'_> {
         span: Span,
     ) -> Node {
         let bracket = match open {
+            Delim::None if close == Delim::Bar => Bracket::EvalBar,
             Delim::Square => Bracket::Square,
             Delim::Brace => Bracket::Brace,
             Delim::Angle => Bracket::Angle,

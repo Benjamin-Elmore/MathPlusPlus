@@ -215,3 +215,26 @@ fn both_themes_draw_every_kind() {
         }
     }
 }
+
+#[test]
+fn a_user_function_of_t_or_u_or_y_is_a_curve_not_a_surface() {
+    for (def, fig) in [
+        ("u(t) := t^2", "u(t)"),
+        ("y(t) := t^2", "y(t)"),
+        ("x(t) := t^2", "x(t)"),
+        ("v(s) := s^2", "v(s)"),
+    ] {
+        let var = if fig.contains("(s)") { "s" } else { "t" };
+        let src = format!("$$ {def} $$\n\nFigure: ${fig}$, ${var} \\in [0, 1]$.\n");
+        let f = &build(&src)[0];
+        assert_eq!(kinds(f), ["explicit"], "{src}");
+        let LayerData::Curve(s) = &f.layers()[0] else {
+            panic!("not a curve: {src}")
+        };
+        let last = s.segments[0].last().copied().unwrap();
+        assert!(
+            (last[0] - 1.0).abs() < 1e-9 && (last[1] - 1.0).abs() < 1e-6,
+            "{src}: {last:?}"
+        );
+    }
+}

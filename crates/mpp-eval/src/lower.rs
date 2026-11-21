@@ -331,6 +331,11 @@ impl<'a> Lowerer<'a> {
                 Ok(n / d)
             }
             K::Pow { base, exp } => self.power(base, exp),
+            // The evaluation bar `\left. f \right|_{x=a}`: f with x = a put in.
+            K::Subscript { base, sub } if eval_bar_body(base).is_some() => {
+                let inner = eval_bar_body(base).unwrap_or(base);
+                self.eval_bar(inner, sub)
+            }
             K::Subscript { base, sub } => match &base.ungrouped().kind {
                 // `|x|_p`: the p-adic absolute value; `‖v‖_p`: the L^p norm.
                 K::Fenced {
@@ -1470,6 +1475,31 @@ impl<'a> Lowerer<'a> {
         self.lower(node)
     }
 
+    /// `f |_{x=a}`: f with the point put in, worked out once f is (a derivative at a
+    /// point, `F(b) - F(a)` written with a bar). The point is `name = value`.
+    fn eval_bar(&mut self, inner: &Node, sub: &Node) -> LowerResult {
+        let point = match &sub.ungrouped().kind {
+            NodeKind::Relation { first, rest } if rest.len() == 1 && rest[0].0 == SynRel::Eq => {
+                node_key(first).map(|name| (name, &rest[0].1))
+            }
+            _ => None,
+        };
+        let Some((name, value)) = point else {
+            return Err(fail(
+                sub.span,
+                EvalError::Invalid(
+                    "the point of an evaluation bar is written `x = a`, as in `|_{x=2}`".into(),
+                ),
+            ));
+        };
+        let body = self.bound(std::slice::from_ref(&name), |s| s.lower(inner))?;
+        let at = self.lower(value)?;
+        Ok(Expr::apply(
+            "subs",
+            vec![body, Expr::equation(Expr::sym(&name), at)],
+        ))
+    }
+
     fn named_op(&mut self, op: &NamedOp) -> LowerResult {
         // `\operatorname{solve}_{x, y}(…)`: the unknowns are plain variables inside, even
         // when the names are defined (as functions of t, say) elsewhere.
@@ -1565,6 +1595,18 @@ impl<'a> Lowerer<'a> {
 }
 
 /// Calls `f` with the base of every name subscripted by exactly `index` in `node`.
+/// The expression under an evaluation bar (`\left. f \right|`, `f \bigg|`).
+fn eval_bar_body(base: &Node) -> Option<&Node> {
+    match &base.kind {
+        NodeKind::Group {
+            inner,
+            bracket: mpp_syntax::math::Bracket::EvalBar,
+            ..
+        } => Some(inner),
+        _ => None,
+    }
+}
+
 fn find_indexed(node: &Node, index: &str, f: &mut dyn FnMut(&str)) {
     if let NodeKind::Name(n) = &node.kind {
         if n.sub.as_deref().and_then(node_key).as_deref() == Some(index) {

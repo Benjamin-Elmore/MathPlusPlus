@@ -73,7 +73,47 @@ impl Parser<'_> {
             let rhs = self.parse_and();
             lhs = binary(BinOp::Or, lhs, rhs);
         }
-        lhs
+        self.maybe_eval_bar(lhs)
+    }
+
+    /// True at a bar that ends an expression and takes a subscript, `|_{x=2}` (also
+    /// `\big|`, `\bigg|`): the evaluation bar, not the start of an absolute value.
+    pub(super) fn at_eval_bar(&self) -> bool {
+        matches!(self.peek(), Some(Tok::Pipe))
+            && matches!(
+                self.peek_n(1),
+                Some(Tok::Underscore) | Some(Tok::Subscript(_))
+            )
+    }
+
+    /// `f(x) \bigg|_{x=2}`: the expression before the bar, evaluated at the point in
+    /// the subscript (the same node as `\left. f(x) \right|_{x=2}`).
+    fn maybe_eval_bar(&mut self, expr: Node) -> Node {
+        if self.ctx.bars || !self.at_eval_bar() {
+            return expr;
+        }
+        self.bump();
+        let span = expr.span.join(self.prev_span());
+        let group = Node::new(
+            NodeKind::Group {
+                inner: Box::new(expr),
+                bracket: Bracket::EvalBar,
+                sized: true,
+            },
+            span,
+        );
+        let sub = match self.peek().cloned() {
+            Some(Tok::Subscript(text)) => {
+                let at = self.cur_span();
+                self.bump();
+                self.fragment(&text, at)
+            }
+            _ => {
+                self.bump();
+                self.parse_sub_script()
+            }
+        };
+        attach_sub(group, sub)
     }
 
     fn parse_and(&mut self) -> Node {
@@ -535,7 +575,7 @@ impl Parser<'_> {
             return false;
         }
         match t {
-            Tok::Pipe => !self.ctx.bars,
+            Tok::Pipe => !self.ctx.bars && !self.at_eval_bar(),
             Tok::DoublePipe => !self.ctx.norms,
             Tok::Sym(s) if self.ctx.func_arg && s.kind == SymbolKind::Function => false,
             Tok::OperatorName(_) if self.ctx.func_arg => false,
