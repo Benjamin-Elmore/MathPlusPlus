@@ -29,9 +29,27 @@ fn transforms_are_script_letters_with_braces() {
 #[test]
 fn helpers_read_as_words() {
     for (src, words) in [
-        (r"\operatorname{taylorbound}(f, 0, 5, 1)", "Taylorbound"),
+        (
+            r"\operatorname{taylorbound}(f, 0, 5, 1)",
+            "Errorboundforthedegree5Taylorpolynomialof𝑓about0,at1",
+        ),
+        (
+            r"\operatorname{riemann}_{0}^{2}\left( x^2, 4, \text{mid} \right)",
+            "MidpointRiemannsumof𝑥2on[0,2]with𝑛=4",
+        ),
+        (
+            r"\operatorname{volume}_{0}^{1}\left( x, y = 0, \text{auto} \right)",
+            "Volumefromrotating𝑥about𝑦=0on[0,1](methodchosenautomatically)",
+        ),
+        (
+            r"\operatorname{rk4}\left( y' = y, y(0) = 1, 0.1, 10 \right)",
+            "RK4solutionof𝑦′=𝑦with𝑦(0)=1,step",
+        ),
         (r"\operatorname{rk4}(f, 0, 1, 0.1, 5)", "RK4"),
-        (r"\operatorname{surfacearea}(x, [0, 1])", "Surfacearea"),
+        (
+            r"\operatorname{surfacearea}_{0}^{1}\left( x, y = 0 \right)",
+            "Surfaceareafromrotating𝑥about𝑦=0on[0,1]",
+        ),
         (r"\operatorname{mvt}_{[0, 1]} x^2", "Meanvaluetheoremfor"),
         (r"\operatorname{crit}_{[0,4]} f", "Criticalpointsof𝑓on[0,4]"),
         (
@@ -46,5 +64,24 @@ fn helpers_read_as_words() {
     ] {
         let t: String = text(src).chars().filter(|c| !c.is_whitespace()).collect();
         assert!(t.contains(words), "{src}: {t}");
+    }
+}
+
+#[test]
+fn helpers_written_in_another_order_keep_their_plain_name() {
+    for (src, words, not) in [
+        (
+            r"\operatorname{area}(\sin x, [0, 2\pi])",
+            "Areabetweencurves",
+            "and[",
+        ),
+        (
+            r"\operatorname{riemann}_{left}(x^2, [0, 1], 4)",
+            "Riemannsum",
+            "rule,of",
+        ),
+    ] {
+        let t: String = text(src).chars().filter(|c| !c.is_whitespace()).collect();
+        assert!(t.contains(words) && !t.contains(not), "{src}: {t}");
     }
 }

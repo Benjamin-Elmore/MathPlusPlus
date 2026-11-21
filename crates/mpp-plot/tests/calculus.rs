@@ -76,7 +76,7 @@ fn riemann_strips_sum_to_the_numeric_rule() {
         assert!(
             fig.readouts()
                 .iter()
-                .any(|r| r.contains(word) || word == "mid"),
+                .any(|r| r.to_lowercase().contains(word) || r.starts_with("Midpoint rule, n = 8")),
             "{word}: {:?}",
             fig.readouts()
         );
@@ -439,6 +439,17 @@ fn taylor_polynomials_follow_the_degree_slider() {
     values.insert("n".to_string(), 9.0);
     fig.rebuild(&values);
     assert!((end(&fig) - 3f64.sin()).abs() < 5e-3);
+}
+
+#[test]
+fn a_bare_number_after_taylor_is_the_degree() {
+    // The Insert menu writes `taylor $5$`, shown as "Taylor polynomial of degree 5".
+    let fig = build("Figure: $\\sin x$, taylor ${5}$, $x \\in [-3, 3]$.\n");
+    assert!(
+        fig.readouts().iter().any(|r| r.contains("degree 5")),
+        "{:?}",
+        fig.readouts()
+    );
 }
 
 #[test]

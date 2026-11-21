@@ -200,8 +200,8 @@ impl Figure {
                 };
                 let exact = helpers::integrate(&fun, a, b);
                 notes.readouts.push(format!(
-                    "{} sum with n = {n}: {}",
-                    rule.name(),
+                    "{}, n = {n}: {}",
+                    rule.readout_name(),
                     fmt_num(sum)
                 ));
                 notes
