@@ -18,6 +18,7 @@ use crate::poly::Poly;
 use crate::simplify::{add, mul, simplify};
 use crate::steps::Steps;
 
+use super::asymptotic::Far;
 use super::engine::{div, linear_coeffs};
 use super::numeric::{quad, DEFAULT_TOLERANCE};
 use super::{definite_holder, integrate, oscillatory};
@@ -172,7 +173,18 @@ fn numeric_bounds(
         },
         Err(_) => None,
     };
-    let numeric = numeric_pieces(e, var, &points);
+    // A tail that starts very far out cannot be sampled: its expansion or nothing.
+    let far = match points.as_slice() {
+        [.., (c, cv), (_, end)] if *end == f64::INFINITY => {
+            super::asymptotic::far_tail(e, var, c, *cv)
+        }
+        _ => None,
+    };
+    let numeric = match &far {
+        Some(Far::Value(v, err, _)) => Ok((*v, *err)),
+        Some(Far::Refused(why)) => Err(MathError::Undetermined(why.clone())),
+        None => numeric_pieces(e, var, &points),
+    };
     let holder = definite_holder(e, var, a, b);
     if let Some((value, big_f, note)) = exact {
         let ev = value.eval_f64(&EmptyEnv).ok();
@@ -206,6 +218,21 @@ fn numeric_bounds(
             }
             return Ok(value);
         }
+    }
+    match far {
+        Some(Far::Value(v, err, note)) => {
+            let result = Expr::float(certified(v, err));
+            Steps::record(
+                &mut log,
+                "asymptotic expansion",
+                &holder,
+                &result,
+                Some(note),
+            );
+            return Ok(result);
+        }
+        Some(Far::Refused(why)) => return Err(MathError::Undetermined(why)),
+        None => {}
     }
     match numeric {
         Ok((v, err)) => {

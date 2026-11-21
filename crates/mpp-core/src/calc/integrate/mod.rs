@@ -11,6 +11,7 @@
 //! returned, so the engine reports [`MathError::NoClosedForm`] or
 //! [`MathError::Inconclusive`] rather than give a wrong answer.
 
+mod asymptotic;
 mod change;
 mod definite;
 mod engine;
