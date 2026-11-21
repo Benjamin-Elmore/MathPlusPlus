@@ -1,0 +1,92 @@
+% Exported from Math++. Compile with pdflatex.
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{graphicx,booktabs,xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage[margin=25mm]{geometry}
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{corollary}[theorem]{Corollary}
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{conjecture}[theorem]{Conjecture}
+\theoremstyle{definition}
+\newtheorem{definition}[theorem]{Definition}
+\newtheorem{example}[theorem]{Example}
+\theoremstyle{remark}
+\newtheorem*{remark}{Remark}
+\setlength{\parindent}{0pt}\setlength{\parskip}{0.6em}
+\begin{document}
+\title{Proofs, step by step}
+\author{Math++ examples}
+\date{}
+\maketitle
+Each step of a proof is a claim and a reason. The checker gives every step a status in the equation view ($\checkmark$ checked symbolically, $\approx$ checked numerically, ? checked by Lean, ? structure only, ? cited, ? gap or external, $\xmark$ wrong) and each theorem a summary that never claims more than its weakest step. None of it is written into this file.
+
+\begin{lemma}
+If $p$ is odd, then $p^2$ is odd.
+
+\end{lemma}
+\begin{proof}
+\begin{enumerate}
+\item Write $p = 2m + 1$ for an integer $m$ --- by assumption.
+\item $p^2 = 4m^2 + 4m + 1 = 2(2m^2 + 2m) + 1$ --- by algebra.
+\item So $p^2$ is odd, and the assumption is used up --- by cases.
+$\blacksquare$
+\end{enumerate}
+\end{proof}
+\begin{theorem}
+For every integer $n \ge 1$, $\sum_{k=1}^{n} k = \frac{n(n+1)}{2}$.
+
+\end{theorem}
+\begin{proof}
+\begin{enumerate}
+\item Base case: $\sum_{k=1}^{1} k = 1 = \frac{1 \cdot 2}{2}$ --- by algebra.
+\item Inductive step: if $\sum_{k=1}^{n} k = \frac{n(n+1)}{2}$, then $\sum_{k=1}^{n+1} k = \frac{n(n+1)}{2} + (n+1) = \frac{(n+1)(n+2)}{2}$ --- by algebra.
+\item So the formula holds for every $n \ge 1$ --- by induction.
+$\blacksquare$
+\end{enumerate}
+\end{proof}
+\begin{theorem}
+For every real $x$, $(x + 1)^2 = x^2 + 2x + 1$.
+
+\end{theorem}
+\begin{proof}
+\begin{enumerate}
+\item For every real $x$: $(x + 1)^2 = x^2 + 1$ --- by algebra.
+$\blacksquare$
+\end{enumerate}
+\end{proof}
+\begin{theorem}
+Every integer $N > 1$ has a prime factor.
+
+\end{theorem}
+\begin{proof}
+\begin{enumerate}
+\item This is Elements VII.31 --- \emph{(cited: every integer greater than 1 has a prime factor \cite{euclid})}.
+$\blacksquare$
+\end{enumerate}
+\end{proof}
+\begin{theorem}
+The tail vanishes.
+
+\end{theorem}
+\begin{proof}
+\begin{enumerate}
+\item The boundary term is zero --- by the divergence theorem \emph{(gap: decay at infinity is assumed)}.
+$\blacksquare$
+\end{enumerate}
+\end{proof}
+\begin{conjecture}
+Every even number above 2 is a sum of two primes.
+
+\end{conjecture}
+\subsection*{References}
+
+\begin{itemize}
+\item \cite{euclid} Euclid, \emph{Elements}, Book VII Prop. 31.
+\end{itemize}
+\end{document}

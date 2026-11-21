@@ -114,6 +114,18 @@ impl Parser<'_> {
     fn integral(&mut self, kind: IntKind) -> Node {
         let start = self.cur_span();
         self.bump();
+        // A sign on its own (`Exchange $\frac{d}{dt}$ and $\int$`) names the operator in
+        // prose: it is the symbol, not an integral with its parts missing.
+        if self.at_end() {
+            let symbol = match kind {
+                IntKind::Single => "∫",
+                IntKind::Double => "∬",
+                IntKind::Triple => "∭",
+                IntKind::Contour => "∮",
+                IntKind::Surface => "∯",
+            };
+            return Node::new(NodeKind::Symbol(symbol), start);
+        }
         let (lower, upper) = self.limits("the lower bound after `_`", "the upper bound after `^`");
         let ctx = self.integral_ctx();
         let (body, diffs, dot) = self.with_ctx(ctx, |p| {

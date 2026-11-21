@@ -279,6 +279,7 @@ impl Writer<'_> {
             ("lemma", "Lemma"),
             ("corollary", "Corollary"),
             ("proposition", "Proposition"),
+            ("conjecture", "Conjecture"),
         ] {
             let _ = writeln!(head, "\\newtheorem{{{env}}}[theorem]{{{label}}}");
         }
@@ -397,6 +398,7 @@ impl Writer<'_> {
                     TheoremKind::Lemma => "lemma",
                     TheoremKind::Corollary => "corollary",
                     TheoremKind::Proposition => "proposition",
+                    TheoremKind::Conjecture => "conjecture",
                     TheoremKind::Example => "example",
                     TheoremKind::Remark => "remark",
                     TheoremKind::Proof => "proof",

@@ -913,6 +913,7 @@ impl Composer<'_> {
                 | TheoremKind::Lemma
                 | TheoremKind::Corollary
                 | TheoremKind::Proposition
+                | TheoremKind::Conjecture
         );
         let bold = Style {
             bold: true,

@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proofs, step by step</title>
+<style>
+@font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: normal; src: url(data:…) format('opentype'); }
+@font-face { font-family: 'Latin Modern Roman'; font-style: italic; font-weight: normal; src: url(data:…) format('opentype'); }
+@font-face { font-family: 'Latin Modern Roman'; font-style: normal; font-weight: bold; src: url(data:…) format('opentype'); }
+:root { --mpp-text: #111111; --mpp-result: #1f5fb8; --mpp-auto-result: #6b6b6b; --mpp-placeholder: #7a7a7a; --mpp-placeholder-label: #6b6b6b; --mpp-rule: #111111; --mpp-background: #fdfdfb; --mpp-code-background: #f2f2ee; --mpp-link: #1f4f98; --mpp-muted: #444444; --mpp-error: #c01c28; --mpp-warning: #8a6100; --mpp-note-background: #f6f1dc; --mpp-note-accent: #a8821c; }
+html { background: var(--mpp-background); }
+body { margin: 0; color: var(--mpp-text); background: var(--mpp-background); font-family: 'Latin Modern Roman', 'LM Roman 10', 'CMU Serif', 'Cambria', 'Times New Roman', serif; font-size: 19px; line-height: 1.45; }
+main.paper { max-width: 40em; margin: 3em auto 5em; padding: 0 1.5em; text-align: justify; hyphens: auto; }
+h1 { font-size: 1.7em; font-weight: normal; text-align: center; margin: 0.4em 0 1em; }
+h2 { font-size: 1.3em; margin: 1.6em 0 0.6em; }
+h3 { font-size: 1.1em; margin: 1.3em 0 0.5em; }
+h4, h5, h6 { font-size: 1em; font-style: italic; margin: 1em 0 0.4em; }
+p { margin: 0 0 0.7em; }
+svg.defs { position: absolute; width: 0; height: 0; overflow: hidden; }
+svg.m { display: inline; }
+.eq { position: relative; display: flex; justify-content: center; align-items: center; margin: 0.9em 0; overflow-x: auto; }
+.eq-num { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
+.theorem { margin: 1em 0; }
+.theorem > p:first-of-type { display: inline; }
+.theorem.slanted p { font-style: italic; }
+.thm-head { font-weight: bold; margin-right: 0.4em; }
+.proof .thm-head { font-weight: normal; font-style: italic; }
+.qed { float: right; }
+.import, .helper, .assume { color: var(--mpp-muted); }
+.assume { font-style: italic; }
+.unit { font-size: 0.85em; color: var(--mpp-muted); }
+blockquote { margin: 1em 2em; color: var(--mpp-muted); }
+table { border-collapse: collapse; margin: 1em auto; }
+th, td { padding: 0.2em 0.8em; }
+thead th { border-top: 1.5px solid var(--mpp-rule); border-bottom: 1px solid var(--mpp-rule); }
+tbody tr:last-child td { border-bottom: 1.5px solid var(--mpp-rule); }
+pre { background: var(--mpp-code-background); padding: 0.7em 1em; overflow-x: auto; font-size: 0.85em; }
+code { font-family: 'Consolas', 'DejaVu Sans Mono', monospace; font-size: 0.9em; }
+figure { margin: 1.2em 0; text-align: center; }
+figcaption { font-size: 0.92em; margin-top: 0.4em; }
+.fig-spec { border: 1px dashed var(--mpp-placeholder); padding: 1.5em; color: var(--mpp-muted); }
+hr { border: none; border-top: 1px solid var(--mpp-rule); opacity: 0.35; margin: 1.5em 0; }
+ol.footnotes { font-size: 0.88em; }
+.title-block { text-align: center; margin: 0 0 2em; }
+.doc-title { font-size: 1.9em; margin: 0.2em 0 0.5em; }
+.doc-author { margin: 0.1em 0; font-size: 1.1em; }
+.doc-date { margin: 0.1em 0; color: var(--mpp-muted); }
+.abstract { margin: 1.4em 2.5em 0; font-size: 0.92em; text-align: justify; }
+.abstract-head { text-align: center; font-weight: bold; margin: 0 0 0.3em; }
+.sec-num { margin-right: 0.5em; }
+.cite-missing { color: var(--mpp-error); font-weight: bold; }
+.references h2 { margin-top: 2em; }
+ol.refs { list-style: none; padding-left: 0; font-size: 0.95em; }
+ol.refs li { margin: 0.35em 0; padding-left: 2.6em; text-indent: -2.6em; text-align: left; }
+ol.refs.author-year li { padding-left: 1.6em; text-indent: -1.6em; }
+.ref-num { display: inline-block; width: 2.6em; text-indent: 0; }
+.note { display: flex; gap: 0.7em; align-items: flex-start; margin: 0.9em 0; padding: 0.55em 0.9em; background: var(--mpp-note-background); border-left: 3px solid var(--mpp-note-accent); border-radius: 0 6px 6px 0; font-size: 0.86em; line-height: 1.4; color: var(--mpp-muted); text-align: left; }
+.note-mark { color: var(--mpp-note-accent); font-size: 1.1em; line-height: 1.2; }
+.note-body { flex: 1; min-width: 0; }
+.note-body > :first-child { margin-top: 0; }
+.note-body > :last-child { margin-bottom: 0; }
+.note.off { border-left-style: dashed; }
+.note .eq { opacity: 0.6; }
+.eq + .note { margin-top: -0.4em; }
+a { color: var(--mpp-link); text-decoration: none; }
+a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main class="paper">
+<svg class="defs" width="0" height="0" aria-hidden="true">
+<defs>
+<path id="mpp-m9" d="M332 -238C332 -235 330 -232 328 -230C224 -152 155 48 155 208L155 292C155 452 224 652 328 730C330 732 332 735 332 738C332 743 327 748 322 748C320 748 318 747 316 746C206 663 101 463 101 292L101 208C101 37 206 -163 316 -246C318 -247 320 -248 322 -248C327 -248 332 -243 332 -238Z"/>
+<path id="mpp-m10" d="M288 208L288 292C288 463 183 663 73 746C71 747 69 748 67 748C62 748 57 743 57 738C57 735 59 732 61 730C165 652 234 452 234 292L234 208C234 48 165 -152 61 -230C59 -232 57 -235 57 -238C57 -243 62 -248 67 -248C69 -248 71 -247 73 -246C183 -163 288 37 288 208Z"/>
+<path id="mpp-m12" d="M722 250C722 261 713 270 702 270L409 270L409 563C409 574 400 583 389 583C378 583 369 574 369 563L369 270L76 270C65 270 56 261 56 250C56 239 65 230 76 230L369 230L369 -63C369 -74 378 -83 389 -83C400 -83 409 -74 409 -63L409 230L702 230C713 230 722 239 722 250Z"/>
+<path id="mpp-m18" d="M419 0L419 31L387 31C297 31 294 42 294 79L294 640C294 664 294 666 271 666C209 602 121 602 89 602L89 571C109 571 168 571 220 597L220 79C220 43 217 31 127 31L95 31L95 0C130 3 217 3 257 3C297 3 384 3 419 0Z"/>
+<path id="mpp-m19" d="M449 174L424 174C419 144 412 100 402 85C395 77 329 77 307 77L127 77L233 180C389 318 449 372 449 472C449 586 359 666 237 666C124 666 50 574 50 485C50 429 100 429 103 429C120 429 155 441 155 482C155 508 137 534 102 534C94 534 92 534 89 533C112 598 166 635 224 635C315 635 358 554 358 472C358 392 308 313 253 251L61 37C50 26 50 24 50 0L421 0Z"/>
+<path id="mpp-m21" d="M471 165L471 196L371 196L371 651C371 671 371 677 355 677C346 677 343 677 335 665L28 196L28 165L294 165L294 78C294 42 292 31 218 31L197 31L197 0C238 3 290 3 332 3C374 3 427 3 468 0L468 31L447 31C373 31 371 42 371 78L371 165ZM300 196L56 196L300 569Z"/>
+<path id="mpp-m30" d="M722 347C722 358 713 367 702 367L76 367C65 367 56 358 56 347C56 336 65 327 76 327L702 327C713 327 722 336 722 347ZM722 153C722 164 713 173 702 173L76 173C65 173 56 164 56 153C56 142 65 133 76 133L702 133C713 133 722 142 722 153Z"/>
+<path id="mpp-m31" d="M688 230C705 238 705 262 688 270L107 545C82 556 65 520 89 509L637 250L89 -9C65 -20 82 -56 107 -45Z"/>
+<path id="mpp-m966" d="M473 0L473 36L435 36C335 36 335 49 335 82L335 636C335 663 333 664 305 664C241 601 150 600 109 600L109 564C133 564 199 564 254 592L254 82C254 49 254 36 154 36L116 36L116 0L294 4Z"/>
+<path id="mpp-m1013" d="M505 182L471 182C468 160 458 101 445 91C437 85 360 85 346 85L162 85C267 178 302 206 362 253C436 312 505 374 505 469C505 590 399 664 271 664C147 664 63 577 63 485C63 434 106 429 116 429C140 429 169 446 169 482C169 500 162 535 110 535C141 606 209 628 256 628C356 628 408 550 408 469C408 382 346 313 314 277L73 39C63 30 63 28 63 0L475 0Z"/>
+<path id="mpp-m1283" d="M881 672C881 672 881 683 868 683C835 683 800 680 767 680C733 680 698 683 665 683C659 683 647 683 647 663C647 652 657 652 665 652C722 651 733 630 733 608C733 605 731 590 730 587L618 142L397 664C389 682 388 683 365 683L231 683C211 683 202 683 202 663C202 652 211 652 230 652C235 652 298 652 298 643L164 106C154 66 137 34 56 31C50 31 39 30 39 11C39 4 44 0 52 0C84 0 119 3 152 3C186 3 222 0 255 0C260 0 273 0 273 20C273 30 264 31 253 31C195 33 187 55 187 75C187 82 188 87 191 98L323 626C327 620 327 618 332 608L581 19C588 2 591 0 600 0C611 0 611 3 616 21L756 578C766 618 784 649 864 652C869 652 881 653 881 672Z"/>
+<path id="mpp-m1306" d="M508 379C508 409 485 442 440 442C412 442 366 434 294 354C260 316 221 276 183 261L287 683C287 683 287 694 274 694C251 694 178 686 152 684C144 683 133 682 133 664C133 652 142 652 157 652C205 652 207 645 207 635L204 615L59 39C55 25 55 23 55 17C55 -6 75 -11 84 -11C97 -11 112 -2 118 10C123 19 168 204 174 229C208 226 290 210 290 144C290 137 290 133 287 123C285 111 283 99 283 88C283 29 323 -11 375 -11C405 -11 432 5 454 42C479 86 490 143 490 143C490 153 481 153 478 153C468 153 467 149 464 135C444 62 421 11 377 11C358 11 345 22 345 58C345 75 349 98 353 114C357 131 357 135 357 145C357 210 294 239 209 250C240 268 272 300 295 324C343 377 389 420 438 420C444 420 445 420 447 419C459 417 460 417 468 411C470 410 470 409 472 407C424 404 415 365 415 353C415 337 426 318 453 318C479 318 508 340 508 379Z"/>
+<path id="mpp-m1308" d="M848 143C848 153 839 153 836 153C826 153 826 150 821 135C806 82 774 11 719 11C702 11 695 21 695 44C695 69 704 93 713 115C732 167 774 278 774 335C774 400 734 442 659 442C584 442 533 398 496 345C495 358 492 392 464 416C439 437 407 442 382 442C292 442 243 378 226 355C221 412 179 442 134 442C88 442 69 403 60 385C42 350 29 291 29 288C29 278 41 278 41 278C51 278 52 279 58 301C75 372 95 420 131 420C147 420 162 412 162 374C162 353 159 342 146 290L88 59C85 44 79 21 79 16C79 -2 93 -11 108 -11C120 -11 138 -3 145 17C146 19 158 66 164 91L186 181C192 203 198 225 203 248L216 298C231 329 284 420 379 420C424 420 433 383 433 350C433 325 426 297 418 267L390 151C380 114 379 108 370 75C366 55 357 21 357 16C357 -2 371 -11 386 -11C417 -11 423 14 431 46L491 287C494 300 547 420 656 420C699 420 710 386 710 350C710 293 668 179 648 126C639 102 635 91 635 71C635 24 670 -11 717 -11C811 -11 848 135 848 143Z"/>
+<path id="mpp-m1309" d="M571 143C571 153 562 153 559 153C549 153 549 150 544 135C524 67 491 11 442 11C425 11 418 21 418 44C418 69 427 93 436 115C455 168 497 278 497 335C497 402 454 442 382 442C292 442 243 378 226 355C221 411 180 442 134 442C88 442 69 403 59 385C43 351 29 292 29 288C29 278 41 278 41 278C51 278 52 279 58 301C75 372 95 420 131 420C151 420 162 407 162 374C162 353 159 342 146 290L88 59C85 44 79 21 79 16C79 -2 93 -11 108 -11C120 -11 138 -3 145 17C146 19 158 66 164 91L186 181C192 203 198 225 203 248L216 298C231 329 284 420 379 420C424 420 433 383 433 350C433 288 384 160 368 117C359 94 358 82 358 71C358 24 393 -11 440 -11C534 -11 571 135 571 143Z"/>
+<path id="mpp-m1311" d="M490 282C490 376 433 442 357 442C307 442 259 406 226 367C216 421 173 442 136 442C90 442 71 403 62 385C44 351 31 291 31 288C31 278 43 278 43 278C53 278 54 279 60 301C77 372 97 420 133 420C150 420 164 412 164 374C164 351 161 340 157 323L45 -122C37 -156 35 -163 -9 -163C-21 -163 -32 -163 -32 -182C-32 -190 -27 -194 -19 -194C8 -194 37 -191 65 -191C98 -191 132 -194 164 -194C169 -194 182 -194 182 -174C182 -163 172 -163 158 -163C108 -163 108 -156 108 -147C108 -135 150 28 157 53C170 24 198 -11 249 -11C365 -11 490 135 490 282ZM418 326C418 267 385 152 367 114C333 44 285 11 248 11C182 11 169 94 169 100C169 100 169 104 172 116L221 312C228 339 255 367 273 382C308 413 337 420 354 420C394 420 418 385 418 326Z"/>
+<path id="mpp-m1319" d="M527 376C527 428 468 442 434 442C376 442 341 389 329 366C304 432 250 442 221 442C117 442 60 313 60 288C60 278 72 278 72 278C80 278 83 280 85 289C119 395 185 420 219 420C238 420 273 411 273 353C273 322 256 255 219 115C203 53 168 11 124 11C118 11 95 11 74 24C99 29 121 50 121 78C121 105 99 113 84 113C54 113 29 87 29 55C29 9 79 -11 123 -11C189 -11 225 59 228 65C240 28 276 -11 336 -11C439 -11 496 118 496 143C496 153 487 153 484 153C475 153 473 149 471 142C438 35 370 11 338 11C299 11 283 43 283 77C283 99 289 121 300 165L334 302C340 328 363 420 433 420C438 420 462 420 483 407C455 402 435 377 435 353C435 337 446 318 473 318C495 318 527 336 527 376Z"/>
+<path id="mpp-m1414" d="M567 371C567 404 543 441 490 441C433 441 381 400 330 353C288 313 255 282 214 265L313 664C314 666 317 680 317 680C317 685 313 694 301 694C281 694 198 686 173 684C165 683 151 682 151 661C151 647 165 647 177 647C225 647 225 640 225 632C225 625 223 619 221 610L80 44C75 26 75 22 75 22C75 7 87 -10 109 -10C136 -10 149 10 155 32C157 36 200 212 204 226C275 219 332 196 332 144C332 139 332 134 330 124C326 109 326 104 326 93C326 22 384 -10 432 -10C529 -10 559 143 559 143C559 156 546 156 543 156C529 156 528 151 523 132C511 89 484 18 435 18C408 18 400 43 400 70C400 87 400 89 406 115C407 118 411 135 411 146C411 235 291 249 249 252C278 270 315 303 332 318C383 366 433 413 489 413C501 413 514 410 522 400C479 393 470 359 470 344C470 322 487 307 510 307C537 307 567 329 567 371Z"/>
+<path id="mpp-m1417" d="M658 143C658 156 645 156 642 156C628 156 627 150 623 139C600 59 557 18 517 18C496 18 492 32 492 53C492 76 497 89 515 134C527 165 568 271 568 327C568 424 491 441 438 441C355 441 299 390 269 350C262 419 203 441 162 441C119 441 96 410 83 387C61 350 47 293 47 288C47 275 61 275 64 275C78 275 79 278 86 305C101 364 120 413 159 413C185 413 192 391 192 364C192 345 183 308 176 281L154 191L122 63C118 50 112 25 112 22C112 0 130 -10 146 -10C164 -10 180 3 185 12C190 21 198 53 203 74L225 164C231 186 237 208 242 231C253 272 255 280 284 321C312 361 359 413 434 413C492 413 493 362 493 343C493 283 450 172 434 130C423 102 419 93 419 76C419 23 463 -10 514 -10C614 -10 658 128 658 143Z"/>
+<path id="mpp-m2367" d="M362 -287C362 -284 361 -281 358 -279C247 -195 172 22 172 198L172 302C172 478 247 695 358 779C361 781 362 784 362 787C362 793 358 797 352 797C350 797 347 797 346 795C227 706 116 489 116 302L116 198C116 11 227 -206 346 -295C347 -297 350 -297 352 -297C358 -297 362 -293 362 -287Z"/>
+<path id="mpp-m2368" d="M306 198L306 302C306 489 195 706 76 795C75 797 72 797 70 797C64 797 60 793 60 787C60 784 61 781 64 779C175 695 250 478 250 302L250 198C250 22 175 -195 64 -279C61 -281 60 -284 60 -287C60 -293 64 -297 70 -297C72 -297 75 -297 76 -295C195 -206 306 11 306 198Z"/>
+<path id="mpp-m2625" d="M192 250C192 279 168 303 139 303C110 303 86 279 86 250C86 221 110 197 139 197C168 197 192 221 192 250Z"/>
+<path id="mpp-m2863" d="M686 314C703 322 703 346 686 354L105 629C80 640 63 604 87 593L635 334L87 75C63 64 80 28 105 39ZM702 -99C702 -88 693 -79 682 -79L96 -79C85 -79 76 -88 76 -99C76 -110 85 -119 96 -119L682 -119C693 -119 702 -110 702 -99Z"/>
+<path id="mpp-m3060" d="M999 -1L974 -1C949 -76 882 -137 797 -166C781 -171 712 -195 565 -195L140 -195L487 234C494 243 496 246 496 250C496 254 495 255 489 264L164 710L560 710C674 710 904 703 974 516L999 516L913 750L84 750C57 750 56 749 56 718L421 216L66 -223C58 -233 57 -235 57 -239C57 -250 66 -250 84 -250L913 -250Z"/>
+</defs>
+</svg>
+<header class="title-block">
+<h1 class="doc-title">Proofs, step by step</h1>
+<p class="doc-author">Math++ examples</p>
+</header>
+<p>Each step of a proof is a claim and a reason. The checker gives every step a status in the equation view (✓ checked symbolically, ≈ checked numerically, ⊢ checked by Lean, ◇ structure only, 📖 cited, ⚠ gap or external, ✗ wrong) and each theorem a summary that never claims more than its weakest step. None of it is written into this file.</p>
+<div class="theorem slanted"><span class="thm-head">Lemma 1.</span> <span class="thm-title">(odd squares)</span>
+<p>If <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="9.56" height="12.08" viewBox="0 0 9.56 12.08" overflow="visible" style="vertical-align:-3.69px" role="img" aria-label="𝑝"><use xlink:href="#mpp-m1311" href="#mpp-m1311" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg> is odd, then <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="18.47" height="19.41" viewBox="0 0 18.47 19.41" overflow="visible" style="vertical-align:-3.69px" role="img" aria-label="𝑝2"><use xlink:href="#mpp-m1311" href="#mpp-m1311" transform="matrix(0.019 0 0 -0.019 0 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 9.84 8.83)" fill="var(--mpp-text, #111111)"/>
+</svg> is odd.</p>
+</div>
+<div class="theorem proof"><span class="thm-head">Proof.</span>
+<ol>
+<li>Write <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="93.8" height="16.34" viewBox="0 0 93.8 16.34" overflow="visible" style="vertical-align:-3.69px" role="img" aria-label="𝑝=2𝑚+1"><use xlink:href="#mpp-m1311" href="#mpp-m1311" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 14.83 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m19" href="#mpp-m19" transform="matrix(0.019 0 0 -0.019 34.89 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1308" href="#mpp-m1308" transform="matrix(0.019 0 0 -0.019 44.39 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 65.3 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 84.3 12.65)" fill="var(--mpp-text, #111111)"/>
+</svg> for an integer <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="16.68" height="8.61" viewBox="0 0 16.68 8.61" overflow="visible" style="vertical-align:-0.21px" role="img" aria-label="𝑚"><use xlink:href="#mpp-m1308" href="#mpp-m1308" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg> — by assumption.</li>
+<li><svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="328.58" height="21.37" viewBox="0 0 328.58 21.37" overflow="visible" style="vertical-align:-5.64px" role="img" aria-label="𝑝2=4𝑚2+4𝑚+1=2(2𝑚2+2𝑚)+1"><use xlink:href="#mpp-m1311" href="#mpp-m1311" transform="matrix(0.019 0 0 -0.019 0 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 9.84 8.83)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 23.75 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m21" href="#mpp-m21" transform="matrix(0.019 0 0 -0.019 43.81 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1308" href="#mpp-m1308" transform="matrix(0.019 0 0 -0.019 53.31 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 69.99 8.83)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 82.85 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m21" href="#mpp-m21" transform="matrix(0.019 0 0 -0.019 101.85 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1308" href="#mpp-m1308" transform="matrix(0.019 0 0 -0.019 111.35 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 132.26 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 151.26 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 166.04 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m19" href="#mpp-m19" transform="matrix(0.019 0 0 -0.019 186.1 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2367" href="#mpp-m2367" transform="matrix(0.019 0 0 -0.019 195.6 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m19" href="#mpp-m19" transform="matrix(0.019 0 0 -0.019 203.62 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1308" href="#mpp-m1308" transform="matrix(0.019 0 0 -0.019 213.12 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 229.8 8.83)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 242.65 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m19" href="#mpp-m19" transform="matrix(0.019 0 0 -0.019 261.66 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1308" href="#mpp-m1308" transform="matrix(0.019 0 0 -0.019 271.16 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2368" href="#mpp-m2368" transform="matrix(0.019 0 0 -0.019 287.84 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 300.08 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 319.08 15.73)" fill="var(--mpp-text, #111111)"/>
+</svg> — by algebra.</li>
+<li>So <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="18.47" height="19.41" viewBox="0 0 18.47 19.41" overflow="visible" style="vertical-align:-3.69px" role="img" aria-label="𝑝2"><use xlink:href="#mpp-m1311" href="#mpp-m1311" transform="matrix(0.019 0 0 -0.019 0 15.73)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 9.84 8.83)" fill="var(--mpp-text, #111111)"/>
+</svg> is odd, and the assumption is used up — by cases.
+∎</li>
+</ol>
+<span class="qed">∎</span>
+</div>
+<div class="theorem slanted"><span class="thm-head">Theorem 2.</span> <span class="thm-title">(Gauss)</span>
+<p>For every integer <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="46.24" height="14.92" viewBox="0 0 46.24 14.92" overflow="visible" style="vertical-align:-2.26px" role="img" aria-label="𝑛≥1"><use xlink:href="#mpp-m1309" href="#mpp-m1309" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2863" href="#mpp-m2863" transform="matrix(0.019 0 0 -0.019 16.68 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 36.74 12.65)" fill="var(--mpp-text, #111111)"/>
+</svg>, <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="137.12" height="27.82" viewBox="0 0 137.12 27.82" overflow="visible" style="vertical-align:-8.68px" role="img" aria-label="∑𝑛𝑘=1𝑘=𝑛(𝑛+1)2"><use xlink:href="#mpp-m3060" href="#mpp-m3060" transform="matrix(0.019 0 0 -0.019 0 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 20.06 9.64)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1414" href="#mpp-m1414" transform="matrix(0.0133 0 0 -0.0133 20.06 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.0133 0 0 -0.0133 28.14 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 38.48 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1306" href="#mpp-m1306" transform="matrix(0.019 0 0 -0.019 50.28 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 65.46 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 87.8 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.0133 0 0 -0.0133 97.19 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 102.36 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0133 0 0 -0.0133 111.75 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 122.1 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.0133 0 0 -0.0133 129.67 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 107.54 25.69)" fill="var(--mpp-text, #111111)"/>
+<rect x="85.52" y="14.01" width="51.6" height="0.76" fill="var(--mpp-text, #111111)"/>
+</svg>.</p>
+</div>
+<div class="theorem proof"><span class="thm-head">Proof.</span> <span class="thm-title">(induction on <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="11.4" height="8.61" viewBox="0 0 11.4 8.61" overflow="visible" style="vertical-align:-0.21px" role="img" aria-label="𝑛"><use xlink:href="#mpp-m1309" href="#mpp-m1309" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg>)</span>
+<ol>
+<li>Base case: <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="143.75" height="27.01" viewBox="0 0 143.75 27.01" overflow="visible" style="vertical-align:-8.68px" role="img" aria-label="∑1𝑘=1𝑘=1=1⋅22"><use xlink:href="#mpp-m3060" href="#mpp-m3060" transform="matrix(0.019 0 0 -0.019 0 18.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 20.06 8.83)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1414" href="#mpp-m1414" transform="matrix(0.0133 0 0 -0.0133 20.06 26.88)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.0133 0 0 -0.0133 28.14 26.88)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 38.48 26.88)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1306" href="#mpp-m1306" transform="matrix(0.019 0 0 -0.019 50.28 18.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 65.46 18.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 85.52 18.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 100.3 18.33)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 122.64 10.85)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2625" href="#mpp-m2625" transform="matrix(0.0133 0 0 -0.0133 130.2 10.85)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 133.9 10.85)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 128.27 24.89)" fill="var(--mpp-text, #111111)"/>
+<rect x="120.36" y="13.2" width="23.39" height="0.76" fill="var(--mpp-text, #111111)"/>
+</svg> — by algebra.</li>
+<li>Inductive step: if <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="137.12" height="27.82" viewBox="0 0 137.12 27.82" overflow="visible" style="vertical-align:-8.68px" role="img" aria-label="∑𝑛𝑘=1𝑘=𝑛(𝑛+1)2"><use xlink:href="#mpp-m3060" href="#mpp-m3060" transform="matrix(0.019 0 0 -0.019 0 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 20.06 9.64)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1414" href="#mpp-m1414" transform="matrix(0.0133 0 0 -0.0133 20.06 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.0133 0 0 -0.0133 28.14 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 38.48 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1306" href="#mpp-m1306" transform="matrix(0.019 0 0 -0.019 50.28 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 65.46 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 87.8 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.0133 0 0 -0.0133 97.19 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 102.36 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0133 0 0 -0.0133 111.75 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 122.1 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.0133 0 0 -0.0133 129.67 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 107.54 25.69)" fill="var(--mpp-text, #111111)"/>
+<rect x="85.52" y="14.01" width="51.6" height="0.76" fill="var(--mpp-text, #111111)"/>
+</svg>, then <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="325.78" height="27.82" viewBox="0 0 325.78 27.82" overflow="visible" style="vertical-align:-8.68px" role="img" aria-label="∑𝑛+1𝑘=1𝑘=𝑛(𝑛+1)2+(𝑛+1)=(𝑛+1)(𝑛+2)2"><use xlink:href="#mpp-m3060" href="#mpp-m3060" transform="matrix(0.019 0 0 -0.019 0 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 20.06 9.64)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0133 0 0 -0.0133 29.45 9.64)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 39.8 9.64)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1414" href="#mpp-m1414" transform="matrix(0.0133 0 0 -0.0133 20.06 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.0133 0 0 -0.0133 28.14 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 38.48 27.69)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1306" href="#mpp-m1306" transform="matrix(0.019 0 0 -0.019 51.6 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 66.78 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 89.12 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.0133 0 0 -0.0133 98.51 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 103.68 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0133 0 0 -0.0133 113.07 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 123.42 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.0133 0 0 -0.0133 130.98 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 108.85 25.69)" fill="var(--mpp-text, #111111)"/>
+<rect x="86.84" y="14.01" width="51.6" height="0.76" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 142.66 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.019 0 0 -0.019 161.66 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1309" href="#mpp-m1309" transform="matrix(0.019 0 0 -0.019 169.06 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 184.68 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 203.68 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.019 0 0 -0.019 213.18 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 225.85 19.14)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.0133 0 0 -0.0133 248.19 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 253.36 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0133 0 0 -0.0133 262.75 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m966" href="#mpp-m966" transform="matrix(0.0133 0 0 -0.0133 273.1 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.0133 0 0 -0.0133 280.67 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.0133 0 0 -0.0133 285.84 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1417" href="#mpp-m1417" transform="matrix(0.0133 0 0 -0.0133 291.02 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.0133 0 0 -0.0133 300.41 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 310.75 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.0133 0 0 -0.0133 318.32 9.95)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 282.06 25.69)" fill="var(--mpp-text, #111111)"/>
+<rect x="245.91" y="14.01" width="79.86" height="0.76" fill="var(--mpp-text, #111111)"/>
+</svg> — by algebra.</li>
+<li>So the formula holds for every <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="46.24" height="14.92" viewBox="0 0 46.24 14.92" overflow="visible" style="vertical-align:-2.26px" role="img" aria-label="𝑛≥1"><use xlink:href="#mpp-m1309" href="#mpp-m1309" transform="matrix(0.019 0 0 -0.019 0 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m2863" href="#mpp-m2863" transform="matrix(0.019 0 0 -0.019 16.68 12.65)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 36.74 12.65)" fill="var(--mpp-text, #111111)"/>
+</svg> — by induction.
+∎</li>
+</ol>
+<span class="qed">∎</span>
+</div>
+<div class="theorem slanted"><span class="thm-head">Theorem 3.</span> <span class="thm-title">(a slip)</span>
+<p>For every real <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10.87" height="8.61" viewBox="0 0 10.87 8.61" overflow="visible" style="vertical-align:-0.21px" role="img" aria-label="𝑥"><use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg>, <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="188.17" height="23.01" viewBox="0 0 188.17 23.01" overflow="visible" style="vertical-align:-4.71px" role="img" aria-label="(𝑥+1)2=𝑥2+2𝑥+1"><use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.019 0 0 -0.019 0 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 7.39 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 22.48 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 41.49 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.019 0 0 -0.019 50.99 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 58.38 8.83)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 72.29 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 92.35 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 103.21 11.4)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 116.07 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m19" href="#mpp-m19" transform="matrix(0.019 0 0 -0.019 135.07 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 144.57 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 159.66 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 178.67 18.29)" fill="var(--mpp-text, #111111)"/>
+</svg>.</p>
+</div>
+<div class="theorem proof"><span class="thm-head">Proof.</span>
+<ol>
+<li>For every real <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="10.87" height="8.61" viewBox="0 0 10.87 8.61" overflow="visible" style="vertical-align:-0.21px" role="img" aria-label="𝑥"><use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 0 8.4)" fill="var(--mpp-text, #111111)"/>
+</svg>: <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="144.57" height="23.01" viewBox="0 0 144.57 23.01" overflow="visible" style="vertical-align:-4.71px" role="img" aria-label="(𝑥+1)2=𝑥2+1"><use xlink:href="#mpp-m9" href="#mpp-m9" transform="matrix(0.019 0 0 -0.019 0 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 7.39 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 22.48 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 41.49 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m10" href="#mpp-m10" transform="matrix(0.019 0 0 -0.019 50.99 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 58.38 8.83)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m30" href="#mpp-m30" transform="matrix(0.019 0 0 -0.019 72.29 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1319" href="#mpp-m1319" transform="matrix(0.019 0 0 -0.019 92.35 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m1013" href="#mpp-m1013" transform="matrix(0.0133 0 0 -0.0133 103.21 11.4)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m12" href="#mpp-m12" transform="matrix(0.019 0 0 -0.019 116.07 18.29)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 135.07 18.29)" fill="var(--mpp-text, #111111)"/>
+</svg> — by algebra.
+∎</li>
+</ol>
+<span class="qed">∎</span>
+</div>
+<div class="theorem slanted"><span class="thm-head">Theorem 4.</span> <span class="thm-title">(resting on the literature)</span>
+<p>Every integer <svg class="m" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="50.09" height="14.04" viewBox="0 0 50.09 14.04" overflow="visible" style="vertical-align:-1.06px" role="img" aria-label="𝑁&gt;1"><use xlink:href="#mpp-m1283" href="#mpp-m1283" transform="matrix(0.019 0 0 -0.019 0 12.98)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m31" href="#mpp-m31" transform="matrix(0.019 0 0 -0.019 20.53 12.98)" fill="var(--mpp-text, #111111)"/>
+<use xlink:href="#mpp-m18" href="#mpp-m18" transform="matrix(0.019 0 0 -0.019 40.59 12.98)" fill="var(--mpp-text, #111111)"/>
+</svg> has a prime factor.</p>
+</div>
+<div class="theorem proof"><span class="thm-head">Proof.</span>
+<ol>
+<li>This is Elements VII.31 — <em>(cited: every integer greater than 1 has a prime factor [<span class="cite-missing" title="no reference has the key euclid">?</span>])</em>.
+∎</li>
+</ol>
+<span class="qed">∎</span>
+</div>
+<div class="theorem slanted"><span class="thm-head">Theorem 5.</span> <span class="thm-title">(not finished)</span>
+<p>The tail vanishes.</p>
+</div>
+<div class="theorem proof"><span class="thm-head">Proof.</span>
+<ol>
+<li>The boundary term is zero — by the divergence theorem <em>(gap: decay at infinity is assumed)</em>.
+∎</li>
+</ol>
+<span class="qed">∎</span>
+</div>
+<div class="theorem slanted"><span class="thm-head">Conjecture 6.</span>
+<p>Every even number above 2 is a sum of two primes.</p>
+</div>
+<h2>References</h2>
+<ul>
+<li>[<span class="cite-missing" title="no reference has the key euclid">?</span>] Euclid, <em>Elements</em>, Book VII Prop. 31.</li>
+</ul>
+</main>
+<!-- Latin Modern fonts: GUST Font License.
+% This is a preliminary version (2006-09-30), barring acceptance from
+% the LaTeX Project Team and other feedback, of the GUST Font License.
+% (GUST is the Polish TeX Users Group, http://www.gust.org.pl)
+%
+% For the most recent version of this license see
+% http://www.gust.org.pl/fonts/licenses/GUST-FONT-LICENSE.txt
+% or
+% http://tug.org/fonts/licenses/GUST-FONT-LICENSE.txt
+%
+% This work may be distributed and/or modified under the conditions
+% of the LaTeX Project Public License, either version 1.3c of this
+% license or (at your option) any later version.
+% 
+% Please also observe the following clause:
+% 1) it is requested, but not legally required, that derived works be
+%    distributed only after changing the names of the fonts comprising this
+%    work and given in an accompanying &quot;manifest&quot;, and that the
+%    files comprising the Work, as listed in the manifest, also be given
+%    new names. Any exceptions to this request are also given in the
+%    manifest.
+%    
+%    We recommend the manifest be given in a separate file named
+%    MANIFEST-&lt;fontid&gt;.txt, where &lt;fontid&gt; is some unique identification
+%    of the font family. If a separate &quot;readme&quot; file accompanies the Work, 
+%    we recommend a name of the form README-&lt;fontid&gt;.txt.
+%
+% The latest version of the LaTeX Project Public License is in
+% http://www.latex-project.org/lppl.txt and version 1.3c or later
+% is part of all distributions of LaTeX version 2006/05/20 or later.
+
+
+-->
+</body>
+</html>

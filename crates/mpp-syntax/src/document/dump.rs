@@ -200,7 +200,14 @@ fn block(out: &mut String, b: &Block, depth: usize) {
             }
         }
         BlockKind::Theorem(t) => {
-            let _ = writeln!(out, "Theorem {} closed={}", t.kind.as_str(), t.closed);
+            let _ = write!(out, "Theorem {} closed={}", t.kind.as_str(), t.closed);
+            if let Some(n) = &t.number {
+                let _ = write!(out, " number={n}");
+            }
+            if let Some(title) = &t.title {
+                let _ = write!(out, " title={}", inlines(title));
+            }
+            out.push('\n');
             blocks(out, &t.body, depth + 1);
         }
     }

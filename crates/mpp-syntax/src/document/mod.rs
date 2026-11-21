@@ -15,6 +15,7 @@ pub mod dump;
 mod figure;
 mod inline;
 mod list;
+pub mod proof;
 mod refs;
 mod sentence;
 mod table;
@@ -168,6 +169,9 @@ fn resolve_block(b: &mut Block, labels: &HashMap<String, u32>, diags: &mut Vec<D
         }
         BlockKind::Figure(f) => each(&mut f.caption),
         BlockKind::Theorem(t) => {
+            if let Some(title) = &mut t.title {
+                resolve(title, labels, diags);
+            }
             for inner in &mut t.body {
                 resolve_block(inner, labels, diags);
             }
@@ -247,6 +251,9 @@ fn visit_block_inlines<'a>(b: &'a Block, f: &mut impl FnMut(&'a Inline)) {
         }
         BlockKind::Figure(fig) => each(&fig.caption, f),
         BlockKind::Theorem(t) => {
+            if let Some(title) = &t.title {
+                each(title, f);
+            }
             for inner in &t.body {
                 visit_block_inlines(inner, f);
             }
@@ -272,6 +279,31 @@ impl Document {
                 out.extend(r.entries.iter());
             }
         });
+        out
+    }
+
+    /// The entries written as a list under a `References` (or `Bibliography`) heading,
+    /// one item per entry starting with its key: `- [@key] Author, *Title*, year.` The
+    /// text after the key is kept whole as the entry's `title`; `author` is empty.
+    pub fn reference_list_entries(&self) -> Vec<Reference> {
+        let mut out = Vec::new();
+        let mut under_references = false;
+        for b in &self.blocks {
+            match &b.kind {
+                BlockKind::Heading { content, .. } => {
+                    under_references = is_references_heading(content);
+                }
+                BlockKind::List(list) if under_references => {
+                    for item in &list.items {
+                        if let Some(entry) = list_item_reference(item) {
+                            out.push(entry);
+                        }
+                    }
+                }
+                BlockKind::Comment(_) | BlockKind::Directive(_) => {}
+                _ => {}
+            }
+        }
         out
     }
 
@@ -302,13 +334,99 @@ impl Document {
     }
 }
 
+/// True for a heading that reads "References" or "Bibliography" (any case, with or
+/// without a section number in front).
+fn is_references_heading(content: &[Inline]) -> bool {
+    let mut text = String::new();
+    for i in content {
+        if let InlineKind::Text(t) = &i.kind {
+            text.push_str(t);
+        }
+    }
+    let word = text
+        .trim()
+        .trim_start_matches(|c: char| c.is_ascii_digit() || c == '.' || c == ' ')
+        .to_lowercase();
+    word == "references" || word == "bibliography"
+}
+
+/// The entry in a reference-list item that starts with `[@key]`.
+fn list_item_reference(item: &ListItem) -> Option<Reference> {
+    let mut parts = item
+        .content
+        .iter()
+        .skip_while(|i| matches!(&i.kind, InlineKind::Text(t) if t.trim().is_empty()));
+    let first = parts.next()?;
+    let InlineKind::Cite(cites) = &first.kind else {
+        return None;
+    };
+    let [cite] = cites.as_slice() else {
+        return None;
+    };
+    let mut rest = String::new();
+    for i in parts {
+        inline_plain_text(i, &mut rest);
+    }
+    Some(Reference {
+        key: cite.key.clone(),
+        author: String::new(),
+        title: rest.trim().trim_start_matches(':').trim().to_string(),
+        year: None,
+        link: None,
+        span: item.span,
+    })
+}
+
+/// Appends the plain text of an inline (markup dropped, maths kept as written).
+pub fn inline_plain_text(i: &Inline, out: &mut String) {
+    match &i.kind {
+        InlineKind::Text(t) => out.push_str(t),
+        InlineKind::SoftBreak => out.push(' '),
+        InlineKind::Emphasis(inner) | InlineKind::Strong(inner) => {
+            for x in inner {
+                inline_plain_text(x, out);
+            }
+        }
+        InlineKind::Link { text, .. } => {
+            for x in text {
+                inline_plain_text(x, out);
+            }
+        }
+        InlineKind::Code(c) => out.push_str(c),
+        InlineKind::Escape(c) => out.push(*c),
+        InlineKind::Cite(cites) => {
+            let keys: Vec<String> = cites.iter().map(|c| format!("@{}", c.key)).collect();
+            out.push('[');
+            out.push_str(&keys.join("; "));
+            out.push(']');
+        }
+        InlineKind::WikiLink { path, alias } => out.push_str(alias.as_deref().unwrap_or(path)),
+        InlineKind::FootnoteRef(n) => {
+            out.push_str("[^");
+            out.push_str(n);
+            out.push(']');
+        }
+        InlineKind::EqRef { label, number } => match number {
+            Some(n) => out.push_str(&format!("({n})")),
+            None => out.push_str(&format!("({label})")),
+        },
+        InlineKind::Math(_) => out.push_str("$…$"),
+    }
+}
+
 /// Checks every `[@key]` against the entries written in the file plus `extra`
 /// (the entries read from a `References from [[file]]` file): an unknown key is an
 /// error, and so is a key defined twice.
 pub fn citation_diagnostics(doc: &Document, extra: &[Reference]) -> Vec<Diagnostic> {
     let mut known: HashMap<&str, ()> = HashMap::new();
     let mut diags = Vec::new();
-    for r in doc.reference_entries().into_iter().chain(extra.iter()) {
+    let listed = doc.reference_list_entries();
+    for r in doc
+        .reference_entries()
+        .into_iter()
+        .chain(extra.iter())
+        .chain(listed.iter())
+    {
         if known.insert(r.key.as_str(), ()).is_some() {
             diags.push(Diagnostic::error(
                 r.span,

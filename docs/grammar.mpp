@@ -30,9 +30,12 @@ comment       = ( "% " { any_char } NL ) { "% " { any_char } NL }
               | "%{" { any_char | NL } "%}" NL ;           (* formatted comment (§6) *)
 title_line    = ( "Title:" | "Author:" | "Date:" | "Abstract:" ) " " inline NL ;   (* only before the first real block (§6) *)
 references    = "References" [ ":" ] NL { ref_entry NL } | "References from " wiki_link NL ;   (* §6 *)
-theorem       = "**" theorem_kind "." "**" " " paragraph_text ;
+theorem       = "**" theorem_kind [ " " thm_number ] ( "." "**" [ " (" inline ")" ] [ "." ]
+                                                 | "**" ( " (" inline ")" "." | "." ) )
+                " " paragraph_text ;                        (* **Lemma 2.**, **Lemma 1** (Scaling)., **Proof** (pairing). (§6.4) *)
 theorem_kind  = "Definition" | "Theorem" | "Lemma" | "Corollary"
-              | "Proposition" | "Example" | "Remark" | "Proof" ;
+              | "Proposition" | "Example" | "Remark" | "Proof" | "Conjecture" ;
+thm_number    = ( letter | digit ) { letter | digit | "." } ;
 paragraph     = paragraph_text ;                           (* lines up to a BLANK *)
 paragraph_text= inline { NL inline } ( BLANK | EOF ) ;
 ```
@@ -316,3 +319,34 @@ key           = { letter | digit | "_" | "-" | ":" | "." | "/" }- ;
 - `%cite numbered` (the default): citations read `[1]`, numbered in order of first citation, and the list is in that order, uncited entries last. `%cite author-year`: citations read `(Knuth 1984)` (`(Smith and Lee 2001)`, `(Walker et al. 2014)`), and the list is alphabetical. Authors are separated by ` and ` or `;`, and a surname is the part before the first comma, or the last word.
 - `%number sections`: headings are numbered (`1`, `1.1`) and theorem-style blocks are numbered per section (`Theorem 2.1`, counting from 1 in each top-level section; `Remark` and `Proof` are not numbered). When the file has exactly one `#` heading and deeper ones, the `#` is the title and the `##` headings are the sections. Without it theorems are numbered in one sequence (`Theorem 1`, `Theorem 2`).
 - Proofs always end with `∎`, written or added. Footnotes are numbered superscripts with the notes collected at the end. Equations that have a `\label` are numbered and `\eqref` links to them.
+
+### 6.4 Proofs written as steps
+
+A proof that the checker can follow is a numbered list inside a `**Proof.**` block. Each step is a claim, then a long dash and its reason. A heading may carry a number and a title in brackets: `**Theorem 2** (Euclid).`, `**Lemma 2.**`, `**Proof** (by induction on $n$).`. A `**Conjecture 3.**` block states something not yet proved; a proof after it is checked like any other.
+
+```
+proof_steps   = { step_item }- ;                           (* an ordered list inside the proof *)
+step_item     = digit { digit } ". " [ step_label ] claim [ reason ] { note } NL { "  " step_item } ;
+step_label    = "Base case:" | "Inductive step:" | "Case " inline ":" ;
+claim         = inline ;                                   (* prose and $…$ maths: the relations in it are what gets checked *)
+reason        = ( " — " | " -- " ) ( "by " reason_text | note ) [ "." ] ;
+reason_text   = "assumption" [ " (" any ")" ] | "hypothesis" | "construction" | "definition"
+              | "contradiction" | "induction" [ " on " inline ] | "cases"
+              | ref { ( " and " | ", " ) ( ref | rule ) }
+              | rule { ( " and " | ", " ) ( ref | rule ) } ;
+ref           = ( "step" | "steps" ) " " step_list
+              | ( "Lemma" | "Theorem" | "Corollary" | "Proposition" | "Conjecture" ) " " thm_number
+              | eqref ;
+step_list     = range { ( ", " | " and " ) range } ;
+range         = integer [ ( "–" | "-" ) integer ] ;
+rule          = inline ;                                   (* the algebra, the chain rule, the binomial theorem … *)
+note          = "*(gap: " inline ")*"                      (* not yet justified *)
+              | "*(cited: " inline citation ")*"            (* an established result from the literature *)
+              | "*(external: " citation ")*" ;              (* a claim made elsewhere that nobody here has verified *)
+```
+
+- A note may stand alone after the dash (`— *(cited: … [@key])*`) or follow a reason (`— by the divergence theorem *(gap: decay at infinity)*`); a gap note always wins over the reason.
+- In a claim, maths after "if", "suppose", "assume" or "let" is a hypothesis of the step, not something it claims. A step whose reason is `by assumption`, `by construction` or `by definition` introduces everything in it.
+- A cited or external note must name its source with a citation; the key must have an entry in the file's references (a `References` block, `References from [[file]]`, or a list of `- [@key] …` items under a heading "References").
+- The ∎ (or `\qed`) that closes the proof may sit on the line after the last step.
+- Statuses (✓ ≈ ⊢ ◇ 📖 ⚠ ✗) and the theorem's summary are computed by the checker and shown in the equation view only; they are never written into the file.

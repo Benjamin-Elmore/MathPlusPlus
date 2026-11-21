@@ -294,6 +294,7 @@ pub fn italic_body(kind: TheoremKind) -> bool {
             | TheoremKind::Lemma
             | TheoremKind::Corollary
             | TheoremKind::Proposition
+            | TheoremKind::Conjecture
     )
 }
 
