@@ -832,6 +832,11 @@ impl<'a> Lowerer<'a> {
                 if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
                     return self.unknown_fn_call(&key, 0, arg);
                 }
+                // `u(0, t)`, `u(x, 0)`: the unknown of a partial differential equation at
+                // a point, which its solver reads as a condition.
+                if args.len() >= 2 && self.is_unknown_fn(&key) {
+                    return Ok(Expr::apply(&key, self.lower_all(args)?));
+                }
                 // The Heaviside step and the Dirac delta, when the names are free.
                 if let ([arg], Some(special)) = (args, special_function(&key)) {
                     if !self.is_bound_letter(&key) {
@@ -854,6 +859,24 @@ impl<'a> Lowerer<'a> {
                 }
             }
             if let Some(params) = self.function_params(&key) {
+                // `V(t)` for `V(x, y)` whose parameters are the unknowns of the
+                // document's differential equations, now functions of t: the physics
+                // shorthand for V(x(t), y(t)).
+                if let ([arg], true) = (args, params.len() >= 2) {
+                    let along_solution = params.iter().all(|p| {
+                        !self.is_local(p)
+                            && self.scope.is_ode_unknown(p)
+                            && self.function_params(p).is_some_and(|q| q.len() == 1)
+                    });
+                    if along_solution {
+                        let t = self.lower(arg)?;
+                        let at: Vec<Expr> = params
+                            .iter()
+                            .map(|p| Expr::apply(p, vec![t.clone()]))
+                            .collect();
+                        return Ok(Expr::apply(&key, at));
+                    }
+                }
                 if params.len() != args.len() {
                     return Err(fail(
                         span,
@@ -1007,8 +1030,47 @@ impl<'a> Lowerer<'a> {
     }
 
     fn func_app(&mut self, app: &FuncApp, span: Span) -> LowerResult {
-        let args = self.lower_all(&app.args)?;
         let name = app.func;
+        // `\max_{t \in [0, 50]} f(t)`: the extremum over an interval.
+        if let (Some(sub), "max" | "min", false) = (&app.sub, name, app.inverse) {
+            if let NodeKind::Relation { first, rest } = &sub.ungrouped().kind {
+                if let (Some(var), [(mpp_syntax::math::RelOp::In, set)]) =
+                    (node_key(first), rest.as_slice())
+                {
+                    let set = self.lower(set)?;
+                    let ExprNode::Interval { lo, hi, .. } = set.node() else {
+                        return Err(fail(
+                            sub.span,
+                            EvalError::Unsupported(format!(
+                                "{name} over a set that is not an interval"
+                            )),
+                        ));
+                    };
+                    let body =
+                        self.bound(std::slice::from_ref(&var), |s| s.lower_all(&app.args))?;
+                    let [body] = <[Expr; 1]>::try_from(body).map_err(|_| {
+                        fail(
+                            span,
+                            EvalError::Unsupported(format!(
+                                "{name} over an interval of several values"
+                            )),
+                        )
+                    })?;
+                    let op = if name == "max" {
+                        crate::extremum::MAX_OVER
+                    } else {
+                        crate::extremum::MIN_OVER
+                    };
+                    let value =
+                        Expr::apply(op, vec![body, Expr::sym(&var), lo.clone(), hi.clone()]);
+                    return match &app.power {
+                        Some(p) => Ok(value.pow(self.lower(p)?)),
+                        None => Ok(value),
+                    };
+                }
+            }
+        }
+        let args = self.lower_all(&app.args)?;
         if let ([one], "max" | "min", None, false) = (args.as_slice(), name, &app.sub, app.inverse)
         {
             if one.as_sym().is_some_and(|s| self.is_column(s)) {
@@ -1395,6 +1457,27 @@ impl<'a> Lowerer<'a> {
     }
 
     fn named_op(&mut self, op: &NamedOp) -> LowerResult {
+        // `\operatorname{solve}_{x, y}(…)`: the unknowns are plain variables inside, even
+        // when the names are defined (as functions of t, say) elsewhere.
+        if matches!(op.name.as_str(), "solve" | "nsolve") {
+            if let Some(sub) = &op.sub {
+                let names: Vec<String> = match &sub.ungrouped().kind {
+                    NodeKind::Tuple { elems, .. } => elems.iter().filter_map(node_key).collect(),
+                    _ => node_key(sub.ungrouped()).into_iter().collect(),
+                };
+                let fresh: Vec<String> = names
+                    .into_iter()
+                    .filter(|n| !self.is_local(n) && self.function_params(n).is_some())
+                    .collect();
+                if !fresh.is_empty() {
+                    return self.bound(&fresh, |s| s.named_op_plain(op));
+                }
+            }
+        }
+        self.named_op_plain(op)
+    }
+
+    fn named_op_plain(&mut self, op: &NamedOp) -> LowerResult {
         let analysed = crate::helpers::is_helper(&op.name);
         let mut args = op
             .args

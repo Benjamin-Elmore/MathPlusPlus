@@ -35,7 +35,9 @@ fn numeric_note(what: &str) -> String {
 /// Evaluates a calculus holder; `None` for nodes that are not calculus.
 pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     match e.node() {
-        ExprNode::Derivative { expr, vars } => Some(derivative(expr, vars, ctx)),
+        ExprNode::Derivative { expr, vars } => {
+            Some(derivative(expr, vars, ctx).map(|d| crate::ivp_wire::tidy(&d)))
+        }
         ExprNode::Integral { .. } => Some(integral(e, ctx)),
         ExprNode::Limit {
             expr,

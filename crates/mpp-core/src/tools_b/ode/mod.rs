@@ -12,6 +12,7 @@
 //! returned; one that fails the check is discarded.
 
 pub mod first_order;
+pub mod ivp;
 pub mod laplace;
 pub mod linear;
 pub mod linsys;

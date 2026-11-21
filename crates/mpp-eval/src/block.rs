@@ -1353,6 +1353,44 @@ impl Run<'_, '_> {
         }
     }
 
+    /// A partial differential equation with its boundary and initial conditions
+    /// (`u_t = α u_xx, u(0, t) = u(L, t) = 0, u(x, 0) = f(x)`): when it is solved, the
+    /// solution defines u for the lines below that use it.
+    fn define_pde_solution(&mut self, line: &Line, e: &Expr, u: String, s: &Scope) {
+        if !self.inputs.called.contains(&u) {
+            return;
+        }
+        let resolve = |run: &Self, x: &Expr| {
+            run.resolve_full(x, s.locals, &[], false, false)
+                .value
+                .ok()
+                .map(|v| v.simplify())
+        };
+        let Some(eq) = resolve(self, e) else {
+            return;
+        };
+        let conditions: Vec<Expr> = s
+            .conditions
+            .iter()
+            .filter_map(|c| self.lower(c, s.names).ok())
+            .filter_map(|c| resolve(self, &c))
+            .collect();
+        match crate::pde_wire::solve(&eq, &conditions, &u) {
+            Ok(sol) => {
+                self.warn(line.span, sol.method);
+                self.define(
+                    &u,
+                    Binding::Function {
+                        params: sol.params,
+                        body: sol.body,
+                        origin: self.origin(line.span),
+                    },
+                );
+            }
+            Err(err) => self.warn(line.span, format!("{u} is not defined: {err}")),
+        }
+    }
+
     /// `\frac{dN}{dt} = -\lambda N, \quad N(0) = N_0` written as a statement: when the
     /// equation (or system) and its conditions determine the unknown functions
     /// exactly, the solution defines them, so later lines can use `N(t)`, `N(10)` or
@@ -1362,10 +1400,27 @@ impl Run<'_, '_> {
         if self.unknown_fns.is_empty() {
             return;
         }
+        if let [u] = self.unknown_fns.as_slice() {
+            if crate::pde_wire::is_pde(e, u) {
+                return self.define_pde_solution(line, e, u.clone(), s);
+            }
+        }
         let Some(call) = self.ode_input(e, s) else {
             return;
         };
+        // The solution defines functions: an explicit one, or else a numerical one.
+        let call = match call.node() {
+            ExprNode::Apply(name, args) if &**name == "dsolve" => {
+                let mut args = args.clone();
+                args.push(Expr::sym(crate::helpers_b::FUNCTION_MARKER));
+                Expr::apply(name, args)
+            }
+            _ => call,
+        };
         let r = self.resolve_full(&call, s.locals, &[], false, false);
+        for note in r.notes.iter().filter(|n| n.contains("numerical")) {
+            self.warn(line.span, note.clone());
+        }
         let Ok(value) = r.value.and_then(|v| self.finish_value(v)) else {
             return;
         };

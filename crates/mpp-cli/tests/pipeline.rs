@@ -50,8 +50,6 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
     ("labs/03-damped-spring.mpp", "needs Ben: T_d = 2π/√39.84 s = 0.99545172… s, which rounds to 0.9955, not the expected 0.9954 (0.9954 is the value cut off after four decimals); everything else passes, including the ODE solution with units and the check dE/dt ≤ 0 for all t ≥ 0"),
     ("labs/06-reaction-kinetics.mpp", "needs design (for Ben): a definition whose head is an expression (`\\frac{k(T_2)}{k(T_1)} := …` with where-clauses), bracket names `[A]_0` and the function `[A](t)`, and a fit of `ln k = ln A − (E_a/R)(1/T)` where E_a is already defined, with `E_{a,fit}` read as its fitted value"),
     ("labs/07-boyles-law.mpp", "for Ben: the least-squares slope of the table is 99.30 J (within the stated 0.5 of 99.2), so the recovered amount is n_fit = 0.04006 mol, which rounds to 0.0401, not the expected 0.0400; and `R^2 ≈ ?` is the square of the gas constant R defined above, not the fit's coefficient of determination (the fit line reports R² ≈ 0.999985 itself)"),
-    ("labs/09-predator-prey.mpp", "`\\max_{t \\in [0, 50]} |V(t) − V(0)|` writes V with one argument for V(x(t), y(t)), and the nonlinear system needs a numerical (RK45) solution defined from the statement; the equilibrium (4, 11/4) and the chain rule for dV/dt are computed"),
-    ("labs/10-heat-rod.mpp", "PDE statements (the heat equation with boundary and initial conditions, by separation of variables) do not define u(x, t) yet"),
     ("labs/11-monte-carlo-pi.mpp", "`\\hat\\pi :=` as a definition head, random variables `X_j, Y_j \\sim \\mathrm{Uniform}[0, 1]` summed over samples, and p is defined only in prose (`$p = \\pi/4$` in a sentence is not a definition)"),
 ];
 

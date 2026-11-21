@@ -804,6 +804,7 @@ pub fn ode_statement(e: &Expr, conditions: &[Expr], ctx: &Ctx<'_>) -> Option<Mat
     };
     Some(ode::dsolve(&call, ctx))
 }
+pub(crate) use ode::FUNCTION_MARKER;
 
 /// The differential-equation operators: `dsolve`, `laplace`, `invlaplace` and the PDE
 /// helpers.
@@ -815,6 +816,17 @@ mod ode {
 
     use super::{keyword, logged, missing, to_f64, Call};
     use crate::holders::Ctx;
+
+    /// An argument of `dsolve` saying the solution will define the unknowns: an
+    /// explicit solution, or else a numerical one usable at any point (never a
+    /// truncated series or an implicit relation).
+    pub(crate) const FUNCTION_MARKER: &str = "#as function";
+
+    const NUMERIC_NOTE: &str = "no closed form was found, so the solution is numerical (RK45, tolerance 10⁻¹²), computed wherever it is used";
+
+    pub(crate) fn is_function_marker(e: &Expr) -> bool {
+        e.as_sym() == Some(FUNCTION_MARKER)
+    }
 
     /// Reads conditions: `y(a) = v`, `y′(a) = v` (as `subs` holders), or a tuple
     /// `(x₀, y₀, y′₀, …)` of starting values.
@@ -897,6 +909,13 @@ mod ode {
             .chain(call.sup.iter())
             .cloned()
             .collect();
+        // Asked for a function to define (a statement whose solution later lines use):
+        // an explicit solution, or else a numerical one usable at any point.
+        let as_function = rest.iter().any(is_function_marker);
+        let rest: Vec<Expr> = rest
+            .into_iter()
+            .filter(|a| !is_function_marker(a))
+            .collect();
         let conds = conditions(&rest, &parsed.y)?;
         let mut options = Options {
             y: Some(parsed.y.clone()),
@@ -930,6 +949,21 @@ mod ode {
         } else {
             logged(ctx, |s| core_ode::dsolve(eq, &conds, &options, s))
         };
+        if as_function && !matches!(&exact, Ok(sol) if matches!(sol.form, Form::Explicit(_))) {
+            let unknowns = crate::ivp_wire::Unknowns {
+                names: vec![parsed.y.clone()],
+                orders: vec![parsed.order],
+                var: parsed.x.clone(),
+            };
+            let indexed: Vec<(usize, Condition)> = conds.iter().cloned().map(|c| (0, c)).collect();
+            let sol =
+                crate::ivp_wire::numeric_solution(std::slice::from_ref(eq), &unknowns, &indexed)?;
+            ctx.note(NUMERIC_NOTE);
+            return match sol.node() {
+                ExprNode::Tuple(items) if items.len() == 1 => Ok(items[0].clone()),
+                _ => Ok(sol),
+            };
+        }
         match exact {
             Ok(sol) => {
                 ctx.note(format!("{}: {}", sol.method, sol.verified.describe()));
@@ -1012,7 +1046,12 @@ mod ode {
     /// A system whose equations do not couple (`ẍ = −k ẋ`, `ÿ = −g − k ẏ`): each
     /// equation is solved alone with its own conditions. `None` when an equation
     /// involves another unknown, or a condition cannot be given to one unknown.
-    fn decoupled(eqs: &[Expr], rest: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    fn decoupled(
+        eqs: &[Expr],
+        rest: &[Expr],
+        as_function: bool,
+        ctx: &Ctx<'_>,
+    ) -> Option<MathResult<Expr>> {
         let mut unknowns = Vec::with_capacity(eqs.len());
         for eq in eqs {
             let mut own = Vec::new();
@@ -1042,6 +1081,9 @@ mod ode {
         for (eq, conds) in eqs.iter().zip(per) {
             let mut args = vec![eq.clone()];
             args.extend(conds);
+            if as_function {
+                args.push(Expr::sym(FUNCTION_MARKER));
+            }
             let one = Expr::apply("dsolve", args);
             match crate::holders::evaluate_holder(&one, ctx) {
                 Ok(v) if matches!(v.node(), ExprNode::Relation(RelOp::Eq, ..)) => solutions.push(v),
@@ -1053,9 +1095,94 @@ mod ode {
     }
 
     fn system(eqs: &[Expr], rest: &[Expr], ctx: &Ctx<'_>) -> MathResult<Expr> {
-        if let Some(r) = decoupled(eqs, rest, ctx) {
-            return r;
+        let as_function = rest.iter().any(is_function_marker);
+        let rest: Vec<Expr> = rest
+            .iter()
+            .filter(|a| !is_function_marker(a))
+            .cloned()
+            .collect();
+        let exact = match decoupled(eqs, &rest, as_function, ctx) {
+            Some(r) => r,
+            None => linear_system(eqs, &rest, ctx),
+        };
+        match exact {
+            Err(
+                MathError::NoClosedForm(_) | MathError::Unsupported(_) | MathError::Inconclusive(_),
+            ) if as_function => {
+                let sol = numeric_system(eqs, &rest)?;
+                ctx.note(NUMERIC_NOTE);
+                Ok(sol)
+            }
+            r => r,
         }
+    }
+
+    /// A system with no closed form, as numerical functions (see [`crate::ivp_wire`]).
+    fn numeric_system(eqs: &[Expr], rest: &[Expr]) -> MathResult<Expr> {
+        let mut names: Vec<String> = Vec::new();
+        let mut orders: Vec<u32> = Vec::new();
+        let mut var: Option<String> = None;
+        fn walk(
+            e: &Expr,
+            names: &mut Vec<String>,
+            orders: &mut Vec<u32>,
+            var: &mut Option<String>,
+        ) {
+            if let ExprNode::Derivative { expr, vars } = e.node() {
+                let name = match expr.node() {
+                    ExprNode::Sym(s) => Some(s.to_string()),
+                    ExprNode::Apply(f, args) if args.len() == 1 => Some(f.to_string()),
+                    _ => None,
+                };
+                if let (Some(n), [(v, k)]) = (name, vars.as_slice()) {
+                    var.get_or_insert_with(|| v.to_string());
+                    match names.iter().position(|m| *m == n) {
+                        Some(i) => orders[i] = orders[i].max(*k),
+                        None => {
+                            names.push(n);
+                            orders.push(*k);
+                        }
+                    }
+                }
+            }
+            for c in e.children() {
+                walk(c, names, orders, var);
+            }
+        }
+        for eq in eqs {
+            walk(eq, &mut names, &mut orders, &mut var);
+        }
+        let var = var.ok_or_else(|| missing("dsolve", "a derivative"))?;
+        let mut conds = Vec::new();
+        for c in rest {
+            let (Some(u), ExprNode::Relation(RelOp::Eq, l, r)) =
+                (condition_unknown(c, &names), c.node())
+            else {
+                continue;
+            };
+            let i = names.iter().position(|n| *n == u).unwrap_or(0);
+            if let Some(cond) = condition_of(l, r, &u) {
+                conds.push((i, cond));
+            }
+        }
+        // Each equation goes with the unknown it differentiates most.
+        let mut ordered: Vec<Expr> = Vec::with_capacity(names.len());
+        for (u, k) in names.iter().zip(&orders) {
+            let eq = eqs
+                .iter()
+                .find(|eq| {
+                    let (mut n, mut o, mut v) = (Vec::new(), Vec::new(), None);
+                    walk(eq, &mut n, &mut o, &mut v);
+                    n.iter().zip(&o).any(|(m, j)| m == u && j == k) && !ordered.contains(eq)
+                })
+                .ok_or_else(|| missing("dsolve", "one equation for each unknown"))?;
+            ordered.push(eq.clone());
+        }
+        let unknowns = crate::ivp_wire::Unknowns { names, orders, var };
+        crate::ivp_wire::numeric_solution(&ordered, &unknowns, &conds)
+    }
+
+    fn linear_system(eqs: &[Expr], rest: &[Expr], ctx: &Ctx<'_>) -> MathResult<Expr> {
         let mut initial: Option<Vec<Expr>> = rest.iter().find_map(|a| match a.node() {
             ExprNode::Tuple(v) if v.iter().all(Expr::is_constant) => Some(v.clone()),
             _ => None,

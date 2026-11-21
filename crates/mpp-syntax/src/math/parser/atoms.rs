@@ -363,7 +363,18 @@ impl Parser<'_> {
         if inverse {
             power = None;
         }
-        let (args, bracketed, end) = if self.at(|t| {
+        // `\max_{t \in [0, 50]} (x - 1)^2 + …`: over a range, max and min take the whole
+        // term after them, as a sum does.
+        let over_range = matches!(sym.name, "max" | "min")
+            && sub.as_ref().is_some_and(|s| {
+                matches!(&s.ungrouped().kind, NodeKind::Relation { rest, .. }
+                    if rest.len() == 1 && rest[0].0 == RelOp::In)
+            });
+        let (args, bracketed, end) = if over_range && !inverse {
+            let body = self.op_body(&format!("the term after `{}`", self.text(start)));
+            let end = body.span;
+            (vec![body], false, end)
+        } else if self.at(|t| {
             matches!(
                 t,
                 Tok::Open {

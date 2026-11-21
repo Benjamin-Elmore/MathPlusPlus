@@ -221,6 +221,8 @@ impl Default for Holders {
         h.register(crate::units_wire::evaluate_solve);
         // A differential equation with units, before the plain ODE solver.
         h.register(crate::units_ode::evaluate);
+        h.register(crate::ivp_wire::evaluate);
+        h.register(crate::extremum::evaluate);
         h
     }
 }

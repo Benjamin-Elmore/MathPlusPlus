@@ -561,3 +561,102 @@ fn sums_and_products_written_with_an_ellipsis() {
     // A last term the progression never reaches is not guessed at.
     assert!(!errors(r"$$ 1 + 4 + \dots + 99 = ? $$").is_empty());
 }
+
+#[test]
+fn numerical_solutions_define_functions() {
+    let src = r"Let $\alpha := 1.1$, $\beta := 0.4$, $\delta := 0.1$ and $\gamma := 0.4$.
+
+$$ \dot x = \alpha x - \beta x y, \quad \dot y = \delta x y - \gamma y, \quad x(0) = 10, \ y(0) = 5 $$
+
+$$ V(x, y) := \delta x - \gamma \ln x + \beta y - \alpha \ln y $$
+$$ \frac{d}{dt} V\big(x(t), y(t)\big) = ? $$
+$$ \max_{t \in [0, 50]} \frac{|V(t) - V(0)|}{|V(0)|} \approx ? $$
+$$ x(0) \approx ? $$";
+    let ev = run(src);
+    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    assert!(errs.is_empty(), "{errs:?}");
+    let shown: Vec<(Option<String>, Option<String>)> = ev
+        .queries()
+        .map(|(_, l)| (l.plain.clone(), l.approx.clone()))
+        .collect();
+    // The chain rule on the numerical solution: V is conserved exactly.
+    assert_eq!(shown[0].0.as_deref(), Some("0"));
+    let drift: f64 = shown[1]
+        .1
+        .as_deref()
+        .unwrap_or("")
+        .replace(" × 10⁻", "e-")
+        .replace(['¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹', '⁰'], "")
+        .split('e')
+        .next()
+        .and_then(|m| m.parse().ok())
+        .unwrap_or(f64::NAN);
+    assert!(drift.is_finite(), "{shown:?}");
+    assert_eq!(shown[2].1.as_deref(), Some("10"));
+    // The harmonic oscillator through the numerical path agrees with cos t.
+    let src = r"$$ \ddot\theta + \sin\theta = 0, \quad \theta(0) = 0.1, \ \dot\theta(0) = 0 $$
+
+$$ \theta(1) \approx ? $$";
+    let v: f64 = approx(src).parse().unwrap_or(f64::NAN);
+    // For a small swing, θ ≈ 0.1 cos t (to the size of the nonlinearity).
+    assert!((v - 0.1 * 1f64.cos()).abs() < 1e-3, "{v}");
+}
+
+#[test]
+fn maxima_and_minima_over_an_interval() {
+    assert_eq!(approx(r"$$ \max_{x \in [0, 2]} x(2 - x) \approx ? $$"), "1");
+    assert_eq!(
+        approx(r"$$ \min_{x \in [0, 4]} (x - 1)^2 + 3 \approx ? $$"),
+        "3"
+    );
+    assert_eq!(
+        approx(r"$$ \max_{t \in [0, 5]} |\sin t - 0.5| \approx ? $$"),
+        "1.5"
+    );
+}
+
+#[test]
+fn heat_and_wave_equations_written_as_statements() {
+    // One sine mode decays on its own, with units carried through.
+    let src = r"Let $L := 1\,\mathrm m$ and $\alpha := 1.0 \times 10^{-4}\,\mathrm{m^2/s}$.
+
+$$ \frac{\partial u}{\partial t} = \alpha \frac{\partial^2 u}{\partial x^2}, \quad u(0, t) = u(L, t) = 0, \quad u(x, 0) = 100\,\mathrm K \cdot \sin\frac{\pi x}{L} $$
+
+$$ \frac{\partial u}{\partial t} - \alpha \frac{\partial^2 u}{\partial x^2} \overset{?}{=} 0 $$
+$$ \operatorname{solve}_t \Big(u\big(\tfrac L2, t\big) = 50\,\mathrm K\Big) \approx ? $$";
+    let ev = run(src);
+    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    assert!(errs.is_empty(), "{errs:?}");
+    let lines: Vec<_> = ev.queries().map(|(_, l)| l.clone()).collect();
+    assert_eq!(
+        lines[0].verdict.as_ref().and_then(|v| v.passed()),
+        Some(true)
+    );
+    // ln 2 / (α π² / L²) = 702.3049 s.
+    assert_eq!(lines[1].approx.as_deref(), Some("{702.3049277 s}"));
+    // Two modes and the wave equation, without units.
+    let src = r"$$ \frac{\partial^2 u}{\partial t^2} = 4 \frac{\partial^2 u}{\partial x^2}, \quad u(0, t) = 0, \ u(\pi, t) = 0, \quad u(x, 0) = \sin x + 3 \sin 2x $$
+
+$$ u(1, 2) \approx ? $$";
+    let ev = run(src);
+    let want = (1f64).sin() * (4f64).cos() + 3.0 * (2f64).sin() * (8f64).cos();
+    let got: Option<f64> = ev
+        .queries()
+        .filter_map(|(_, l)| l.approx.clone())
+        .next()
+        .and_then(|a| a.parse().ok());
+    assert!(
+        got.is_some_and(|g| (g - want).abs() < 1e-9),
+        "{got:?} vs {want}"
+    );
+    // The Fourier series for data that are not whole modes (no units): u(x, t) is a
+    // series, and data with sines that are not modes are refused, never guessed.
+    let src = r"$$ \frac{\partial u}{\partial t} = \frac{\partial^2 u}{\partial x^2}, \quad u(0, t) = u(1, t) = 0, \quad u(x, 0) = \sin(\pi x / 2) $$
+
+$$ u(x, t) = ? $$";
+    let ev = run(src);
+    assert!(ev
+        .all_diagnostics()
+        .iter()
+        .any(|d| d.message.contains("u is not defined")));
+}
