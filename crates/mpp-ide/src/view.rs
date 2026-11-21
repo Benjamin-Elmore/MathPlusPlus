@@ -252,6 +252,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                         .is_some_and(|p| r.contains(p))
             });
             let mut moved = false;
+            let mark = doc.editor.line_mark();
             let step_click = ui
                 .input(|i| i.pointer.primary_pressed())
                 .then(|| resp.interact_pointer_pos().or_else(|| resp.hover_pos()))
@@ -287,6 +288,10 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             }
             if focused && !cx.insert.menu.open && !cx.diag.menu_open() {
                 moved |= handle_keys(ui, doc, &pc0, cx, &mut events);
+            }
+            // Auto-detect: the line the caret just left may read as maths (U12).
+            if focused && crate::page::mode::auto_detect(ui, doc, mark) {
+                moved = true;
             }
             if cx.active && !focused {
                 f8_from_elsewhere(ui, doc, &pc0, cx, resp.id);
@@ -963,6 +968,11 @@ fn insert_menu(
             doc.touched();
             ui.memory_mut(|m| m.request_focus(page_id));
         }
+        insert::menu::Outcome::Insert { id, .. } if id == crate::page::mode::MATHS_LINE => {
+            make_maths(doc, doc.editor.caret());
+            cx.insert.settings.touch(&id);
+            ui.memory_mut(|m| m.request_focus(page_id));
+        }
         insert::menu::Outcome::Insert { id, knobs } => {
             if let Some(t) = insert::find(&id) {
                 let caret = doc.editor.caret();
@@ -1161,6 +1171,10 @@ fn paint_page(
             c32(theme.placeholder_label),
         );
     }
+    // An empty file says how to start (U12).
+    if focused {
+        crate::page::mode::paint_empty_hint(painter, doc, page, origin, theme, cx.size);
+    }
     // The one-time hint of the last edit, under the caret.
     if let (Some(h), Some(s)) = (doc.editor.hint(), page.caret_stop(doc.editor.caret())) {
         let at = Pos2::new(origin.x + s.x + 12.0, origin.y + s.bottom + 6.0);
@@ -1248,12 +1262,20 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     let in_math = pc.page.in_math(doc.editor.caret());
     for ch in text.chars().filter(|c| !c.is_control()) {
         let s = ch.to_string();
+        // The closing `$$` of a maths line is stepped over (U12).
+        if doc.editor.maths_before_char(ch) {
+            continue;
+        }
         if !in_math {
             doc.editor.before_type(ch);
         }
         doc.editor.insert_text(&s);
         if !in_math {
             doc.editor.after_type(ch);
+            // `$`, `=` or `:=` on an empty line starts a maths line (U12).
+            if doc.editor.maths_after_char(&mut doc.maths, ch) {
+                continue;
+            }
         }
         if in_math && cx.insert.settings.shortcuts {
             let caret = doc.editor.caret();
@@ -1416,6 +1438,10 @@ fn key_pressed(
     let caret = doc.editor.caret();
     let in_math = page.in_math(caret);
     let shift = mods.shift;
+    if mods.alt && !mods.command && key == Key::Equals {
+        // Alt+= (as in Word): this line becomes maths.
+        return make_maths(doc, caret);
+    }
     if mods.command {
         match key {
             Key::Period => {
@@ -1619,6 +1645,16 @@ fn key_pressed(
 }
 
 /// Tab outside a tracked template: the next (or previous) empty box on the page.
+/// Alt+= and Insert → Maths line: the caret's line becomes maths (one undo step).
+fn make_maths(doc: &mut Doc, caret: usize) -> bool {
+    let done = doc.editor.make_maths(caret);
+    if done {
+        doc.touched();
+        doc.want_x = None;
+    }
+    done
+}
+
 /// Ctrl+M: flips the caret's line between maths and prose (one undo step).
 fn flip_maths(doc: &mut Doc, caret: usize) -> bool {
     let done = doc.editor.flip_maths(&mut doc.maths, caret);

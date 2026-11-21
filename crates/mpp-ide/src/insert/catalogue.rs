@@ -1891,6 +1891,16 @@ fn build_catalogue() -> Vec<Template> {
             k(),
         )
     });
+    // A maths line: the view makes the caret's line maths (U12).
+    v.push(item(
+        "text.mathsline",
+        &[Group::Text],
+        "Maths line",
+        r"\sum x",
+        "maths math line equation formula display block",
+        Body::Block("$$ ⟨⟩ $$"),
+        k(),
+    ));
     for (id, group, name, icon, words, body) in text_items {
         v.push(item(
             id,

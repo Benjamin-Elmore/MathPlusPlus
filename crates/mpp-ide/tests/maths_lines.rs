@@ -32,6 +32,13 @@ fn text_of(h: &Harness<'static, IdeApp>) -> String {
     h.state().doc().expect("doc").editor.text().to_string()
 }
 
+fn type_text(h: &mut Harness<'static, IdeApp>, s: &str) {
+    for c in s.chars() {
+        h.event(Event::Text(c.to_string()));
+        h.step();
+    }
+}
+
 fn press(h: &mut Harness<'static, IdeApp>, mods: Modifiers, key: Key) {
     h.key_press_modifiers(mods, key);
     h.step();
@@ -142,4 +149,104 @@ fn a_maths_box_looks_the_same_in_light_and_dark() {
         egui_kittest::try_image_snapshot_options(&img, name, &opts)
             .unwrap_or_else(|e| panic!("{name}: {e}"));
     }
+}
+
+#[test]
+fn a_finished_line_that_reads_as_maths_becomes_maths_and_ctrl_z_keeps_it_as_text() {
+    // Ben's video: a heading, then `x := 5` typed on a new line and Enter.
+    let src = "# This is a test\n\n";
+    let mut h = harness(app_with(src, src.len()));
+    h.run_steps(3);
+    type_text(&mut h, "x := 5");
+    assert_eq!(
+        text_of(&h),
+        "# This is a test\n\nx := 5",
+        "nothing changes while typing"
+    );
+    press(&mut h, Modifiers::NONE, Key::Enter);
+    assert_eq!(text_of(&h), "# This is a test\n\n$$ x := 5 $$\n\n");
+    h.run_steps(2);
+    assert_eq!(bands(&h).len(), 1);
+    let hint = h
+        .state()
+        .doc()
+        .and_then(|d| d.editor.hint().map(str::to_string));
+    assert!(
+        hint.is_some_and(|t| t.contains("Ctrl+Z")),
+        "a one-time hint"
+    );
+    // The caret is on the new line, in prose.
+    let doc = h.state().doc().expect("doc");
+    assert_eq!(doc.editor.caret(), doc.editor.text().len());
+    // The first Ctrl+Z undoes only the detection.
+    press(&mut h, Modifiers::COMMAND, Key::Z);
+    assert_eq!(text_of(&h), "# This is a test\n\nx := 5\n\n");
+    // Prose stays prose.
+    type_text(&mut h, "Some ordinary words");
+    press(&mut h, Modifiers::NONE, Key::Enter);
+    assert!(text_of(&h).ends_with("Some ordinary words\n\n"));
+}
+
+#[test]
+fn equals_or_dollar_on_an_empty_line_starts_a_maths_line() {
+    let src = "Intro words.\n\n";
+    let mut h = harness(app_with(src, src.len()));
+    h.run_steps(3);
+    type_text(&mut h, "=");
+    assert_eq!(text_of(&h), "Intro words.\n\n$$  $$");
+    type_text(&mut h, "1 + 2 = ?");
+    assert_eq!(text_of(&h), "Intro words.\n\n$$ 1 + 2 = ? $$");
+    // A LaTeX user typing the dollars by hand gets the same line, once.
+    let mut h = harness(app_with(src, src.len()));
+    h.run_steps(3);
+    type_text(&mut h, "$$ y := 2 $$");
+    assert_eq!(text_of(&h), "Intro words.\n\n$$ y := 2 $$");
+    h.run_steps(2);
+    let doc = h.state().doc().expect("doc");
+    assert_eq!(
+        doc.editor.caret(),
+        doc.editor.text().len(),
+        "after the closing $$"
+    );
+}
+
+#[test]
+fn alt_equals_makes_the_line_maths() {
+    let src = "Intro words.\n\na + b";
+    let mut h = harness(app_with(src, src.len()));
+    h.run_steps(3);
+    press(&mut h, Modifiers::ALT, Key::Equals);
+    assert_eq!(text_of(&h), "Intro words.\n\n$$ a + b $$");
+    // Already maths: nothing more happens.
+    press(&mut h, Modifiers::ALT, Key::Equals);
+    assert_eq!(text_of(&h), "Intro words.\n\n$$ a + b $$");
+}
+
+#[test]
+fn an_empty_file_says_how_to_start() {
+    let mut h = harness(app_with("", 0));
+    h.run_steps(3);
+    let img = {
+        let _one = RENDER
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        h.render().expect("render")
+    };
+    // The hint is drawn: some grey ink to the right of the caret.
+    let r = h.state().doc().and_then(|d| d.caret_screen).expect("caret");
+    let ppp = h.ctx.pixels_per_point();
+    let (y0, y1) = ((r.top() * ppp) as u32, (r.bottom() * ppp) as u32);
+    let x0 = ((r.right() + 8.0) * ppp) as u32;
+    let bg = img.get_pixel(x0 + 400, y1 + 40).0;
+    let inked = (x0..x0 + 200)
+        .flat_map(|x| (y0..y1).map(move |y| (x, y)))
+        .filter(|&(x, y)| img.get_pixel(x, y).0 != bg)
+        .count();
+    assert!(
+        inked > 50,
+        "no hint beside the caret ({inked} inked pixels)"
+    );
+    // Typing makes it go.
+    type_text(&mut h, "Hello");
+    assert_eq!(text_of(&h), "Hello");
 }

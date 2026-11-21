@@ -223,6 +223,9 @@ fn left_from_the_start_of_a_line_goes_to_the_end_of_the_line_above() {
     let mut app = app_with(src);
     let e = src.find('E').expect("E");
     app.doc_mut().expect("doc").editor.move_caret(e, false);
+    // Only the arrows are tested here: leaving `E = 2x +5` would otherwise
+    // turn it into a maths line (auto-detect, tested in maths_lines.rs).
+    app.doc_mut().expect("doc").maths.auto_off = true;
     let mut h = harness(app);
     h.run_steps(3);
     let on_e = caret_at(&h);
@@ -489,7 +492,9 @@ fn enter_inside_display_maths_makes_a_new_row() {
     plain(&mut h, Key::Enter);
     type_text(&mut h, "y := 2$$");
     let t = text(&h);
-    assert_eq!(t, "$$x := 1 \\\\\ny := 2$$", "one block, a second row");
+    // `$` on the empty line opened the maths line (U12): the editor wrote the
+    // spaces and the closing `$$`, which the typed `$$` stepped over.
+    assert_eq!(t, "$$ x := 1 \\\\\ny := 2 $$", "one block, a second row");
     assert!(!t.contains("\n\n"));
 }
 

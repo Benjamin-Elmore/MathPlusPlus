@@ -504,3 +504,46 @@ fn a_defined_word_is_one_name_where_it_is_used() {
     assert!(names.contains(&"x".to_string()) && names.contains(&"y".to_string()));
     assert!(!names.contains(&"v".to_string()), "{names:?}");
 }
+
+/// The inline maths spans of a one-paragraph document, as source text.
+fn inline_maths(src: &str) -> Vec<String> {
+    use mpp_syntax::document::InlineKind;
+    let doc = parse_document(src);
+    let mut out = Vec::new();
+    for b in &doc.blocks {
+        if let BlockKind::Paragraph(items) = &b.kind {
+            for i in items {
+                if let InlineKind::Math(m) = &i.kind {
+                    out.push(src[m.raw.start..m.raw.end].to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn money_never_starts_maths() {
+    // A dollar sign straight before a digit, or followed by a space, is text.
+    for src in [
+        "It costs $5 today.\n",
+        "Between $5 and $10 each.\n",
+        "From $5-$10.\n",
+        "A $ sign on its own.\n",
+        "Ends with a dollar $\n",
+    ] {
+        let doc = parse_document(src);
+        assert!(inline_maths(src).is_empty(), "{src:?} has maths");
+        assert!(
+            !doc.errors().any(|d| d.message.contains("never closed")),
+            "{src:?} reports an unclosed dollar"
+        );
+    }
+    // Maths that starts with a digit still works when its `$` closes it tightly.
+    assert_eq!(inline_maths("About $0$ to order 4.\n"), vec!["0"]);
+    assert_eq!(inline_maths("Here $1 + 1 = ?$ ok.\n"), vec!["1 + 1 = ?"]);
+    assert_eq!(inline_maths("So $x$ costs $5.\n"), vec!["x"]);
+    // A `$` before a letter still opens maths (and says when it never closes).
+    let doc = parse_document("Take $x + 1 and stop.\n");
+    assert!(doc.errors().any(|d| d.message.contains("never closed")));
+}

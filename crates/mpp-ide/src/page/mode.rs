@@ -7,6 +7,7 @@ use egui::{Color32, Painter, Pos2, Rect, Stroke, StrokeKind, Vec2};
 use mpp_render::FontId;
 
 use super::{BlockTag, Page};
+use crate::editor::mathline::LineMark;
 use crate::theme::{c32, Palette};
 
 /// One maths box: a run of maths blocks with no blank line between them.
@@ -147,6 +148,58 @@ pub fn paint_maths(
             c32(pal.maths_marker),
         );
     }
+}
+
+/// The Insert catalogue's id of "Maths line".
+pub const MATHS_LINE: &str = "text.mathsline";
+
+/// After a frame's input: auto-detect on the line the caret was on at the start
+/// of the frame (see [`crate::editor::Editor::maths_after_frame`]). True when
+/// the line became maths.
+pub fn auto_detect(ui: &egui::Ui, doc: &mut crate::doc::Doc, was: LineMark) -> bool {
+    let enter = ui.input(|i| {
+        i.events.iter().any(|e| {
+            matches!(e, egui::Event::Key { key: egui::Key::Enter, pressed: true, modifiers, .. }
+                if !modifiers.shift && !modifiers.command)
+        })
+    });
+    let done = doc.editor.maths_after_frame(&mut doc.maths, was, enter);
+    if done {
+        doc.touched();
+    }
+    done
+}
+
+/// The hint on the empty line of an empty file.
+pub const EMPTY_HINT: &str = "Type text, or start with = or $ for maths";
+
+/// Paints [`EMPTY_HINT`] beside the caret while the file is empty.
+pub fn paint_empty_hint(
+    painter: &Painter,
+    doc: &crate::doc::Doc,
+    page: &Page,
+    origin: Pos2,
+    theme: &mpp_render::Theme,
+    size: f32,
+) {
+    if !doc.editor.text().trim().is_empty() {
+        return;
+    }
+    let Some(s) = page.caret_stop(doc.editor.caret()) else {
+        return;
+    };
+    let at = Pos2::new(
+        origin.x + s.x + size * 0.3,
+        origin.y + s.bottom - size * 0.3,
+    );
+    crate::paint::paint_text(
+        painter,
+        EMPTY_HINT,
+        at,
+        size * 0.9,
+        FontId::TextItalic,
+        c32(theme.placeholder_label),
+    );
 }
 
 #[cfg(test)]

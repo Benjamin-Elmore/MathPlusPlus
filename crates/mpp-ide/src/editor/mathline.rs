@@ -12,6 +12,9 @@ use std::ops::Range;
 
 use super::{EditKind, Editor};
 
+/// An empty maths line, with the caret going between the two spaces.
+const EMPTY_LINE: &str = "$$  $$";
+
 /// What the view remembers about maths lines for one open file.
 #[derive(Debug, Clone, Default)]
 pub struct MathsState {
@@ -288,7 +291,7 @@ impl Editor {
         match line_kind(&self.text, at) {
             LineKind::Empty => {
                 let caret = (self.caret >= ls && self.caret <= le).then_some(ls + 3);
-                self.maths_step(ls..le, "$$ $$", caret);
+                self.maths_step(ls..le, EMPTY_LINE, caret);
                 if caret.is_none() {
                     self.caret = self.caret.min(self.text.len());
                 }
@@ -385,25 +388,41 @@ impl Editor {
         let (ls, le) = line_bounds(&self.text, caret);
         let line = &self.text[ls..le];
         let lead = line.len() - line.trim_start().len();
-        let open = ls + lead;
-        if !line[lead..].starts_with("$$") {
-            return false;
-        }
-        let inner = &line[lead + 2..];
-        if let Some(body) = inner.trim_end().strip_suffix("$$") {
-            if body.trim().is_empty() && caret == open + 3 {
-                return true;
+        if line[lead..].starts_with("$$") {
+            let inner = &line[lead + 2..];
+            if let Some(body) = inner.trim_end().strip_suffix("$$") {
+                if body.trim().is_empty() && caret == ls + lead + 3 {
+                    return true;
+                }
             }
         }
         if ch != '$' {
             return false;
         }
-        let rest = &self.text[caret..le];
+        // The block the caret is in (its rows may span several lines).
+        let Some((open, close)) = display_around(&self.text, caret) else {
+            return false;
+        };
+        if close == usize::MAX || caret <= open + 1 || caret > close + 1 {
+            return false;
+        }
+        let rest = &self.text[caret..close + 2];
         let closing = rest.trim_start();
-        if (closing == "$$" || (closing == "$" && self.text[..caret].ends_with('$')))
-            && self.text[open + 2..caret].len() + rest.len() > closing.len()
-        {
-            let to = caret + (rest.len() - closing.len()) + 1;
+        let first = closing == "$$" && caret > open + 2;
+        let second = closing == "$" && caret == close + 1;
+        if first || second {
+            let gap = rest.len() - closing.len();
+            // A space typed before the closing `$$` that already has one: keep one.
+            let typed = self.text[..caret].len() - self.text[..caret].trim_end().len();
+            let drop = if gap > 0 {
+                typed.min(caret.saturating_sub(open + 3))
+            } else {
+                0
+            };
+            if drop > 0 {
+                self.replace_inline(caret - drop..caret, "");
+            }
+            let to = self.caret + gap + 1;
             self.move_caret(to, false);
             return true;
         }
@@ -427,7 +446,7 @@ impl Editor {
             return false;
         }
         let shown = typed.to_string();
-        self.maths_step(ls..le, "$$ $$", Some(ls + 3));
+        self.maths_step(ls..le, EMPTY_LINE, Some(ls + 3));
         if !state.hinted_start {
             state.hinted_start = true;
             self.set_hint(&format!("Maths line. Ctrl+Z gives back the {shown}"));
@@ -541,7 +560,7 @@ mod tests {
     fn an_empty_line_becomes_an_empty_maths_line() {
         let mut e = ed("Intro\n\n", 7);
         assert!(e.flip_maths(&mut MathsState::default(), 7));
-        assert_eq!(e.text(), "Intro\n\n$$ $$");
+        assert_eq!(e.text(), "Intro\n\n$$  $$");
         assert_eq!(e.caret(), 10);
     }
 
@@ -594,7 +613,7 @@ mod tests {
         let mut e = ed("Intro\n\n", 7);
         e.insert_text("=");
         assert!(e.maths_after_char(&mut st, '='));
-        assert_eq!(e.text(), "Intro\n\n$$ $$");
+        assert_eq!(e.text(), "Intro\n\n$$  $$");
         assert!(e.hint().is_some());
         assert!(e.undo());
         assert_eq!(e.text(), "Intro\n\n=");
