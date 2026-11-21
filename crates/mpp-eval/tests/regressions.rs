@@ -865,3 +865,50 @@ fn boundary_value_problems() {
         .collect();
     assert!(notes.iter().any(|n| n.contains("shooting")), "{notes:?}");
 }
+
+/// A false congruence says which remainders differ, not "left side 17 ≡ 2".
+#[test]
+fn a_false_congruence_gives_the_two_remainders() {
+    let ev = run(r"$$ 17 \equiv 3 \pmod{5} = ? $$");
+    let (_, line) = ev.queries().next().expect("a query");
+    let text = line.plain.clone().unwrap_or_default();
+    assert!(
+        text.contains("false") && text.contains("17 mod 5 = 2, but 3 mod 5 = 3"),
+        "{text}"
+    );
+}
+
+/// Relations answer true ✓ / false ✗ with or without units.
+#[test]
+fn relation_answers_carry_a_mark_with_units_too() {
+    for (src, want) in [
+        (r"$$ 1 < 2 = ? $$", "true ✓"),
+        (r"$$ 3\,\mathrm{m} < 5\,\mathrm{m} = ? $$", "true ✓"),
+        (r"$$ 3\,\mathrm{m} > 5\,\mathrm{m} = ? $$", "false ✗"),
+    ] {
+        let ev = run(src);
+        let (_, line) = ev.queries().next().expect("a query");
+        let text = line.plain_answer().unwrap_or_default();
+        assert!(text.contains(want), "{src}: {text}");
+    }
+}
+
+/// An operator with a script that Math++ does not know is warned about and has no
+/// answer, instead of echoing its letters as a product.
+#[test]
+fn an_unknown_scripted_operator_is_warned_about() {
+    let ev = run(r"$$ \operatorname{fit}_{linear}(\{(1,2),(2,4.1)\}) = ? $$");
+    let notes: Vec<String> = ev
+        .all_diagnostics()
+        .iter()
+        .map(|d| d.message.clone())
+        .collect();
+    assert!(
+        notes.iter().any(|n| n.contains("`fit` is not a function")),
+        "{notes:?}"
+    );
+    let (_, line) = ev.queries().next().expect("a query");
+    assert!(line
+        .plain_answer()
+        .is_none_or(|a| !a.contains("operatorname")));
+}

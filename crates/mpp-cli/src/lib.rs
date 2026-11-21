@@ -157,6 +157,13 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
             asked = format!("{} ≈", eq.trim_end());
         }
     }
+    // An answer that is an equation of its own follows the question with an arrow:
+    // `… = y(t) = …` would say "=" twice.
+    if !numeric_fallback && matches!(line.value, Some(mpp_eval::Value::Relation(_))) {
+        if let Some(eq) = asked.trim_end().strip_suffix('=') {
+            asked = format!("{} →", eq.trim_end());
+        }
+    }
     RunLine {
         line: n,
         asked,

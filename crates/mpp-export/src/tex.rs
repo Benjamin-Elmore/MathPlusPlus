@@ -369,6 +369,7 @@ fn unicode_fallback(c: char, math: bool, o: &mut String) {
 /// answer to an exact query (`ζ(3) = ?` has no closed form) turns the `=` in front of
 /// it into `pprox`, as the typeset page shows it.
 fn fill_result(text: &mut String, result: &mpp_render::LineResult) {
+    let arrow = result.relation == Some(mpp_syntax::math::RelOp::To);
     let approx = result.relation == Some(mpp_syntax::math::RelOp::Approx);
     let value = match &result.value {
         mpp_render::ResultValue::Latex(l) => texify_math(l),
@@ -383,11 +384,12 @@ fn fill_result(text: &mut String, result: &mpp_render::LineResult) {
                 let after = text[q + 1..].to_string();
                 let rest = after.strip_prefix('!').unwrap_or(&after).to_string();
                 text.truncate(q);
-                if approx {
+                if approx || arrow {
                     let head = text.trim_end();
                     if let Some(lhs) = head.strip_suffix('=') {
                         let lhs = lhs.trim_end().to_string();
-                        *text = format!("{lhs} \\approx ");
+                        let sign = if arrow { "\\to" } else { "\\approx" };
+                        *text = format!("{lhs} {sign} ");
                     }
                 }
                 let _ = write!(text, "{v}{rest}");

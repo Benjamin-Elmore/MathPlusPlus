@@ -89,7 +89,10 @@ fn quantities_and_simplified_units() {
         "1.5 km"
     );
     assert_eq!(answer(r"$$ \cos(60^\circ) = ? $$"), "1/2");
-    assert_eq!(answer(r"$$ 3\,\mathrm{m} < 2\,\mathrm{km} = ? $$"), "true");
+    assert_eq!(
+        answer(r"$$ 3\,\mathrm{m} < 2\,\mathrm{km} = ? $$"),
+        "true ✓"
+    );
 }
 
 #[test]
