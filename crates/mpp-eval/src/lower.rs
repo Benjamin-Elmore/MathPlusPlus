@@ -1507,6 +1507,15 @@ impl<'a> Lowerer<'a> {
             .collect::<Result<Vec<_>, _>>()?;
         crate::domains_wire::protect_ode_args(&op.name, &mut args);
         if op.sub.is_none() && op.sup.is_none() {
+            // `\operatorname{arcsec}(x)`, `\operatorname{arccosh}(x)`: the core's own
+            // function (so it can be differentiated and evaluated), not an unknown call.
+            let builtin =
+                Func::from_name(&op.name).is_some() || EXTRA_BUILTINS.contains(&op.name.as_str());
+            if builtin && self.scope.binding(&op.name).is_none() && !self.is_local(&op.name) {
+                if let Ok(e) = Expr::call(&op.name, args.clone()) {
+                    return Ok(e);
+                }
+            }
             return Ok(Expr::apply(&op.name, args));
         }
         let empty = || Expr::new(ExprNode::Tuple(Vec::new()));

@@ -215,3 +215,15 @@ fn terms_after_a_limit_in_its_variable_go_inside_it() {
         "3"
     );
 }
+
+#[test]
+fn named_inverse_functions_are_the_core_functions() {
+    assert_eq!(
+        answer(r"$$ \frac{d}{dx} \operatorname{arccosh}(x) = ? $$"),
+        "1/√(x² - 1)"
+    );
+    assert_eq!(
+        answer(r"$$ \frac{d}{dx} \operatorname{arcsec}(x) = ? $$"),
+        "1/(x²√(-1/x² + 1))"
+    );
+}
