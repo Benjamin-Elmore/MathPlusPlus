@@ -46,6 +46,19 @@ fn an_improper_integral_with_a_parameter_diverges_at_a_zero() {
 }
 
 #[test]
+fn classify_finds_the_real_critical_points() {
+    let got = answer(r"$$ \operatorname{classify} (x y e^{-(x^2+y^2)/2}) = ? $$");
+    let want = [
+        "local maximum at (-1, -1): 1/e",
+        "local minimum at (-1, 1): -1/e",
+        "saddle point at (0, 0): 0",
+        "local minimum at (1, -1): -1/e",
+        "local maximum at (1, 1): 1/e",
+    ];
+    assert_eq!(got.lines().collect::<Vec<_>>(), want);
+}
+
+#[test]
 fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
     assert_eq!(
         answer(r"$$ \frac{d}{dx} \int_0^{x} e^{t^2} \, dt = ? $$"),
