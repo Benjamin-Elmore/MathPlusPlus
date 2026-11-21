@@ -665,6 +665,38 @@ fn check_proof(
                 .to_string(),
         );
     }
+    // A direct proof of a conditional statement starts from its hypothesis: reaching
+    // the conclusion discharges it (conditional proof), so it is not left open.
+    let statement: String = item
+        .theorem
+        .body
+        .iter()
+        .filter_map(|b| match &b.kind {
+            BlockKind::Paragraph(p) => Some(plain(p, src)),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    if is_conditional_statement(&statement) {
+        let mut still_open = Vec::new();
+        for a in std::mem::take(&mut st.open_assumptions) {
+            let text = steps
+                .steps
+                .iter()
+                .position(|s| s.number == Some(a))
+                .map(|i| plain(&steps.steps[i].claim, src))
+                .unwrap_or_default();
+            if announces_contradiction(&text) {
+                still_open.push(a);
+            } else if let Some(i) = steps.steps.iter().position(|s| s.number == Some(a)) {
+                if let Some(c) = checks.get_mut(i) {
+                    c.detail =
+                        "assumed: the theorem's hypothesis, discharged by the conclusion".into();
+                }
+            }
+        }
+        st.open_assumptions = still_open;
+    }
     for a in &st.open_assumptions {
         issues.push(format!(
             "the assumption in step {a} is never discharged (no contradiction or case split closes it)"
@@ -682,6 +714,51 @@ fn check_proof(
         },
         ProofRaw { own, uses: st.uses },
     )
+}
+
+/// True when a theorem's statement has a hypothesis a direct proof may assume: "If …
+/// then …", "Let …", "Suppose …", "for every …", an implication.
+fn is_conditional_statement(text: &str) -> bool {
+    let t = format!(" {} ", text.to_lowercase());
+    [
+        " if ",
+        " let ",
+        " suppose ",
+        " assume ",
+        " given ",
+        " whenever ",
+        " for every ",
+        " for all ",
+        " for each ",
+        " for any ",
+        "∀",
+        "\\forall",
+        "\\implies",
+        "\\rightarrow",
+        "⇒",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
+}
+
+/// True when an assumed step says it is assumed in order to reach a contradiction.
+fn announces_contradiction(text: &str) -> bool {
+    let t = format!(" {} ", text.to_lowercase());
+    [
+        "contradiction",
+        "contrary",
+        " not ",
+        "¬",
+        "\\neg",
+        "\\ne ",
+        "\\neq",
+        "\\notin",
+        "≠",
+        "∉",
+        "n't",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
 }
 
 fn collect_eqrefs(inlines: &[Inline], out: &mut BTreeSet<String>) {
