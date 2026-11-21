@@ -1,6 +1,6 @@
 # N15 proofs, proof checker, Lean bridge and proof agent: notes for the integrator
 
-Lane `proof` (branch `wip/proof`). New crate `crates/mpp-proof`; additive changes to `crates/mpp-syntax` (proof syntax) and one small change to `crates/mpp-render/src/html.rs` (theorem numbers and titles). Grammar: `docs/grammar.mpp` §6.4 (new) and the `theorem` rule in §1. Example: `examples/proofs.mpp` with `examples/proofs.expected.txt` (checked by `crates/mpp-proof/tests/example.rs`). Pipeline tests: `crates/mpp-proof/tests/pipeline.rs`.
+Lane `proof` (branch `wip/proof`). New crate `crates/mpp-proof`; additive changes to `crates/mpp-syntax` (proof syntax) and one small change to `crates/mpp-render/src/html.rs` (theorem numbers and titles). Grammar: `docs/grammar.mpp` §6.4 (new) and the `theorem` rule in §1. Example: `examples/proofs.mpp` with `examples/proofs.expected.txt` (checked by `crates/mpp-proof/tests/example.rs`). Pipeline tests: `crates/mpp-cli/tests/pipeline.rs` (moved there by the integrator: one harness for M16).
 
 ## What was built
 
@@ -91,7 +91,7 @@ Proof → Export to Lean writes a Lean 4 project with your statement and a skele
 
 ## Pipeline tests: 6 of 23 pass
 
-Run with `cargo test -p mpp-proof --test pipeline -- --nocapture` (the table is printed). It fails on any over-claim, on Navier–Stokes Theorem 6 coming back proved, and on any file off the known-failures list failing; `MPP_PIPELINE_STRICT=1` makes every failure fail (for M16). M16's row names `cargo test -p mpp-cli --test pipeline`; the test lives in mpp-proof, so M16 should run it there (or the CLI lane can re-export it).
+Run with `cargo test -p mpp-cli --test pipeline -- --nocapture` (the table is printed; the integrator made it the single harness, replacing the CLI lane's). It fails on any over-claim, on Navier–Stokes Theorem 6 coming back proved, on any file off the known-failures list failing, and on a listed file that now passes; `MPP_PIPELINE_STRICT=1` makes every failure fail (for M16).
 
 **Pass (6):** `historic/cantor-diagonal`, `historic/euclid-primes`, `historic/euler-identity`, `historic/gauss-sum`, `historic/sqrt2-irrational`, `historic/turing-halting`.
 
