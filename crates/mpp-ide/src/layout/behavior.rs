@@ -115,9 +115,12 @@ impl Behavior<Pane> for AppBehavior<'_> {
         // A side panel in the side column has a header in place of a tab: it
         // names the panel and is the handle for dragging it among the tiles.
         let mut drag = false;
-        if self.headed.contains(&tile_id) {
-            if let Some(v) = pane.side_view() {
-                drag = side_header(ui, v.label(), &theme).drag_started();
+        let headed = self.headed.contains(&tile_id) && pane.side_view().is_some();
+        if let (true, Some(v)) = (headed, pane.side_view()) {
+            let h = side_header(ui, v.label(), &theme);
+            drag = h.drag_started();
+            if *pane == Pane::Explorer {
+                self.app.explorer_buttons(ui, h.rect, &theme);
             }
         }
         match pane.clone() {
@@ -144,7 +147,7 @@ impl Behavior<Pane> for AppBehavior<'_> {
                 }
             },
             Pane::Graph { doc, figure } => self.app.graph_tile(ui, doc, figure, &theme),
-            Pane::Explorer => self.app.explorer_view(ui, &theme),
+            Pane::Explorer => self.app.explorer_view(ui, &theme, headed),
             Pane::Search => self.app.search_view(ui, &theme),
             Pane::Outline => self.app.outline_tile(ui, &theme),
             Pane::Variables => self.app.variables_tile(ui, &theme),

@@ -89,7 +89,19 @@ impl IdeApp {
         // While a drag is going on the evaluation is stale, but we know where
         // our own write put the number.
         let live = self.ws.vars.live.clone();
-        if rows.is_empty() {
+        let imports = self.current_imports();
+        let mut open_import: Option<std::path::PathBuf> = None;
+        let others: Vec<defs::DefInfo> = self
+            .doc()
+            .and_then(|d| d.eval.as_ref())
+            .map(|ev| {
+                defs::all(ev)
+                    .into_iter()
+                    .filter(|d| d.file.is_none() && !rows.iter().any(|(r, ..)| r.name == d.name))
+                    .collect()
+            })
+            .unwrap_or_default();
+        if rows.is_empty() && others.is_empty() {
             ui.horizontal(|ui| {
                 ui.add_space(12.0);
                 ui.weak("Nothing defined yet.");
@@ -157,12 +169,54 @@ impl IdeApp {
                     }
                     ui.add_space(6.0);
                 }
-                // Variables that are not plain numbers are listed without a control.
-                let _ = Sense::hover();
+                // The file's other definitions (functions, sequences), without a control.
+                for info in &others {
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        typeset::show(ui, &defs::summary_latex(info), 17.0, *theme);
+                    });
+                    ui.add_space(6.0);
+                }
+                // The files this one imports; a click opens one.
+                if !imports.is_empty() {
+                    ui.add_space(6.0);
+                    ui.horizontal(|ui| {
+                        ui.add_space(10.0);
+                        ui.label(
+                            egui::RichText::new("IMPORTS")
+                                .size(13.5)
+                                .color(c32(theme.muted)),
+                        );
+                    });
+                    for p in &imports {
+                        ui.horizontal(|ui| {
+                            ui.add_space(12.0);
+                            let name = crate::explorer::display_name(p);
+                            let text = if p.is_file() {
+                                egui::RichText::new(&name)
+                            } else {
+                                egui::RichText::new(format!("{name} (missing)"))
+                                    .color(c32(theme.error))
+                            };
+                            let r = ui.add(egui::Label::new(text).sense(Sense::click()));
+                            if r.hovered() {
+                                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                            }
+                            if r.clicked() && p.is_file() {
+                                open_import = Some(p.clone());
+                            }
+                        });
+                    }
+                }
                 let _ = Vec2::ZERO;
             });
         if let Some((name, range, x, first)) = change {
             self.write_variable(&name, range, x, first);
+        }
+        if let Some(p) = open_import {
+            if let Err(m) = self.open_file(&p, false) {
+                self.message = Some(m);
+            }
         }
     }
 

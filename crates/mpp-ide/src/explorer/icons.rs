@@ -73,6 +73,15 @@ pub fn dot(painter: &Painter, rect: Rect, color: Color32) {
     painter.circle_filled(rect.center(), rect.height().min(rect.width()) * 0.22, color);
 }
 
+/// A small plus at the bottom right of `rect` (the "new" badge).
+pub fn plus(painter: &Painter, rect: Rect, color: Color32) {
+    let c = rect.right_bottom() - Vec2::new(rect.width() * 0.22, rect.height() * 0.22);
+    let s = rect.width() * 0.16;
+    let st = Stroke::new(1.6, color);
+    painter.line_segment([c - Vec2::new(s, 0.0), c + Vec2::new(s, 0.0)], st);
+    painter.line_segment([c - Vec2::new(0.0, s), c + Vec2::new(0.0, s)], st);
+}
+
 /// A cross for close buttons.
 pub fn cross(painter: &Painter, rect: Rect, color: Color32) {
     let c = rect.center();

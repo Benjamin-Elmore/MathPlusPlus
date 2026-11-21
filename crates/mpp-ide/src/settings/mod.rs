@@ -44,7 +44,7 @@ impl SideView {
             SideView::Explorer => "Explorer",
             SideView::Search => "Search",
             SideView::Outline => "Outline",
-            SideView::Variables => "Variables",
+            SideView::Variables => "Definitions",
         }
     }
 }

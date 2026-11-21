@@ -322,3 +322,79 @@ fn a_side_panel_dragged_into_the_main_area_stays_and_ctrl_b_hides_only_the_colum
     assert!(lit_icons(&h).is_empty());
     let _ = std::fs::remove_dir_all(&d);
 }
+
+#[test]
+fn the_explorer_shows_only_files_and_folders() {
+    let d = project("filesonly");
+    std::fs::create_dir_all(d.join("notes")).expect("mkdir");
+    std::fs::write(d.join("waves.mpp"), "# Waves\n\n![[main]]\n").expect("w");
+    let mut h = harness(app_in(&d));
+    frames(&mut h);
+    assert_shows(&h, Some(SideView::Explorer), "start");
+    // Files and folders, no outline or other sections.
+    for name in ["main.mpp", "waves.mpp", "notes", "OPEN FILES"] {
+        assert!(h.query_all_by_label(name).next().is_some(), "{name} listed");
+    }
+    assert!(
+        h.query_by_label("OUTLINE").is_none(),
+        "no outline in the Explorer"
+    );
+    // The header holds New file and New folder.
+    let header = h.get_by_label("Explorer panel").rect();
+    for b in ["New file", "New folder"] {
+        let r = h.get_by_label(b).rect();
+        assert!(
+            header.contains(r.center()),
+            "{b} sits in the header ({r:?} in {header:?})"
+        );
+    }
+    click_label(&mut h, "New file");
+    assert!(
+        h.state().ws.explorer.create.is_some(),
+        "New file asks for a name"
+    );
+    h.key_press_modifiers(Modifiers::NONE, Key::Escape);
+    frames(&mut h);
+    // A click on a file opens it.
+    click_label(&mut h, "waves.mpp");
+    assert_eq!(h.state().doc().expect("doc").title(), "waves");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn definitions_list_the_names_values_and_imports_of_the_file() {
+    let d = project("defs");
+    std::fs::write(
+        d.join("waves.mpp"),
+        "# Waves\n\n![[main]]\n\n$$ k := 2 $$\n",
+    )
+    .expect("w");
+    let mut app = app_in(&d);
+    app.open_file(&d.join("waves.mpp"), false).expect("open");
+    let mut h = harness(app);
+    frames(&mut h);
+    h.state_mut().settle();
+    frames(&mut h);
+    click_icon(&mut h, SideView::Variables);
+    assert_shows(&h, Some(SideView::Variables), "Definitions");
+    assert!(h.query_by_label("IMPORTS").is_some(), "imports listed");
+    assert!(
+        h.query_by_label("k slider").is_some(),
+        "k and its value listed"
+    );
+    // The import opens from the panel.
+    click_label(&mut h, "main");
+    assert_eq!(h.state().doc().expect("doc").title(), "main");
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+/// Clicks the leftmost node with this label (the side column's, when the
+/// breadcrumb or a tab shows the same name).
+fn click_label(h: &mut Harness<'static, IdeApp>, label: &str) {
+    let pos = h
+        .query_all_by_label(label)
+        .map(|n| n.rect().center())
+        .min_by(|a, b| a.x.total_cmp(&b.x))
+        .expect(label);
+    click_at(h, pos);
+}

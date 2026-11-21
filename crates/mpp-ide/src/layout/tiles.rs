@@ -79,7 +79,7 @@ impl Pane {
             Pane::Outline => "Outline",
             Pane::Search => "Search",
             Pane::Problems => "Problems",
-            Pane::Variables => "Variables",
+            Pane::Variables => "Definitions",
             Pane::Steps => "Steps",
             Pane::Library => "Standard library",
         }
