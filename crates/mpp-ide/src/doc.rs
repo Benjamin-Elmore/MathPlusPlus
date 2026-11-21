@@ -112,6 +112,13 @@ pub struct Doc {
     pub scroll_to: Option<Span>,
     /// The x the caret keeps while moving up and down.
     pub want_x: Option<f32>,
+    /// Which text the caret belongs with where an offset is on two lines.
+    pub caret_side: crate::page::Side,
+    /// Where the caret's line was drawn last frame (kept still on screen when
+    /// the page is laid out again).
+    pub pin: Option<crate::page::Pin>,
+    /// Where the caret was drawn last frame, in screen coordinates.
+    pub caret_screen: Option<egui::Rect>,
     /// Integral bounds above and below the sign (default) or at its side.
     pub integral_limits: IntegralLimits,
     /// The width, size and mode of the last page laid out (problem lists of
@@ -249,6 +256,9 @@ impl Doc {
             highlight: None,
             scroll_to: None,
             want_x: None,
+            caret_side: crate::page::Side::Before,
+            pin: None,
+            caret_screen: None,
             integral_limits: IntegralLimits::AboveBelow,
             last_layout: (800.0, crate::layout::BODY_SIZE, Mode::Light),
             show: ShowState::default(),

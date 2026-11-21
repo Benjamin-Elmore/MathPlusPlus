@@ -11,6 +11,7 @@ pub(crate) mod build;
 mod flow;
 mod mathcache;
 pub mod paper;
+pub mod pin;
 
 use egui::{Pos2, Rect, Vec2};
 use mpp_eval::NumberFormat;
@@ -23,6 +24,16 @@ pub(crate) use build::result_line_at;
 pub use build::{build_page, column_width, note_words, scan_inlines, slider_row_height, PageInput};
 pub use flow::{display_name, glyph_for, text_width};
 pub use paper::{ExtraRefs, PaperInfo};
+pub use pin::Pin;
+
+/// Which text a caret between two places on the page belongs with: the text
+/// before it (just typed, or reached moving left) or the text after it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Side {
+    #[default]
+    Before,
+    After,
+}
 
 /// What kind of thing a block is, for the view.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -306,10 +317,51 @@ impl Page {
 
     /// The stop to draw the caret at for a source offset: the one with the
     /// greatest offset not past it (the nearest one after it when there is none).
+    /// The same as [`Page::caret_stop_on`] with [`Side::Before`].
     pub fn caret_stop(&self, offset: usize) -> Option<CaretStop> {
+        self.caret_stop_on(offset, Side::Before)
+    }
+
+    /// The stop to draw the caret at for a source offset, on the given side.
+    /// When an offset has stops on two lines (or none, and the stops either side
+    /// of it are on different lines), [`Side::Before`] keeps the caret with the
+    /// text before it and [`Side::After`] with the text after it. The side is
+    /// remembered by the view, so a rebuild of the page never moves the caret
+    /// to the other line by itself.
+    pub fn caret_stop_on(&self, offset: usize, side: Side) -> Option<CaretStop> {
+        if side == Side::After {
+            let exact = self.stops.iter().filter(|s| s.offset == offset);
+            let last_line = exact.clone().map(|s| s.top).fold(f32::MIN, f32::max);
+            let on_line = exact
+                .filter(|s| (s.top - last_line).abs() < 1.0)
+                .min_by(|a, b| cmp_f(a.x, b.x));
+            if let Some(s) = on_line {
+                return Some(*s);
+            }
+            let after = self
+                .stops
+                .iter()
+                .filter(|s| s.offset > offset)
+                .min_by(|a, b| a.offset.cmp(&b.offset).then(cmp_f(a.x, b.x)));
+            if let Some(s) = after {
+                return Some(*s);
+            }
+            return self.caret_stop_on(offset, Side::Before);
+        }
+        // Of several stops at the caret's own offset on different lines, the
+        // first line's (the text before the caret).
+        let first_line = self
+            .stops
+            .iter()
+            .filter(|s| s.offset == offset)
+            .map(|s| s.top)
+            .fold(f32::MAX, f32::min);
         let mut best: Option<&CaretStop> = None;
         let mut after: Option<&CaretStop> = None;
         for s in &self.stops {
+            if s.offset == offset && (s.top - first_line).abs() >= 1.0 {
+                continue;
+            }
             if s.offset <= offset {
                 match best {
                     Some(b) if b.offset > s.offset => {}
@@ -346,6 +398,25 @@ impl Page {
 
     /// The source offset nearest to a page position.
     pub fn offset_at(&self, p: Pos2) -> Option<usize> {
+        self.stop_at(p).map(|s| s.offset)
+    }
+
+    /// The source offset nearest to a page position, with the side of it that
+    /// was clicked: a click at the start of a line whose offset also ends the
+    /// line above puts the caret on the clicked line.
+    pub fn side_at(&self, p: Pos2) -> Option<(usize, Side)> {
+        let s = self.stop_at(p)?;
+        let before = self.caret_stop_on(s.offset, Side::Before);
+        let side = if before.is_some_and(|b| (b.top - s.top).abs() >= 1.0) {
+            Side::After
+        } else {
+            Side::Before
+        };
+        Some((s.offset, side))
+    }
+
+    /// The caret stop nearest to a page position.
+    fn stop_at(&self, p: Pos2) -> Option<CaretStop> {
         self.stops
             .iter()
             .map(|s| {
@@ -356,10 +427,10 @@ impl Page {
                 } else {
                     0.0
                 };
-                (dy * 4.0 + (s.x - p.x).abs(), s.offset)
+                (dy * 4.0 + (s.x - p.x).abs(), *s)
             })
             .min_by(|a, b| cmp_f(a.0, b.0))
-            .map(|(_, o)| o)
+            .map(|(_, s)| s)
     }
 
     /// The offset one visual line above (`up`) or below the caret, at about the

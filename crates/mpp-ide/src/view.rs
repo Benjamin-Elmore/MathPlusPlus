@@ -205,18 +205,37 @@ fn link_card(ui: &Ui, pc: &PageCache, origin: Pos2, theme: &Theme, size: f32) {
 pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> {
     let mut events = vec![];
     let theme = cx.mode.theme();
-    let out = egui::ScrollArea::vertical()
+    // A scroll that keeps the caret's line still (see `pin_shift`), taken up
+    // in the frame after it was drawn, and the offset it needs room for.
+    let pin_id = ui.scope_id().with("mpp-pin");
+    let pending = ui.data_mut(|d| d.remove_temp::<f32>(pin_id.with("scroll")));
+    let floor_id = pin_id.with("floor");
+    let out = with_scroll(egui::ScrollArea::vertical(), pending)
         .auto_shrink([false, false])
         .show(ui, |ui| {
             let avail_w = ui.available_width();
             let avail_h = ui.available_height();
             let pc0 = doc.page(avail_w, cx.size, cx.mode);
-            let (resp, painter) = ui.allocate_painter(
-                Vec2::new(avail_w, pc0.page.height.max(avail_h)),
-                Sense::click_and_drag(),
-            );
+            // The caret's line stays where it was drawn when the page grows or
+            // shrinks above it (an answer arriving): the view scrolls instead.
+            let scrolled = (ui.clip_rect().top() - ui.cursor().top()).max(0.0);
+            let pinned = cx.active
+                && doc
+                    .caret_screen
+                    .is_some_and(|r| r.intersects(ui.clip_rect()));
+            let shift0 = pin_shift(doc, &pc0, pinned, scrolled);
+            let floor = ui.data(|d| d.get_temp::<f32>(floor_id)).unwrap_or(0.0);
+            let floor = if scrolled + 0.5 < floor { 0.0 } else { floor };
+            let height = pc0
+                .page
+                .height
+                .max(avail_h)
+                .max(floor.max(scrolled + shift0) + avail_h);
+            let (resp, painter) =
+                ui.allocate_painter(Vec2::new(avail_w, height), Sense::click_and_drag());
             let col_left = ((avail_w - pc0.page.width) / 2.0).max(0.0);
-            let origin = resp.rect.min + Vec2::new(col_left, 0.0);
+            let base = resp.rect.min + Vec2::new(col_left, 0.0);
+            let mut origin = base - Vec2::new(0.0, shift0);
             if cx.active {
                 cx.diag.origin = origin;
             }
@@ -302,16 +321,26 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
 
             // The text may have changed: draw the up-to-date page.
             let pc = doc.page(avail_w, cx.size, cx.mode);
+            let shift = pin_shift(doc, &pc, pinned, scrolled);
+            origin = base - Vec2::new(0.0, shift);
             paint_page(ui, &painter, doc, &pc, origin, cx, &theme, focused);
             figures_pass(ui, doc, &pc, origin, cx, resp.id, &mut events);
             spinners(ui, &painter, &pc, origin, &theme);
 
-            let caret_rect = pc.page.caret_stop(doc.editor.caret()).map(|s| {
-                Rect::from_min_max(
-                    origin + Vec2::new(s.x - 2.0, s.top - 4.0),
-                    origin + Vec2::new(s.x + 2.0, s.bottom + 4.0),
-                )
-            });
+            let caret_rect = pc
+                .page
+                .caret_stop_on(doc.editor.caret(), doc.caret_side)
+                .map(|s| {
+                    Rect::from_min_max(
+                        origin + Vec2::new(s.x - 2.0, s.top - 4.0),
+                        origin + Vec2::new(s.x + 2.0, s.bottom + 4.0),
+                    )
+                });
+            if cx.active {
+                doc.caret_screen = caret_rect;
+                let (caret, side) = (doc.editor.caret(), doc.caret_side);
+                doc.pin = crate::page::Pin::new(&pc.page, doc.editor.text(), caret, side);
+            }
             if let Some(target) = doc.scroll_to.take() {
                 if let Some(r) = pc.page.rect_of_span(target) {
                     ui.scroll_to_rect(
@@ -351,10 +380,20 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 }
                 insert_menu(ui, doc, cx, caret_rect, resp.id, &mut events);
             }
-            pc
+            if shift != 0.0 {
+                ui.data_mut(|d| d.insert_temp(floor_id, scrolled + shift));
+            } else if floor == 0.0 {
+                ui.data_mut(|d| d.remove::<f32>(floor_id));
+            }
+            (pc, shift)
         });
+    let (pc, shift) = out.inner;
+    if shift != 0.0 {
+        let y = (out.state.clamped_offset().y + shift).max(0.0);
+        ui.data_mut(|d| d.insert_temp(pin_id.with("scroll"), y));
+        ui.ctx().request_repaint();
+    }
     // Problem marks beside the scrollbar: where each problem is on the page.
-    let pc = out.inner;
     let (page_h, problems) = (pc.page.height, &pc.problems);
     let content_h = out.content_size.y.max(page_h);
     if !problems.is_empty() {
@@ -367,6 +406,29 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
         dui::paint_scrollbar_marks(&painter, track, content_h, problems, &theme);
     }
     events
+}
+
+/// The scroll area, moved to `y` when a scroll is pending.
+fn with_scroll(area: egui::ScrollArea, y: Option<f32>) -> egui::ScrollArea {
+    match y {
+        Some(y) => area.vertical_scroll_offset(y),
+        None => area,
+    }
+}
+
+/// How far to scroll so the caret's line stays where it was last drawn
+/// (never above the top of the page).
+fn pin_shift(doc: &Doc, pc: &PageCache, pinned: bool, scrolled: f32) -> f32 {
+    let shift = doc
+        .pin
+        .filter(|_| pinned)
+        .and_then(|p| p.shift(&pc.page, doc.editor.text()))
+        .unwrap_or(0.0);
+    if shift.abs() < 0.5 {
+        0.0
+    } else {
+        shift.max(-scrolled)
+    }
 }
 
 /// Draws the figures of the page and their sliders, and handles their mouse.
@@ -966,7 +1028,7 @@ fn paint_page(
     }
     // Caret.
     if focused {
-        if let Some(s) = page.caret_stop(doc.editor.caret()) {
+        if let Some(s) = page.caret_stop_on(doc.editor.caret(), doc.caret_side) {
             let x = origin.x + s.x;
             painter.line_segment(
                 [
@@ -999,19 +1061,21 @@ fn handle_pointer(
     };
     let local = pos - origin.to_vec2();
     if pressed && resp.hovered() {
-        if let Some(o) = pc.page.offset_at(local) {
+        if let Some((o, side)) = pc.page.side_at(local) {
             if command {
                 events.push(ViewEvent::GotoAt(o));
             } else if !shift {
                 events.push(ViewEvent::OpenLinkAt(o));
             }
             doc.editor.move_caret(o, shift);
+            doc.caret_side = side;
             doc.want_x = None;
             return true;
         }
     } else if resp.dragged() {
-        if let Some(o) = pc.page.offset_at(local) {
+        if let Some((o, side)) = pc.page.side_at(local) {
             doc.editor.move_caret(o, true);
+            doc.caret_side = side;
             return true;
         }
     }
@@ -1040,6 +1104,7 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     }
     doc.touched();
     doc.want_x = None;
+    doc.caret_side = crate::page::Side::Before;
     cx.diag.peek = None;
     update_completion(doc, in_math, cx);
 }
@@ -1108,6 +1173,7 @@ fn handle_keys(
 ) -> bool {
     let input = ui.input(|i| i.events.clone());
     let mut moved = false;
+    let revision = doc.editor.revision();
     for ev in input {
         // The go-to-definition highlight lasts until the next key or edit.
         if matches!(
@@ -1150,6 +1216,10 @@ fn handle_keys(
             }
             _ => {}
         }
+    }
+    if doc.editor.revision() != revision {
+        // After an edit the caret stays with what was just typed or kept.
+        doc.caret_side = crate::page::Side::Before;
     }
     moved
 }

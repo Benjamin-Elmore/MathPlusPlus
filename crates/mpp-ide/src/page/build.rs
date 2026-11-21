@@ -2694,6 +2694,76 @@ This is ",
         assert_eq!(page.offset_step(5, true), Some(7));
     }
 
+    fn page_showing(src: &str, show: &ShowState) -> Page {
+        let doc = parse_document(src);
+        build_page(&PageInput {
+            src,
+            doc: &doc,
+            eval: None,
+            theme: Theme::LIGHT,
+            size: 18.0,
+            width: 900.0,
+            integral_limits: IntegralLimits::AboveBelow,
+            slot_labels: &[],
+            show,
+            extra_refs: &ExtraRefs::default(),
+            proof: &crate::proof::ProofView::default(),
+        })
+    }
+
+    #[test]
+    fn pin_shift_is_how_far_the_caret_line_moved() {
+        // A note above the caret takes space or none (View → Comments): the
+        // text is the same, only the layout changed.
+        let src = "% a note above the line
+
+Hello
+
+World";
+        let shown = page_showing(src, &ShowState::default());
+        let hidden = page_showing(
+            src,
+            &ShowState {
+                hide_comments: true,
+                ..ShowState::default()
+            },
+        );
+        let caret = src.len();
+        let moved = top_of(&shown, caret) - top_of(&hidden, caret);
+        assert!(moved > 5.0, "the note takes space: {moved}");
+        let shift = super::super::pin::pin_shift(&hidden, &shown, src, caret).expect("a shift");
+        assert!((shift - moved).abs() < 0.5, "{shift} vs {moved}");
+        let back = super::super::pin::pin_shift(&shown, &hidden, src, caret).expect("a shift");
+        assert!((back + moved).abs() < 0.5);
+        // Typing on the pinned line keeps the pin; nothing moved.
+        let typed = format!("{src}s");
+        let pin =
+            super::super::Pin::new(&shown, src, caret, super::super::Side::Before).expect("a pin");
+        let s = pin.shift(&page_for(&typed), &typed).expect("still pinned");
+        assert!(s.abs() < 0.5, "{s}");
+        // Text changed before the line: no pin (the caret is scrolled to instead).
+        let other = format!("x{src}");
+        assert_eq!(pin.shift(&page_for(&other), &other), None);
+    }
+
+    #[test]
+    fn the_caret_side_picks_the_line_when_an_offset_is_on_two() {
+        let src = "Hello
+
+World";
+        let page = page_for(src);
+        // Offset 6 (the blank line between the blocks) has no stop of its own.
+        let before = page
+            .caret_stop_on(6, super::super::Side::Before)
+            .expect("stop");
+        let after = page
+            .caret_stop_on(6, super::super::Side::After)
+            .expect("stop");
+        assert!((before.top - top_of(&page, 5)).abs() < 1.0);
+        assert!((after.top - top_of(&page, 7)).abs() < 1.0);
+        assert!(after.top > before.top + 5.0);
+    }
+
     #[test]
     fn an_empty_document_still_has_a_caret_position() {
         let page = page_for("");
