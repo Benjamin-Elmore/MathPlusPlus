@@ -190,6 +190,10 @@ fn run(file: &Path, steps: bool, limit: Option<std::time::Duration>) -> ExitCode
     match run_file_with_limit(file, limit) {
         Ok(ev) => {
             print!("{}", run_report_with(&ev, steps));
+            eprint!(
+                "{}",
+                mpp_cli::warning_report(&file.display().to_string(), &ev)
+            );
             if run_lines(&ev).iter().any(|l| l.error) {
                 ExitCode::FAILURE
             } else {

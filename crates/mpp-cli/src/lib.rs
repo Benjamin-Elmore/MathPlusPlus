@@ -228,6 +228,18 @@ pub fn check_report(file: &str, ev: &Evaluated) -> String {
     out
 }
 
+/// The warnings of a document as the lines `mpp run` prints after its answers
+/// (errors already show on their own lines).
+pub fn warning_report(file: &str, ev: &Evaluated) -> String {
+    let mut out = String::new();
+    for d in ev.all_diagnostics() {
+        if d.severity == Severity::Warning {
+            let _ = write!(out, "{}", format_diagnostic(file, ev, d));
+        }
+    }
+    out
+}
+
 /// A `\overset{?}{=}` check that came out ✗, as an error: a false statement in a
 /// document is a mistake `mpp check` must report (and fail on).
 pub fn failed_checks(ev: &Evaluated) -> Vec<Diagnostic> {

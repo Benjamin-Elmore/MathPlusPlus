@@ -257,3 +257,29 @@ $$ \operatorname{dsolve}(y' = -2y, y, t) = ? $$
     assert!(s.contains("→ y(t)"), "{s}");
     assert!(!s.contains("= y(t)"), "{s}");
 }
+
+#[test]
+fn check_warns_about_a_mistyped_function_name() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("typo.mpp");
+    std::fs::write(&file, "$$ sinn(2) = ? $$\n\n$$ lnn(2) = ? $$\n").unwrap();
+    let out = mpp().arg("check").arg(&file).output().unwrap();
+    let err = text(&out.stderr) + &text(&out.stdout);
+    assert!(err.contains("warning"), "{err}");
+    assert!(err.contains("Did you mean the function `sin`?"), "{err}");
+    assert!(err.contains("Did you mean the function `ln`?"), "{err}");
+}
+
+#[test]
+fn check_leaves_option_words_and_defined_names_alone() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("words.mpp");
+    std::fs::write(
+        &file,
+        "$$ speed := 3 $$\n\n$$ speed + 1 = ? $$\n\n$$ \\operatorname{riemann}_{left}(x^2, [0, 1], 4) = ? $$\n",
+    )
+    .unwrap();
+    let out = mpp().arg("check").arg(&file).output().unwrap();
+    let err = text(&out.stderr) + &text(&out.stdout);
+    assert!(!err.contains("single letters"), "{err}");
+}
