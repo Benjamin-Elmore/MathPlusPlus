@@ -457,3 +457,51 @@ fn names_with_fraction_and_list_subscripts_and_years() {
         ]
     );
 }
+
+#[test]
+fn fit_sentences_against_a_table() {
+    // A linear model with units in the header written as maths: a in kPa·L = J.
+    let src = concat!(
+        "| $V$ ($\\mathrm L$) | $P$ ($\\mathrm{kPa}$) |\n",
+        "|---|---|\n",
+        "| 1.0 | 99.3 |\n",
+        "| 1.5 | 66.0 |\n",
+        "| 2.0 | 49.7 |\n",
+        "| 2.5 | 39.6 |\n",
+        "| 3.0 | 33.1 |\n",
+        "\n",
+        r"Fit $P = a \cdot \dfrac{1}{V} + b$ to the table:",
+        "\n\n",
+        r"$$ a \approx ? \qquad b \approx ? $$",
+    );
+    assert_eq!(
+        approx_all(src),
+        vec!["≈ 99.30094044 J", "≈ -0.05454545489 kPa"]
+    );
+    let ev = run(src);
+    assert!(ev.report().contains("R² ≈ 0.999985"), "{}", ev.report());
+    // A nonlinear model with a known value in it.
+    let src = concat!(
+        r"Let $V_0 := 5\,\mathrm V$.",
+        "\n\n",
+        "| $t$ ($\\mathrm s$) | $V$ ($\\mathrm V$) |\n",
+        "|---|---|\n",
+        "| 0.0 | 0.00 |\n",
+        "| 0.5 | 1.98 |\n",
+        "| 1.0 | 3.15 |\n",
+        "| 2.0 | 4.32 |\n",
+        "| 4.0 | 4.91 |\n",
+        "\n",
+        r"Fit $V = V_0(1 - e^{-t/\tau})$ to the table:",
+        "\n\n",
+        r"$$ \tau \approx ? $$",
+    );
+    let got = approx_all(src);
+    assert!(
+        got[0].starts_with("≈ 1.00") && got[0].ends_with(" s"),
+        "{got:?}"
+    );
+    // Without a table there is nothing to fit.
+    let errs = errors(r"Fit $y = a x$ to the table.");
+    assert!(errs.iter().any(|e| e.contains("data columns")), "{errs:?}");
+}

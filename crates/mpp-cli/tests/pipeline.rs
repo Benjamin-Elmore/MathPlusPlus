@@ -39,7 +39,8 @@ const CASES: &[Case] = &[
     case("labs/04-rc-circuit.mpp", &["3.161"], false),
     case("labs/05-radioactive-decay.mpp", &["0.2983", "7575"], false),
     case("labs/06-reaction-kinetics.mpp", &["1.926"], false),
-    case("labs/07-boyles-law.mpp", &["99.2", "0.0400"], false),
+    // The lab states the slope's tolerance: 0.5.
+    case("labs/07-boyles-law.mpp", &["99.2±0.5", "0.0400"], false),
     case("labs/08-titration.mpp", &["1.477", "11.959"], false),
     case("labs/09-predator-prey.mpp", &["2.75"], false),
     case("labs/10-heat-rod.mpp", &["702.3"], false),
@@ -71,9 +72,8 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
     ("labs/01-projectile-drag.mpp", "`≈ ?` queries in prose and a figure sentence with a trailing clause are rejected (mpp-syntax, mpp-eval); unit-valued `:=` lines"),
     ("labs/02-pendulum.mpp", "`≈ ?` queries in prose, a figure sentence with a trailing clause; elliptic-integral or ODE helpers (C-lane)"),
     ("labs/03-damped-spring.mpp", "`for all t` condition after a query, figure keywords with units in ranges (`t ∈ [0, 10 s]`)"),
-    ("labs/04-rc-circuit.mpp", "`solve_t(…) ≈ ?`, fit results with names like `τ_fit`, figure items"),
     ("labs/06-reaction-kinetics.mpp", "bracket names `[A]_0` as definitions, composite subscripts `E_{a,fit}`"),
-    ("labs/07-boyles-law.mpp", "multi-result `a ≈ ? b ≈ ?` lines, regression results in prose"),
+    ("labs/07-boyles-law.mpp", "for Ben: the least-squares slope of the table is 99.30 J (within the stated 0.5 of 99.2), so the recovered amount is n_fit = 0.04006 mol, which rounds to 0.0401, not the expected 0.0400; and `R^2 ≈ ?` is the square of the gas constant R defined above, not the fit's coefficient of determination (the fit line reports R² ≈ 0.999985 itself)"),
     ("labs/08-titration.mpp", "`:=` with a leading operator, `\\mathrm{pH}` as a function head"),
     ("labs/09-predator-prey.mpp", "`V` called with a vector, numeric maxima over an interval, figure sentences"),
     ("labs/10-heat-rod.mpp", "PDE function `u(x, t)` as an unknown function"),
@@ -85,6 +85,12 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
 /// as the labs state their results to that precision; any other text must appear as
 /// written.
 fn shows(report: &str, needle: &str) -> bool {
+    // `99.2±0.5`: the tolerance the lab states for that result.
+    if let Some((value, tol)) = needle.split_once('±') {
+        if let (Ok(want), Ok(tol)) = (value.parse::<f64>(), tol.parse::<f64>()) {
+            return numbers(report).any(|x| (x - want).abs() <= tol * (1.0 + 1e-9));
+        }
+    }
     let Ok(want) = needle.parse::<f64>() else {
         return report.contains(needle);
     };

@@ -289,6 +289,7 @@ impl Session {
             sequences: &self.sequences,
             called: &self.called,
             ode_unknowns: &self.ode_unknowns,
+            source: src,
             holders: &self.holders,
             importer: self.importer.as_ref(),
             base_dir: self.base_dir.as_deref(),

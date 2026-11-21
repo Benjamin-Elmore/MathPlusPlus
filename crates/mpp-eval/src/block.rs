@@ -3,6 +3,7 @@
 mod assume;
 mod auto;
 mod data;
+mod fit;
 mod ode;
 mod seed;
 mod sentences;
@@ -45,6 +46,8 @@ pub(crate) struct Inputs<'a> {
     pub called: &'a BTreeSet<String>,
     /// Names differentiated in an equation somewhere in the document.
     pub ode_unknowns: &'a BTreeSet<String>,
+    /// The document's text (spans index into it).
+    pub source: &'a str,
     pub holders: &'a Arc<Holders>,
     pub importer: &'a dyn Importer,
     pub base_dir: Option<&'a Path>,
@@ -394,6 +397,11 @@ impl Run<'_, '_> {
             BlockKind::Let(l) => {
                 for m in l.math() {
                     self.math(&m.ast, Place::Let);
+                }
+            }
+            BlockKind::Paragraph(content) if fit::fit_sentence(content).is_some() => {
+                if let Some(ast) = fit::fit_sentence(content) {
+                    self.fit(ast);
                 }
             }
             BlockKind::Heading { content, .. }
