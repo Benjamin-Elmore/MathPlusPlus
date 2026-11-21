@@ -487,10 +487,15 @@ pub(super) fn linear_system(eqs: &[Expr], rest: &[Expr], ctx: &Ctx<'_>) -> MathR
     }
     let sol = logged(ctx, |s| systems::solve_system(eqs, initial.as_deref(), s))?;
     ctx.note(format!(
-        "matrix exponential e^(At) = L⁻¹{{(sI − A)⁻¹}}; the eigenvalues of A are {}",
+        "matrix exponential {}; the eigenvalues of {} are {}",
+        mpp_core::note::tex(
+            "e^{At} = \\mathcal{L}^{-1}\\left\\{(sI - A)^{-1}\\right\\}",
+            "e^(At) = L⁻¹{(sI − A)⁻¹}"
+        ),
+        mpp_core::note::tex("A", "A"),
         sol.eigenvalues
             .iter()
-            .map(|e| e.to_string())
+            .map(mpp_core::note::maths)
             .collect::<Vec<_>>()
             .join(", ")
     ));

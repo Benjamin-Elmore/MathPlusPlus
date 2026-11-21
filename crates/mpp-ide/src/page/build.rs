@@ -13,6 +13,8 @@ use mpp_syntax::document::{
 use mpp_syntax::math::{parse_math, QueryMode, RelOp};
 use mpp_syntax::Span;
 
+use crate::diagnostics::rich::{from_message, Rich, Seg};
+
 use super::flow::{display_name, flow, flow_center, flow_text, glyph_for, text_width, Cx, Style};
 use super::paper::{entry_text, italic_body, ExtraRefs, PaperInfo};
 use super::{
@@ -1544,39 +1546,103 @@ fn layout_display(
 
 /// A note under an equation (why it has no answer) as typeset words and maths,
 /// broken into lines that fit `w`. Returns its height.
-fn layout_note(input: &PageInput<'_>, text: &str, x0: f32, y0: f32, w: f32, c: &mut Canvas) -> f32 {
+fn layout_note(
+    input: &PageInput<'_>,
+    note: &Rich,
+    x0: f32,
+    y0: f32,
+    w: f32,
+    c: &mut Canvas,
+) -> f32 {
     let small = input.size * 0.9;
     let theme = Theme {
         text: input.theme.muted,
         ..input.theme
     };
-    let fits = |line: &str| snippet(&prose_latex_with(line, true), small, theme).width <= w;
-    let words: Vec<&str> = text.split(' ').filter(|w| !w.is_empty()).collect();
-    let mut lines: Vec<String> = vec![];
-    let mut line = String::new();
-    for word in words {
-        let next = if line.is_empty() {
-            word.to_string()
-        } else {
-            format!("{line} {word}")
-        };
-        if line.is_empty() || fits(&next) {
-            line = next;
-        } else {
-            lines.push(std::mem::take(&mut line));
-            line = word.to_string();
+    // A little room at the right for the overhang of italic letters.
+    let room = w - small * 0.5;
+    let lines = note_lines(note, |latex| snippet(latex, small, theme).width <= room);
+    let mut y = y0;
+    for l in &lines {
+        let dl = snippet(l, small, theme);
+        c.merge(&dl, x0, y, false);
+        y += dl.total_height().max(small) + input.size * 0.1;
+    }
+    y - y0 + input.size * 0.2
+}
+
+/// The notes shown under each display maths block of a document (for tests).
+#[cfg(test)]
+pub(crate) fn page_notes(doc: &Document, eval: &Evaluated) -> Vec<Rich> {
+    let mut out = vec![];
+    doc.walk(&mut |b| {
+        if let (BlockKind::DisplayMath(m), Some(br)) = (&b.kind, eval.block(b.id)) {
+            let ex = extras_for(br, m, &ShowState::default(), block_delta(b, br));
+            out.extend(ex.notes);
+        }
+    });
+    out
+}
+
+/// A note's words and maths as LaTeX lines, each as long as `fits` allows: the words
+/// in `\text`, each piece of maths kept whole (typeset by the maths layout, never as
+/// flattened text) and moved to the next line when it does not fit.
+pub(crate) fn note_lines(note: &Rich, fits: impl Fn(&str) -> bool) -> Vec<String> {
+    // Each atom as LaTeX, with whether a space comes before it.
+    let mut atoms: Vec<(String, bool)> = vec![];
+    let mut pending_space = false;
+    for seg in &note.0 {
+        match seg {
+            Seg::Text(t) | Seg::Italic(t) => {
+                let mut space_before = pending_space || t.starts_with(' ');
+                for word in t.split(' ') {
+                    if word.is_empty() {
+                        space_before = true;
+                        continue;
+                    }
+                    let word = plain_text(word);
+                    if !word.is_empty() {
+                        atoms.push((format!("\\text{{{word}}}"), space_before));
+                    }
+                    space_before = true;
+                }
+                pending_space = t.ends_with(' ');
+            }
+            Seg::Math(m) => {
+                atoms.push((format!("{{{m}}}"), pending_space));
+                pending_space = false;
+            }
+        }
+    }
+    let join = |line: &[(String, bool)]| -> String {
+        let mut out = String::new();
+        for (i, (atom, spaced)) in line.iter().enumerate() {
+            if i > 0 && *spaced {
+                out.push_str("\\text{ }");
+            }
+            out.push_str(atom);
+        }
+        out
+    };
+    let mut lines: Vec<Vec<(String, bool)>> = vec![];
+    let mut line: Vec<(String, bool)> = vec![];
+    for atom in atoms {
+        line.push(atom);
+        if line.len() == 1 || fits(&join(&line)) {
+            continue;
+        }
+        // Too wide: break before the last spaced piece, so a piece glued to the one
+        // before it (a full stop or bracket after maths) moves with it.
+        let cut = line.iter().rposition(|(_, spaced)| *spaced).unwrap_or(0);
+        if cut > 0 {
+            let rest = line.split_off(cut);
+            lines.push(std::mem::replace(&mut line, rest));
         }
     }
     if !line.is_empty() {
         lines.push(line);
     }
-    let mut y = y0;
-    for l in &lines {
-        let dl = snippet(&prose_latex_with(l, true), small, theme);
-        c.merge(&dl, x0, y, false);
-        y += dl.total_height().max(small) + input.size * 0.1;
-    }
-    y - y0 + input.size * 0.2
+    lines.iter().map(|l| join(l)).collect()
 }
 
 /// How far a block has moved since the evaluation `br` comes from (an edit above it
@@ -1700,7 +1766,7 @@ struct Extras {
     hints: Vec<String>,
     /// Why there is no answer (a sum that could not be settled): prose under the
     /// equation, wrapped to the page.
-    notes: Vec<String>,
+    notes: Vec<Rich>,
 }
 
 /// Text that can sit inside `\text{…}` without any markup showing.
@@ -1725,6 +1791,29 @@ pub(crate) fn prose_latex(note: &str) -> String {
 /// [`prose_latex`]; `strict` keeps a word that has a run of letters (or an
 /// unbalanced bracket) as words, for sentences written by the evaluator.
 pub(crate) fn prose_latex_with(note: &str, strict: bool) -> String {
+    // Maths the evaluator marked in the note is typeset from its own LaTeX.
+    if mpp_core::note::has_maths(note) {
+        let mut out = String::new();
+        for piece in mpp_core::note::pieces(note) {
+            match piece {
+                mpp_core::note::Piece::Text(t) => {
+                    if t.starts_with(' ') {
+                        out.push_str("\\text{ }");
+                    }
+                    if !t.trim().is_empty() {
+                        out.push_str(&prose_latex_with(t.trim(), strict));
+                    }
+                    if t.ends_with(' ') && !t.trim().is_empty() {
+                        out.push_str("\\text{ }");
+                    }
+                }
+                mpp_core::note::Piece::Maths { latex, .. } => {
+                    out.push_str(&format!("{{{latex}}}"));
+                }
+            }
+        }
+        return out;
+    }
     if note.contains('\\') {
         return note.to_string();
     }
@@ -1928,14 +2017,18 @@ fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState, delta: isize)
             }
             _ => {
                 if let (Some(h), None) = (&v.hint, &v.value) {
-                    let h = plain_text(h);
-                    let list = if h.starts_with("fill in") {
-                        &mut ex.hints
+                    if h.starts_with("fill in") {
+                        let h = plain_text(&mpp_core::note::plain(h));
+                        if !h.is_empty() && !ex.hints.contains(&h) {
+                            ex.hints.push(h);
+                        }
                     } else {
-                        &mut ex.notes
-                    };
-                    if !h.is_empty() && !list.contains(&h) {
-                        list.push(h);
+                        // Words and typeset maths: the maths in the note is laid out
+                        // from its LaTeX, never shown as flattened text.
+                        let note = from_message(h);
+                        if !note.is_empty() && !ex.notes.contains(&note) {
+                            ex.notes.push(note);
+                        }
                     }
                 }
             }

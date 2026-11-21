@@ -16,6 +16,7 @@ name = "mpp"
 path = "src/main.rs"
 
 [dependencies]
+mpp-core = { path = "../mpp-core" }
 mpp-syntax = { path = "../mpp-syntax" }
 mpp-eval = { path = "../mpp-eval" }
 mpp-export = { path = "../mpp-export" }

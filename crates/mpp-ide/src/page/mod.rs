@@ -6,7 +6,7 @@
 //! list of caret stops mapping screen positions to source offsets. Prose stops sit
 //! between visible characters, so hidden markup (`#`, `*`, `$$`) is never a stop.
 
-mod build;
+pub(crate) mod build;
 mod flow;
 mod mathcache;
 pub mod paper;

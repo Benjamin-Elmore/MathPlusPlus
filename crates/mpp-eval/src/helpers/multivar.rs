@@ -347,7 +347,16 @@ fn run(op: &str, sub: &Expr, items: &[Expr], ctx: &Ctx<'_>) -> MathResult<Expr> 
                 .ok_or_else(|| MathError::Undefined("the substitution (x, y) = (…, …)".into()))?;
             let vars: Vec<&str> = names.iter().map(String::as_str).collect();
             let (value, jac) = change_of_variables(f, &vars, &map, &ranges(sub, items))?;
-            ctx.note(format!("the Jacobian factor is |∂(x, y)/∂(u, v)| = {jac}"));
+            ctx.note(format!(
+                "the Jacobian factor is {}",
+                mpp_core::note::tex(
+                    &format!(
+                        "\\left|\\frac{{\\partial(x, y)}}{{\\partial(u, v)}}\\right| = {}",
+                        jac.to_latex()
+                    ),
+                    &format!("|∂(x, y)/∂(u, v)| = {}", jac.to_text())
+                )
+            ));
             Ok(value)
         }
         "lineintegral" => {

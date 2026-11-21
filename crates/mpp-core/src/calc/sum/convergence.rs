@@ -12,6 +12,7 @@ use crate::calc::limit::limit;
 use crate::error::MathError;
 use crate::expr::{Constant, Expr, ExprNode, LimitDir};
 use crate::functions::{func, Func};
+use crate::note::{maths, tex};
 use crate::number::Number;
 use crate::poly::as_poly;
 use crate::simplify::{add, mul, pow, simplify};
@@ -47,6 +48,55 @@ fn report(converges: Option<bool>, test: &str, detail: String) -> ConvergenceRep
         test: test.into(),
         detail,
     }
+}
+
+/// `latex` (with `text` as its Unicode form) followed by `e`: `p = 2`.
+fn with(latex: &str, text: &str, e: &Expr) -> (String, String) {
+    (
+        format!("{latex}{}", e.to_latex()),
+        format!("{text}{}", e.to_text()),
+    )
+}
+
+/// A piece of maths from `(latex, text)` with `tail` (`" > 1"`) after both.
+fn ending(parts: (String, String), tail: &str) -> String {
+    tex(&format!("{}{tail}", parts.0), &format!("{}{tail}", parts.1))
+}
+
+/// `|r|` followed by `tail` (the same in LaTeX and text): `|r| < 1`.
+fn abs_cmp(r: &Expr, tail: &str) -> String {
+    abs_cmp_text(r, tail, tail)
+}
+
+/// `|r|` followed by `latex` (LaTeX) or `text` (Unicode).
+fn abs_cmp_text(r: &Expr, latex: &str, text: &str) -> String {
+    tex(
+        &format!("\\left|{}\\right|{latex}", r.to_latex()),
+        &format!("|{}|{text}", r.to_text()),
+    )
+}
+
+/// The term `aₖ` as maths.
+fn a_k() -> String {
+    tex("a_k", "aₖ")
+}
+
+/// `Σ 1/k^p` (`p` already as LaTeX and as text).
+fn p_sum(latex: &str, text: &str) -> String {
+    tex(
+        &format!("\\sum \\frac{{1}}{{k^{{{latex}}}}}"),
+        &format!("Σ 1/k^{text}"),
+    )
+}
+
+/// `∫ f dk` (with bounds when given) `= value`, as maths.
+fn integral_is(f: &Expr, k: &str, bounds: Option<(Expr, Expr)>, value: &Expr) -> String {
+    let i = Expr::new(ExprNode::Integral {
+        expr: f.clone(),
+        var: k.into(),
+        bounds,
+    });
+    maths(&Expr::equation(i, value.clone()))
 }
 
 fn numeric(e: &Expr) -> Option<f64> {
@@ -209,12 +259,15 @@ pub fn convergence(term: &Expr, index: &str, _from: &Expr) -> ConvergenceReport 
             Some(_) => report(
                 Some(false),
                 "divergence test",
-                format!("the terms are the constant {t}, not 0"),
+                format!("the terms are the constant {}, not 0", maths(&t)),
             ),
             None => report(
                 None,
                 "divergence test",
-                format!("the terms are the constant {t}; the series diverges unless it is 0"),
+                format!(
+                    "the terms are the constant {}; the series diverges unless it is 0",
+                    maths(&t)
+                ),
             ),
         };
     }
@@ -228,22 +281,37 @@ pub fn convergence(term: &Expr, index: &str, _from: &Expr) -> ConvergenceReport 
             Some(v) if (v - 1.0).abs() < 1e-15 => report(
                 Some(false),
                 "divergence test",
-                format!("the terms keep the size of the first one (common ratio {r})"),
+                format!(
+                    "the terms keep the size of the first one (common ratio {})",
+                    maths(&r)
+                ),
             ),
             Some(v) if v < 1.0 => report(
                 Some(true),
                 name,
-                format!("the common ratio is {r} and |{r}| < 1"),
+                format!(
+                    "the common ratio is {} and {}",
+                    maths(&r),
+                    abs_cmp(&r, " < 1")
+                ),
             ),
             Some(_) => report(
                 Some(false),
                 name,
-                format!("the common ratio is {r} and |{r}| ≥ 1, so the terms do not tend to 0"),
+                format!(
+                    "the common ratio is {} and {}, so the terms do not tend to 0",
+                    maths(&r),
+                    abs_cmp_text(&r, " \\ge 1", " ≥ 1")
+                ),
             ),
             None => report(
                 None,
                 name,
-                format!("the common ratio is {r}: it converges exactly when |{r}| < 1"),
+                format!(
+                    "the common ratio is {}: it converges exactly when {}",
+                    maths(&r),
+                    abs_cmp(&r, " < 1")
+                ),
             ),
         };
     }
@@ -323,7 +391,10 @@ pub fn convergence(term: &Expr, index: &str, _from: &Expr) -> ConvergenceReport 
             return report(
                 Some(true),
                 "alternating series test",
-                format!("the terms alternate in sign and |aₖ| = {pos} decreases to 0"),
+                format!(
+                    "the terms alternate in sign and {} decreases to 0",
+                    ending(with("\\left|a_k\\right| = ", "|aₖ| = ", &pos), "")
+                ),
             );
         }
         return report(
@@ -349,7 +420,10 @@ pub(crate) fn divergence_test(mag: &Expr, k: &str) -> Option<ConvergenceReport> 
         return Some(report(
             Some(false),
             "divergence test",
-            format!("the terms do not tend to 0 (their size tends to {l})"),
+            format!(
+                "the terms do not tend to 0 (their size tends to {})",
+                maths(&l)
+            ),
         ));
     }
     None
@@ -359,9 +433,20 @@ pub(crate) fn p_series(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     let p = p_series_exponent(pos, k)?;
     let v = numeric(&p)?;
     Some(if v > 1.0 {
-        report(Some(true), "p-series", format!("p = {p} > 1"))
+        report(
+            Some(true),
+            "p-series",
+            ending(with("p = ", "p = ", &p), " > 1"),
+        )
     } else {
-        report(Some(false), "p-series", format!("p = {p} ≤ 1"))
+        report(
+            Some(false),
+            "p-series",
+            tex(
+                &format!("p = {} \\le 1", p.to_latex()),
+                &format!("p = {} ≤ 1", p.to_text()),
+            ),
+        )
     })
 }
 
@@ -374,7 +459,10 @@ pub(crate) fn rational_comparison(pos: &Expr, k: &str) -> Option<ConvergenceRepo
         Some(converges),
         "limit comparison test",
         format!(
-            "aₖ behaves like a constant times 1/k^{d}, and Σ 1/k^{d} {} (p-series)",
+            "{} behaves like a constant times {}, and {} {} (p-series)",
+            a_k(),
+            tex(&format!("\\frac{{1}}{{k^{{{d}}}}}"), &format!("1/k^{d}")),
+            p_sum(&d.to_string(), &d.to_string()),
             if converges { "converges" } else { "diverges" }
         ),
     ))
@@ -390,7 +478,15 @@ pub(crate) fn telescoping(t: &Expr, k: &str) -> Option<ConvergenceReport> {
     Some(report(
         Some(true),
         "telescoping series",
-        format!("aₖ = u(k) − u(k + {m}) with u(k) = {u} tending to {l}"),
+        format!(
+            "{} with {} tending to {}",
+            tex(
+                &format!("a_k = u(k) - u(k + {m})"),
+                &format!("aₖ = u(k) − u(k + {m})")
+            ),
+            ending(with("u(k) = ", "u(k) = ", &u), ""),
+            maths(&l)
+        ),
     ))
 }
 
@@ -408,7 +504,16 @@ pub(crate) fn ratio_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
         return None;
     }
     let l = lim_inf(&r, k).ok()?;
-    let detail = |cmp: &str| format!("|aₖ₊₁/aₖ| = {r} tends to {l} {cmp} 1");
+    let detail = |cmp: &str| {
+        format!(
+            "{} tends to {}",
+            ending(
+                with("\\left|\\frac{a_{k+1}}{a_k}\\right| = ", "|aₖ₊₁/aₖ| = ", &r),
+                ""
+            ),
+            ending(with("", "", &l), &format!(" {cmp} 1"))
+        )
+    };
     if matches!(l.node(), ExprNode::Const(Constant::Infinity)) {
         return Some(report(Some(false), "ratio test", detail(">")));
     }
@@ -428,7 +533,13 @@ pub(crate) fn root_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     }
     let root = pow(pos.clone(), pow(Expr::sym(k), Expr::int(-1)));
     let l = lim_inf(&root, k).ok()?;
-    let detail = |cmp: &str| format!("|aₖ|^(1/k) tends to {l} {cmp} 1");
+    let detail = |cmp: &str| {
+        format!(
+            "{} tends to {}",
+            tex("\\left|a_k\\right|^{1/k}", "|aₖ|^(1/k)"),
+            ending(with("", "", &l), &format!(" {cmp} 1"))
+        )
+    };
     if matches!(l.node(), ExprNode::Const(Constant::Infinity)) {
         return Some(report(Some(false), "root test", detail(">")));
     }
@@ -469,13 +580,16 @@ pub(crate) fn limit_comparison(pos: &Expr, k: &str) -> Option<ConvergenceReport>
         report(
             Some(c),
             "limit comparison test",
-            format!("aₖ · k^{p} tends to {l}; Σ 1/k^{p} {} (p-series)", {
-                if c {
-                    "converges"
-                } else {
-                    "diverges"
-                }
-            }),
+            format!(
+                "{} tends to {}; {} {} (p-series)",
+                tex(
+                    &format!("a_k \\cdot k^{{{}}}", p.to_latex()),
+                    &format!("aₖ · k^{p}")
+                ),
+                maths(l),
+                p_sum(&p.to_latex(), &p.to_string()),
+                if c { "converges" } else { "diverges" }
+            ),
         )
     };
     if finite_positive {
@@ -540,7 +654,12 @@ pub(crate) fn bounded_comparison(t: &Expr, k: &str) -> Option<ConvergenceReport>
             Some(true),
             "comparison test",
             format!(
-                "|aₖ| ≤ C·{rest} and Σ {rest} converges ({}); so the series converges absolutely",
+                "{} and {} converges ({}); so the series converges absolutely",
+                ending(
+                    with("\\left|a_k\\right| \\le C \\cdot ", "|aₖ| ≤ C·", &rest),
+                    ""
+                ),
+                ending(with("\\sum ", "Σ ", &rest), ""),
                 inner.test
             ),
         )
@@ -569,7 +688,10 @@ pub(crate) fn integral_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
         return Some(report(
             Some(false),
             "integral test",
-            format!("∫ {pos} d{k} = {antiderivative} grows without bound"),
+            format!(
+                "{} grows without bound",
+                integral_is(pos, k, None, &antiderivative)
+            ),
         ));
     }
     numeric(&at_inf)?;
@@ -580,6 +702,9 @@ pub(crate) fn integral_test(pos: &Expr, k: &str) -> Option<ConvergenceReport> {
     Some(report(
         Some(true),
         "integral test",
-        format!("∫ {pos} d{k} from 3 to ∞ = {value} is finite"),
+        format!(
+            "{} is finite",
+            integral_is(pos, k, Some((Expr::int(3), Expr::infinity())), &value)
+        ),
     ))
 }

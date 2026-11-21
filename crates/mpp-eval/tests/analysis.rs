@@ -16,7 +16,11 @@ fn run(src: &str) -> Evaluated {
 }
 
 fn no_errors(ev: &Evaluated) {
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "unexpected errors: {errs:?}");
 }
 
@@ -139,7 +143,7 @@ fn what_cannot_be_settled_is_reported() {
         .all_diagnostics()
         .iter()
         .filter(|d| d.severity == Severity::Error)
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect();
     assert!(
         errs.iter().any(|e| e.contains("give an interval")),
@@ -157,7 +161,7 @@ fn numeric_fallback_is_marked() {
         .all_diagnostics()
         .iter()
         .filter(|d| d.severity == Severity::Warning)
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect();
     assert!(notes.iter().any(|n| n.contains('≈')), "{notes:?}");
 }
@@ -168,7 +172,7 @@ fn warnings(ev: &Evaluated) -> Vec<String> {
         .iter()
         .flat_map(|b| b.diagnostics.iter())
         .filter(|d| d.severity == Severity::Warning)
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect()
 }
 

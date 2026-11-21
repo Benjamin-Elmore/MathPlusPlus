@@ -16,6 +16,7 @@ use crate::calc::limit::limit;
 use crate::error::{MathError, MathResult};
 use crate::expr::{BigOpKind, Expr, ExprNode, LimitDir};
 use crate::functions::{func, Func};
+use crate::note::{maths, tex};
 use crate::poly::Poly;
 use crate::simplify::{add, mul, pow, simplify};
 use crate::steps::Steps;
@@ -73,7 +74,7 @@ pub fn product(
             Steps::record(&mut log, rule, &shown, &value, None);
             Ok(value)
         }
-        None => Err(MathError::NoClosedForm(format!("{shown}"))),
+        None => Err(MathError::NoClosedForm(maths(&shown))),
     }
 }
 
@@ -229,7 +230,9 @@ fn infinite_product(t: &Expr, k: &str, a: &Expr, log: &mut Option<&mut Steps>) -
     if let Some(l) = &factor_limit {
         if !l.is_one() && (l.is_infinite() || value_f64(l).is_some()) {
             return Err(MathError::Divergent(format!(
-                "the product {shown} (its factors tend to {l}, not 1)"
+                "the product {} (its factors tend to {}, not 1)",
+                maths(&shown),
+                maths(l)
             )));
         }
     }
@@ -237,28 +240,34 @@ fn infinite_product(t: &Expr, k: &str, a: &Expr, log: &mut Option<&mut Steps>) -
     let verdict = convergence(&excess, k, a);
     if verdict.converges == Some(false) {
         return Err(MathError::Divergent(format!(
-            "the product {shown} (Σ (aₖ − 1) diverges by the {})",
+            "the product {} ({} diverges by the {})",
+            maths(&shown),
+            tex("\\sum (a_k - 1)", "Σ (aₖ − 1)"),
             verdict.test
         )));
     }
-    let note = Some(format!("Σ (aₖ − 1) {verdict}"));
+    let note = Some(format!(
+        "{} {verdict}",
+        tex("\\sum (a_k - 1)", "Σ (aₖ − 1)")
+    ));
     if let Some((value, rule)) = infinite_closed(t, k, a, 0)? {
         Steps::record(log, verdict.test.clone(), &shown, &shown, note);
         Steps::record(log, rule, &shown, &value, None);
         return Ok(value);
     }
     let Some(start) = int_value(a).and_then(|n| n.to_f64()) else {
-        return Err(MathError::NoClosedForm(format!("{shown}")));
+        return Err(MathError::NoClosedForm(maths(&shown)));
     };
     if verdict.converges != Some(true) || t.free_symbols().iter().any(|s| &**s != k) {
         return Err(MathError::Inconclusive(format!(
-            "whether {shown} converges"
+            "whether {} converges",
+            maths(&shown)
         )));
     }
     // Every factor must be positive for exp Σ ln aₖ; check the first ones and the tail.
     let first_ok = (0..200).all(|i| term_f64(t, k, start + f64::from(i)).is_some_and(|v| v > 0.0));
     if !first_ok || eventual_sign(t, k) != Some(std::cmp::Ordering::Greater) {
-        return Err(MathError::NoClosedForm(format!("{shown}")));
+        return Err(MathError::NoClosedForm(maths(&shown)));
     }
     let ln_t = func(Func::Ln, vec![t.clone()]);
     let ln_verdict = convergence(&ln_t, k, a);

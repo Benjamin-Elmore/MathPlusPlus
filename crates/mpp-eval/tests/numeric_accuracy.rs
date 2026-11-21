@@ -17,7 +17,11 @@ fn run(src: &str) -> Evaluated {
 /// The verdict of the first check.
 fn verdict(src: &str) -> Verdict {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a check");
     line.verdict.clone().expect("a verdict")
@@ -26,7 +30,11 @@ fn verdict(src: &str) -> Verdict {
 /// The numeric answer of the first query (no errors allowed).
 fn approx(src: &str) -> String {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a query");
     line.approx.clone().unwrap_or_default()
@@ -37,7 +45,7 @@ fn errors(src: &str) -> Vec<String> {
     run(src)
         .errors()
         .iter()
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect()
 }
 

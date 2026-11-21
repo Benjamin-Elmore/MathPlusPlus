@@ -435,6 +435,22 @@ impl Composer<'_> {
         }
     }
 
+    /// A note's words, and each piece of maths the evaluator marked in it (see
+    /// [`mpp_core::note`]) typeset by the maths layout.
+    fn note_pieces(&self, text: &str, st: &Style, out: &mut Vec<Piece>) {
+        for piece in mpp_core::note::pieces(text) {
+            match piece {
+                mpp_core::note::Piece::Text(t) => self.text_pieces(t, st, out),
+                mpp_core::note::Piece::Maths { latex, .. } => {
+                    let o = self.math_opts(MathStyle::Text, st.size);
+                    let mut p = from_display(&layout_latex(latex, &o));
+                    recolor_text(&mut p, st);
+                    out.push(p);
+                }
+            }
+        }
+    }
+
     fn text_pieces(&self, text: &str, st: &Style, out: &mut Vec<Piece>) {
         let leading = text.starts_with(char::is_whitespace);
         if leading {
@@ -1289,7 +1305,7 @@ impl Composer<'_> {
                     if let Some(l) = pieces.last_mut() {
                         l.space = true;
                     }
-                    self.text_pieces(&format!("({n})"), &st, &mut pieces);
+                    self.note_pieces(&format!("({n})"), &st, &mut pieces);
                 }
                 let o = ParaOpts {
                     left: 24.0,

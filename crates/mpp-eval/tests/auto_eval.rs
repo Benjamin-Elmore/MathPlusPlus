@@ -21,7 +21,11 @@ fn run(src: &str) -> Evaluated {
 /// The auto answer of the only auto line.
 fn auto(src: &str) -> String {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let lines: Vec<_> = ev.auto_results().collect();
     assert_eq!(lines.len(), 1, "{src}: {lines:?}");
@@ -75,7 +79,7 @@ fn render(src: &str) -> String {
                         Severity::Error => "error",
                         Severity::Warning | Severity::Info => "note",
                     };
-                    let _ = writeln!(out, "    {kind}: {}", d.message);
+                    let _ = writeln!(out, "    {kind}: {}", mpp_core::note::plain(&d.message));
                 }
             }
         }
@@ -104,7 +108,11 @@ fn auto_evaluation_example() {
     );
     // Nothing in the example is an error.
     let ev = run(&src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{errs:?}");
 }
 
@@ -259,7 +267,11 @@ fn keep_result_writes_ordinary_maths() {
         edited.push_str(" $$\n\n");
     }
     let ev = run(&edited);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{edited}: {errs:?}");
     assert!(ev.blocks.iter().all(|b| b.values.iter().all(|l| !l.auto)));
 }

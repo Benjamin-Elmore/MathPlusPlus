@@ -18,6 +18,7 @@ pub mod display;
 pub mod font;
 mod html;
 mod layout;
+pub mod note;
 mod svg;
 pub mod theme;
 

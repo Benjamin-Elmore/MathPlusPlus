@@ -39,7 +39,7 @@ fn render(src: &str) -> String {
                     Severity::Error => "error",
                     Severity::Warning | Severity::Info => "note",
                 };
-                let _ = writeln!(out, "    {kind}: {}", d.message);
+                let _ = writeln!(out, "    {kind}: {}", mpp_core::note::plain(&d.message));
             }
         }
     }

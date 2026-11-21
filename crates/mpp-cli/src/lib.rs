@@ -14,6 +14,13 @@ use mpp_syntax::{Diagnostic, Severity};
 pub use prove::{proof_report, prove, split_target, ProveArgs, ProveIo, ProveOutcome};
 pub use unicode::to_unicode;
 
+/// A message or note as Unicode text: each piece of maths in it (see
+/// [`mpp_core::note`]) is written the way the command line writes maths
+/// (`∑ₙ₌₁^∞ x`, never `\sum_{n=1}^{\infty} x` or `∑_(n=1)^∞ x`).
+pub fn readable(msg: &str) -> String {
+    mpp_core::note::map_maths(msg, |latex, _| to_unicode(latex))
+}
+
 /// One typeset result line of a run: the maths asked and its answer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunLine {
@@ -62,8 +69,8 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
                 RunLine {
                     line: ev.line_of(line.span.start),
                     asked: to_unicode(&src),
-                    answer: errors[i].message.clone(),
-                    plain: errors[i].message.clone(),
+                    answer: readable(&errors[i].message),
+                    plain: readable(&errors[i].message),
                     error: true,
                     steps: vec![],
                 }
@@ -79,8 +86,8 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
                 RunLine {
                     line: ev.line_of(d.span.start),
                     asked: to_unicode(&snippet(ev, d.span.start, d.span.end)),
-                    answer: d.message.clone(),
-                    plain: d.message.clone(),
+                    answer: readable(&d.message),
+                    plain: readable(&d.message),
                     error: true,
                     steps: vec![],
                 },
@@ -175,7 +182,7 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
                     st.after.to_text()
                 );
                 if let Some(n) = &st.note {
-                    t.push_str(&format!(" ({n})"));
+                    t.push_str(&format!(" ({})", readable(n)));
                 }
                 t
             })
@@ -234,7 +241,7 @@ fn format_diagnostic(file: &str, ev: &Evaluated, d: &Diagnostic) -> String {
     };
     let line = ev.line_of(d.span.start);
     let shown = to_unicode(&snippet(ev, d.span.start, d.span.end));
-    let mut s = format!("{level}: {}\n  --> {file}:{line}\n", d.message);
+    let mut s = format!("{level}: {}\n  --> {file}:{line}\n", readable(&d.message));
     if !shown.is_empty() {
         let _ = writeln!(s, "   | {shown}");
     }
@@ -269,7 +276,7 @@ pub fn run_file_with_limit(
 /// The answer comes from [`mpp_eval::calc_line`]; this only writes the question in
 /// front of it. An equation (`x^2 = 9`) answers with its solutions alone.
 pub fn calc_line(input: &str) -> Result<String, String> {
-    let answer = mpp_eval::calc_line(input).map_err(|e| e.0)?;
+    let answer = mpp_eval::calc_line(input).map_err(|e| readable(&e.0))?;
     let maths = input.trim();
     let maths = maths
         .strip_prefix("$$")

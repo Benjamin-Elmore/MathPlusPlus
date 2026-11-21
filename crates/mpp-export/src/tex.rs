@@ -88,6 +88,18 @@ fn slug(s: &str) -> String {
 }
 
 /// Escapes running text for LaTeX.
+/// A note or error message as LaTeX: the words escaped, each piece of maths the
+/// evaluator marked in it (see [`mpp_core::note`]) set as inline maths.
+pub(crate) fn note_tex(s: &str) -> String {
+    mpp_core::note::pieces(s)
+        .into_iter()
+        .map(|p| match p {
+            mpp_core::note::Piece::Text(t) => escape_text(t),
+            mpp_core::note::Piece::Maths { latex, .. } => format!("${}$", texify_math(latex)),
+        })
+        .collect()
+}
+
 pub(crate) fn escape_text(s: &str) -> String {
     let mut o = String::with_capacity(s.len());
     for c in s.chars() {
@@ -968,7 +980,7 @@ impl Writer<'_> {
             let _ = writeln!(
                 self.out,
                 "{{\\small\\color{{red!60!black}}$\\times$ {}}}\n",
-                escape_text(&e)
+                note_tex(&e)
             );
         }
     }
@@ -988,7 +1000,7 @@ impl Writer<'_> {
                     texify_math(&step.after.to_latex())
                 );
                 if let Some(n) = &step.note {
-                    let _ = write!(line, " ({})", escape_text(n));
+                    let _ = write!(line, " ({})", note_tex(n));
                 }
                 let _ = writeln!(self.out, "{line}\\\\");
             }
@@ -1095,6 +1107,32 @@ fn is_reference_list(b: &Block) -> bool {
 #[cfg(test)]
 mod neutralise_tests {
     use super::*;
+
+    #[test]
+    fn marked_maths_in_a_note_is_set_as_maths() {
+        let x = mpp_core::Expr::sym("x");
+        let note = format!("whether {} converges", mpp_core::note::maths(&x.pow(2)));
+        assert_eq!(note_tex(&note), "whether $x^{2}$ converges");
+    }
+
+    #[test]
+    fn the_renderer_reads_the_same_marks_the_core_writes() {
+        use mpp_core::note as core;
+        use mpp_render::note as render;
+        assert_eq!(core::MATHS_START, render::MATHS_START);
+        assert_eq!(core::MATHS_SPLIT, render::MATHS_SPLIT);
+        assert_eq!(core::MATHS_END, render::MATHS_END);
+        let x = mpp_core::Expr::sym("x");
+        let note = format!("a {} b", core::maths(&x));
+        assert_eq!(
+            render::note_pieces(&note),
+            [
+                render::NotePiece::Text("a "),
+                render::NotePiece::Maths("x"),
+                render::NotePiece::Text(" b")
+            ]
+        );
+    }
 
     #[test]
     fn accented_letters_keep_their_accents() {

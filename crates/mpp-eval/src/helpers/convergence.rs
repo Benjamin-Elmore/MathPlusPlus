@@ -58,7 +58,8 @@ pub(super) fn power_series(call: &Call, ctx: &Ctx<'_>, radius: bool) -> MathResu
         .ok_or_else(|| missing("interval of convergence", "the variable x"))?;
     let r = logged(ctx, |s| convergence::power_series_interval(term, &k, &x, s))?;
     for (end, report) in &r.endpoints {
-        ctx.note(format!("at {x} = {end}: {report}"));
+        let at = Expr::equation(Expr::sym(&x), end.clone());
+        ctx.note(format!("at {}: {report}", mpp_core::note::maths(&at)));
     }
     Ok(if radius { r.radius } else { r.interval })
 }

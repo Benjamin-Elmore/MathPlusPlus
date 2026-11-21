@@ -16,6 +16,7 @@ use crate::calc::sum::{convergence as decide, ConvergenceReport};
 use crate::error::{MathError, MathResult};
 use crate::expr::{Expr, ExprNode, LimitDir};
 use crate::functions::{func, Func};
+use crate::note::{maths, tex};
 use crate::poly::as_poly;
 use crate::simplify::{add, mul, pow, simplify};
 use crate::steps::Steps;
@@ -176,7 +177,13 @@ pub fn series_tests(
             TestOutcome {
                 test: "alternating series test",
                 verdict: Some(true),
-                detail: format!("the signs alternate and |aₖ| = {pos} decreases to 0"),
+                detail: format!(
+                    "the signs alternate and {} decreases to 0",
+                    tex(
+                        &format!("\\left|a_k\\right| = {}", pos.to_latex()),
+                        &format!("|aₖ| = {}", pos.to_text())
+                    )
+                ),
             }
         } else {
             TestOutcome {
@@ -252,7 +259,8 @@ pub fn power_series_interval(
             "root test",
             root_limit(&t, k).ok_or_else(|| {
                 MathError::Unsupported(format!(
-                    "the radius of convergence of Σ {t}: neither the ratio nor the root test gave a limit"
+                    "the radius of convergence of {}: neither the ratio nor the root test gave a limit",
+                    tex(&format!("\\sum {}", t.to_latex()), &format!("Σ {}", t.to_text()))
                 ))
             })?,
         ),
@@ -266,13 +274,17 @@ pub fn power_series_interval(
     } else {
         let c = as_poly(&l_poly, x).ok_or_else(|| {
             MathError::Unsupported(format!(
-                "the radius of convergence: the limit {l} is not a power of (x − a)"
+                "the radius of convergence: the limit {} is not a power of {}",
+                maths(&l),
+                tex("(x - a)", "(x − a)")
             ))
         })?;
         let m = c.len() - 1;
         if m == 0 {
             return Err(MathError::Unsupported(format!(
-                "the radius of convergence: the limit {l} does not depend on {x}"
+                "the radius of convergence: the limit {} does not depend on {}",
+                maths(&l),
+                maths(&Expr::sym(x))
             )));
         }
         let lead = simplify(&c[m]);
@@ -296,7 +308,9 @@ pub fn power_series_interval(
         let diff = diff.expand().unwrap_or(diff);
         if !simplify(&diff).is_zero() {
             return Err(MathError::Unsupported(format!(
-                "the radius of convergence: the limit {l} is not of the form A·(x − a)ᵐ"
+                "the radius of convergence: the limit {} is not of the form {}",
+                maths(&l),
+                tex("A (x - a)^m", "A·(x − a)ᵐ")
             )));
         }
         let abs_lead = func(Func::Abs, vec![lead]);
@@ -309,8 +323,22 @@ pub fn power_series_interval(
         &t,
         &l,
         Some(format!(
-            "lim_{{{k}→∞}} of the {} is {l}; the series converges when this is below 1, so the centre is {x} = {centre} and the radius is R = {radius}",
-            if how == "ratio test" { "ratio |aₖ₊₁/aₖ|" } else { "root |aₖ|^(1/k)" }
+            "the limit as {} of the {} is {}; the series converges when this is below 1, so the centre is {} and the radius is {}",
+            tex(
+                &format!("{} \\to \\infty", Expr::sym(k).to_latex()),
+                &format!("{k} → ∞")
+            ),
+            if how == "ratio test" {
+                format!(
+                    "ratio {}",
+                    tex("\\left|\\frac{a_{k+1}}{a_k}\\right|", "|aₖ₊₁/aₖ|")
+                )
+            } else {
+                format!("root {}", tex("\\left|a_k\\right|^{1/k}", "|aₖ|^(1/k)"))
+            },
+            maths(&l),
+            maths(&Expr::equation(Expr::sym(x), centre.clone())),
+            maths(&Expr::equation(Expr::sym("R"), radius.clone()))
         )),
     );
     let mut endpoints = Vec::new();
@@ -338,13 +366,17 @@ pub fn power_series_interval(
                 "check the endpoint",
                 &at_end,
                 &at_end,
-                Some(format!("at {x} = {end}: {report}")),
+                Some(format!(
+                    "at {}: {report}",
+                    maths(&Expr::equation(Expr::sym(x), end.clone()))
+                )),
             );
             match report.converges {
                 Some(c) => closed.push(c),
                 None => {
                     return Err(MathError::Undetermined(format!(
-                        "whether the series converges at the endpoint {x} = {end} ({})",
+                        "whether the series converges at the endpoint {} ({})",
+                        maths(&Expr::equation(Expr::sym(x), end.clone())),
                         report.detail
                     )))
                 }
@@ -378,8 +410,13 @@ fn geometric_test(t: &Expr, k: &str) -> Option<ConvergenceReport> {
         converges: Some(converges),
         test: "geometric series test".into(),
         detail: format!(
-            "the common ratio is r = {r} and |r| {} 1",
-            if converges { "<" } else { "≥" }
+            "the common ratio is {} and {}",
+            maths(&Expr::equation(Expr::sym("r"), r.clone())),
+            if converges {
+                tex("|r| < 1", "|r| < 1")
+            } else {
+                tex("|r| \\ge 1", "|r| ≥ 1")
+            }
         ),
     })
 }

@@ -10,7 +10,10 @@ fn run(dir: &std::path::Path, src: &str) -> Vec<String> {
     std::fs::write(&main, src).unwrap();
     let mut session = Session::new().with_importer(Arc::new(FileImporter::new()));
     let ev = session.run_file(&main).unwrap();
-    ev.errors().iter().map(|d| d.message.clone()).collect()
+    ev.errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect()
 }
 
 #[test]

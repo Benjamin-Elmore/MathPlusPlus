@@ -599,7 +599,7 @@ fn answers_of(path: &Path) -> Vec<String> {
         items.push((line.span.start, text.unwrap_or_else(|| "<none>".into())));
     }
     for d in ev.errors() {
-        items.push((d.span.start, d.message.clone()));
+        items.push((d.span.start, mpp_core::note::plain(&d.message)));
     }
     items.sort_by_key(|(at, _)| *at);
     items.into_iter().map(|(_, t)| t).collect()

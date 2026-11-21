@@ -654,7 +654,7 @@ impl Evaluated {
                 out,
                 "{:>4}: {level}: {}",
                 self.line_of(d.span.start),
-                d.message
+                mpp_core::note::plain(&d.message)
             );
         }
         out

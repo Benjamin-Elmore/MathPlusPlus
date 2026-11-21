@@ -16,14 +16,18 @@ fn errors(src: &str) -> Vec<String> {
     run(src)
         .errors()
         .iter()
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect()
 }
 
 /// The exact answer of the first query (no errors allowed).
 fn answer(src: &str) -> String {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a query");
     line.plain.clone().unwrap_or_default()
@@ -32,7 +36,11 @@ fn answer(src: &str) -> String {
 /// The numeric answer of the first query (no errors allowed).
 fn approx(src: &str) -> String {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a query");
     line.approx.clone().unwrap_or_default()
@@ -219,7 +227,11 @@ fn textbook_forms_of_the_library_operators() {
 /// The verdict of the first check, as `mpp run` describes it.
 fn verdict(src: &str) -> String {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let line = ev
         .blocks
@@ -290,7 +302,11 @@ fn results_read_as_unicode_text_with_a_stable_plain_form() {
 /// Every `≈ ?`/`= ?` answer of a document, in order (no errors allowed).
 fn approx_all(src: &str) -> Vec<String> {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     ev.queries()
         .map(|(_, l)| l.plain_answer().unwrap_or_default())
@@ -571,7 +587,11 @@ $$ \frac{d}{dt} V\big(x(t), y(t)\big) = ? $$
 $$ \max_{t \in [0, 50]} \frac{|V(t) - V(0)|}{|V(0)|} \approx ? $$
 $$ x(0) \approx ? $$";
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{errs:?}");
     let shown: Vec<(Option<String>, Option<String>)> = ev
         .queries()
@@ -623,7 +643,11 @@ $$ \frac{\partial u}{\partial t} = \alpha \frac{\partial^2 u}{\partial x^2}, \qu
 $$ \frac{\partial u}{\partial t} - \alpha \frac{\partial^2 u}{\partial x^2} \overset{?}{=} 0 $$
 $$ \operatorname{solve}_t \Big(u\big(\tfrac L2, t\big) = 50\,\mathrm K\Big) \approx ? $$";
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{errs:?}");
     let lines: Vec<_> = ev.queries().map(|(_, l)| l.clone()).collect();
     assert_eq!(
@@ -735,7 +759,11 @@ fn decimals_in_give_decimals_out() {
 /// The text of the first query line (no errors allowed).
 fn shown(src: &str) -> String {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a query");
     line.text.clone().unwrap_or_default()
@@ -861,7 +889,7 @@ fn boundary_value_problems() {
     let notes: Vec<String> = ev
         .all_diagnostics()
         .iter()
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect();
     assert!(notes.iter().any(|n| n.contains("shooting")), "{notes:?}");
 }

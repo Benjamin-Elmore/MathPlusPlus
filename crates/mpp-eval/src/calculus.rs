@@ -323,7 +323,7 @@ fn big_op(
 fn divergent_series(term: &Expr, var: &str, lower: &Expr, shown: &Expr) -> MathError {
     let report = convergence(term, var, lower);
     if report.converges != Some(false) {
-        return MathError::Divergent(format!("the series {shown}"));
+        return MathError::Divergent(format!("the series {}", mpp_core::note::maths(shown)));
     }
     let test = if report.test.contains("test") {
         report.test
@@ -331,8 +331,9 @@ fn divergent_series(term: &Expr, var: &str, lower: &Expr, shown: &Expr) -> MathE
         format!("{} test", report.test)
     };
     MathError::Divergent(format!(
-        "by the {test}, {}, so the series {shown}",
-        report.detail
+        "by the {test}, {}, so the series {}",
+        report.detail,
+        mpp_core::note::maths(shown)
     ))
 }
 

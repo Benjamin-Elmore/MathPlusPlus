@@ -251,8 +251,11 @@ pub fn linsolve(a: &Matrix, b: &Matrix, ctx: &mut Ctx<'_>) -> MathResult<Value> 
     }
     if !free.is_empty() {
         ctx.note(format!(
-            "infinitely many solutions; t_1 … t_{} are free parameters",
-            free.len()
+            "infinitely many solutions; {} are free parameters",
+            crate::note::tex(
+                &format!("t_1, \\ldots, t_{{{}}}", free.len()),
+                &format!("t₁ … t_{}", free.len())
+            )
         ));
     }
     Ok(Matrix::column(x)?.to_expr())

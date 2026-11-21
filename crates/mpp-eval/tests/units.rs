@@ -13,7 +13,10 @@ fn run(src: &str) -> Evaluated {
 }
 
 fn errors(ev: &Evaluated) -> Vec<String> {
-    ev.errors().iter().map(|d| d.message.clone()).collect()
+    ev.errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect()
 }
 
 fn answers(src: &str) -> Vec<String> {
@@ -53,7 +56,7 @@ fn the_example_worksheet_gives_its_expected_answers() {
             .errors()
             .into_iter()
             .find(|d| d.span.start >= start && d.span.end <= line.span.end)
-            .map(|d| d.message.clone());
+            .map(|d| mpp_core::note::plain(&d.message));
         got.push(match error {
             Some(e) => e,
             None => line.plain.clone().unwrap_or_default(),

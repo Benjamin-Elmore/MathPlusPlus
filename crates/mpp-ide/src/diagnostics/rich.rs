@@ -151,8 +151,33 @@ fn fragment(code: &str) -> Seg {
 
 /// Rewrites a parser or evaluator message (with backticked source fragments)
 /// as a sentence of words and typeset maths. Line numbers are dropped.
+///
+/// Maths the evaluator marked in the message (see [`mpp_core::note`]) is typeset
+/// from its LaTeX, never shown as the flattened text it would print as.
 pub fn from_message(msg: &str) -> Rich {
-    let msg = maths_after_colon(&strip_line_numbers(msg));
+    let mut out = Rich::default();
+    for piece in mpp_core::note::pieces(msg) {
+        out = match piece {
+            mpp_core::note::Piece::Text(t) => out.and(from_text(t)),
+            mpp_core::note::Piece::Maths { latex, .. } => out.m(latex),
+        };
+    }
+    sentence(out)
+}
+
+/// [`from_message`] for words without marked maths, before it is made a sentence.
+fn from_text(msg: &str) -> Rich {
+    // `strip_line_numbers` trims the ends; the spaces next to marked maths stay.
+    let lead = if msg.starts_with(' ') { " " } else { "" };
+    let trail = if msg.ends_with(' ') && !msg.trim().is_empty() {
+        " "
+    } else {
+        ""
+    };
+    let msg = format!(
+        "{lead}{}{trail}",
+        maths_after_colon(&strip_line_numbers(msg))
+    );
     let mut out = Rich::default();
     let mut rest = msg.as_str();
     while let Some(open) = rest.find('`') {
@@ -178,8 +203,7 @@ pub fn from_message(msg: &str) -> Rich {
             }
         }
     }
-    out = prose(out, rest);
-    sentence(out)
+    prose(out, rest)
 }
 
 /// "these assumptions can't all hold: x > 0 and x < 0": the facts after the colon

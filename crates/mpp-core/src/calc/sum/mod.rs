@@ -244,7 +244,7 @@ fn finite_sum(
         }
         return Err(MathError::TooLarge(format!("a sum of {count} terms")));
     }
-    Err(MathError::NoClosedForm(format!("{shown}")))
+    Err(MathError::NoClosedForm(crate::note::maths(&shown)))
 }
 
 /// Splits off a sign factor `(−1)^(αk + β)` with odd `α`: returns `(sign, rest)`.

@@ -15,7 +15,11 @@ fn run(src: &str) -> Evaluated {
 /// The text of each query line.
 fn texts(src: &str) -> Vec<String> {
     let ev = run(src);
-    let errs: Vec<_> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<_> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     ev.queries()
         .map(|(_, l)| l.plain.clone().unwrap_or_else(|| "<none>".into()))
@@ -202,7 +206,11 @@ fn malformed_directives_are_errors_in_place() {
         ("%block\n$$ 1 + 1 = ? $$", "needs an option"),
     ] {
         let ev = run(src);
-        let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+        let errs: Vec<String> = ev
+            .errors()
+            .iter()
+            .map(|d| mpp_core::note::plain(&d.message))
+            .collect();
         assert!(
             errs.iter().any(|m| m.contains(needle)),
             "{src}: {errs:?} should mention {needle}"

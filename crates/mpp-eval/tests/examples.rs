@@ -24,7 +24,7 @@ fn answers_of(path: &Path) -> Vec<String> {
         let text = match inside {
             Some(i) => {
                 used[i] = true;
-                errors[i].message.clone()
+                mpp_core::note::plain(&errors[i].message)
             }
             None => {
                 let approx_query = matches!(
@@ -46,7 +46,7 @@ fn answers_of(path: &Path) -> Vec<String> {
     }
     for (i, d) in errors.iter().enumerate() {
         if !used[i] {
-            items.push((d.span.start, d.message.clone()));
+            items.push((d.span.start, mpp_core::note::plain(&d.message)));
         }
     }
     items.sort_by_key(|(at, _)| *at);

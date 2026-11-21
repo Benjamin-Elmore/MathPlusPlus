@@ -42,7 +42,7 @@ Add the constant of integration. add the constant of integration: ∫ 1/(x² - 1
 
 working for line 30:
 Use the power rule for integrals: ∫ xⁿ dx = xⁿ⁺¹/(n + 1) for n ≠ −1. power rule: ∫ x² dx = x³/3 (∫ xⁿ dx = xⁿ⁺¹/(n + 1))
-Evaluate the antiderivative at the bounds: ∫ₐᵇ f dx = F(b) − F(a). fundamental theorem of calculus: ∫_0^2 x² dx = 8/3 (F(x) = x^3/3; F(2) − F(0) = (8/3) − (0))
+Evaluate the antiderivative at the bounds: ∫ₐᵇ f dx = F(b) − F(a). fundamental theorem of calculus: ∫_0^2 x² dx = 8/3 (F(x) = x³/3; F(2) − F(0) = (8/3) − (0))
 
 working for line 36:
 The limit is indeterminate, so use L'Hôpital's rule: take the limit of the derivatives of the top and bottom. L'Hôpital's rule: lim_(x→0^+) ((-x + e^x - 1)/x²) = lim_(x→0^+) ((e^x - 1)/(2x)) (the limit has the form 0/0, so differentiate the top and bottom: d/dx(-x + e^x - 1) = e^x - 1, d/dx(x^2) = 2·x)

@@ -21,6 +21,7 @@ use crate::eval::EmptyEnv;
 use crate::expr::{Expr, ExprNode};
 use crate::functions::{func, Func};
 use crate::hp::{approx, Approx, Decimal};
+use crate::note::maths;
 use crate::number::format_f64;
 use crate::simplify::{add, mul, simplify};
 
@@ -61,7 +62,8 @@ pub(super) fn far_range(
     let far_end = [lo, hi].iter().any(|v| v.is_finite() && v.abs() >= FAR);
     let refuse = || {
         Far::Refused(format!(
-            "∫ {e} d{var} from {lo_expr} to {hi_expr} (the integrand oscillates far faster than it can be sampled that far out)"
+            "{} (the integrand oscillates far faster than it can be sampled that far out)",
+            maths(&super::definite_holder(e, var, lo_expr, hi_expr))
         ))
     };
     let expanded = if lo >= 0.0 {
@@ -86,7 +88,8 @@ pub(super) fn far_range(
     match expanded {
         Some(Ok((v, err, note))) => Some(Far::Value(v, err, note)),
         Some(Err(why)) => Some(Far::Refused(format!(
-            "∫ {e} d{var} from {lo_expr} to {hi_expr} ({why})"
+            "{} ({why})",
+            maths(&super::definite_holder(e, var, lo_expr, hi_expr))
         ))),
         None if far_end => Some(refuse()),
         None => None,

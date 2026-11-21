@@ -17,6 +17,7 @@ use crate::calc::limit::limit;
 use crate::error::{MathError, MathResult};
 use crate::expr::{BigOpKind, Expr, ExprNode, LimitDir};
 use crate::functions::{func, Func};
+use crate::note::{maths, tex};
 use crate::simplify::{add, mul, pow, simplify};
 use crate::steps::Steps;
 
@@ -51,7 +52,8 @@ pub(super) fn infinite_sum(
     if verdict.converges == Some(false) {
         Steps::record(log, verdict.test.clone(), &shown, &shown, verdict_note);
         return Err(MathError::Divergent(format!(
-            "the series {shown} (by the {})",
+            "the series {} (by the {})",
+            maths(&shown),
             verdict.test
         )));
     }
@@ -75,9 +77,10 @@ pub(super) fn infinite_sum(
             );
             Ok(out)
         }
-        (Some(true), _) => Err(MathError::NoClosedForm(format!("{shown}"))),
+        (Some(true), _) => Err(MathError::NoClosedForm(maths(&shown))),
         _ => Err(MathError::Inconclusive(format!(
-            "whether {shown} converges ({})",
+            "whether {} converges ({})",
+            maths(&shown),
             verdict.detail
         ))),
     }
@@ -136,7 +139,8 @@ fn geometric(t: &Expr, k: &str, a: &Expr) -> MathResult<Option<Closed>> {
     if let Some(v) = value_f64(&r) {
         if v.abs() >= 1.0 {
             return Err(MathError::Divergent(format!(
-                "a geometric series with ratio {r}"
+                "a geometric series with ratio {}",
+                maths(&r)
             )));
         }
     }
@@ -148,9 +152,16 @@ fn geometric(t: &Expr, k: &str, a: &Expr) -> MathResult<Option<Closed>> {
     let value = mul(vec![Expr::int(-1), q_at_a, g.subs(k, a)]);
     let symbolic = !r.is_constant();
     let note = if symbolic {
-        format!("common ratio {r}; valid for |{r}| < 1")
+        format!(
+            "common ratio {}; valid for {}",
+            maths(&r),
+            tex(
+                &format!("\\left|{}\\right| < 1", r.to_latex()),
+                &format!("|{}| < 1", r.to_text())
+            )
+        )
     } else {
-        format!("common ratio {r}")
+        format!("common ratio {}", maths(&r))
     };
     let rule = if q.len() == 1 {
         "geometric series"
@@ -279,13 +290,19 @@ fn rational_sum(t: &Expr, k: &str, a: &Expr) -> MathResult<Option<Closed>> {
     };
     if !pf.poly.is_zero() {
         return Err(MathError::Divergent(format!(
-            "the series of {t} (its terms do not tend to 0)"
+            "the series of {} (its terms do not tend to 0)",
+            maths(t)
         )));
     }
     let simple_total: BigRational = pf.poles.iter().map(|p| p.coeffs[0].clone()).sum();
     if !simple_total.is_zero() {
         return Err(MathError::Divergent(format!(
-            "the series of {t} (its terms behave like {simple_total}/{k})"
+            "the series of {} (its terms behave like {})",
+            maths(t),
+            maths(&mul(vec![
+                Expr::ratio(simple_total.clone()),
+                pow(Expr::sym(k), Expr::int(-1))
+            ]))
         )));
     }
     // Start beyond every pole; the first few terms are added exactly.
@@ -409,6 +426,17 @@ fn telescoping(t: &Expr, k: &str, a: &Expr) -> Option<Closed> {
     closed(
         add(parts),
         "telescoping series",
-        Some(format!("aₖ = u(k) − u(k + {m}) with u(k) = {u} → {l}")),
+        Some(format!(
+            "{} with {} → {}",
+            tex(
+                &format!("a_k = u(k) - u(k + {m})"),
+                &format!("aₖ = u(k) − u(k + {m})")
+            ),
+            maths(&Expr::equation(
+                Expr::apply("u", vec![Expr::sym(k)]),
+                u.clone()
+            )),
+            maths(&l)
+        )),
     )
 }

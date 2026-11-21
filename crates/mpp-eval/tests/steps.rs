@@ -15,7 +15,11 @@ fn run(src: &str) -> Evaluated {
 }
 
 fn only_query(ev: &Evaluated) -> LineResult {
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "unexpected errors: {errs:?}");
     let q: Vec<&LineResult> = ev.queries().map(|(_, l)| l).collect();
     assert_eq!(q.len(), 1);

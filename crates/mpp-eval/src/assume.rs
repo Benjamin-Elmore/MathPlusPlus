@@ -91,7 +91,10 @@ fn improper(
     match improper_integral(body, var, lo, hi, facts) {
         Ok(Some(v)) => {
             if v.is_infinite() {
-                return Some(Err(MathError::Divergent(format!("the integral {whole}"))));
+                return Some(Err(MathError::Divergent(format!(
+                    "the integral {}",
+                    mpp_core::note::maths(whole)
+                ))));
             }
             explain_split(ctx, &v);
             ctx.log(

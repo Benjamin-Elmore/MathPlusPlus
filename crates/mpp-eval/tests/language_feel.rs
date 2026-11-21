@@ -30,7 +30,7 @@ fn messages(ev: &Evaluated, severity: Severity) -> Vec<String> {
     ev.all_diagnostics()
         .into_iter()
         .filter(|d| d.severity == severity)
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect()
 }
 

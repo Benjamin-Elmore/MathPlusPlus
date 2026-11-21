@@ -73,7 +73,7 @@ impl StepNode {
             self.after.to_text()
         );
         if let Some(n) = &self.note {
-            let _ = write!(out, " ({n})");
+            let _ = write!(out, " ({})", crate::note::plain(n));
         }
         out
     }

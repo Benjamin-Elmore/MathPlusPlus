@@ -13,6 +13,7 @@ use crate::eval::EmptyEnv;
 use crate::expr::{Constant, Expr, ExprNode, LimitDir};
 use crate::factor::factor_poly;
 use crate::functions::{func, Func};
+use crate::note::{maths, tex};
 use crate::number::format_f64;
 use crate::poly::Poly;
 use crate::simplify::{add, mul, simplify};
@@ -113,7 +114,8 @@ fn symbolic_bounds(
     let mut local = Steps::new();
     let big_f = integrate(e, var, Some(&mut local)).map_err(|_| {
         MathError::NoClosedForm(format!(
-            "∫ {e} d{var} (the bounds or parameters are symbolic, so no numerical value either)"
+            "{} (the bounds or parameters are symbolic, so no numerical value either)",
+            maths(&indefinite(e, var))
         ))
     })?;
     let at = |p: &Expr| -> MathResult<Expr> {
@@ -128,9 +130,7 @@ fn symbolic_bounds(
         mul(vec![Expr::int(-1), lower.clone()]),
     ]));
     if has_bad_constant(&value) {
-        return Err(MathError::Divergent(format!(
-            "∫ {e} d{var} from {a} to {b}"
-        )));
+        return Err(MathError::Divergent(maths(&definite_holder(e, var, a, b))));
     }
     if let Some(l) = log {
         l.0.extend(local.0);
@@ -139,11 +139,59 @@ fn symbolic_bounds(
             definite_holder(e, var, a, b),
             value.clone(),
             Some(format!(
-                "F({var}) = {big_f}; F({b}) − F({a}) = ({upper}) − ({lower})"
+                "{}; {}",
+                antiderivative_is(var, &big_f),
+                ftc_difference(a, b, &upper, &lower)
             )),
         );
     }
     Ok(value)
+}
+
+/// `∫ e d(var)` without bounds, for messages.
+fn indefinite(e: &Expr, var: &str) -> Expr {
+    Expr::new(ExprNode::Integral {
+        expr: e.clone(),
+        var: var.into(),
+        bounds: None,
+    })
+}
+
+/// `F(x) = big_f` as maths.
+fn antiderivative_is(var: &str, big_f: &Expr) -> String {
+    maths(&Expr::equation(
+        Expr::apply("F", vec![Expr::sym(var)]),
+        big_f.clone(),
+    ))
+}
+
+/// `F(b) − F(a) = (upper) − (lower)` as maths.
+fn ftc_difference(a: &Expr, b: &Expr, upper: &Expr, lower: &Expr) -> String {
+    tex(
+        &format!(
+            "F({}) - F({}) = \\left({}\\right) - \\left({}\\right)",
+            b.to_latex(),
+            a.to_latex(),
+            upper.to_latex(),
+            lower.to_latex()
+        ),
+        &format!(
+            "F({}) − F({}) = ({}) − ({})",
+            b.to_text(),
+            a.to_text(),
+            upper.to_text(),
+            lower.to_text()
+        ),
+    )
+}
+
+/// `x → p` as maths.
+fn approaching(var: &str, p: &Expr) -> String {
+    let x = Expr::sym(var);
+    tex(
+        &format!("{} \\to {}", x.to_latex(), p.to_latex()),
+        &format!("{} → {}", x.to_text(), p.to_text()),
+    )
 }
 
 fn has_bad_constant(e: &Expr) -> bool {
@@ -214,7 +262,7 @@ fn numeric_bounds(
                     "fundamental theorem of calculus",
                     holder,
                     value.clone(),
-                    Some(format!("F({var}) = {big_f}; {note}")),
+                    Some(format!("{}; {note}", antiderivative_is(var, &big_f))),
                 );
             }
             return Ok(value);
@@ -258,7 +306,8 @@ fn numeric_bounds(
         Err(MathError::Undetermined(why)) => {
             if let Some(reason) = proven_divergence(e, var, &points) {
                 return Err(MathError::Divergent(format!(
-                    "∫ {e} d{var} from {a} to {b} ({reason})"
+                    "{} ({reason})",
+                    maths(&definite_holder(e, var, a, b))
                 )));
             }
             if let Some((q, note)) = oscillating(e, var, &points) {
@@ -282,7 +331,8 @@ fn numeric_bounds(
                 return Ok(result);
             }
             Err(MathError::Undetermined(format!(
-                "whether ∫ {e} d{var} from {a} to {b} converges ({})",
+                "whether {} converges ({})",
+                maths(&definite_holder(e, var, a, b)),
                 why.strip_prefix("whether the integral converges: ")
                     .unwrap_or(&why)
             )))
@@ -328,7 +378,8 @@ fn shown(q: Quad, e: &Expr, var: &str, (a, b): (&Expr, &Expr)) -> MathResult<Exp
     match certified(q) {
         Some(v) => Ok(Expr::float(v)),
         None => Err(MathError::Undetermined(format!(
-            "∫ {e} d{var} from {a} to {b} to any reliable digit (the numerical estimate ≈ {} has an estimated error of {}, about as large as the value itself)",
+            "{} to any reliable digit (the numerical estimate ≈ {} has an estimated error of {}, about as large as the value itself)",
+            maths(&definite_holder(e, var, a, b)),
             format_f64(q.value, 4),
             format_f64(q.error, 2)
         ))),
@@ -353,7 +404,9 @@ fn proven_divergence(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<Stri
             if let Ok(l) = limit(e, var, p, LimitDir::Both, None) {
                 if nonzero(&l) {
                     return Some(format!(
-                        "divergence test: the integrand tends to {l}, not 0, as {var} → {p}"
+                        "divergence test: the integrand tends to {}, not 0, as {}",
+                        maths(&l),
+                        approaching(var, p)
                     ));
                 }
             }
@@ -361,7 +414,16 @@ fn proven_divergence(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<Stri
             if let Ok(l) = limit(&xf, var, p, LimitDir::Both, None) {
                 if nonzero(&l) {
                     return Some(format!(
-                        "limit comparison with ∫ d{var}/{var}: {var}·f({var}) → {l} as {var} → {p}"
+                        "limit comparison with {}: {} as {}",
+                        tex(
+                            &format!("\\int \\frac{{d{v}}}{{{v}}}", v = x.to_latex()),
+                            &format!("∫ d{var}/{var}")
+                        ),
+                        tex(
+                            &format!("{v} f({v}) \\to {}", l.to_latex(), v = x.to_latex()),
+                            &format!("{var}·f({var}) → {}", l.to_text())
+                        ),
+                        approaching(var, p)
                     ));
                 }
             }
@@ -386,7 +448,25 @@ fn proven_divergence(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<Stri
             if let Ok(l) = limit(&shifted, var, p, *side, None) {
                 if nonzero(&l) {
                     return Some(format!(
-                        "limit comparison with ∫ d{var}/({var} − {p}): ({var} − {p})·f({var}) → {l} as {var} → {p}"
+                        "limit comparison with {}: {} as {}",
+                        tex(
+                            &format!(
+                                "\\int \\frac{{d{v}}}{{{v} - {}}}",
+                                p.to_latex(),
+                                v = x.to_latex()
+                            ),
+                            &format!("∫ d{var}/({var} − {})", p.to_text())
+                        ),
+                        tex(
+                            &format!(
+                                "({v} - {}) f({v}) \\to {}",
+                                p.to_latex(),
+                                l.to_latex(),
+                                v = x.to_latex()
+                            ),
+                            &format!("({var} − {})·f({var}) → {}", p.to_text(), l.to_text())
+                        ),
+                        approaching(var, p)
                     ));
                 }
             }
@@ -494,10 +574,7 @@ fn ftc(f: &Expr, big_f: &Expr, var: &str, points: &[(Expr, f64)]) -> MathResult<
         let (l, r) = (&w[0], &w[1]);
         let upper = value_at(f, big_f, var, r, LimitDir::Left)?;
         let lower = value_at(f, big_f, var, l, LimitDir::Right)?;
-        notes.push(format!(
-            "F({}) − F({}) = ({}) − ({})",
-            r.0, l.0, upper.0, lower.0
-        ));
+        notes.push(ftc_difference(&l.0, &r.0, &upper.0, &lower.0));
         if upper.1 || lower.1 {
             notes.push("(improper: the values at the ends are limits)".into());
         }
@@ -506,7 +583,7 @@ fn ftc(f: &Expr, big_f: &Expr, var: &str, points: &[(Expr, f64)]) -> MathResult<
     }
     let value = simplify(&add(total));
     if has_bad_constant(&value) {
-        return Err(MathError::Divergent(format!("∫ {f} d{var}")));
+        return Err(MathError::Divergent(maths(&indefinite(f, var))));
     }
     Ok((value, notes.join("; ")))
 }
@@ -520,7 +597,13 @@ fn value_at(
     p: &(Expr, f64),
     side: LimitDir,
 ) -> MathResult<(Expr, bool)> {
-    let diverges = || MathError::Divergent(format!("∫ {f} d{var} (near {var} = {})", p.0));
+    let diverges = || {
+        MathError::Divergent(format!(
+            "{} (near {})",
+            maths(&indefinite(f, var)),
+            maths(&Expr::equation(Expr::sym(var), p.0.clone()))
+        ))
+    };
     let finite_here = p.1.is_finite() && {
         let env: BTreeMap<String, f64> = [(var.to_string(), p.1)].into_iter().collect();
         f.eval_f64(&env).is_ok_and(f64::is_finite)

@@ -52,7 +52,7 @@
     note: limit comparison test: converges (aₖ · k^2 tends to 1; Σ 1/k^2 converges (p-series))
     note: ratio test: no conclusion (the ratio |aₖ₊₁/aₖ| tends to 1 (or has no limit), so the test is inconclusive)
     note: root test: no conclusion (|aₖ|^(1/k) tends to 1 or the test does not apply (no k in an exponent))
-    note: integral test: converges (∫ 1/k^2 dk from 3 to ∞ = 1/3 is finite)
+    note: integral test: converges (∫_3^∞ 1/k² dk = 1/3 is finite)
     note: alternating series test: no conclusion (the series does not alternate)
     note: telescoping series: no conclusion (the terms are not a difference g(k) − g(k + m))
 49: \operatorname{tests}(\frac{(-1)^k}{k}) = ?

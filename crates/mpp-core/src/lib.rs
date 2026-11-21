@@ -28,6 +28,7 @@ pub mod family;
 pub mod functions;
 pub mod hp;
 pub mod multivar;
+pub mod note;
 pub mod number;
 pub mod numerics;
 pub mod ode;

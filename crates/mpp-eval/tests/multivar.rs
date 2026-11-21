@@ -14,7 +14,11 @@ fn run(src: &str) -> Evaluated {
 
 fn answers(src: &str) -> Vec<LineResult> {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "unexpected errors: {errs:?}\n{src}");
     ev.queries().map(|(_, l)| l.clone()).collect()
 }

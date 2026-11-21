@@ -216,6 +216,23 @@ impl Renderer<'_> {
         }
     }
 
+    /// A note or error message as HTML: the words escaped, each piece of maths the
+    /// evaluator marked in it typeset as inline SVG (never flattened text).
+    fn note_html(&mut self, s: &str) -> String {
+        let text = self.math_opts(MathStyle::Text);
+        let mut out = String::new();
+        for piece in crate::note::note_pieces(s) {
+            match piece {
+                crate::note::NotePiece::Text(t) => out.push_str(&esc(t)),
+                crate::note::NotePiece::Maths(latex) => {
+                    let svg = self.svg(&layout_latex(latex, &text), "m");
+                    out.push_str(&svg);
+                }
+            }
+        }
+        out
+    }
+
     fn svg(&mut self, dl: &DisplayList, class: &str) -> String {
         let theme = self.opts.theme;
         let paint = move |c: Color| match theme.var_for(c) {
@@ -345,7 +362,8 @@ impl Renderer<'_> {
                     }
                     let _ = writeln!(out, "<p class=\"helper\">{s}.</p>");
                     for e in self.results.display_errors(b) {
-                        let _ = writeln!(out, "<p class=\"eq-error\">✗ {}</p>", esc(&e));
+                        let e = self.note_html(&e);
+                        let _ = writeln!(out, "<p class=\"eq-error\">✗ {e}</p>");
                     }
                 }
             }
@@ -476,7 +494,8 @@ impl Renderer<'_> {
             return;
         }
         for e in self.results.display_errors(b) {
-            let _ = writeln!(out, "<p class=\"eq-error\">✗ {}</p>", esc(&e));
+            let e = self.note_html(&e);
+            let _ = writeln!(out, "<p class=\"eq-error\">✗ {e}</p>");
         }
         if self.opts.include_steps {
             for steps in self.results.display_steps(b) {
@@ -485,11 +504,12 @@ impl Renderer<'_> {
                     let text = self.math_opts(MathStyle::Text);
                     let before = self.svg(&layout_latex(&st.before, &text), "m");
                     let after = self.svg(&layout_latex(&st.after, &text), "m");
-                    let note = st
-                        .note
-                        .as_deref()
-                        .map(|n| format!(" <span class=\"step-note\">({})</span>", esc(n)))
-                        .unwrap_or_default();
+                    let note = match st.note.as_deref() {
+                        Some(n) => {
+                            format!(" <span class=\"step-note\">({})</span>", self.note_html(n))
+                        }
+                        None => String::new(),
+                    };
                     let _ = writeln!(
                         out,
                         "<li><em>{}</em>: {before} → {after}{note}</li>",

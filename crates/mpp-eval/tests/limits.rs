@@ -12,7 +12,7 @@ fn errors(session: &mut Session, src: &str) -> Vec<String> {
         .run_str(src)
         .errors()
         .iter()
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect()
 }
 

@@ -261,6 +261,7 @@ fn no_message_from_any_example_shows_source_text() {
     assert!(files.len() > 20, "found {files:?}");
     let mut bad = vec![];
     let mut seen = 0;
+    let mut notes_seen = 0;
     for path in &files {
         let mut d = Doc::open(path).expect("readable");
         d.settle();
@@ -275,18 +276,82 @@ fn no_message_from_any_example_shows_source_text() {
             lines.extend(fixes.iter().map(|f| &f.title));
             for r in lines {
                 seen += 1;
-                for seg in &r.0 {
-                    if let Seg::Text(t) | Seg::Italic(t) = seg {
-                        if t.contains(['$', '\\', '^', '_', '{', '}']) {
-                            bad.push(format!("{}: {t:?} in {:?}", path.display(), r.plain()));
-                        }
-                    }
-                }
+                bad.extend(source_text_in(r).map(|t| format!("{}: {t}", path.display())));
+            }
+        }
+        // The notes under equations (why a sum has no answer) follow the same rule.
+        if let Some(ev) = &d.eval {
+            for r in crate::page::build::page_notes(&doc, ev) {
+                notes_seen += 1;
+                bad.extend(source_text_in(&r).map(|t| format!("{} (note): {t}", path.display())));
             }
         }
     }
     assert!(seen > 10, "only {seen} messages");
+    assert!(notes_seen > 0, "no notes under equations were checked");
     assert!(bad.is_empty(), "{}", bad.join("\n"));
+}
+
+/// The words of a message that show source text or flattened maths (`(n=1)`, `x^2`,
+/// `\sum`, `_{`), or a mark for maths that was not read; `None` when it is clean.
+fn source_text_in(r: &Rich) -> Option<String> {
+    let marks = [
+        mpp_core::note::MATHS_START,
+        mpp_core::note::MATHS_SPLIT,
+        mpp_core::note::MATHS_END,
+    ];
+    for seg in &r.0 {
+        match seg {
+            Seg::Text(t) | Seg::Italic(t) => {
+                if t.contains(['$', '\\', '^', '_', '{', '}'])
+                    || t.contains("(n=1)")
+                    || t.contains(marks)
+                {
+                    return Some(format!("{t:?} in {:?}", r.plain()));
+                }
+            }
+            Seg::Math(m) => {
+                if m.contains(marks) {
+                    return Some(format!("an unread mark in {m:?}"));
+                }
+            }
+        }
+    }
+    None
+}
+
+/// The note under an auto-evaluated sum that cannot be settled (`∑ x + 1`) is words
+/// with the series typeset from LaTeX, never `∑ (n=1) ∞ x` or `∑_(n=1)^∞ x`.
+#[test]
+fn a_sum_convergence_note_carries_typeset_maths() {
+    let src = "# T\n\n$$ \\sum_{n=1}^{\\infty} x + 1 $$\n";
+    let mut d = Doc::with_text(src, None);
+    d.settle();
+    let doc = mpp_syntax::document::parse_document(src);
+    let ev = d.eval.clone().expect("evaluated");
+    let notes = crate::page::build::page_notes(&doc, &ev);
+    let note = notes
+        .iter()
+        .find(|r| r.plain().contains("converges"))
+        .unwrap_or_else(|| panic!("no convergence note in {notes:?}"));
+    assert_eq!(source_text_in(note), None, "{note:?}");
+    let maths: Vec<&str> = note
+        .0
+        .iter()
+        .filter_map(|s| match s {
+            Seg::Math(m) => Some(m.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        maths.iter().any(|m| m.contains("\\sum_{n=1}^{\\infty}")),
+        "the series is LaTeX for the maths layout: {note:?}"
+    );
+    // A flattened series in the words fails the check.
+    let flat = Rich::text("whether ∑ (n=1) ∞ x converges");
+    assert!(source_text_in(&flat).is_some());
+    let flat = Rich::text("whether ∑_(n=1)^∞ x converges");
+    assert!(source_text_in(&flat).is_some());
 }
 
 #[test]

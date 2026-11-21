@@ -14,7 +14,11 @@ fn run(src: &str) -> Evaluated {
 
 fn answer(src: &str) -> String {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a query");
     line.plain.clone().unwrap_or_default()
@@ -24,7 +28,7 @@ fn error(src: &str) -> String {
     let ev = run(src);
     ev.errors()
         .first()
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .unwrap_or_else(|| panic!("{src} should fail"))
 }
 

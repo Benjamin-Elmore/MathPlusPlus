@@ -17,7 +17,11 @@ fn run(src: &str) -> Evaluated {
 
 fn verdict(src: &str) -> Verdict {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a check");
     line.verdict.clone().expect("a verdict")
@@ -39,7 +43,7 @@ fn render(src: &str) -> String {
         }
         for d in &block.diagnostics {
             if d.span.start >= line.span.start && d.span.end <= line.span.end {
-                let _ = writeln!(out, "    note: {}", d.message);
+                let _ = writeln!(out, "    note: {}", mpp_core::note::plain(&d.message));
             }
         }
     }
@@ -179,7 +183,11 @@ $$ E(t) := \tfrac12 m \dot x^2 + \tfrac12 k x^2 $$
 $$ \frac{dE}{dt} \le 0 \ \text{ for all } t \ge 0 \overset{?}{=} \text{true} $$
 $$ \frac{dE}{dt} \ge 0 \ \text{ for all } t \ge 0 \overset{?}{=} \text{true} $$";
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{errs:?}");
     let verdicts: Vec<Option<bool>> = ev
         .queries()
@@ -274,7 +282,11 @@ $$ 2^{10} = 1024 $$
 
 $$ \pi = 3.14159 $$
 ");
-    let errors: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errors: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert_eq!(errors.len(), 1, "{errors:?}");
     assert!(errors[0].contains("this statement is false"), "{errors:?}");
     assert!(errors[0].contains("1024") && errors[0].contains("1000"));
@@ -298,7 +310,11 @@ $$ \pi = 3.14159 $$
 fn congruences_and_inverses_modulo_m() {
     let answer = |src: &str| {
         let ev = run(src);
-        let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+        let errs: Vec<String> = ev
+            .errors()
+            .iter()
+            .map(|d| mpp_core::note::plain(&d.message))
+            .collect();
         assert!(errs.is_empty(), "{src}: {errs:?}");
         let (_, line) = ev.queries().next().expect("a query");
         line.text.clone().unwrap_or_default()

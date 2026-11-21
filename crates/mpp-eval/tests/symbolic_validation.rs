@@ -15,7 +15,11 @@ fn run(src: &str) -> Evaluated {
 /// The first query's answer as text (exact, else the decimal), with no errors allowed.
 fn answer(src: &str) -> String {
     let ev = run(src);
-    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    let errs: Vec<String> = ev
+        .errors()
+        .iter()
+        .map(|d| mpp_core::note::plain(&d.message))
+        .collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a query");
     line.text

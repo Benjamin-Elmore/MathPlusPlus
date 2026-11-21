@@ -11,7 +11,8 @@ use crate::to_unicode;
 
 /// Prose with `$…$` maths, the maths turned to Unicode (`$x^2$` → `x²`).
 pub fn prose_unicode(s: &str) -> String {
-    s.split('$')
+    crate::readable(s)
+        .split('$')
         .enumerate()
         .map(|(i, part)| {
             if i % 2 == 1 {

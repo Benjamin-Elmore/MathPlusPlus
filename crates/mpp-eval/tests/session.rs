@@ -27,7 +27,7 @@ fn approx(line: &LineResult) -> String {
 fn messages(ev: &Evaluated) -> Vec<String> {
     ev.all_diagnostics()
         .iter()
-        .map(|d| d.message.clone())
+        .map(|d| mpp_core::note::plain(&d.message))
         .collect()
 }
 
