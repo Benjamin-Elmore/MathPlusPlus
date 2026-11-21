@@ -249,6 +249,33 @@ fn show_decimal(lr: &mut LineResult, decimal: &str) {
 
 /// The one root when `input` is a `\operatorname{solve}` of a single unknown and its
 /// value is a set with exactly one element.
+/// The warning for a call nothing evaluated, with the spelling Math++ reads when the
+/// name is a common one from other systems.
+fn unknown_call_message(name: &str) -> String {
+    let hint = match name {
+        "taylor" | "maclaurin" | "series" | "taylorseries" => Some(
+            r"for a Taylor series write `\operatorname{series}_{x=0}^{4} e^x` (terms below x⁴)",
+        ),
+        "diff" | "derivative" | "deriv" => Some(r"for a derivative write `\frac{d}{dx} f`"),
+        "integrate" | "int" | "integral" => Some(r"for an integral write `\int f \, dx`"),
+        "limit" => Some(r"for a limit write `\lim_{x \to a} f`"),
+        "sum" => Some(r"for a sum write `\sum_{n=1}^{N} f`"),
+        "ode" | "odesolve" => {
+            Some(r"for a differential equation write `\operatorname{dsolve}(y' = y, y(0) = 1)`")
+        }
+        "simplify" | "expand" | "factor" => None,
+        _ => None,
+    };
+    let mut m = format!(
+        "`{name}` is not a function Math++ knows, or its arguments are not in a form it reads, so it is kept as written"
+    );
+    if let Some(h) = hint {
+        m.push_str("; ");
+        m.push_str(h);
+    }
+    m
+}
+
 fn single_root(input: &Expr, value: &Expr) -> Option<Expr> {
     let ExprNode::Apply(name, args) = input.node() else {
         return None;
@@ -1183,6 +1210,18 @@ impl Run<'_, '_> {
                 return self.push(lr);
             }
         };
+        let written = self
+            .inputs
+            .source
+            .get(expr.span.start..expr.span.end)
+            .unwrap_or("");
+        for name in self.echoed_calls(&input, &value) {
+            // Only a name the reader wrote as an operator (`\operatorname{taylor}`);
+            // `\cup` and friends lower to calls that may rightly stay as they are.
+            if written.contains(&format!("{{{name}}}")) {
+                self.warn(expr.span, unknown_call_message(&name));
+            }
+        }
         if let Some(mut log) = resolved.steps {
             // The first step puts in the known values; the evaluators' own working
             // (derivative rules, integration techniques …) follows.
@@ -1275,6 +1314,41 @@ impl Run<'_, '_> {
             lr.latex = Some(s.latex);
         }
         self.push(lr);
+    }
+
+    /// Calls that came back exactly as they were asked (`taylor(e^x, x, 0, 4)`), by
+    /// a name that is not a built-in function, a definition of the document or an
+    /// unknown function of a differential equation: nothing evaluated them.
+    fn echoed_calls(&self, input: &Expr, value: &Expr) -> Vec<String> {
+        fn calls(e: &Expr, out: &mut Vec<Expr>) {
+            if let ExprNode::Apply(..) = e.node() {
+                out.push(e.clone());
+            }
+            for c in e.children() {
+                calls(c, out);
+            }
+        }
+        let mut asked = Vec::new();
+        calls(input, &mut asked);
+        let mut given = Vec::new();
+        calls(value, &mut given);
+        let mut out: Vec<String> = Vec::new();
+        for c in given {
+            let ExprNode::Apply(name, _) = c.node() else {
+                continue;
+            };
+            let name = name.to_string();
+            let known = name.contains(':')
+                || name.chars().count() == 1
+                || crate::lower::is_builtin(&name)
+                || self.view().get(&name, false).is_some()
+                || self.inputs.ode_unknowns.contains(&name)
+                || self.inputs.sequences.contains(&name);
+            if !known && asked.contains(&c) && !out.contains(&name) {
+                out.push(name);
+            }
+        }
+        out
     }
 
     /// `C_5 = ?`, `C_{10}/C_9 = ?`: when every free name of a query is a `C` with a whole

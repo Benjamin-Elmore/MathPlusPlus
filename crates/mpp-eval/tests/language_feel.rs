@@ -66,3 +66,27 @@ fn a_question_mark_nothing_evaluates_is_reported() {
         "{warnings:?}"
     );
 }
+
+#[test]
+fn an_unknown_function_that_echoes_itself_is_reported() {
+    let ev = run(concat!(
+        r"$$ \operatorname{taylor}(e^x, x, 0, 4) = ? $$",
+        "\n\n",
+        r"$$ \operatorname{foo}(x) = ? $$",
+    ));
+    let warnings = messages(&ev, Severity::Warning);
+    assert!(
+        warnings
+            .iter()
+            .any(|w| w.contains("`taylor` is not a function") && w.contains("series")),
+        "{warnings:?}"
+    );
+    assert!(warnings.iter().any(|w| w.contains("`foo`")), "{warnings:?}");
+    // A set operation that rightly stays as written is not reported.
+    let ev = run(r"$$ [0, 1) \cup (2, 3] = ? $$");
+    assert!(messages(&ev, Severity::Warning).is_empty());
+    // The Taylor series the guide shows works.
+    let ev = run(r"$$ \operatorname{series}_{x=0}^{4} e^x = ? $$");
+    let got = answers(&ev);
+    assert!(got[0].as_deref().unwrap().contains("O(x"), "{got:?}");
+}

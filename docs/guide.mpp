@@ -69,6 +69,12 @@ $$ \lim_{x \to 0} \frac{\sin x}{x} = ? $$
 
 $$ \sum_{n=1}^{\infty} \frac{1}{n^2} = ? $$
 
+A Taylor series is written `\operatorname{series}`, with the point below and the order above. The order is the power in the remainder, so `^{4}` keeps the terms up to $x^3$ and ends with $O(x^4)$:
+
+$$ \operatorname{series}_{x=0}^{4} e^x = ? $$
+
+A function name Math++ does not know, such as `\operatorname{taylor}`, is kept as written, and a warning under the line says so and suggests the spelling it reads.
+
 An indefinite integral gets its `+ C`. A series that does not converge tells you so. A derivative with several variables uses `\partial`:
 
 $$ \frac{\partial}{\partial y} (x^2 y^3) = ? $$
