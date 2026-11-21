@@ -167,6 +167,13 @@ fn standard_antiderivatives_by_a_change_of_variable() {
 }
 
 #[test]
+fn area_reads_a_bare_variable_as_the_line_y_equals_x() {
+    assert_eq!(answer(r"$$ \operatorname{area}(x^3, x) = ? $$"), "1/2");
+    // With x as the variable there is an enclosed region, so that reading stays.
+    assert_eq!(answer(r"$$ \operatorname{area}(x^2 - 1, x) = ? $$"), "4/3");
+}
+
+#[test]
 fn a_bounded_improper_integrand_is_not_called_infinite() {
     let ev = run(r"$$ \int_0^{\infty} \frac{x^3}{e^x - 1} \, dx \approx ? $$");
     assert!(ev.errors().is_empty(), "{:?}", ev.errors());
