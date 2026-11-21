@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <rect x="8" y="8" width="240" height="240" rx="52" fill="#1c3557"/>
+  <!-- integral sign -->
+  <path d="M 138 52 C 118 36 96 48 96 92 L 96 164 C 96 208 74 220 54 204"
+        fill="none" stroke="#ffffff" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="146" cy="56" r="11" fill="#ffffff"/>
+  <circle cx="48" cy="200" r="11" fill="#ffffff"/>
+  <!-- the two plusses of Math++ -->
+  <g stroke="#f4b942" stroke-width="15" stroke-linecap="round">
+    <path d="M 168 112 L 168 156 M 146 134 L 190 134"/>
+    <path d="M 208 150 L 208 194 M 186 172 L 230 172"/>
+  </g>
+</svg>

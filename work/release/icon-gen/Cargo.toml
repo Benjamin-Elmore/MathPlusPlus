@@ -1,0 +1,13 @@
+# Standalone helper (not a workspace member): renders crates/mpp-ide/assets/mathpp.svg
+# to crates/mpp-ide/assets/mathpp.ico. Run: cargo run --release --manifest-path work/release/icon-gen/Cargo.toml
+[package]
+name = "icon-gen"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[dependencies]
+resvg = "0.45"
+ico = "0.4"

@@ -12,7 +12,7 @@ You need a recent stable Rust (the 2021 edition or later) and nothing else; ever
 cargo build --release
 ```
 
-This builds the command line program, `target/release/mpp` (`mpp.exe` on Windows).
+This builds the command line program, `target/release/mpp` (`mpp.exe` on Windows) and the editor, `target/release/mathpp` (cargo cannot name a program `Math++`; on Windows `pwsh work/release/build.ps1` renames it to `Math++.exe` and also builds the per-user installer and a portable zip into `dist/`).
 
 ## Running
 
@@ -27,7 +27,7 @@ prints each answer, typeset as text: `∫₀¹ x² dx = 1/3`. The commands:
 - `mpp render file.mpp -o page.html` writes a static HTML page with typeset maths (inline SVG), graphs, results and data tables.
 - `mpp export file.mpp --to pdf|tex|html -o out` exports for sharing. Options: `--no-results`, `--steps`, `--comments`, `--dark`, `--page a4|letter`, `--margin MM`. The LaTeX file is standalone (amsmath, theorem environments, a bibliography) and its graphs are saved beside it as PNG files.
 - `mpp calc "\int_0^1 x^2 dx"` is a quick calculator.
-- `mpp ide [file.mpp]` opens the editor (`mathpp-ide`) when it is built and next to `mpp` or on the PATH.
+- `mpp ide [file.mpp]` opens the editor (`Math++.exe`) when it is built and next to `mpp` or on the PATH.
 
 From Rust, `mpp-export` offers the same export as a library (`export_path`, `export_evaluated`), which the editor's File → Export… calls.
 
