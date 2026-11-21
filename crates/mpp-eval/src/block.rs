@@ -199,6 +199,38 @@ fn with_locals(e: Expr, locals: &Locals, skip: &[String]) -> Expr {
     }
 }
 
+/// The number as typed when a definition's body is a plain decimal, alone or with a
+/// unit (`9.81`, `9.81\,\mathrm{m/s^2}`).
+fn written_decimal(body: &Node) -> Option<String> {
+    let number = match &body.ungrouped().kind {
+        NodeKind::Number(t) => t,
+        NodeKind::Quantity { value, .. } => match &value.ungrouped().kind {
+            NodeKind::Number(t) => t,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    (number.contains('.') && number.chars().all(|c| c.is_ascii_digit() || c == '.'))
+        .then(|| number.clone())
+}
+
+/// Shows an exact value as the decimal it was typed as: `9.81 m/s^2`, not
+/// `981/100 m/s^2` (the value itself stays exact).
+fn show_decimal(lr: &mut LineResult, decimal: &str) {
+    if let Some(t) = &lr.text {
+        lr.text = Some(match t.split_once(' ') {
+            Some((_, unit)) => format!("{decimal} {unit}"),
+            None => decimal.to_string(),
+        });
+    }
+    if let Some(l) = &lr.latex {
+        lr.latex = Some(match l.split_once("\\,") {
+            Some((_, unit)) => format!("{decimal}\\,{unit}"),
+            None => decimal.to_string(),
+        });
+    }
+}
+
 /// The one root when `input` is a `\operatorname{solve}` of a single unknown and its
 /// value is a set with exactly one element.
 fn single_root(input: &Expr, value: &Expr) -> Option<Expr> {
@@ -743,12 +775,15 @@ impl Run<'_, '_> {
         } else {
             value.clone()
         };
+        let decimal = written_decimal(body);
+        let mut origin = self.origin(line.span);
+        origin.decimal = decimal.as_deref().map(Arc::from);
         self.define(
             key,
             Binding::Variable {
                 kind: var_kind,
                 value: stored,
-                origin: self.origin(line.span),
+                origin,
             },
         );
         let mut lr = LineResult::new(
@@ -760,13 +795,36 @@ impl Run<'_, '_> {
         );
         lr.input = Some(value);
         if self.present_units(&mut lr, &shown, QueryMode::Exact, body.span) {
+            if let Some(d) = &decimal {
+                show_decimal(&mut lr, d);
+            }
             return self.push(lr);
         }
         if shown.is_constant() && !is_exact_rational(&shown) && !contains_holder(&shown) {
             lr.approx = approximate(&shown).ok();
         }
         lr.set_value(Value::from_expr(shown));
+        if let Some(d) = &decimal {
+            show_decimal(&mut lr, d);
+        }
         self.push(lr);
+    }
+
+    /// The decimal a bare name was defined as (`g` for `g \equiv 9.81`), when `value`
+    /// is still exactly that definition's value.
+    fn typed_decimal(&self, expr: &Node, value: &Expr) -> Option<String> {
+        let key = node_key(expr.ungrouped())?;
+        let binding = self.view().get(&key, false)?;
+        let Binding::Variable {
+            value: stored,
+            origin,
+            ..
+        } = binding.as_ref()
+        else {
+            return None;
+        };
+        let decimal = origin.decimal.as_deref()?;
+        (stored.simplify() == value.simplify()).then(|| decimal.to_string())
     }
 
     fn param_names(&mut self, params: &[Node]) -> Option<Vec<String>> {
@@ -1130,7 +1188,18 @@ impl Run<'_, '_> {
             lr.steps = Some(log.clone());
             self.result.steps.push((self.result.values.len(), log));
         }
+        let typed = (mode == QueryMode::Exact)
+            .then(|| self.typed_decimal(expr, &value))
+            .flatten();
         if self.present_units(&mut lr, &value, mode, expr.span) {
+            if let Some(d) = &typed {
+                show_decimal(&mut lr, d);
+            }
+            return self.push(lr);
+        }
+        if let Some(d) = &typed {
+            lr.set_value(Value::from_expr(value));
+            show_decimal(&mut lr, d);
             return self.push(lr);
         }
         if let Some((text, latex)) = crate::domains_wire::present_set(&value) {

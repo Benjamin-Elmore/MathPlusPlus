@@ -179,7 +179,8 @@ fn definitions_show_their_units() {
         .filter(|l| matches!(l.kind, LineKind::Definition { .. }))
         .filter_map(|l| l.plain.clone())
         .collect();
-    assert_eq!(shown, vec!["36 km/h", "981/100 m/s^2"]);
+    // The decimal as typed, not 981/100.
+    assert_eq!(shown, vec!["36 km/h", "9.81 m/s^2"]);
 }
 
 #[test]

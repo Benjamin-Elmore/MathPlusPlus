@@ -660,3 +660,31 @@ $$ u(x, t) = ? $$";
         .iter()
         .any(|d| d.message.contains("u is not defined")));
 }
+
+#[test]
+fn decimals_are_shown_as_typed() {
+    let src = r"Let $g \equiv 9.81\,\mathrm{m/s^2}$ and $k := 0.1$.
+
+$$ g = ? \qquad k = ? \qquad 2k = ? $$";
+    let ev = run(src);
+    let defs: Vec<Option<String>> = ev
+        .blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .filter(|l| matches!(l.kind, mpp_eval::LineKind::Definition { .. }))
+        .map(|l| l.text.clone())
+        .collect();
+    assert_eq!(defs, vec![Some("9.81 m/s^2".into()), Some("0.1".into())]);
+    let shown: Vec<(Option<String>, Option<String>)> = ev
+        .queries()
+        .map(|(_, l)| (l.text.clone(), l.latex.clone()))
+        .collect();
+    assert_eq!(shown[0].0.as_deref(), Some("9.81 m/s^2"));
+    assert!(shown[0]
+        .1
+        .as_deref()
+        .is_some_and(|l| l.starts_with(r"9.81\,")));
+    assert_eq!(shown[1].0.as_deref(), Some("0.1"));
+    // A computed value is exact as usual.
+    assert_eq!(shown[2].0.as_deref(), Some("1/5"));
+}
