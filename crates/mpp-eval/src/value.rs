@@ -23,6 +23,9 @@ pub struct Origin {
     pub path: Option<Arc<Path>>,
     /// The 1-based line of the definition in that file.
     pub line: Option<usize>,
+    /// The number as typed when the definition is a decimal (`g \equiv 9.81`), so it
+    /// is shown as `9.81` rather than `981/100`.
+    pub decimal: Option<Arc<str>>,
 }
 
 impl Origin {
@@ -34,6 +37,7 @@ impl Origin {
             file: None,
             path: None,
             line: None,
+            decimal: None,
         }
     }
 

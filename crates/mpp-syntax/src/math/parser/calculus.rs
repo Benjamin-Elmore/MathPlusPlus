@@ -63,7 +63,7 @@ impl Parser<'_> {
     }
 
     /// The operand of a big operator: the multiplicative term to its right.
-    fn op_body(&mut self, what: &str) -> Node {
+    pub(super) fn op_body(&mut self, what: &str) -> Node {
         if self.at(is_sign) {
             return self.parse_signed_term();
         }

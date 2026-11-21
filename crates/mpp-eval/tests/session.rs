@@ -80,7 +80,8 @@ fn constants_cannot_be_redefined() {
         errors[0].message
     );
     assert_eq!(&src[errors[0].span.start..errors[0].span.end], "g");
-    assert_eq!(exact(answers(&ev)[0]), "981/100");
+    // Shown as typed: g ≡ 9.81.
+    assert_eq!(exact(answers(&ev)[0]), "9.81");
 }
 
 #[test]

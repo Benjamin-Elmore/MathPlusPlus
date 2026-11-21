@@ -152,7 +152,10 @@ impl<'a> EvalProvider<'a> {
                     // An exact query shows its exact answer only: the decimal the
                     // editor adds beside it is a preview, and `≈ ?` asks for one.
                     let latex = if approx {
-                        r.approx.clone().or_else(|| r.latex.clone())
+                        r.approx
+                            .as_deref()
+                            .map(approx_latex)
+                            .or_else(|| r.latex.clone())
                     } else {
                         r.latex.clone()
                     };
@@ -200,5 +203,129 @@ impl ResultProvider for EvalProvider<'_> {
             .read_data(self.base_dir.as_deref(), path)
             .ok()?;
         Some(text)
+    }
+}
+
+/// A numerical answer as typeset maths. The `≈` text of a line is plain Unicode
+/// (`686.4655 N`, `1.2097 × 10⁻⁴ yr⁻¹`, `[50.04 kg, 75.96 kg]`, `{4.605 s}`); in an
+/// equation each number stays a number, a power of ten becomes `\times 10^{…}`, and a
+/// unit after a number is set upright after a thin space.
+pub fn approx_latex(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    let is_sep = |c: char| matches!(c, ',' | ';' | '[' | ']' | '(' | ')' | '{' | '}');
+    while i < chars.len() {
+        let c = chars[i];
+        let starts_number = c.is_ascii_digit()
+            || (matches!(c, '-' | '−') && chars.get(i + 1).is_some_and(char::is_ascii_digit));
+        if starts_number {
+            let start = i;
+            i += 1;
+            while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+                i += 1;
+            }
+            let number: String = chars[start..i].iter().collect();
+            out.push_str(&number.replace('−', "-"));
+            // ` × 10⁻⁴`
+            let rest: String = chars[i..].iter().collect();
+            if let Some(after) = rest.strip_prefix(" × 10") {
+                let exp: String = after
+                    .chars()
+                    .take_while(|c| superscript(*c).is_some())
+                    .collect();
+                if !exp.is_empty() {
+                    let digits: String = exp.chars().filter_map(superscript).collect();
+                    out.push_str(&format!(" \\times 10^{{{digits}}}"));
+                    i += " × 10".chars().count() + exp.chars().count();
+                }
+            }
+            // ` kg`, ` m/s^2`, ` yr⁻¹`: a unit right after the number.
+            if chars.get(i) == Some(&' ') {
+                let unit: String = chars[i + 1..]
+                    .iter()
+                    .take_while(|c| !c.is_whitespace() && !is_sep(**c))
+                    .collect();
+                let ascii = unit
+                    .chars()
+                    .map(|c| match superscript(c) {
+                        Some(d) => format!("^{d}"),
+                        None => c.to_string(),
+                    })
+                    .collect::<String>()
+                    .replace("^-^", "^-")
+                    .replace('·', "*");
+                if let (false, Ok(u)) = (unit.is_empty(), mpp_core::units::parse_unit(&ascii)) {
+                    out.push_str("\\,");
+                    out.push_str(&u.latex());
+                    i += 1 + unit.chars().count();
+                }
+            }
+            continue;
+        }
+        match c {
+            '{' => out.push_str("\\{"),
+            '}' => out.push_str("\\}"),
+            '∞' => out.push_str("\\infty "),
+            'π' => out.push_str("\\pi "),
+            '∅' => out.push_str("\\emptyset "),
+            '±' => out.push_str("\\pm "),
+            c if c.is_ascii_alphabetic() => {
+                // A word on its own (`i` of a complex number, `x =`): upright text
+                // only when it is longer than a letter.
+                let start = i;
+                while i + 1 < chars.len() && chars[i + 1].is_ascii_alphabetic() {
+                    i += 1;
+                }
+                let word: String = chars[start..=i].iter().collect();
+                if word.chars().count() == 1 {
+                    out.push_str(&word);
+                } else {
+                    out.push_str(&format!("\\mathrm{{{word}}}"));
+                }
+            }
+            c if c.is_ascii() => out.push(c),
+            c => out.push_str(&format!("\\text{{{c}}}")),
+        }
+        i += 1;
+    }
+    out
+}
+
+/// The digit or sign a superscript character stands for.
+fn superscript(c: char) -> Option<char> {
+    Some(match c {
+        '⁰' => '0',
+        '¹' => '1',
+        '²' => '2',
+        '³' => '3',
+        '⁴' => '4',
+        '⁵' => '5',
+        '⁶' => '6',
+        '⁷' => '7',
+        '⁸' => '8',
+        '⁹' => '9',
+        '⁻' => '-',
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod approx_tests {
+    use super::approx_latex;
+
+    #[test]
+    fn numerical_answers_are_typeset() {
+        assert_eq!(approx_latex("686.4655 N"), r"686.4655\,\mathrm{N}");
+        assert_eq!(
+            approx_latex("[50.03664728 kg, 75.96335272 kg]"),
+            r"[50.03664728\,\mathrm{kg}, 75.96335272\,\mathrm{kg}]"
+        );
+        assert_eq!(approx_latex("1.2097 × 10⁻⁴"), r"1.2097 \times 10^{-4}");
+        assert_eq!(
+            approx_latex("{4.605170186 s}"),
+            r"\{4.605170186\,\mathrm{s}\}"
+        );
+        assert_eq!(approx_latex("−0.5"), "-0.5");
     }
 }

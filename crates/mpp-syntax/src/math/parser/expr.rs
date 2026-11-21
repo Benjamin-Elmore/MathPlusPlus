@@ -3,8 +3,8 @@
 use super::{Ctx, Parser};
 use crate::lexer::{Delim, Op, Tok};
 use crate::math::ast::{
-    Accent, BinOp, Bracket, DerivNotation, Derivative, FracStyle, MulStyle, Name, Node, NodeKind,
-    RelOp, UnaryOp, UnitText,
+    Accent, BinOp, Bracket, Constant, DerivNotation, Derivative, FracStyle, MulStyle, Name, Node,
+    NodeKind, RelOp, UnaryOp, UnitText,
 };
 use crate::span::Span;
 use crate::symbols::{Font, SymbolKind};
@@ -542,6 +542,8 @@ impl Parser<'_> {
             // `v \operatorname{in} \mathrm{km/h}`: the conversion ends the product.
             Tok::OperatorName(n) if n == "in" => false,
             Tok::Text(t) if t.trim() == "in" => false,
+            // `P \text{ for all } t \ge 0`: the quantifier ends the statement.
+            Tok::Text(t) if is_for_all(t) => false,
             t => starts_operand(t),
         }
     }
@@ -661,6 +663,13 @@ fn callable(node: &Node) -> bool {
     match &node.kind {
         NodeKind::Name(_) => true,
         NodeKind::Prime { base, .. } => matches!(base.kind, NodeKind::Name(_)),
+        // `\dot x(0)`, `\ddot\theta(t)`: the time derivative of a function, at a point.
+        NodeKind::Derivative(d) => {
+            matches!(d.notation, DerivNotation::Dot(_))
+                && d.of
+                    .as_ref()
+                    .is_some_and(|of| matches!(of.kind, NodeKind::Name(_)))
+        }
         _ => false,
     }
 }
@@ -784,6 +793,12 @@ pub(super) fn make_accent(accent: Accent, arg: Node, span: Span) -> Node {
             span,
         );
     }
+    // `\hat\pi`: an estimate of π is a name of its own, never the constant.
+    if let NodeKind::Constant(Constant::Pi) = &arg.ungrouped().kind {
+        let mut name = Name::simple("π");
+        name.accent = Some(accent);
+        return Node::new(NodeKind::Name(name), span);
+    }
     if let NodeKind::Name(name) = &arg.ungrouped().kind {
         if name.accent.is_none() {
             let mut name = name.clone();
@@ -868,4 +883,11 @@ pub(super) fn name_node(node: &Node) -> Node {
         Some(name) => Node::new(NodeKind::Name(name), node.span),
         None => node.clone(),
     }
+}
+
+/// `\text{ for all }` (also "for every", "for each"): a quantifier over the condition
+/// that follows.
+pub(super) fn is_for_all(text: &str) -> bool {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    matches!(words.as_slice(), ["for", "all" | "every" | "each"])
 }

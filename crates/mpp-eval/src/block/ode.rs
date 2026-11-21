@@ -216,7 +216,7 @@ fn collect_unknowns(node: &Node, out: &mut Vec<String>) {
                 out.push(k);
             }
         }
-        NodeKind::Derivative(d) if !d.partial => {
+        NodeKind::Derivative(d) => {
             if let Some(k) = d.of.as_ref().and_then(|of| node_key(of.ungrouped())) {
                 let vars: Vec<String> = d.vars.iter().filter_map(|v| node_key(&v.var)).collect();
                 if !vars.contains(&k) {

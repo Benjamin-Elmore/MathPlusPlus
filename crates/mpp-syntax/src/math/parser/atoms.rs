@@ -37,6 +37,9 @@ impl Parser<'_> {
             Tok::Number(text) => {
                 self.bump();
                 let (text, end) = self.digit_groups(text, span);
+                if let Some(node) = self.digit_expansion(&text, span.join(end)) {
+                    return node;
+                }
                 Node::new(NodeKind::Number(text), span.join(end))
             }
             Tok::Letter(c) => {
@@ -254,6 +257,54 @@ impl Parser<'_> {
         Node::new(kind, span)
     }
 
+    /// `0.d_1 d_2 d_3 \dots`: a decimal expansion with symbolic digits, written right
+    /// after a whole number and its point. It is read as one text node (prose
+    /// describing a number, with nothing to compute), so it is not a syntax error.
+    fn digit_expansion(&mut self, whole: &str, number: Span) -> Option<Node> {
+        if !whole.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let point = self.toks.get(self.pos).filter(|_| self.pos < self.stop)?;
+        if !matches!(point.kind, Tok::Period) || point.span.start != number.end {
+            return None;
+        }
+        let digit = self
+            .toks
+            .get(self.pos + 1)
+            .filter(|_| self.pos + 1 < self.stop)?;
+        let letter = match &digit.kind {
+            Tok::Letter(_) => true,
+            Tok::Sym(s) => s.kind == SymbolKind::Letter,
+            _ => false,
+        };
+        if !letter || digit.span.start != point.span.end {
+            return None;
+        }
+        self.bump();
+        let mut end = number.end;
+        // The digits: names (with subscripts) and dots, side by side.
+        loop {
+            let next = self.peek();
+            let more = match next {
+                Some(Tok::Letter(_)) => true,
+                Some(Tok::Sym(s)) => {
+                    s.kind == SymbolKind::Letter
+                        || (s.kind == SymbolKind::Misc
+                            && matches!(s.name, "dots" | "ldots" | "cdots"))
+                }
+                _ => false,
+            };
+            if !more {
+                break;
+            }
+            let part = self.parse_postfix();
+            end = part.span.end;
+        }
+        let span = Span::new(number.start, end);
+        let text = self.text(span).to_string();
+        Some(Node::new(NodeKind::Text(text), span))
+    }
+
     /// `10\,000` and `1\,234\,567.5`: groups of three digits joined by a thin space
     /// are one number, as in printed tables. Returns the digits and the last span.
     fn digit_groups(&mut self, mut text: String, mut end: Span) -> (String, Span) {
@@ -312,7 +363,18 @@ impl Parser<'_> {
         if inverse {
             power = None;
         }
-        let (args, bracketed, end) = if self.at(|t| {
+        // `\max_{t \in [0, 50]} (x - 1)^2 + …`: over a range, max and min take the whole
+        // term after them, as a sum does.
+        let over_range = matches!(sym.name, "max" | "min")
+            && sub.as_ref().is_some_and(|s| {
+                matches!(&s.ungrouped().kind, NodeKind::Relation { rest, .. }
+                    if rest.len() == 1 && rest[0].0 == RelOp::In)
+            });
+        let (args, bracketed, end) = if over_range && !inverse {
+            let body = self.op_body(&format!("the term after `{}`", self.text(start)));
+            let end = body.span;
+            (vec![body], false, end)
+        } else if self.at(|t| {
             matches!(
                 t,
                 Tok::Open {

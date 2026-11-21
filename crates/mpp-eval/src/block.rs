@@ -199,6 +199,56 @@ fn with_locals(e: Expr, locals: &Locals, skip: &[String]) -> Expr {
     }
 }
 
+/// The number as typed when a definition's body is a plain decimal, alone or with a
+/// unit (`9.81`, `9.81\,\mathrm{m/s^2}`).
+fn written_decimal(body: &Node) -> Option<String> {
+    let number = match &body.ungrouped().kind {
+        NodeKind::Number(t) => t,
+        NodeKind::Quantity { value, .. } => match &value.ungrouped().kind {
+            NodeKind::Number(t) => t,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    (number.contains('.') && number.chars().all(|c| c.is_ascii_digit() || c == '.'))
+        .then(|| number.clone())
+}
+
+/// Shows an exact value as the decimal it was typed as: `9.81 m/s^2`, not
+/// `981/100 m/s^2` (the value itself stays exact).
+fn show_decimal(lr: &mut LineResult, decimal: &str) {
+    if let Some(t) = &lr.text {
+        lr.text = Some(match t.split_once(' ') {
+            Some((_, unit)) => format!("{decimal} {unit}"),
+            None => decimal.to_string(),
+        });
+    }
+    if let Some(l) = &lr.latex {
+        lr.latex = Some(match l.split_once("\\,") {
+            Some((_, unit)) => format!("{decimal}\\,{unit}"),
+            None => decimal.to_string(),
+        });
+    }
+}
+
+/// The one root when `input` is a `\operatorname{solve}` of a single unknown and its
+/// value is a set with exactly one element.
+fn single_root(input: &Expr, value: &Expr) -> Option<Expr> {
+    let ExprNode::Apply(name, args) = input.node() else {
+        return None;
+    };
+    let [which, sub, ..] = args.as_slice() else {
+        return None;
+    };
+    if &**name != "operatorname" || which.as_sym() != Some("solve") || sub.as_sym().is_none() {
+        return None;
+    }
+    match value.node() {
+        ExprNode::Set(items) if items.len() == 1 => items.first().cloned(),
+        _ => None,
+    }
+}
+
 /// The span of the first use of the name `key` inside `node`.
 fn find_name(node: &Node, key: &str) -> Option<Span> {
     if node_key(node).as_deref() == Some(key) {
@@ -707,8 +757,15 @@ impl Run<'_, '_> {
             Ok(v) => v,
             Err(err) => return self.error(body.span, err),
         };
+        // `V_eq := \operatorname{solve}_{V_b}(…)` with exactly one root: the name is that
+        // root, a value later lines can compare and compute with (several roots keep
+        // the set, which is no single value).
+        let (shown, single_root) = match single_root(&value, &shown) {
+            Some(root) => (root, true),
+            None => (shown, false),
+        };
         // A definition that reaches its own old value (`x := x + 1`) is a snapshot.
-        let snapshot = kind == DefKind::Const || resolved.touched.contains(key);
+        let snapshot = kind == DefKind::Const || resolved.touched.contains(key) || single_root;
         let (var_kind, def_kind) = match kind {
             DefKind::Assign => (VarKind::Variable, DefinitionKind::Variable),
             DefKind::Const => (VarKind::Constant, DefinitionKind::Constant),
@@ -718,12 +775,15 @@ impl Run<'_, '_> {
         } else {
             value.clone()
         };
+        let decimal = written_decimal(body);
+        let mut origin = self.origin(line.span);
+        origin.decimal = decimal.as_deref().map(Arc::from);
         self.define(
             key,
             Binding::Variable {
                 kind: var_kind,
                 value: stored,
-                origin: self.origin(line.span),
+                origin,
             },
         );
         let mut lr = LineResult::new(
@@ -735,13 +795,36 @@ impl Run<'_, '_> {
         );
         lr.input = Some(value);
         if self.present_units(&mut lr, &shown, QueryMode::Exact, body.span) {
+            if let Some(d) = &decimal {
+                show_decimal(&mut lr, d);
+            }
             return self.push(lr);
         }
         if shown.is_constant() && !is_exact_rational(&shown) && !contains_holder(&shown) {
             lr.approx = approximate(&shown).ok();
         }
         lr.set_value(Value::from_expr(shown));
+        if let Some(d) = &decimal {
+            show_decimal(&mut lr, d);
+        }
         self.push(lr);
+    }
+
+    /// The decimal a bare name was defined as (`g` for `g \equiv 9.81`), when `value`
+    /// is still exactly that definition's value.
+    fn typed_decimal(&self, expr: &Node, value: &Expr) -> Option<String> {
+        let key = node_key(expr.ungrouped())?;
+        let binding = self.view().get(&key, false)?;
+        let Binding::Variable {
+            value: stored,
+            origin,
+            ..
+        } = binding.as_ref()
+        else {
+            return None;
+        };
+        let decimal = origin.decimal.as_deref()?;
+        (stored.simplify() == value.simplify()).then(|| decimal.to_string())
     }
 
     fn param_names(&mut self, params: &[Node]) -> Option<Vec<String>> {
@@ -1061,6 +1144,12 @@ impl Run<'_, '_> {
             self.warn(expr.span, note.clone());
         }
         let raw = resolved.value.clone();
+        if raw
+            .as_ref()
+            .is_ok_and(crate::units_wire::has_log_of_concentration)
+        {
+            self.warn(expr.span, crate::units_wire::LOG_OF_CONCENTRATION);
+        }
         let value = match raw.and_then(|v| self.finish_logged(v, resolved.steps.as_mut())) {
             Ok(v) => v,
             Err(err) => {
@@ -1099,7 +1188,18 @@ impl Run<'_, '_> {
             lr.steps = Some(log.clone());
             self.result.steps.push((self.result.values.len(), log));
         }
+        let typed = (mode == QueryMode::Exact)
+            .then(|| self.typed_decimal(expr, &value))
+            .flatten();
         if self.present_units(&mut lr, &value, mode, expr.span) {
+            if let Some(d) = &typed {
+                show_decimal(&mut lr, d);
+            }
+            return self.push(lr);
+        }
+        if let Some(d) = &typed {
+            lr.set_value(Value::from_expr(value));
+            show_decimal(&mut lr, d);
             return self.push(lr);
         }
         if let Some((text, latex)) = crate::domains_wire::present_set(&value) {
@@ -1241,6 +1341,23 @@ impl Run<'_, '_> {
         match (l, r) {
             (Ok(l), Ok(r)) => {
                 let mut verdict = check(&l, &r);
+                // `… \text{ for all } t \ge 0` (or `…, t \ge 0`): unless proved outright,
+                // the statement is tried over the values the conditions allow.
+                if verdict != crate::check::Verdict::Proved && !s.conditions.is_empty() {
+                    let domain: Option<Vec<Expr>> = s
+                        .conditions
+                        .iter()
+                        .map(|c| {
+                            let e = self.lower(c, s.names).ok()?;
+                            side(self, &e).ok()
+                        })
+                        .collect();
+                    if let Some(v) =
+                        domain.and_then(|d| crate::check_domain::check_on_domain(&l, &r, &d))
+                    {
+                        verdict = v;
+                    }
+                }
                 // `\int f \, dx \overset{?}{=} F`: antiderivatives agree up to a constant.
                 if verdict.passed() != Some(true) {
                     let mut vars = crate::check::indefinite_variables(&l_in);
@@ -1305,6 +1422,44 @@ impl Run<'_, '_> {
         }
     }
 
+    /// A partial differential equation with its boundary and initial conditions
+    /// (`u_t = α u_xx, u(0, t) = u(L, t) = 0, u(x, 0) = f(x)`): when it is solved, the
+    /// solution defines u for the lines below that use it.
+    fn define_pde_solution(&mut self, line: &Line, e: &Expr, u: String, s: &Scope) {
+        if !self.inputs.called.contains(&u) {
+            return;
+        }
+        let resolve = |run: &Self, x: &Expr| {
+            run.resolve_full(x, s.locals, &[], false, false)
+                .value
+                .ok()
+                .map(|v| v.simplify())
+        };
+        let Some(eq) = resolve(self, e) else {
+            return;
+        };
+        let conditions: Vec<Expr> = s
+            .conditions
+            .iter()
+            .filter_map(|c| self.lower(c, s.names).ok())
+            .filter_map(|c| resolve(self, &c))
+            .collect();
+        match crate::pde_wire::solve(&eq, &conditions, &u) {
+            Ok(sol) => {
+                self.warn(line.span, sol.method);
+                self.define(
+                    &u,
+                    Binding::Function {
+                        params: sol.params,
+                        body: sol.body,
+                        origin: self.origin(line.span),
+                    },
+                );
+            }
+            Err(err) => self.warn(line.span, format!("{u} is not defined: {err}")),
+        }
+    }
+
     /// `\frac{dN}{dt} = -\lambda N, \quad N(0) = N_0` written as a statement: when the
     /// equation (or system) and its conditions determine the unknown functions
     /// exactly, the solution defines them, so later lines can use `N(t)`, `N(10)` or
@@ -1314,10 +1469,27 @@ impl Run<'_, '_> {
         if self.unknown_fns.is_empty() {
             return;
         }
+        if let [u] = self.unknown_fns.as_slice() {
+            if crate::pde_wire::is_pde(e, u) {
+                return self.define_pde_solution(line, e, u.clone(), s);
+            }
+        }
         let Some(call) = self.ode_input(e, s) else {
             return;
         };
+        // The solution defines functions: an explicit one, or else a numerical one.
+        let call = match call.node() {
+            ExprNode::Apply(name, args) if &**name == "dsolve" => {
+                let mut args = args.clone();
+                args.push(Expr::sym(crate::helpers_b::FUNCTION_MARKER));
+                Expr::apply(name, args)
+            }
+            _ => call,
+        };
         let r = self.resolve_full(&call, s.locals, &[], false, false);
+        for note in r.notes.iter().filter(|n| n.contains("numerical")) {
+            self.warn(line.span, note.clone());
+        }
         let Ok(value) = r.value.and_then(|v| self.finish_value(v)) else {
             return;
         };

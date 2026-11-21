@@ -300,7 +300,59 @@ fn fold_power(base: &Expr, exp: &Expr) -> MathResult<Folded> {
     }
 }
 
+/// The value of a concentration (amount per volume) in mol/L: the chemists' convention
+/// for its logarithm (`pH = −log₁₀[H⁺]`, with `[H⁺]` in mol/L). `None` when `q` is
+/// not a concentration.
+fn concentration_in_mol_per_litre(q: &Quantity) -> Option<Expr> {
+    let mol_per_litre = parse_unit("mol/L").ok()?;
+    if q.unit.dimension() != mol_per_litre.dimension() {
+        return None;
+    }
+    q.convert_to(&mol_per_litre)
+        .ok()
+        .map(|c| c.value.simplify())
+}
+
+/// What a logarithm of a concentration means, for the hover.
+pub const LOG_OF_CONCENTRATION: &str =
+    "the logarithm of a concentration is taken of its value in mol/L";
+
+/// True when `e` takes a logarithm of a concentration somewhere.
+pub fn has_log_of_concentration(e: &Expr) -> bool {
+    match e.node() {
+        ExprNode::Func(Func::Ln | Func::Log, args) => {
+            matches!(
+                args.first().map(fold),
+                Some(Ok(Folded::Known { ref q, certain: true, .. }))
+                    if concentration_in_mol_per_litre(q).is_some()
+            ) || args.iter().any(has_log_of_concentration)
+        }
+        _ => e.children().into_iter().any(has_log_of_concentration),
+    }
+}
+
 fn fold_function(f: Func, args: &[Expr]) -> MathResult<Folded> {
+    // `log₁₀ c` of a concentration: the logarithm of its value in mol/L.
+    if let (Func::Ln | Func::Log, Some(arg)) = (f, args.first()) {
+        if let Folded::Known {
+            q, certain: true, ..
+        } = fold(arg)?
+        {
+            if let Some(value) = concentration_in_mol_per_litre(&q) {
+                let mut plain = vec![value];
+                for base in &args[1..] {
+                    let Folded::Known { q, certain, .. } = fold(base)? else {
+                        return Ok(Folded::Unknown);
+                    };
+                    plain.push(q.require_dimensionless("the base of a logarithm")?);
+                    if !certain {
+                        return Ok(Folded::Unknown);
+                    }
+                }
+                return Ok(known(Quantity::number(Expr::func(f, plain)?), true));
+            }
+        }
+    }
     let [arg] = args else {
         // min, max, gcd … of quantities: every argument in one dimension.
         return fold_many(f, args);
@@ -426,13 +478,18 @@ fn solve_with_units(args: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     let ExprNode::Tuple(items) = body.node() else {
         return None;
     };
-    let [eq] = items.as_slice() else {
-        return None;
-    };
+    // The equation, then conditions on the unknown (`t > 0`).
+    let (eq, conditions) = items.split_first()?;
     let ExprNode::Relation(RelOp::Eq, l, r) = eq.node() else {
         return None;
     };
     if !contains_units(eq) {
+        return None;
+    }
+    if conditions
+        .iter()
+        .any(|c| !matches!(c.node(), ExprNode::Relation(op, ..) if *op != RelOp::Eq))
+    {
         return None;
     }
     let difference = (l.clone() - r.clone()).simplify();
@@ -440,15 +497,35 @@ fn solve_with_units(args: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     let mut candidates = vec![Unit::one()];
     collect_units(&difference, &mut candidates);
     let x = "#x";
-    for unit in candidates {
-        let trial = difference.subs(var, &(Expr::sym(x) * factor(&unit)));
+    // `a op b` in plain SI numbers, with the unknown measured in `unit`.
+    let plain_in = |e: &Expr, unit: &Unit| -> Option<Expr> {
+        let trial = e.subs(var, &(Expr::sym(x) * factor(unit)));
         let Ok(Folded::Known { q, .. }) = fold(&trial) else {
+            return None;
+        };
+        let plain = (q.value.clone() * q.unit.scale()).simplify();
+        (!contains_units(&plain) && plain.free_symbols().iter().all(|s| **s == *x)).then_some(plain)
+    };
+    for unit in candidates {
+        let Some(plain) = plain_in(&difference, &unit) else {
             continue;
         };
-        // The value of the difference in SI units, as a plain function of x.
-        let plain = (q.value.clone() * q.unit.scale()).simplify();
-        if plain.free_symbols().iter().any(|s| **s != *x) {
-            return None;
+        let mut plain_items = vec![Expr::equation(plain, Expr::zero())];
+        let mut fits = true;
+        for c in conditions {
+            let ExprNode::Relation(op, a, b) = c.node() else {
+                return None;
+            };
+            match plain_in(&(a.clone() - b.clone()).simplify(), &unit) {
+                Some(p) => plain_items.push(Expr::relation(*op, p, Expr::zero())),
+                None => {
+                    fits = false;
+                    break;
+                }
+            }
+        }
+        if !fits {
+            continue;
         }
         let call = Expr::apply(
             "operatorname",
@@ -456,7 +533,7 @@ fn solve_with_units(args: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
                 Expr::sym("solve"),
                 Expr::sym(x),
                 Expr::new(ExprNode::Tuple(Vec::new())),
-                Expr::new(ExprNode::Tuple(vec![Expr::equation(plain, Expr::zero())])),
+                Expr::new(ExprNode::Tuple(plain_items)),
             ],
         );
         let roots = match evaluate_holder(&call, ctx) {

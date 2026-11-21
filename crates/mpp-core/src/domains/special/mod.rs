@@ -363,6 +363,11 @@ pub fn call_complex(name: &str, args: &[Complex64]) -> Option<MathResult<Complex
 /// (Legendre), 18.9.21 (Chebyshev), 19.4.1 (K, E); `H′ = δ` and `(δ^{(j)})′ = δ^{(j+1)}`
 /// as distributions.
 pub fn partial(name: &str, args: &[Expr], index: usize) -> Option<Expr> {
+    // A numerical solution: its derivative is the right-hand side at the solution.
+    if name == crate::tools_b::ode::ivp::IVP && index == 4 {
+        let (sys, k, t) = crate::tools_b::ode::ivp::Ivp::read(args)?;
+        return Some(sys.derivative(k, &t));
+    }
     let u = args.first()?.clone();
     let two = Expr::int(2);
     let one = Expr::one();
