@@ -348,6 +348,9 @@ pub struct Session {
     /// Tab from the starting box goes to the first box of the Tab order (an
     /// integral's lower bound), so the walk follows reading order.
     pub walked: bool,
+    /// The user typed the box's `{` (LaTeX in full): only `}` leaves it, not an
+    /// operator or a Space.
+    pub braced: bool,
 }
 
 impl Session {
@@ -381,6 +384,7 @@ impl Session {
                 .collect(),
             primary: None,
             walked: false,
+            braced: false,
         };
         for (i, b) in snippet.boxes.iter().enumerate() {
             if let Some(k) = &b.mirror {

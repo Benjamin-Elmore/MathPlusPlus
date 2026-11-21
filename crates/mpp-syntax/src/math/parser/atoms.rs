@@ -1108,6 +1108,9 @@ impl Parser<'_> {
         if !paren {
             return self.missing(&format!("`(` after `{word}`"), &["`(`"]);
         }
+        if word == "diff" {
+            return self.diff_call(start);
+        }
         let (mut args, _, end) = self.call_args();
         let span = start.join(end);
         let want = if matches!(word, "root" | "binom") {

@@ -66,7 +66,7 @@ fn heading_prefix(line: &str) -> usize {
 impl Editor {
     /// Applies an edit as an undo step of its own, keeping the caret relative to
     /// the text after the range.
-    fn convert(&mut self, range: Range<usize>, with: &str) {
+    pub(super) fn convert(&mut self, range: Range<usize>, with: &str) {
         self.record(EditKind::Other, false);
         let caret = self.caret;
         let end = range.end;
@@ -98,6 +98,10 @@ impl Editor {
     /// new row in display maths, the next item in a list; `soft` (Shift+Enter) is
     /// a plain line break inside the block. One undo step.
     pub fn enter(&mut self, in_math: bool, soft: bool) {
+        if in_math && !soft && self.selection().is_none() {
+            // The new line goes after the structure being typed in, not in its box.
+            self.leave_templates();
+        }
         let at = self.selection().map_or(self.caret, |r| r.start);
         let (ls, le) = line_bounds(&self.text, at);
         let line = self.text[ls..le].to_string();

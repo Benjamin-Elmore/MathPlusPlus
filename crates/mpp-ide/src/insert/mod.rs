@@ -393,8 +393,14 @@ pub fn shortcut(editor: &mut Editor, typed: char, cx: &BuildCx) -> bool {
         if text.get(slash..caret) != Some("/") {
             return false;
         }
-        let operand_start = operand_before(text, slash);
-        let numerator = text[operand_start..slash].to_string();
+        // `a / b` with spaces: the operand is still `a`.
+        let end = slash - (text[..slash].len() - text[..slash].trim_end_matches(' ').len());
+        let mut operand_start = operand_before(text, end);
+        let numerator = text[operand_start..end].to_string();
+        if numerator.is_empty() {
+            // Nothing to take: the spaces before the `/` stay.
+            operand_start = slash;
+        }
         let Some(t) = find("frac") else {
             return false;
         };

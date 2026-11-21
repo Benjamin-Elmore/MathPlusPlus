@@ -19,7 +19,7 @@ use crate::defs;
 use crate::diagnostics::fixes::{self, Applied};
 use crate::diagnostics::ui::{self as dui, DiagUi, FixMenu, MenuOutcome};
 use crate::doc::{Doc, PageCache};
-use crate::editor::symbols::{completions, live_replacement, word_at, Completion};
+use crate::editor::symbols::{completions, word_at, Completion};
 use crate::insert::{self, InsertUi};
 use crate::page::{BlockTag, Side};
 use crate::paint::{c32, paint_display_list, paint_text};
@@ -845,6 +845,13 @@ fn context_menu(
             cx.insert.menu.open_at(at);
             ui.close();
         }
+        if doc.editor.selection().is_some() {
+            // Copy as LaTeX, as plain text or as code (copy.rs).
+            if let Some(format) = crate::copy::copy_menu(ui) {
+                copy_selection_as(doc, pc, cx, ui, format);
+                ui.close();
+            }
+        }
         let result = crate::proof::result_at(&pc.doc, doc.editor.caret());
         if let Some(name) = result {
             ui.separator();
@@ -1231,27 +1238,21 @@ fn handle_pointer(
 fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     let in_math = pc.page.in_math(doc.editor.caret());
     for ch in text.chars().filter(|c| !c.is_control()) {
-        let s = ch.to_string();
-        if !in_math {
-            doc.editor.before_type(ch);
-        }
-        doc.editor.insert_text(&s);
-        if !in_math {
-            doc.editor.after_type(ch);
-        }
-        if in_math && cx.insert.settings.shortcuts {
-            let caret = doc.editor.caret();
-            let bcx = cx.insert.settings.build_cx(doc.editor.text(), caret);
-            if insert::shortcut(&mut doc.editor, ch, &bcx) {
-                continue;
-            }
-        }
         if in_math {
-            let caret = doc.editor.caret();
-            if let Some(r) = live_replacement(doc.editor.text(), caret, &s) {
-                doc.editor.replace_inline(r.range, &r.with);
-            }
+            // Both ways of typing, converted as you type (editor/convert.rs).
+            let typing = crate::editor::convert::TypingCx {
+                build: cx
+                    .insert
+                    .settings
+                    .build_cx(doc.editor.text(), doc.editor.caret()),
+                shortcuts: cx.insert.settings.shortcuts,
+            };
+            doc.editor.type_maths(ch, &typing);
+            continue;
         }
+        doc.editor.before_type(ch);
+        doc.editor.insert_text(&ch.to_string());
+        doc.editor.after_type(ch);
     }
     doc.touched();
     doc.want_x = None;
@@ -1303,6 +1304,11 @@ fn accept_completion(doc: &mut Doc, cx: &mut ViewCtx<'_>) -> bool {
 }
 
 fn copy_selection(doc: &Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, ui: &Ui) {
+    let format = cx.copy_format;
+    copy_selection_as(doc, pc, cx, ui, format);
+}
+
+fn copy_selection_as(doc: &Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, ui: &Ui, format: CopyFormat) {
     let Some(sel) = doc.editor.selection() else {
         return;
     };
@@ -1310,7 +1316,7 @@ fn copy_selection(doc: &Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, ui: &Ui) {
         return;
     };
     let all_maths = pc.page.in_math(sel.start) && pc.page.in_math(sel.end);
-    let out = clipboard_text(src, all_maths, cx.copy_format);
+    let out = clipboard_text(src, all_maths, format);
     *cx.clip = Some((out.clone(), src.to_string()));
     ui.ctx().copy_text(out);
 }
@@ -1368,6 +1374,15 @@ fn handle_keys(
             } => {
                 if key == Key::Escape && menu {
                     // The menu that was open closes on this Esc; nothing else.
+                    continue;
+                }
+                let horizontal = matches!(key, Key::ArrowLeft | Key::ArrowRight);
+                if horizontal && !modifiers.any() && doc.editor.arrow_out(key == Key::ArrowRight) {
+                    // At the edge of a template box: next box, or out (editor/exits.rs).
+                    *cx.completion = None;
+                    doc.caret_side = Side::Before;
+                    doc.want_x = None;
+                    moved = true;
                     continue;
                 }
                 if cx.completion.is_none() {

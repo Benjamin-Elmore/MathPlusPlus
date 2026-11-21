@@ -8,6 +8,9 @@
 //! templates (see [`template`]) in step with the text.
 
 pub mod comment;
+pub mod convert;
+mod exits;
+pub mod forms;
 mod rules;
 pub mod symbols;
 pub mod template;
@@ -193,6 +196,8 @@ pub struct Editor {
     hint: Option<(String, u64)>,
     /// The heading hint was shown already.
     hinted_heading: bool,
+    /// The revision right after `/` made a fraction (so `//` can take it back).
+    auto_frac: Option<u64>,
 }
 
 impl Editor {
@@ -673,18 +678,53 @@ impl Editor {
         let Some(s) = self.session_at(caret) else {
             return false;
         };
+        // An exponent or subscript box has nothing else to visit: Tab leaves it
+        // and goes on in the template around it, if there is one.
+        if s.template == convert::SUP || s.template == convert::SUB {
+            let (id, to) = (s.id, if forward { s.range.end } else { s.range.start });
+            self.move_caret(to, false);
+            if forward {
+                self.left = Some((id, to));
+            }
+            let outer = self
+                .sessions
+                .iter()
+                .filter(|o| o.id != id && o.holds(to))
+                .min_by_key(|o| o.range.len())
+                .map(|o| o.id);
+            if let Some(o) = outer {
+                self.tab_in(o, to, forward);
+            }
+            return true;
+        }
         let id = s.id;
+        self.tab_in(id, caret, forward)
+    }
+
+    /// Tab in template `id` with the caret at `caret` (see [`Editor::tab`]).
+    fn tab_in(&mut self, id: u64, caret: usize, forward: bool) -> bool {
+        let Some(s) = self.session(id) else {
+            return false;
+        };
         let cur = s.box_at(caret).and_then(|i| s.tab_pos(i));
         let start = s.primary.and_then(|i| s.tab_pos(i));
         // Boxes before the starting one that still need filling (an integral's
         // bounds; a sum's index and limits come with defaults).
         let lead_open = |p: usize| s.tab[..p].iter().any(|&i| s.boxes[i].range.is_empty());
+        // Only boxes still to fill are stops: empty, or holding their default.
+        let open = |p: &usize| s.boxes[s.tab[*p]].untouched(&self.text);
+        let n = s.tab.len();
         let next = match (cur, forward) {
-            (Some(p), true) if !s.walked && Some(p) == start && lead_open(p) => Some(0),
-            (Some(p), true) => Some(p + 1),
-            (Some(p), false) => p.checked_sub(1),
-            (None, true) => s.tab.iter().position(|&i| s.boxes[i].range.start > caret),
-            (None, false) => s.tab.iter().rposition(|&i| s.boxes[i].range.end < caret),
+            (Some(p), true) if !s.walked && Some(p) == start && lead_open(p) => (0..n).find(open),
+            (Some(p), true) => (p + 1..n).find(open),
+            (Some(p), false) => (0..p).rev().find(open),
+            (None, true) => (0..n)
+                .filter(open)
+                .find(|&p| s.boxes[s.tab[p]].range.start > caret),
+            (None, false) => (0..n)
+                .rev()
+                .filter(open)
+                .find(|&p| s.boxes[s.tab[p]].range.end < caret),
         };
         if let (Some(p), Some(si)) = (cur, self.session_index(id)) {
             if Some(p) != start {
