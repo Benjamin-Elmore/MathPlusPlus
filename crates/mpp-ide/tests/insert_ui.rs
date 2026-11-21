@@ -133,12 +133,11 @@ fn tab_walks_a_definite_integral_in_reading_order() {
         text(&mut h, c);
     }
     // From the integrand the caret starts in, Tab goes to the lower bound, then
-    // the upper bound, back to the integrand, the variable, and out.
+    // the upper bound, then (the integrand is filled) the variable, and out.
     key(&mut h, Key::Tab);
     text(&mut h, "0");
     key(&mut h, Key::Tab);
     text(&mut h, "1");
-    key(&mut h, Key::Tab);
     key(&mut h, Key::Tab);
     text(&mut h, "t");
     key(&mut h, Key::Tab);

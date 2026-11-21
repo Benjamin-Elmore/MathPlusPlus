@@ -98,6 +98,10 @@ impl Editor {
     /// new row in display maths, the next item in a list; `soft` (Shift+Enter) is
     /// a plain line break inside the block. One undo step.
     pub fn enter(&mut self, in_math: bool, soft: bool) {
+        if in_math && !soft && self.selection().is_none() {
+            // The new line goes after the structure being typed in, not in its box.
+            self.leave_templates();
+        }
         let at = self.selection().map_or(self.caret, |r| r.start);
         let (ls, le) = line_bounds(&self.text, at);
         let line = self.text[ls..le].to_string();

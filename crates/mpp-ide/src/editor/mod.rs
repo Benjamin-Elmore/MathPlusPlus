@@ -711,12 +711,20 @@ impl Editor {
         // Boxes before the starting one that still need filling (an integral's
         // bounds; a sum's index and limits come with defaults).
         let lead_open = |p: usize| s.tab[..p].iter().any(|&i| s.boxes[i].range.is_empty());
+        // Only boxes still to fill are stops: empty, or holding their default.
+        let open = |p: &usize| s.boxes[s.tab[*p]].untouched(&self.text);
+        let n = s.tab.len();
         let next = match (cur, forward) {
-            (Some(p), true) if !s.walked && Some(p) == start && lead_open(p) => Some(0),
-            (Some(p), true) => Some(p + 1),
-            (Some(p), false) => p.checked_sub(1),
-            (None, true) => s.tab.iter().position(|&i| s.boxes[i].range.start > caret),
-            (None, false) => s.tab.iter().rposition(|&i| s.boxes[i].range.end < caret),
+            (Some(p), true) if !s.walked && Some(p) == start && lead_open(p) => (0..n).find(open),
+            (Some(p), true) => (p + 1..n).find(open),
+            (Some(p), false) => (0..p).rev().find(open),
+            (None, true) => (0..n)
+                .filter(open)
+                .find(|&p| s.boxes[s.tab[p]].range.start > caret),
+            (None, false) => (0..n)
+                .rev()
+                .filter(open)
+                .find(|&p| s.boxes[s.tab[p]].range.end < caret),
         };
         if let (Some(p), Some(si)) = (cur, self.session_index(id)) {
             if Some(p) != start {

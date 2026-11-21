@@ -106,6 +106,72 @@ fn an_operator_or_a_space_leaves_an_exponent() {
     let mut h = maths_line();
     type_text(&mut h, "x^2+y_1 = 3");
     assert_eq!(maths(&h), "x^{2}+y_{1} = 3");
+    // A slip like x^^2 is refused, with a hint.
+    let mut h = maths_line();
+    type_text(&mut h, "x^^2");
+    assert_eq!(maths(&h), "x^{2}");
+}
+
+#[test]
+fn right_and_tab_walk_a_fraction_then_leave_it() {
+    let mut h = maths_line();
+    type_text(&mut h, "a/b");
+    press(&mut h, Modifiers::NONE, Key::ArrowRight);
+    type_text(&mut h, "+1");
+    assert_eq!(maths(&h), r"\frac{a}{b}+1");
+    let mut h = maths_line();
+    type_text(&mut h, r"\frac ");
+    type_text(&mut h, "1");
+    press(&mut h, Modifiers::NONE, Key::ArrowRight);
+    type_text(&mut h, "2");
+    press(&mut h, Modifiers::NONE, Key::Tab);
+    type_text(&mut h, "=");
+    assert_eq!(maths(&h), r"\frac{1}{2}=");
+    // Left at the start of the denominator goes back to the numerator's end.
+    let mut h = maths_line();
+    type_text(&mut h, "a/");
+    press(&mut h, Modifiers::NONE, Key::ArrowLeft);
+    type_text(&mut h, "c");
+    assert_eq!(maths(&h), r"\frac{ac}{}");
+}
+
+#[test]
+fn tab_skips_filled_boxes() {
+    let mut h = maths_line();
+    type_text(&mut h, "1/");
+    type_text(&mut h, "2");
+    // The numerator is filled: Tab from the denominator leaves the fraction.
+    press(&mut h, Modifiers::NONE, Key::Tab);
+    type_text(&mut h, "+");
+    assert_eq!(maths(&h), r"\frac{1}{2}+");
+    // Shift+Tab before the first box leaves to the left.
+    let mut h = maths_line();
+    type_text(&mut h, r"\frac ");
+    press(&mut h, Modifiers::SHIFT, Key::Tab);
+    type_text(&mut h, "2");
+    assert_eq!(maths(&h), r"2\frac{}{}");
+}
+
+#[test]
+fn escape_leaves_the_box_then_the_maths() {
+    let mut h = app_at("$$  $$\n\nnow", 3);
+    type_text(&mut h, "x^2");
+    press(&mut h, Modifiers::NONE, Key::Escape);
+    type_text(&mut h, "+");
+    assert_eq!(text(&h), "$$ x^{2}+ $$\n\nnow");
+    press(&mut h, Modifiers::NONE, Key::Escape);
+    type_text(&mut h, "!");
+    assert!(text(&h).contains("$$!"), "{}", text(&h));
+}
+
+#[test]
+fn enter_in_a_box_makes_a_new_maths_line_after_the_structure() {
+    let mut h = app_at("$$  $$", 3);
+    type_text(&mut h, "x^2");
+    press(&mut h, Modifiers::NONE, Key::Enter);
+    type_text(&mut h, "y");
+    assert_eq!(text(&h), "$$ x^{2} \\\\\ny $$");
+    parses(&text(&h));
 }
 
 #[test]

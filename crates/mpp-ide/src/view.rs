@@ -1376,6 +1376,15 @@ fn handle_keys(
                     // The menu that was open closes on this Esc; nothing else.
                     continue;
                 }
+                let horizontal = matches!(key, Key::ArrowLeft | Key::ArrowRight);
+                if horizontal && !modifiers.any() && doc.editor.arrow_out(key == Key::ArrowRight) {
+                    // At the edge of a template box: next box, or out (editor/exits.rs).
+                    *cx.completion = None;
+                    doc.caret_side = Side::Before;
+                    doc.want_x = None;
+                    moved = true;
+                    continue;
+                }
                 if cx.completion.is_none() {
                     if let Some(dir) = edge_release(doc, pc, key, modifiers) {
                         ui.memory_mut(|m| m.move_focus(dir));
