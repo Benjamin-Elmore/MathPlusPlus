@@ -12,6 +12,7 @@ pub mod copy;
 pub mod defs;
 pub mod diagnostics;
 mod doc;
+pub mod doc_settings;
 pub mod editor;
 pub mod eval;
 pub mod explorer;

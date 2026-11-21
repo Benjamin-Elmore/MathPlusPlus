@@ -499,6 +499,7 @@ impl IdeApp {
                     );
                     ui.checkbox(&mut s.fourier_k, "Fourier transforms use k (not \u{3c9})");
                 });
+                self.document_menu(ui);
                 ui.separator();
                 ui.checkbox(&mut self.eval_settings.auto_eval, "Auto-evaluate");
                 ui.checkbox(&mut self.eval_settings.show_steps, "Show steps");

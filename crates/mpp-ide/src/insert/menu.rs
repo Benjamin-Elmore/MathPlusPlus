@@ -39,6 +39,11 @@ pub struct MenuState {
     pub query: String,
     pub selected: usize,
     pub picker: Option<Picker>,
+    /// The citation picker, open with this entry selected.
+    pub cite: Option<usize>,
+    /// The entries the citation picker offers (the document's references), set by
+    /// the view before the menu is shown.
+    pub citations: Vec<crate::doc_settings::CiteChoice>,
     just_opened: bool,
 }
 
@@ -46,7 +51,14 @@ pub struct MenuState {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Outcome {
     Nothing,
-    Insert { id: String, knobs: Knobs },
+    Insert {
+        id: String,
+        knobs: Knobs,
+    },
+    /// A citation was chosen: insert `[@key]`.
+    Cite {
+        key: String,
+    },
     Closed,
 }
 
@@ -58,6 +70,7 @@ impl MenuState {
         self.query.clear();
         self.selected = 0;
         self.picker = None;
+        self.cite = None;
         self.just_opened = true;
     }
 
@@ -65,10 +78,15 @@ impl MenuState {
     pub fn close(&mut self) {
         self.open = false;
         self.picker = None;
+        self.cite = None;
     }
 
     /// Chooses an item: a matrix opens the size picker first.
     pub fn choose(&mut self, t: &Template) -> Outcome {
+        if t.cite_picker {
+            self.cite = Some(0);
+            return Outcome::Nothing;
+        }
         if t.grid_picker && self.picker.is_none() {
             self.picker = Some(Picker {
                 template: t.id.clone(),
@@ -165,6 +183,27 @@ pub fn show(
             i.consume_key(Modifiers::NONE, Key::Escape),
         )
     });
+    if state.cite.is_some() {
+        if escape {
+            state.cite = None;
+        } else if !state.citations.is_empty() {
+            let n = state.citations.len();
+            let sel = state.cite.unwrap_or(0).min(n - 1);
+            let sel = if up {
+                (sel + n - 1) % n
+            } else if down {
+                (sel + 1) % n
+            } else {
+                sel
+            };
+            state.cite = Some(sel);
+            if enter {
+                let key = state.citations[sel].key.clone();
+                state.close();
+                return Outcome::Cite { key };
+            }
+        }
+    }
     let (left, right) = if state.picker.is_some() {
         ctx.input_mut(|i| {
             (
@@ -175,7 +214,9 @@ pub fn show(
     } else {
         (false, false)
     };
-    if let Some(p) = state.picker.as_mut() {
+    if state.cite.is_some() {
+        // Handled above.
+    } else if let Some(p) = state.picker.as_mut() {
         if escape {
             state.picker = None;
         } else {
@@ -239,6 +280,12 @@ pub fn show(
                 .inner_margin(egui::Margin::symmetric(10, 8))
                 .show(ui, |ui| {
                     ui.set_width(MENU_WIDTH);
+                    if state.cite.is_some() {
+                        if let Some(o) = cite_ui(ui, state, theme, mode) {
+                            outcome = o;
+                        }
+                        return;
+                    }
                     if state.picker.is_some() {
                         if let Some(o) = picker_ui(ui, state, theme, mode) {
                             outcome = o;
@@ -395,6 +442,52 @@ fn tile(ui: &mut Ui, t: &Template, selected: bool, theme: Theme, mode: Mode) -> 
         c32(theme.text),
     );
     resp.on_hover_text(small(&t.name))
+}
+
+/// The citation picker: the document's references, typeset, one per row. Returns an
+/// outcome when one was chosen.
+fn cite_ui(ui: &mut Ui, state: &mut MenuState, theme: Theme, mode: Mode) -> Option<Outcome> {
+    ui.label(RichText::new("Citation").size(NAME_SIZE).strong());
+    if state.citations.is_empty() {
+        ui.label(small(
+            "This document has no references yet. Insert a Reference list first, then cite its entries.",
+        ));
+        return None;
+    }
+    ui.label(small(
+        "Choose the source to cite (or use the arrow keys and Enter).",
+    ));
+    ui.add_space(6.0);
+    let palette = mode.palette();
+    let selected = state.cite.unwrap_or(0);
+    let mut chosen = None;
+    egui::ScrollArea::vertical()
+        .max_height(MENU_HEIGHT - 60.0)
+        .show(ui, |ui| {
+            for (i, c) in state.citations.iter().enumerate() {
+                let mut frame = Frame::NONE;
+                if i == selected {
+                    frame = frame.fill(c32(palette.selection));
+                }
+                let resp = frame
+                    .inner_margin(egui::Margin::symmetric(6, 3))
+                    .show(ui, |ui| {
+                        ui.set_width(MENU_WIDTH - 24.0);
+                        typeset::show(ui, &c.latex, 15.0, theme);
+                    })
+                    .response
+                    .interact(Sense::click());
+                if resp.hovered() {
+                    state.cite = Some(i);
+                }
+                if resp.clicked() {
+                    chosen = Some(c.key.clone());
+                }
+            }
+        });
+    let key = chosen?;
+    state.close();
+    Some(Outcome::Cite { key })
 }
 
 /// The rows × columns picker. Returns an outcome when something was chosen.
@@ -568,5 +661,20 @@ mod tests {
         assert!(m.picker.is_some());
         assert!(matches!(m.choose(t), Outcome::Insert { .. }));
         assert!(!m.open);
+    }
+
+    #[test]
+    fn citation_opens_the_key_picker() {
+        let mut m = MenuState::default();
+        m.open_at(None);
+        let t = find("doc.citation").expect("citation");
+        assert!(sections("cite", &[])
+            .iter()
+            .any(|(_, v)| v.iter().any(|x| x.id == t.id)));
+        assert_eq!(m.choose(t), Outcome::Nothing);
+        assert_eq!(m.cite, Some(0));
+        assert!(m.open);
+        m.close();
+        assert!(m.cite.is_none());
     }
 }

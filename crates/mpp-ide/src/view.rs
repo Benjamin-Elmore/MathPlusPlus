@@ -755,7 +755,15 @@ fn insert_menu(
         .or_else(|| caret_rect.map(|r| Pos2::new(r.left(), r.bottom() + 4.0)))
         .unwrap_or_else(|| ui.max_rect().left_top() + Vec2::new(40.0, 40.0));
     let recent = cx.insert.settings.recent.clone();
+    cx.insert.menu.citations =
+        crate::doc_settings::cite_choices(&mpp_syntax::document::parse_document(doc.editor.text()));
     match insert::menu::show(ui.ctx(), &mut cx.insert.menu, &recent, anchor, cx.mode) {
+        insert::menu::Outcome::Cite { key } => {
+            doc.editor.insert_text(&crate::doc_settings::citation(&key));
+            cx.insert.settings.touch("doc.citation");
+            doc.touched();
+            ui.memory_mut(|m| m.request_focus(page_id));
+        }
         insert::menu::Outcome::Insert { id, knobs } => {
             if let Some(t) = insert::find(&id) {
                 let caret = doc.editor.caret();

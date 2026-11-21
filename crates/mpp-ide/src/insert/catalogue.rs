@@ -110,6 +110,9 @@ pub struct Template {
     pub knobs: Knobs,
     /// Shows the rows × columns picker before inserting.
     pub grid_picker: bool,
+    /// Shows the citation picker (the document's reference keys) instead of
+    /// inserting a template.
+    pub cite_picker: bool,
 }
 
 impl Template {
@@ -200,6 +203,7 @@ fn item(
         body,
         knobs,
         grid_picker: false,
+        cite_picker: false,
     }
 }
 
@@ -1875,6 +1879,18 @@ fn build_catalogue() -> Vec<Template> {
             "[^1]: ",
         ),
     ];
+    v.push(Template {
+        cite_picker: true,
+        ..item(
+            "doc.citation",
+            &[Group::Document],
+            "Citation",
+            r"\text{[1]}",
+            "citation cite reference source key",
+            Body::Block("[@⟨⟩key]"),
+            k(),
+        )
+    });
     for (id, group, name, icon, words, body) in text_items {
         v.push(item(
             id,
