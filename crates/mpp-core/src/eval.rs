@@ -94,6 +94,11 @@ fn compensated_sum(values: impl Iterator<Item = f64>) -> f64 {
         }
         sum = t;
     }
+    // An infinite term makes the correction ∞ − ∞ = NaN: the plain sum is the answer
+    // (`x/(e^x − 1)` at large x must give 0, not "undefined").
+    if !sum.is_finite() {
+        return sum;
+    }
     sum + c
 }
 

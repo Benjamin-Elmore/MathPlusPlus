@@ -215,6 +215,40 @@ fn a_sum_too_slow_to_confirm_is_refused_not_guessed() {
 }
 
 #[test]
+fn improper_integrals_of_bounded_integrands_are_computed() {
+    // x/(e^x − 1) → 1 at 0 and overflows harmlessly to 0 far out.
+    let rows = [
+        (
+            r"$$ \int_0^{\infty} \frac{x}{e^x - 1} \, dx \approx ? $$",
+            "1.644934067",
+        ),
+        (
+            r"$$ \int_0^{\infty} \frac{x^3}{e^x - 1} \, dx \approx ? $$",
+            "6.493939402",
+        ),
+        (
+            r"$$ \int_0^{\infty} \frac{x}{e^x + 1} \, dx \approx ? $$",
+            "0.8224670334",
+        ),
+        (
+            r"$$ \int_1^{\infty} \frac{x}{e^x - 1} \, dx \approx ? $$",
+            "0.8674294327",
+        ),
+    ];
+    for (src, want) in rows {
+        assert_eq!(approx(src), want, "{src}");
+    }
+}
+
+#[test]
+fn a_numeric_integral_below_its_error_is_zero_not_noise() {
+    assert_eq!(
+        approx(r"$$ \int_0^{\infty} \frac{\ln x}{1 + x^2} \, dx \approx ? $$"),
+        "0"
+    );
+}
+
+#[test]
 fn relations_between_constants_are_decided_in_high_precision() {
     let v = verdict(r"$$ \pi < 3.14159265358980 \overset{?}{=} \text{true} $$");
     assert_eq!(v.passed(), Some(true), "{}", v.describe());

@@ -209,7 +209,7 @@ fn numeric_bounds(
     }
     match numeric {
         Ok((v, err)) => {
-            let result = Expr::float(v);
+            let result = Expr::float(certified(v, err));
             Steps::record(
                 &mut log,
                 "numerical integration",
@@ -229,8 +229,8 @@ fn numeric_bounds(
                     "∫ {e} d{var} from {a} to {b} ({reason})"
                 )));
             }
-            if let Some((v, note)) = oscillating(e, var, &points) {
-                let result = Expr::float(v);
+            if let Some((v, err, note)) = oscillating(e, var, &points) {
+                let result = Expr::float(certified(v, err));
                 Steps::record(
                     &mut log,
                     "integrate between zeros",
@@ -247,6 +247,16 @@ fn numeric_bounds(
             )))
         }
         Err(err) => Err(err),
+    }
+}
+
+/// `v`, or 0 when it is below its own error estimate (so rounding noise such as
+/// `-3.8e-16` is never shown as the value of an integral that is 0).
+fn certified(v: f64, err: f64) -> f64 {
+    if v.is_finite() && v.abs() <= err {
+        0.0
+    } else {
+        v
     }
 }
 
@@ -317,7 +327,7 @@ fn has_undefined(e: &Expr) -> bool {
 
 /// The value of an integral with an infinite bound whose integrand oscillates, summed
 /// between the zeros of the integrand (see [`super::oscillatory`]).
-fn oscillating(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<(f64, String)> {
+fn oscillating(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<(f64, f64, String)> {
     let (lo, hi) = (points.first()?.1, points.last()?.1);
     if lo.is_finite() && hi.is_finite() {
         return None;
@@ -329,6 +339,9 @@ fn oscillating(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<(f64, Stri
         e.eval_f64(&env).ok()
     };
     let mut total = 0.0;
+    // The error estimate, and the size of the pieces (rounding noise scales with it).
+    let mut err = 0.0;
+    let mut parts = 0.0;
     let mut notes = Vec::new();
     let inner: Vec<f64> = points.iter().map(|p| p.1).collect();
     // Cut points: the finite ones, plus 0 when both bounds are infinite.
@@ -337,22 +350,28 @@ fn oscillating(e: &Expr, var: &str, points: &[(Expr, f64)]) -> Option<(f64, Stri
         finite.push(0.0);
     }
     for w in finite.windows(2) {
-        let (v, _) = quad(&mut g, w[0], w[1], DEFAULT_TOLERANCE, MAX_INTERVALS).ok()?;
+        let (v, e) = quad(&mut g, w[0], w[1], DEFAULT_TOLERANCE, MAX_INTERVALS).ok()?;
         total += v;
+        err += e;
+        parts += v.abs();
     }
     let (first, last) = (*finite.first()?, *finite.last()?);
     if hi.is_infinite() {
         let t = oscillatory::oscillating_tail(&mut g, last)?;
         total += t.value;
+        err += t.error;
+        parts += t.value.abs();
         notes.push(tail_note(&t, var, false));
     }
     if lo.is_infinite() {
         let mut h = |x: f64| g(-x);
         let t = oscillatory::oscillating_tail(&mut h, -first)?;
         total += t.value;
+        err += t.error;
+        parts += t.value.abs();
         notes.push(tail_note(&t, var, true));
     }
-    Some((total, notes.join("; ")))
+    Some((total, err.max(4e-15 * parts), notes.join("; ")))
 }
 
 fn tail_note(t: &oscillatory::Tail, var: &str, negative: bool) -> String {

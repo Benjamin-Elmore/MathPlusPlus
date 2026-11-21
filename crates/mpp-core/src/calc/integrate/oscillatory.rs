@@ -79,7 +79,10 @@ pub(crate) fn oscillating_tail(f: &mut dyn FnMut(f64) -> Option<f64>, start: f64
                     }
                     return Some(Tail {
                         value: c,
-                        error: error + (c - b).abs() + (b - a).abs(),
+                        // Rounding noise grows with the size of the pieces summed.
+                        error: (error + (c - b).abs() + (b - a).abs()).max(
+                            4e-15 * (head.abs() + pieces.iter().map(|p| p.abs()).sum::<f64>()),
+                        ),
                         pieces: pieces.len(),
                         first_zeros: zeros.iter().take(4).copied().collect(),
                     });
