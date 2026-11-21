@@ -527,3 +527,17 @@ fn sessions_run_on_another_thread() {
     let s = handle.join().expect("thread");
     assert_eq!(exact(answers(s.evaluated())[0]), "1024");
 }
+
+#[test]
+fn definitions_inside_a_proof_stay_in_the_proof() {
+    let src = "$$ a := 2 $$\n\n**Theorem 1.** For every $n$, $n = n$.\n\n**Proof.**\n\n$$ N := 5 $$\n\n$$ a := 7 $$\n\n$$ N + a = ? $$\n\n∎\n\n$$ a = ? $$\n\n$$ N = ? $$\n";
+    let ev = run(src);
+    let lines = answers(&ev);
+    assert_eq!(
+        exact(lines[0]),
+        "12",
+        "inside the proof its names are known"
+    );
+    assert_eq!(exact(lines[1]), "2", "the proof's `a` does not leak");
+    assert_eq!(exact(lines[2]), "N", "N is not defined after the proof");
+}

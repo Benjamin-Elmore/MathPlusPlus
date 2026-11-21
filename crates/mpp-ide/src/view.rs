@@ -48,6 +48,12 @@ pub enum ViewEvent {
     Save,
     /// Open a file (a quick fix: "Open mechanics.mpp").
     Open(std::path::PathBuf),
+    /// Prove… on a result (`Theorem 2`): the proof agent panel.
+    Prove(String),
+    /// Check against Lean… on a result: the alignment view.
+    AlignLean(String),
+    /// Insert → Conjecture: the proof agent proposes conjectures.
+    Conjecture,
 }
 
 /// What the view needs from the app.
@@ -327,7 +333,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 } else {
                     CursorIcon::Text
                 });
-                if !cx.diag.menu_open() {
+                if !cx.diag.menu_open() && !proof_mark_card(ui, &pc, origin, &theme, cx.size) {
                     hover_card(ui, doc, &pc, origin, &theme, cx);
                     verdict_card(ui, doc, &pc, origin, &theme, cx.size);
                     link_card(ui, &pc, origin, &theme, cx.size);
@@ -340,7 +346,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 if focused || cx.insert.menu.open {
                     template_toolbar(ui, doc, &pc, origin, cx, resp.id);
                 }
-                insert_menu(ui, doc, cx, caret_rect, resp.id);
+                insert_menu(ui, doc, cx, caret_rect, resp.id, &mut events);
             }
             (pc.page.height, pc.problems.clone())
         });
@@ -640,6 +646,28 @@ fn context_menu(
             cx.insert.menu.open_at(at);
             ui.close();
         }
+        let result = crate::proof::result_at(&pc.doc, doc.editor.caret());
+        if let Some(name) = result {
+            ui.separator();
+            if ui
+                .button(egui::RichText::new("Prove\u{2026}").font(crate::theme::sans(14.0)))
+                .on_hover_text(format!("Ask the proof agent to prove {name}"))
+                .clicked()
+            {
+                events.push(ViewEvent::Prove(name.clone()));
+                ui.close();
+            }
+            if ui
+                .button(
+                    egui::RichText::new("Check against Lean\u{2026}")
+                        .font(crate::theme::sans(14.0)),
+                )
+                .clicked()
+            {
+                events.push(ViewEvent::AlignLean(name));
+                ui.close();
+            }
+        }
         let fig = ui.data(|d| d.get_temp::<Option<usize>>(fig_key)).flatten();
         if let Some(idx) = fig {
             if ui
@@ -715,6 +743,7 @@ fn insert_menu(
     cx: &mut ViewCtx<'_>,
     caret_rect: Option<Rect>,
     page_id: egui::Id,
+    events: &mut Vec<ViewEvent>,
 ) {
     if !cx.insert.menu.open {
         return;
@@ -735,6 +764,9 @@ fn insert_menu(
                 insert::insert(&mut doc.editor, &pc.page, t, knobs, &bcx);
                 cx.insert.settings.touch(&id);
                 doc.touched();
+                if id == "doc.conjecture" {
+                    events.push(ViewEvent::Conjecture);
+                }
             }
             ui.memory_mut(|m| m.request_focus(page_id));
         }
@@ -837,6 +869,7 @@ fn paint_page(
     // the import summaries and the bulb of the caret's problem.
     dui::paint_marks(painter, &pc.problems, off, theme);
     dui::paint_margin(painter, page, &pc.problems, origin, theme);
+    crate::proof::marks::paint_marks(painter, page, &pc.proof.steps, origin, theme, cx.size);
     dui::paint_import_notes(
         painter,
         &pc.problems,
@@ -1314,6 +1347,26 @@ fn tab_to_slot(doc: &mut Doc, page: &crate::page::Page, forward: bool) {
     if let Some(o) = target {
         doc.editor.move_caret(o, false);
     }
+}
+
+/// The card of the proof status mark under the pointer, if any. True when shown.
+fn proof_mark_card(ui: &Ui, pc: &PageCache, origin: Pos2, theme: &Theme, size: f32) -> bool {
+    let Some(pos) = ui.ctx().pointer_hover_pos() else {
+        return false;
+    };
+    let clip = ui.clip_rect().left();
+    let marks = crate::proof::marks::mark_rects(&pc.page, &pc.proof.steps, origin, clip, size);
+    let Some((_, s)) = marks.iter().find(|(r, _)| r.expand(3.0).contains(pos)) else {
+        return false;
+    };
+    crate::proof::marks::mark_card(
+        ui.ctx(),
+        pos + Vec2::new(14.0, 18.0),
+        s,
+        theme,
+        card_size(size),
+    );
+    true
 }
 
 fn card_frame(ui: &Ui) -> Frame {

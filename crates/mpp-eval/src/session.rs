@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use mpp_syntax::document::{
     block_at, citation_diagnostics, parse_document, parse_reference_entries, Block, BlockId,
-    BlockKind, Document,
+    BlockKind, Document, TheoremKind,
 };
 use mpp_syntax::math::{DefHead, MathAst, Statement};
 use mpp_syntax::Diagnostic;
@@ -335,12 +335,19 @@ struct Pass {
 fn run_blocks(doc: &Document, old: &HashMap<BlockId, Cached>, inputs: &Inputs<'_>) -> Pass {
     let mut flat: Vec<&Block> = Vec::new();
     doc.walk(&mut |b| flat.push(b));
+    let scopes = proof_scopes(doc);
 
     let mut env = Env::default();
     let mut cache = HashMap::with_capacity(flat.len());
     let mut blocks = Vec::with_capacity(flat.len());
     let mut recomputed = Vec::new();
-    for block in flat {
+    // Names defined inside a proof belong to that proof: the names in scope before
+    // it come back once its last block is done.
+    let mut saved: Vec<(usize, Env)> = Vec::new();
+    for (i, block) in flat.into_iter().enumerate() {
+        if let Some(&(_, last)) = scopes.iter().find(|(start, _)| *start == i) {
+            saved.push((last, env.clone()));
+        }
         let reusable = old.get(&block.id).filter(|c| {
             !c.outcome.positional
                 && !c.outcome.volatile
@@ -374,6 +381,11 @@ fn run_blocks(doc: &Document, old: &HashMap<BlockId, Cached>, inputs: &Inputs<'_
                 start: block.span.start,
             },
         );
+        while saved.last().is_some_and(|(last, _)| *last == i) {
+            if let Some((_, before)) = saved.pop() {
+                env = before;
+            }
+        }
     }
     Pass {
         env,
@@ -381,6 +393,27 @@ fn run_blocks(doc: &Document, old: &HashMap<BlockId, Cached>, inputs: &Inputs<'_
         blocks,
         recomputed,
     }
+}
+
+/// The proofs of a document as `(first, last)` indices into its [`Document::walk`]
+/// order: the proof block itself and its last nested block.
+fn proof_scopes(doc: &Document) -> Vec<(usize, usize)> {
+    fn go(blocks: &[Block], next: &mut usize, out: &mut Vec<(usize, usize)>) {
+        for b in blocks {
+            let at = *next;
+            *next += 1;
+            if let BlockKind::Theorem(t) = &b.kind {
+                go(&t.body, next, out);
+                if t.kind == TheoremKind::Proof {
+                    out.push((at, *next - 1));
+                }
+            }
+        }
+    }
+    let mut out = Vec::new();
+    go(&doc.blocks, &mut 0, &mut out);
+    out.sort_unstable();
+    out
 }
 
 /// Stack for evaluation: recursive user functions and deep expressions recurse.

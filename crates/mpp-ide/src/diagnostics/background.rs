@@ -148,6 +148,7 @@ impl FileCache {
             eval_fresh: true,
             background: None,
             quiet: None,
+            proof: &[],
         };
         let found = Arc::new(gather(&inputs));
         self.problems

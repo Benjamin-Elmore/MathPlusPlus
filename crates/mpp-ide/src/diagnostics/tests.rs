@@ -195,6 +195,7 @@ fn the_template_being_filled_in_is_quiet() {
         eval_fresh: false,
         background: None,
         quiet,
+        proof: &[],
     };
     assert!(!gather(&mk(None)).is_empty());
     assert!(gather(&mk(Some(3..13))).is_empty());

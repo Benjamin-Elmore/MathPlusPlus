@@ -1,7 +1,8 @@
-//! The `mpp` command line: run, check, render, export, calc and ide.
+//! The `mpp` command line: run, check, prove, render, export, calc and ide.
 
 #![forbid(unsafe_code)]
 
+pub mod prove;
 pub mod unicode;
 
 use std::fmt::Write;
@@ -10,6 +11,7 @@ use std::path::Path;
 use mpp_eval::{Evaluated, LineKind, LineResult, QueryMode, Session};
 use mpp_syntax::{Diagnostic, Severity};
 
+pub use prove::{proof_report, prove, split_target, ProveArgs, ProveIo, ProveOutcome};
 pub use unicode::to_unicode;
 
 /// One typeset result line of a run: the maths asked and its answer.

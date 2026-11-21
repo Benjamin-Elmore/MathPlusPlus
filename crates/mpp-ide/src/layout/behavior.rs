@@ -902,6 +902,9 @@ impl IdeApp {
                         self.message = Some(m);
                     }
                 }
+                ViewEvent::Prove(name) => self.prove(&name),
+                ViewEvent::AlignLean(name) => self.align_with_lean(&name),
+                ViewEvent::Conjecture => self.propose_conjectures(),
             }
         }
         if let Some(p) = crumb {

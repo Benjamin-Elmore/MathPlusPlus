@@ -128,6 +128,9 @@ pub enum Kind {
         /// Close file names when it is missing.
         similar: Vec<String>,
     },
+    /// A proof step the checker could not confirm: wrong, a gap or an external
+    /// claim, structure only, or cited.
+    ProofStep { status: mpp_proof::StepStatus },
     /// Any other parser or evaluator problem.
     Other,
 }
@@ -280,6 +283,9 @@ pub struct Inputs<'a> {
     /// Problems inside this range are not shown: the template the caret is
     /// filling in, whose empty boxes show their labels and a "fill in" hint.
     pub quiet: Option<Range<usize>>,
+    /// Proof step statuses of exactly `src` (gaps, wrong steps and structure-only
+    /// steps become marks; checked steps none).
+    pub proof: &'a [crate::proof::StepMark],
 }
 
 /// The block spans of a document by id.
@@ -884,10 +890,52 @@ pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
     if let Some(bg) = inp.background {
         out.extend(import_problems(inp.doc, bg));
     }
+    out.extend(proof_problems(inp.proof));
     if let Some(q) = &inp.quiet {
         out.retain(|p| !(q.start <= p.span.start && p.span.end <= q.end));
     }
     out.sort_by_key(|p| (p.span.start, p.level, p.span.end));
+    out
+}
+
+/// The proof steps that get a mark: a wrong step is an error, a gap or an external
+/// claim a warning, structure-only and cited steps notes.
+fn proof_problems(steps: &[crate::proof::StepMark]) -> Vec<Problem> {
+    use mpp_proof::model::Squiggle;
+    let mut out = vec![];
+    for s in steps {
+        let Some(sq) = s.status.squiggle() else {
+            continue;
+        };
+        let level = match sq {
+            Squiggle::Error => Level::Error,
+            Squiggle::Warning => Level::Warning,
+            Squiggle::Info => Level::Info,
+        };
+        let step = s
+            .number
+            .map_or_else(|| "This step".to_string(), |n| format!("Step {n}"));
+        let mut text = format!(
+            "{step} of the proof of {}: {} {}",
+            s.result,
+            s.status.mark(),
+            s.status.name()
+        );
+        if !s.detail.is_empty() {
+            text.push_str(" \u{2014} ");
+            text.push_str(&s.detail);
+        }
+        let mut p = Problem::new(
+            s.span,
+            level,
+            Kind::ProofStep { status: s.status },
+            from_message(&text),
+        );
+        if let Some(cx) = &s.counterexample {
+            p = p.fixing(Rich::text(format!("Counterexample: {cx}")));
+        }
+        out.push(p);
+    }
     out
 }
 

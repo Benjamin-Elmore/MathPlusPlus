@@ -1,7 +1,7 @@
 Title: Proofs, step by step
 Author: Math++ examples
 
-Each step of a proof is a claim and a reason. The checker gives every step a status in the equation view (✓ checked symbolically, ≈ checked numerically, ⊢ checked by Lean, ◇ structure only, 📖 cited, ⚠ gap or external, ✗ wrong) and each theorem a summary that never claims more than its weakest step. None of it is written into this file.
+Each step of a proof is a claim and a reason. The checker marks every step in the equation view (checked symbolically, checked numerically, checked by Lean, structure only, cited, a gap or an external claim, or wrong) and gives each theorem a summary that never claims more than its weakest step. None of it is written into this file.
 
 **Lemma 1** (odd squares). If $p$ is odd, then $p^2$ is odd.
 

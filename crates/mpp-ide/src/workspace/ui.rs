@@ -233,7 +233,9 @@ impl IdeApp {
         let notes = self.show_comments;
         let key = (
             d.id,
-            (d.editor.revision() * 2 + u64::from(d.eval_fresh())) * 2 + u64::from(notes),
+            ((d.editor.revision() * 2 + u64::from(d.eval_fresh())) * 2 + u64::from(notes))
+                .wrapping_mul(1_000_003)
+                .wrapping_add(d.proof_generation()),
         );
         if let Some((id, k, items)) = &self.ws.outline_cache {
             if (*id, *k) == key {
@@ -242,7 +244,14 @@ impl IdeApp {
         }
         let src = d.editor.text();
         let parsed = mpp_syntax::document::parse_document(src);
-        let items = crate::explorer::outline::outline_with(&parsed, src, d.eval.as_deref(), notes);
+        let proof = d.proof_view();
+        let items = crate::explorer::outline::outline_full(
+            &parsed,
+            src,
+            d.eval.as_deref(),
+            notes,
+            Some(&proof),
+        );
         self.ws.outline_cache = Some((key.0, key.1, items.clone()));
         items
     }
@@ -306,7 +315,20 @@ impl IdeApp {
                     OutlineKind::Heading(1) | OutlineKind::Title => 18.0,
                     _ => 16.0,
                 };
-                let resp = typeset::show(ui, &it.latex, size, *theme);
+                let mut resp = typeset::show(ui, &it.latex, size, *theme);
+                if let Some((text, tone)) = &it.status {
+                    let tint = Theme {
+                        text: tone.color(theme),
+                        ..*theme
+                    };
+                    let latex = crate::proof::prose_latex(text);
+                    let r = typeset::show(ui, &latex, size * 0.8, tint);
+                    let label = text.clone();
+                    r.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::Role::Label, true, label.clone())
+                    });
+                    resp = resp.union(r);
+                }
                 if resp.hovered() {
                     ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                     ui.painter().rect_filled(

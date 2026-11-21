@@ -2262,7 +2262,9 @@ dependencies = [
  "mpp-eval",
  "mpp-export",
  "mpp-ide",
+ "mpp-proof",
  "mpp-syntax",
+ "serde_json",
  "tempfile",
  "winresource",
 ]
@@ -2319,6 +2321,7 @@ dependencies = [
  "mpp-eval",
  "mpp-export",
  "mpp-plot",
+ "mpp-proof",
  "mpp-render",
  "mpp-syntax",
  "notify",

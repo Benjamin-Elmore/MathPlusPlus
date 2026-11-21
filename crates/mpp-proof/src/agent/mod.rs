@@ -58,6 +58,30 @@ pub struct AgentConfig {
     pub poll_interval: Duration,
     /// Polls before the run gives up.
     pub max_polls: usize,
+    /// Set from another thread (the IDE's Stop button) to interrupt the session.
+    pub stop: StopFlag,
+}
+
+/// A flag another thread sets to stop a run; the session is interrupted at the next poll.
+#[derive(Debug, Clone, Default)]
+pub struct StopFlag(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl StopFlag {
+    /// Asks the run to stop.
+    pub fn set(&self) {
+        self.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// True once [`StopFlag::set`] was called.
+    pub fn is_set(&self) -> bool {
+        self.0.load(std::sync::atomic::Ordering::SeqCst)
+    }
+}
+
+impl PartialEq for StopFlag {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.0, &other.0)
+    }
 }
 
 impl Default for AgentConfig {
@@ -71,6 +95,7 @@ impl Default for AgentConfig {
             environment_id: None,
             poll_interval: Duration::from_secs(2),
             max_polls: 1800,
+            stop: StopFlag::default(),
         }
     }
 }
@@ -108,6 +133,8 @@ pub enum RunStop {
     Error(String),
     /// The run polled too long without the session finishing.
     TooLong,
+    /// The user pressed Stop and the session was interrupted.
+    Stopped,
 }
 
 /// The proposed change, shown as a diff the user accepts or rejects.

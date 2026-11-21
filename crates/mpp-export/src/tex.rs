@@ -228,6 +228,7 @@ impl Writer<'_> {
             _ => {}
         });
         self.number_sections = number_sections;
+        refs.extend(doc.reference_list_entries());
         for f in files {
             if let Some(t) = self.provider.references_source(&f) {
                 refs.extend(parse_reference_entries(&t));

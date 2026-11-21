@@ -266,6 +266,14 @@ pub(super) fn run(
                 break;
             }
         }
+        if stop.is_none() && config.stop.is_set() {
+            let _ = client.request(
+                "POST",
+                &events_path,
+                Some(json!({"events": [{"type": "user.interrupt"}]})),
+            );
+            stop = Some(RunStop::Stopped);
+        }
         if stop.is_none() && meter.over_cap() {
             let _ = client.request(
                 "POST",

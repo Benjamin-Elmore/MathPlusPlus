@@ -25,6 +25,7 @@ pub mod library;
 pub mod page;
 pub mod paint;
 pub mod problems;
+pub mod proof;
 mod sample;
 pub mod settings;
 pub mod suggest;
@@ -63,6 +64,10 @@ impl EframeApp {
     /// Builds the app for a window: installs fonts, restores settings, opens `paths`.
     pub fn new(cc: &eframe::CreationContext<'_>, paths: &[std::path::PathBuf]) -> Self {
         let mut app = IdeApp::new();
+        // The proof agent's API key lives in Windows Credential Manager.
+        app.proof.set_key_store(std::sync::Arc::new(
+            mpp_proof::agent::CredentialStore::default(),
+        ));
         if let Some(s) = cc.storage {
             app.restore(s);
         }

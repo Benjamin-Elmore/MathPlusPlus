@@ -30,6 +30,8 @@ pub struct OutlineItem {
     pub latex: String,
     /// Where it is in the file (click scrolls here).
     pub span: Span,
+    /// A theorem's proof status from the checker ("proved", "2 gaps").
+    pub status: Option<(String, crate::proof::Tone)>,
 }
 
 /// Words and maths of some inline content as one typesettable LaTeX string.
@@ -93,6 +95,17 @@ pub fn outline_with(
     ev: Option<&Evaluated>,
     notes: bool,
 ) -> Vec<OutlineItem> {
+    outline_full(doc, src, ev, notes, None)
+}
+
+/// The outline with each theorem's proof status from the checker's report.
+pub fn outline_full(
+    doc: &Document,
+    src: &str,
+    ev: Option<&Evaluated>,
+    notes: bool,
+    proof: Option<&crate::proof::ProofView>,
+) -> Vec<OutlineItem> {
     let mut items = vec![];
     let mut figure = 0;
     let paper = crate::page::PaperInfo::scan(doc, src, &crate::page::ExtraRefs::default());
@@ -104,16 +117,31 @@ pub fn outline_with(
                     kind: OutlineKind::Title,
                     latex,
                     span: b.span,
+                    status: None,
                 });
             }
         }
         BlockKind::Theorem(t) => {
-            let label = paper.theorem_label(t.kind);
+            let mut label = paper.theorem_label(t.kind);
+            if let Some(n) = &t.number {
+                label = format!("{} {n}", t.kind.as_str());
+            }
             let label = label.trim_end_matches('.');
+            let mut latex = format!("\\text{{{label}}}");
+            if let Some(title) = &t.title {
+                latex.push_str(&format!(
+                    "\\text{{ (}}{}\\text{{)}}",
+                    inlines_latex(title, src)
+                ));
+            }
+            let status = proof
+                .and_then(|p| p.summary_for(b.span))
+                .map(|l| (l.text.clone(), l.tone));
             items.push(OutlineItem {
                 kind: OutlineKind::Theorem,
-                latex: format!("\\text{{{label}}}"),
+                latex,
                 span: b.span,
+                status,
             });
         }
         BlockKind::References(_) if paper.ref_block == Some(b.span) => {
@@ -121,6 +149,7 @@ pub fn outline_with(
                 kind: OutlineKind::References,
                 latex: "\\text{References}".into(),
                 span: b.span,
+                status: None,
             });
         }
         BlockKind::Comment(c) if notes => {
@@ -133,6 +162,7 @@ pub fn outline_with(
                 kind: OutlineKind::Note,
                 latex: format!("\\text{{\u{270e} {clean}\u{2026}}}"),
                 span: b.span,
+                status: None,
             });
         }
         BlockKind::Heading { level, content } => {
@@ -145,6 +175,7 @@ pub fn outline_with(
                     kind: OutlineKind::Heading(*level),
                     latex,
                     span: b.span,
+                    status: None,
                 });
             }
         }
@@ -160,6 +191,7 @@ pub fn outline_with(
                 kind: OutlineKind::Figure,
                 latex,
                 span: b.span,
+                status: None,
             });
         }
         _ => {}
@@ -171,6 +203,7 @@ pub fn outline_with(
                     kind: OutlineKind::Definition,
                     latex: defs::summary_latex(&d),
                     span: d.span,
+                    status: None,
                 });
             }
         }
