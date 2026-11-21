@@ -195,9 +195,10 @@ impl Run<'_, '_> {
                 return;
             }
         }
-        for note in &out.notes {
-            self.warn(lr.span, note.clone());
-        }
+        // The preview is the editor's grey answer to a line that asked nothing, never
+        // part of the document: its evaluators' remarks (the method used, a check
+        // that passed) are not problems with the file, so they are not reported.
+        drop(out.notes);
         lr.auto = true;
         if let Kind::Solutions(unknowns) = kind {
             let shown = super::sentences::solution_text(unknowns, &value);

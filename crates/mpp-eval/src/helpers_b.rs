@@ -824,6 +824,18 @@ mod ode {
 
     const NUMERIC_NOTE: &str = "no closed form was found, so the solution is numerical (RK45, tolerance 10⁻¹²), computed wherever it is used";
 
+    /// `(y, t)` when the second and third arguments of `dsolve(eq, y, t, …)` name the
+    /// unknown of the equation and its independent variable.
+    pub(crate) fn named_unknown(eq: &Expr, args: &[Expr]) -> Option<(String, String)> {
+        let y = args.get(1)?.as_sym()?;
+        let x = args.get(2)?.as_sym()?;
+        if y == x || is_function_marker(&args[1]) || is_function_marker(&args[2]) {
+            return None;
+        }
+        let found = core_ode::parse(eq, None, None).ok()?;
+        (found.y == y).then(|| (y.to_string(), x.to_string()))
+    }
+
     pub(crate) fn is_function_marker(e: &Expr) -> bool {
         e.as_sym() == Some(FUNCTION_MARKER)
     }
@@ -900,11 +912,26 @@ mod ode {
         if let ExprNode::Tuple(eqs) = eq.node() {
             return system(eqs, &call.args[1..], ctx);
         }
-        let parsed = core_ode::parse(eq, None, None)?;
+        // `dsolve(eq, y, t, …)`: the unknown and the independent variable named as the
+        // second and third arguments (the textbook IVP form), so the answer is in t.
+        let named = named_unknown(eq, &call.args);
+        let (ny, nx) = match &named {
+            Some((y, x)) => (Some(y.as_str()), Some(x.as_str())),
+            None => (None, None),
+        };
+        let mut parsed = core_ode::parse(eq, ny, None)?;
+        if let Some(x) = nx {
+            // Primes are read as d/dx; with the variable named (and no other x in the
+            // equation) they mean d/dt, so the answer is y(t).
+            if parsed.x != x && !parsed.residual.contains_sym(&parsed.x) {
+                parsed.x = x.to_string();
+            }
+        }
+        let skip = if named.is_some() { 3 } else { 1 };
         let rest: Vec<Expr> = call
             .args
             .iter()
-            .skip(1)
+            .skip(skip)
             .chain(call.sub.iter())
             .chain(call.sup.iter())
             .cloned()
@@ -919,6 +946,7 @@ mod ode {
         let conds = conditions(&rest, &parsed.y)?;
         let mut options = Options {
             y: Some(parsed.y.clone()),
+            x: named.as_ref().map(|_| parsed.x.clone()),
             ..Options::default()
         };
         let mut numeric_wanted = false;
@@ -947,7 +975,17 @@ mod ode {
                 "(a numerical solution was asked for)".into(),
             ))
         } else {
-            logged(ctx, |s| core_ode::dsolve(eq, &conds, &options, s))
+            logged(ctx, |s| {
+                if named.is_none() {
+                    return core_ode::dsolve(eq, &conds, &options, s);
+                }
+                let mut local = mpp_core::Steps::new();
+                let r = core_ode::solve_parsed(&parsed, &conds, &options, &mut local);
+                if let Some(log) = s {
+                    log.0.extend(local.0);
+                }
+                r
+            })
         };
         if as_function && !matches!(&exact, Ok(sol) if matches!(sol.form, Form::Explicit(_))) {
             let unknowns = crate::ivp_wire::Unknowns {

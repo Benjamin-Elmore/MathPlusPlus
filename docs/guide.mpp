@@ -22,7 +22,7 @@ Put maths between dollar signs. A single pair, `$x^2$`, sits inside a sentence; 
 - **Plain text:** `a/b`, `alpha`, `sqrt(x)`, `sum_(n=1)^inf`, `int_0^1`, `lim_(x->0)`, `<=`, `!=`
 - **Unicode:** `α`, `∫`, `∑`, `≤`, `x²`, typed straight into the file
 
-A run of letters that is a known name (a Greek letter, `sin`, `ln`, `det`) means that name. Any other run of letters is a product of single letters, so `xy` is $x y$. For a longer name, write `\operatorname{name}`, or give it a subscript such as `v_0`.
+A run of letters that is a known name (a Greek letter, `sin`, `ln`, `det`) means that name. Any other run of letters is a product of single letters, so `xy` is $x y$. For a longer name, write `\operatorname{name}`, or give it a subscript such as `v_0`. A change written with `\Delta` is one name too: `\Delta x`, `\Delta t`, `ΔV`.
 
 Prose is written like a plain text note. Use `#` for headings, `**bold**` and `*italic*`, `-` for bullet lists, `1.` for numbered lists, `>` for a quotation, and a table with `|` between columns. Put a line of three dashes for a rule. Anything between triple backticks is shown exactly as typed and never worked out.
 
@@ -79,6 +79,10 @@ An indefinite integral gets its `+ C`. A series that does not converge tells you
 
 $$ \frac{\partial}{\partial y} (x^2 y^3) = ? $$
 
+An evaluation bar puts a point in, written `\left. … \right|_{x=a}` or with a bar after the expression:
+
+$$ \frac{d}{dt} (t^2) \bigg|_{t=2} = ? $$
+
 ## 6. Matrices, equations and the other fields
 
 Write a matrix with `\begin{pmatrix} … \end{pmatrix}` and work with it as you would on paper. Products keep the order you write them in.
@@ -93,13 +97,17 @@ Solve with a sentence, `Solve $x^2 - 5x + 6 = 0$ for $x$.`, or in maths:
 
 $$ \operatorname{solve}(x^2 - 5 x + 6 = 0, x) = ? $$
 
-There is number theory, `$\gcd(12, 18) = ?$` and `$\operatorname{isprime}(97) = ?$`, and statistics (section 10). Differential equations use `dsolve`, with an optional starting point as the last argument:
+There is number theory, `$\gcd(12, 18) = ?$` and `$\operatorname{isprime}(97) = ?$`, and statistics (section 10). Differential equations use `dsolve`: the equation, then the unknown and the variable, then the starting values written as on paper. The answer is in the variable you name, as `y = …` whenever it can be solved for y:
 
 $$ \operatorname{dsolve}(y' = x y, y, x) = ? $$
 
+$$ \operatorname{dsolve}(y'' + y = 0, y, t, y(0) = 1, y'(0) = 0) = ? $$
+
+The starting values can also be a tuple, `(0, 1)` for y(0) = 1. Without them the answer keeps its constants, such as C.
+
 ## 7. Units
 
-Write a unit straight after a number, with or without a thin space: `$g \equiv 9.81\,\mathrm{m/s^2}$`. Prefixes work on SI units (`km`, `ms`, `kΩ`, `MPa`), and the common other units are there too: minutes, hours, miles, pounds, degrees Celsius and Fahrenheit, electron-volts and more.
+Write a unit after a number with a thin space and `\mathrm`: `$g \equiv 9.81\,\mathrm{m/s^2}$`. A unit of two or more letters (`kg`, `m/s`) also works after a plain space or none, as in `2 kg`. A single letter after a plain space, such as `20 t`, is the variable t when t is a name in scope (a parameter of the function being defined, or something the document defines), and otherwise the unit with a warning that shows both spellings: write `20\,\mathrm{t}` for 20 tonnes and `20t` for 20 times t. Prefixes work on SI units (`km`, `ms`, `kΩ`, `MPa`), and the common other units are there too: minutes, hours, miles, pounds, degrees Celsius and Fahrenheit, electron-volts and more.
 
 Math++ keeps track of dimensions. A mass times an acceleration comes out as a force, in newtons:
 

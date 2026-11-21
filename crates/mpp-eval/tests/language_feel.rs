@@ -90,3 +90,132 @@ fn an_unknown_function_that_echoes_itself_is_reported() {
     let got = answers(&ev);
     assert!(got[0].as_deref().unwrap().contains("O(x"), "{got:?}");
 }
+
+/// The plain (ASCII) answer of every query, in order.
+fn plain_answers(ev: &Evaluated) -> Vec<String> {
+    ev.queries()
+        .map(|(_, l)| {
+            l.plain
+                .clone()
+                .or_else(|| l.text.clone())
+                .unwrap_or_default()
+        })
+        .collect()
+}
+
+#[test]
+fn dsolve_takes_y_of_0_for_any_order_and_answers_in_the_variable_given() {
+    let ev = run(concat!(
+        r"$$ \operatorname{dsolve}(y' = 3 - y, y, t, y(0) = 0) = ? $$",
+        "\n\n",
+        r"$$ \operatorname{dsolve}(y'' + y = 0, y, t, y(0) = 1, y'(0) = 0) = ? $$",
+        "\n\n",
+        r"$$ \operatorname{dsolve}(V' = (12 - V)/0.47, V, t, (0, 0)) = ? $$",
+        "\n",
+    ));
+    assert!(
+        ev.errors().is_empty(),
+        "{:?}",
+        messages(&ev, Severity::Error)
+    );
+    let got = plain_answers(&ev);
+    // First order with y(0) = 0: explicit, in t.
+    assert!(
+        got[0].starts_with("y(t) = ") || got[0].starts_with("y = "),
+        "{got:?}"
+    );
+    assert!(
+        got[0].contains("exp(-t)") || got[0].contains("e^(-t)"),
+        "{got:?}"
+    );
+    // Second order: named variable t, not x.
+    assert_eq!(got[1], "y(t) = cos(t)", "{got:?}");
+    assert!(!got[1].contains('x'));
+    // The RC circuit: V = 12(1 - e^(-t/0.47)), explicit.
+    assert!(
+        got[2].starts_with("V(t) = ") || got[2].starts_with("V = "),
+        "{got:?}"
+    );
+    assert!(!got[2].contains("ln"), "{got:?}");
+}
+
+#[test]
+fn a_dsolve_answer_never_hides_a_unit_inside_an_exponential() {
+    let ev = run(concat!(
+        r"$$ \tau := 0.47\,\mathrm{s} $$",
+        "\n\n",
+        r"$$ \operatorname{dsolve}(\tau \frac{dV}{dt} + V = 12, V, t) = ? $$",
+        "\n",
+    ));
+    let errors = messages(&ev, Severity::Error);
+    assert!(
+        errors.iter().any(|e| e.contains("with its units")),
+        "{errors:?} {:?}",
+        plain_answers(&ev)
+    );
+}
+
+#[test]
+fn a_letter_after_a_number_is_the_variable_when_it_is_bound_and_warned_otherwise() {
+    // t is the function's parameter, ζ and g are defined: all variables.
+    let ev = run(concat!(
+        "$$ \\zeta := 0.2 $$\n\n",
+        "$$ u(t) := e^{-\\zeta 20 t} \\cos(20 t) $$\n\n",
+        "$$ u(0.1) \\approx ? $$\n\n",
+        "$$ g \\equiv 9.81 $$\n\n",
+        "$$ \\frac{9}{2 g} \\approx ? $$\n",
+    ));
+    assert!(messages(&ev, Severity::Warning).is_empty());
+    let got = answers(&ev);
+    assert_eq!(got[0].as_deref(), Some("cos(2)/e^(2/5)"), "{got:?}");
+    assert_eq!(got[1].as_deref(), Some("50/109"), "{got:?}");
+    // Unbound: read as the unit, with a warning naming both spellings.
+    let ev = run("$$ 5 m + 2 m = ? $$\n");
+    let w = messages(&ev, Severity::Warning);
+    assert!(
+        w.iter().any(|m| m.contains("metres") && m.contains("5m")),
+        "{w:?}"
+    );
+    // A thin space is a deliberate unit: no warning.
+    let ev = run("$$ 5\\,m + 2\\,m = ? $$\n");
+    assert!(messages(&ev, Severity::Warning).is_empty());
+}
+
+#[test]
+fn delta_x_is_one_name() {
+    let ev =
+        run("$$ \\Delta x := 5\\,\\mathrm{m} $$\n\n$$ \\Delta x = ? $$\n\n$$ 2 \\Delta x = ? $$\n");
+    assert!(
+        ev.errors().is_empty(),
+        "{:?}",
+        messages(&ev, Severity::Error)
+    );
+    let got = answers(&ev);
+    assert_eq!(got[0].as_deref(), Some("5 m"), "{got:?}");
+    assert_eq!(got[1].as_deref(), Some("10 m"), "{got:?}");
+}
+
+#[test]
+fn the_evaluation_bar_puts_the_point_in() {
+    let ev = run(concat!(
+        r"$$ \left. \frac{d}{dx} x^3 \right|_{x=2} = ? $$",
+        "\n\n",
+        r"$$ \frac{d}{dt}(t^2) \bigg|_{t=2} = ? $$",
+        "\n\n",
+        r"$$ x^2 |_{x=3} = ? $$",
+        "\n\n",
+        r"$$ |x - 5| = ? $$",
+        "\n",
+    ));
+    assert!(
+        ev.errors().is_empty(),
+        "{:?}",
+        messages(&ev, Severity::Error)
+    );
+    let got = answers(&ev);
+    assert_eq!(got[0].as_deref(), Some("12"), "{got:?}");
+    assert_eq!(got[1].as_deref(), Some("4"), "{got:?}");
+    assert_eq!(got[2].as_deref(), Some("9"), "{got:?}");
+    // An absolute value is still an absolute value.
+    assert!(got[3].as_deref().unwrap().contains('|'), "{got:?}");
+}

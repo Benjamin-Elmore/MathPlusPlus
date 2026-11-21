@@ -709,5 +709,6 @@ fn bracket_name(bracket: Bracket) -> &'static str {
         Bracket::Angle => "angle",
         Bracket::TexGroup => "texgroup",
         Bracket::None => "none",
+        Bracket::EvalBar => "evalbar",
     }
 }

@@ -665,6 +665,9 @@ pub enum Bracket {
     TexGroup,
     /// `\left.` with an invisible delimiter.
     None,
+    /// The evaluation bar `\left. … \right|_{x=a}` or `… \bigg|_{x=a}`: nothing
+    /// before, a bar after (the point goes in the subscript).
+    EvalBar,
 }
 
 /// `\sum`, `\prod`, `\coprod`.

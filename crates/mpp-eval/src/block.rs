@@ -249,6 +249,48 @@ fn show_decimal(lr: &mut LineResult, decimal: &str) {
 
 /// The one root when `input` is a `\operatorname{solve}` of a single unknown and its
 /// value is a set with exactly one element.
+/// A remark that only reports how an answer was found and that it checked out
+/// (`method: separable`, `… substituting it back gives 0 exactly`): not a problem
+/// with the line, so `mpp check` does not list it as a warning.
+fn is_success_note(note: &str) -> bool {
+    note.starts_with("method: ")
+        || note.ends_with("substituting it back gives 0 exactly")
+        || note.ends_with("is an arbitrary constant")
+}
+
+/// True when `e` asks to solve a differential equation.
+fn mentions_dsolve(e: &Expr) -> bool {
+    match e.node() {
+        ExprNode::Apply(name, _) if matches!(&**name, "dsolve" | "odesolve" | "ode") => true,
+        _ => e.children().into_iter().any(mentions_dsolve),
+    }
+}
+
+/// The unit a one-letter symbol stands for, in words.
+fn unit_word(letter: &str) -> String {
+    let word = match letter {
+        "t" => "tonnes",
+        "m" => "metres",
+        "s" => "seconds",
+        "g" => "grams",
+        "h" => "hours",
+        "K" => "kelvin",
+        "A" => "amperes",
+        "N" => "newtons",
+        "J" => "joules",
+        "W" => "watts",
+        "C" => "coulombs",
+        "V" => "volts",
+        "T" => "teslas",
+        "F" => "farads",
+        "H" => "henries",
+        "S" => "siemens",
+        "L" => "litres",
+        _ => return format!("the unit {letter}"),
+    };
+    format!("{word} ({letter})")
+}
+
 /// The warning for a call nothing evaluated, with the spelling Math++ reads when the
 /// name is a common one from other systems.
 fn unknown_call_message(name: &str) -> String {
@@ -666,6 +708,9 @@ impl Run<'_, '_> {
             }
         }
         let noeval = line.noeval || place == Place::Display { noeval: true };
+        if place != Place::Prose {
+            self.ambiguous_unit_letters(line, &where_names);
+        }
         let scope = Scope {
             names: &where_names,
             locals: &locals,
@@ -702,6 +747,83 @@ impl Run<'_, '_> {
                 self.push(LineResult::new(line.span, LineKind::Range));
             }
             Statement::NameList(_) | Statement::Empty => {}
+        }
+    }
+
+    /// `20 t`, `5 m`, `9 g`: a number, a plain space and one letter that is a unit
+    /// symbol. A letter the line binds (a parameter, `u(t) := …`) or the document
+    /// defines is the variable (see the lowering); any other is read as the unit, and
+    /// since that may not be what was meant, a warning names both spellings.
+    fn ambiguous_unit_letters(&mut self, line: &Line, where_names: &[String]) {
+        let mut roots: Vec<&Node> = Vec::new();
+        let mut bound: Vec<String> = where_names.to_vec();
+        match &line.statement {
+            Statement::Definition { head, body, .. } => {
+                if let DefHead::Function { params, .. } = head {
+                    bound.extend(params.iter().filter_map(node_key));
+                }
+                roots.push(body);
+            }
+            Statement::Query { expr, .. } => roots.push(expr),
+            Statement::Check { lhs, rhs } => {
+                roots.push(lhs);
+                roots.push(rhs);
+            }
+            Statement::Relation(n) => roots.push(n),
+            _ => {}
+        }
+        let mut found: Vec<(Span, String, String)> = Vec::new();
+        fn walk<'n>(n: &'n Node, out: &mut Vec<&'n Node>) {
+            if let NodeKind::Quantity { .. } = n.kind {
+                out.push(n);
+            }
+            mpp_syntax::math::visit::children(n, &mut |c| walk(c, out));
+        }
+        let mut quantities = Vec::new();
+        for r in roots {
+            walk(r, &mut quantities);
+        }
+        for q in quantities {
+            let NodeKind::Quantity { value, unit } = &q.kind else {
+                continue;
+            };
+            let mut letters = unit.text.chars();
+            let (Some(c), None) = (letters.next(), letters.next()) else {
+                continue;
+            };
+            if !unit.plain || !c.is_ascii_alphabetic() {
+                continue;
+            }
+            let name = c.to_string();
+            if bound.contains(&name) || self.view().get(&name, false).is_some() {
+                continue;
+            }
+            // `20\\,t` (a thin space or any spacing command) is a deliberate unit.
+            let gap = self
+                .inputs
+                .source
+                .get(value.span.end..unit.span.start)
+                .unwrap_or("");
+            if gap.contains('\\') {
+                continue;
+            }
+            let number = self
+                .inputs
+                .source
+                .get(value.span.start..value.span.end)
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            found.push((q.span, number, name));
+        }
+        for (span, number, letter) in found {
+            let unit = unit_word(&letter);
+            self.warn(
+                span,
+                format!(
+                    "`{number} {letter}` is read as {number} {unit}; write `{number}\\,\\mathrm{{{letter}}}` for the unit, or `{number}{letter}` for the variable {letter}"
+                ),
+            );
         }
     }
 
@@ -1187,7 +1309,7 @@ impl Run<'_, '_> {
         let numeric = mode == QueryMode::Approx;
         let logging = steps || self.inputs.show_steps;
         let mut resolved = self.resolve_full(&input, s.locals, &[], logging, numeric);
-        for note in &resolved.notes {
+        for note in resolved.notes.iter().filter(|n| !is_success_note(n)) {
             self.warn(expr.span, note.clone());
         }
         let raw = resolved.value.clone();
@@ -1210,6 +1332,10 @@ impl Run<'_, '_> {
                 return self.push(lr);
             }
         };
+        if crate::dispatch::unit_inside_function(&value, false) && mentions_dsolve(&input) {
+            self.error(expr.span, EvalError::Math(crate::dispatch::partial_units()));
+            return self.push(lr);
+        }
         let written = self
             .inputs
             .source

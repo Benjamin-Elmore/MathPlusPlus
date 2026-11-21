@@ -186,14 +186,19 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
         let adapted = from_to(&call)?;
         return crate::helpers_b::evaluate(&adapted.to_expr(), ctx);
     }
-    let route = match call.name.as_str() {
-        "dsolve" => {
-            if registry_dsolve(&call) {
-                Route::Registry
+    if call.name == "dsolve" {
+        let answer = dsolve_route(&call, e, ctx)?;
+        // The units solver (asked first) could not give every quantity a unit; an
+        // answer with a unit inside an exponential or a function is meaningless.
+        return Some(answer.and_then(|v| {
+            if unit_inside_function(&v, false) {
+                Err(partial_units())
             } else {
-                Route::OdeToolkit
+                Ok(v)
             }
-        }
+        }));
+    }
+    let route = match call.name.as_str() {
         "rk4" | "rk4table" => {
             if registry_rk4(&call) || call.name == "rk4table" {
                 Route::Registry
@@ -212,6 +217,40 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
         Route::Registry => crate::domains_wire::evaluate(&expr, ctx),
         Route::OdeToolkit => crate::helpers_b::evaluate(&expr, ctx),
     }
+}
+
+/// `dsolve` in either form. `dsolve(eq, y, t, …)` goes to the ODE toolkit too, which
+/// reads `y(0) = 0` or `(0, 0)` as the start, gives `y = …` when it can and keeps the
+/// variable as named; the registry's solver is its fallback.
+fn dsolve_route(call: &Call, e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    if !registry_dsolve(call) {
+        return crate::helpers_b::evaluate(e, ctx);
+    }
+    match crate::helpers_b::evaluate(e, ctx) {
+        Some(Ok(v)) => Some(Ok(v)),
+        _ => crate::domains_wire::evaluate(e, ctx),
+    }
+}
+
+/// True when a unit sits inside a function or an exponent (`e^{-t/(0.47 s)}`).
+pub(crate) fn unit_inside_function(e: &Expr, inside: bool) -> bool {
+    match e.node() {
+        ExprNode::Apply(name, _) if name.starts_with(crate::units_wire::UNIT_PREFIX) => inside,
+        ExprNode::Func(_, args) => args.iter().any(|a| unit_inside_function(a, true)),
+        ExprNode::Pow(base, exp) => {
+            unit_inside_function(base, inside) || unit_inside_function(exp, true)
+        }
+        _ => e
+            .children()
+            .into_iter()
+            .any(|c| unit_inside_function(c, inside)),
+    }
+}
+
+pub(crate) fn partial_units() -> MathError {
+    MathError::Dimension(
+        "this differential equation could not be solved with its units (no consistent unit was found for every quantity); give each quantity its unit (`V(0) = 0\\,\\mathrm{V}`, `12\\,\\mathrm{V}`) or write all the numbers without units".into(),
+    )
 }
 
 /// The variables of a transform: the subscript `t \to s` when written, otherwise `t → s`
