@@ -27,7 +27,7 @@ fn auto(src: &str) -> String {
     assert_eq!(lines.len(), 1, "{src}: {lines:?}");
     let (_, line) = lines[0];
     assert!(line.auto, "{src}: {line:?}");
-    line.answer().unwrap_or_default()
+    line.plain_answer().unwrap_or_default()
 }
 
 fn no_auto(src: &str) {
@@ -37,7 +37,7 @@ fn no_auto(src: &str) {
         .iter()
         .flat_map(|b| b.values.iter())
         .filter(|l| l.auto)
-        .filter_map(|l| l.answer())
+        .filter_map(|l| l.plain_answer())
         .collect();
     assert!(shown.is_empty(), "{src}: {shown:?}");
 }
@@ -59,7 +59,7 @@ fn render(src: &str) -> String {
             let text = src.get(line.span.start..line.span.end).unwrap_or("").trim();
             let _ = writeln!(out, "{}: {text}", index.line_of(line.span.start));
             if line.auto {
-                if let Some(a) = line.answer() {
+                if let Some(a) = line.plain_answer() {
                     let _ = writeln!(out, "    {a}");
                 }
             }
@@ -149,7 +149,7 @@ fn every_notation_gets_an_answer() {
     let src = concat!("$$ a := 3 $$", "\n\n", r"$$ a^2 + 1 $$");
     let ev = run(src);
     let (_, line) = ev.auto_results().next().expect("an auto line");
-    assert_eq!(line.answer().as_deref(), Some("= 10"));
+    assert_eq!(line.plain_answer().as_deref(), Some("= 10"));
 }
 
 #[test]
@@ -176,7 +176,7 @@ fn noeval_and_the_session_toggle() {
     s.set_auto_eval(true);
     let ev = s.update(r"$$ \int_0^1 x \, dx $$").clone();
     let (_, line) = ev.auto_results().next().expect("an auto line");
-    assert_eq!(line.answer().as_deref(), Some("= 1/2"));
+    assert_eq!(line.plain_answer().as_deref(), Some("= 1/2"));
     // The file is never changed: the source is what was typed.
     assert_eq!(ev.source(), r"$$ \int_0^1 x \, dx $$");
 }
@@ -210,7 +210,10 @@ fn a_slow_block_is_left_pending_and_finished_later() {
     assert!(s.wait_pending(Duration::from_secs(60)));
     let ev = s.refresh().clone();
     assert!(!s.has_pending());
-    let answers: Vec<String> = ev.auto_results().filter_map(|(_, l)| l.answer()).collect();
+    let answers: Vec<String> = ev
+        .auto_results()
+        .filter_map(|(_, l)| l.plain_answer())
+        .collect();
     assert_eq!(answers, ["= 1/3", "= π^2/6 ≈ 1.644934067"]);
     // Cached: running again computes nothing new and gives the same answers at once.
     let again = s.refresh().clone();

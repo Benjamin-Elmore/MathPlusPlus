@@ -1,7 +1,8 @@
-//! The `mpp` command line: run, check, render, export, calc and ide.
+//! The `mpp` command line: run, check, prove, render, export, calc and ide.
 
 #![forbid(unsafe_code)]
 
+pub mod prove;
 pub mod unicode;
 
 use std::fmt::Write;
@@ -10,6 +11,7 @@ use std::path::Path;
 use mpp_eval::{Evaluated, LineKind, LineResult, QueryMode, Session};
 use mpp_syntax::{Diagnostic, Severity};
 
+pub use prove::{proof_report, prove, split_target, ProveArgs, ProveIo, ProveOutcome};
 pub use unicode::to_unicode;
 
 /// One typeset result line of a run: the maths asked and its answer.
@@ -19,8 +21,11 @@ pub struct RunLine {
     pub line: usize,
     /// What was asked, as Unicode text (`∫₀¹ x² dx =`).
     pub asked: String,
-    /// The answer (`1/3`), or the error message for a line that failed.
+    /// The answer as Unicode text (`9π`, `2xy`), or the error message for a line that
+    /// failed.
     pub answer: String,
+    /// The same answer in the stable ASCII form (`9*π`, `2*x*y`), for golden files.
+    pub plain: String,
     /// True when the line is an error.
     pub error: bool,
     /// The working of a `= ?!` query, one step per line (`rule: before → after`).
@@ -58,6 +63,7 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
                     line: ev.line_of(line.span.start),
                     asked: to_unicode(&src),
                     answer: errors[i].message.clone(),
+                    plain: errors[i].message.clone(),
                     error: true,
                     steps: vec![],
                 }
@@ -74,6 +80,7 @@ pub fn run_lines(ev: &Evaluated) -> Vec<RunLine> {
                     line: ev.line_of(d.span.start),
                     asked: to_unicode(&snippet(ev, d.span.start, d.span.end)),
                     answer: d.message.clone(),
+                    plain: d.message.clone(),
                     error: true,
                     steps: vec![],
                 },
@@ -96,6 +103,7 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
             line: n,
             asked: to_unicode(src),
             answer: v.describe(),
+            plain: v.describe(),
             error: false,
             steps: vec![],
         };
@@ -107,20 +115,40 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
             ..
         }
     );
-    let shown = if approx_query {
-        line.approx.clone().or_else(|| line.text.clone())
+    // An exact query with no closed form falls back to a number, shown with `≈`: when
+    // there is no exact text, or the exact text only repeats what was asked
+    // (`erf(1/2) = erf(1/2)`).
+    let plain_text = line.plain.clone().or_else(|| line.text.clone());
+    let unchanged = match (&plain_text, &line.input) {
+        (Some(t), Some(input)) => *t == input.to_string(),
+        _ => false,
+    };
+    let numeric_fallback =
+        !approx_query && line.approx.is_some() && (line.text.is_none() || unchanged);
+    let (shown, plain) = if approx_query || numeric_fallback {
+        let a = line.approx.clone();
+        (
+            a.clone().or_else(|| line.text.clone()),
+            a.or_else(|| plain_text.clone()),
+        )
     } else {
-        line.text.clone()
+        (line.text.clone(), plain_text)
     };
     // Everything before the `?` is the question; the answer takes the `?`'s place.
-    let asked = match src.rfind('?') {
+    let mut asked = match src.rfind('?') {
         Some(q) => to_unicode(&src[..q]),
         None => to_unicode(src),
     };
+    if numeric_fallback {
+        if let Some(eq) = asked.trim_end().strip_suffix('=') {
+            asked = format!("{} ≈", eq.trim_end());
+        }
+    }
     RunLine {
         line: n,
         asked,
         answer: shown.unwrap_or_else(|| "(no answer)".into()),
+        plain: plain.unwrap_or_else(|| "(no answer)".into()),
         error: false,
         steps: line
             .steps

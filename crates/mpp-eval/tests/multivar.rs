@@ -22,7 +22,7 @@ fn answers(src: &str) -> Vec<LineResult> {
 fn text(src: &str) -> String {
     let a = answers(src);
     assert_eq!(a.len(), 1, "{src}");
-    a[0].text.clone().unwrap_or_default()
+    a[0].plain.clone().unwrap_or_default()
 }
 
 fn number(src: &str) -> f64 {
@@ -30,7 +30,7 @@ fn number(src: &str) -> f64 {
     let line = &a[0];
     line.approx
         .as_deref()
-        .or(line.text.as_deref())
+        .or(line.plain.as_deref())
         .and_then(|s| s.parse().ok())
         .unwrap_or_else(|| panic!("no number in {line:?}"))
 }

@@ -1,9 +1,9 @@
-   7: \frac{\partial^2 f}{\partial x \partial y} = ?  = 2*x
+   7: \frac{\partial^2 f}{\partial x \partial y} = ?  = 2x
    9: \operatorname{grad}_{(x,y)=(1,2)} f = ?  = (4, 13)
   11: \operatorname{dirderiv}_{(x,y)=(1,2)}(f, (3, 4)) = ?  = 64/5
-  15: \operatorname{tangent}_{(x,y)=(1,2)} (x^2 + y^2) = ?  = z = 2*x + 4*y - 5
-  17: \operatorname{tangentplane}_{(x,y,z)=(1,2,3)} (x^2 + y^2 + z^2 = 14) = ?  = 2*x + 4*y + 6*z - 28 = 0
-  19: \operatorname{linearisation}_{(x,y)=(3,4)} \sqrt{x^2 + y^2} = ?  = L(x, y) = 3*x/5 + 4*y/5
+  15: \operatorname{tangent}_{(x,y)=(1,2)} (x^2 + y^2) = ?  = z = 2x + 4y - 5
+  17: \operatorname{tangentplane}_{(x,y,z)=(1,2,3)} (x^2 + y^2 + z^2 = 14) = ?  = 2x + 4y + 6z - 28 = 0
+  19: \operatorname{linearisation}_{(x,y)=(3,4)} \sqrt{x^2 + y^2} = ?  = L(x, y) = 3x/5 + 4y/5
   25: \operatorname{classify} (x^3 + y^3 - 3xy) = ?  = saddle point at (0, 0): 0
         local minimum at (1, 1): -1
   29: \operatorname{lagrange}(x y, x^2 + y^2 = 1) = ?  = f(-sqrt(2)/2, sqrt(2)/2): -1/2
@@ -12,15 +12,15 @@
         f(sqrt(2)/2, sqrt(2)/2): 1/2
         largest value: 1/2
         smallest value: -1/2
-  35: \operatorname{polar}(x^2 + y^2, \theta \in [0, 2\pi], r \in [0, 2]) = ?  = 8*π ≈ 25.13274123
-  37: \operatorname{cylindrical}(z, \theta \in [0, 2\pi], r \in [0, 1], z \in [0, 2]) = ?  = 2*π ≈ 6.283185307
-  39: \operatorname{spherical}(1, \theta \in [0, 2\pi], \phi \in [0, \pi], \rho \in [0, 1]) = ?  = 4*π/3 ≈ 4.188790205
+  35: \operatorname{polar}(x^2 + y^2, \theta \in [0, 2\pi], r \in [0, 2]) = ?  = 8π ≈ 25.13274123
+  37: \operatorname{cylindrical}(z, \theta \in [0, 2\pi], r \in [0, 1], z \in [0, 2]) = ?  = 2π ≈ 6.283185307
+  39: \operatorname{spherical}(1, \theta \in [0, 2\pi], \phi \in [0, \pi], \rho \in [0, 1]) = ?  = 4π/3 ≈ 4.188790205
   41: \operatorname{changevars}(x + y, (x, y) = (u + v, u - v), u \in [0, 1], v \in [0, 1]) = ?  = 2
   45: \nabla \cdot (x y, y z, z x) = ?  = x + y + z
   47: \nabla \times (x y, y z, z x) = ?  = (-y, -z, -x)
   49: \nabla^2 (x^2 + y^2 + z^2) = ?  = 6
-  51: \operatorname{lineintegral}((-y, x), (\cos t, \sin t), t \in [0, 2\pi]) = ?  = 2*π ≈ 6.283185307
-  53: \operatorname{flux}((x, y, z), (\sin u \cos v, \sin u \sin v, \cos u), u \in [0, \pi], v \in [0, 2\pi]) = ?  = 4*π ≈ 12.56637061
+  51: \operatorname{lineintegral}((-y, x), (\cos t, \sin t), t \in [0, 2\pi]) = ?  = 2π ≈ 6.283185307
+  53: \operatorname{flux}((x, y, z), (\sin u \cos v, \sin u \sin v, \cos u), u \in [0, \pi], v \in [0, 2\pi]) = ?  = 4π ≈ 12.56637061
   57: \operatorname{green}((-y, x), x \in [0, 1], y \in [0, 1]) = ?  = ∮ P dx + Q dy: 2
         ∬ (∂Q/∂x − ∂P/∂y) dA: 2
         the two sides agree: yes
@@ -32,9 +32,9 @@
         the two sides agree: yes
   65: \operatorname{implicit}_x (x^2 + y^2 = 25) = ?  = d/dx(y) = -x/y
   69: \operatorname{rates}_t (x^2 + y^2 = 25, x = 3, y = 4, dx = 2) = ?  = d/dt(y) = -3/2
-  73: \operatorname{laplace} t^2 e^{3t} = ?  = 2/(s - 3)^3
-  75: \operatorname{invlaplace} \frac{s + 1}{s^2 + 2s + 5} = ?  = e^(-t)*cos(2*t)
-  79: \operatorname{lsolve}((2, -3, 1), 0, (0, 1)) = ?!  = y(t) = -e^t + e^(2*t)
+  73: \operatorname{laplace} t^2 e^{3t} = ?  = 2/(s - 3)³
+  75: \operatorname{invlaplace} \frac{s + 1}{s^2 + 2s + 5} = ?  = e^(-t) cos(2t)
+  79: \operatorname{lsolve}((2, -3, 1), 0, (0, 1)) = ?!  = y(t) = -e^t + e^(2t)
   29: warning: on a closed and bounded constraint set the largest and smallest values are the absolute maximum and minimum
   41: warning: the Jacobian factor is |∂(x, y)/∂(u, v)| = 2
 

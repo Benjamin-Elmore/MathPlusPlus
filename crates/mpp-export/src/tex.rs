@@ -228,6 +228,7 @@ impl Writer<'_> {
             _ => {}
         });
         self.number_sections = number_sections;
+        refs.extend(doc.reference_list_entries());
         for f in files {
             if let Some(t) = self.provider.references_source(&f) {
                 refs.extend(parse_reference_entries(&t));
@@ -279,6 +280,7 @@ impl Writer<'_> {
             ("lemma", "Lemma"),
             ("corollary", "Corollary"),
             ("proposition", "Proposition"),
+            ("conjecture", "Conjecture"),
         ] {
             let _ = writeln!(head, "\\newtheorem{{{env}}}[theorem]{{{label}}}");
         }
@@ -397,6 +399,7 @@ impl Writer<'_> {
                     TheoremKind::Lemma => "lemma",
                     TheoremKind::Corollary => "corollary",
                     TheoremKind::Proposition => "proposition",
+                    TheoremKind::Conjecture => "conjecture",
                     TheoremKind::Example => "example",
                     TheoremKind::Remark => "remark",
                     TheoremKind::Proof => "proof",

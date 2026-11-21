@@ -118,6 +118,8 @@ const TABLE: &[Def] = &[
     def("min", TIME, "60", false),
     def("h", TIME, "3600", false),
     def("day", TIME, "86400", false),
+    // The Julian year, 365.25 days (the year of astronomy and of radiocarbon dating).
+    def("yr", TIME, "31557600", false),
     def("t", MASS, "1000", false),
     def("eV", ENERGY, "1.602176634e-19", true),
     def("cal", ENERGY, "4.184", true),

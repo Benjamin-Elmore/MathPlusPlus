@@ -151,6 +151,9 @@ pub struct Figure {
     pub items: Vec<FigureItem>,
     /// The text after the first `. `; empty when there is none.
     pub caption: Vec<Inline>,
+    /// Words written between the items that describe them rather than draw anything
+    /// (`and the drag-free path`, `with the half-lives marked`, `against`).
+    pub words: Vec<Span>,
 }
 
 /// One comma-separated item of a figure.
@@ -343,6 +346,9 @@ pub enum TheoremKind {
     Example,
     Remark,
     Proof,
+    /// A statement put forward without proof (written by a person or proposed by the
+    /// proof agent); a proof that follows it is checked like any other.
+    Conjecture,
 }
 
 impl TheoremKind {
@@ -356,6 +362,7 @@ impl TheoremKind {
         TheoremKind::Example,
         TheoremKind::Remark,
         TheoremKind::Proof,
+        TheoremKind::Conjecture,
     ];
 
     /// The word as written (`Theorem`).
@@ -369,18 +376,23 @@ impl TheoremKind {
             TheoremKind::Example => "Example",
             TheoremKind::Remark => "Remark",
             TheoremKind::Proof => "Proof",
+            TheoremKind::Conjecture => "Conjecture",
         }
     }
 }
 
-/// `**Theorem.** …`, with the blocks that follow it inside the statement
-/// (a proof runs on to its `∎`).
+/// `**Theorem.** …`, `**Theorem 2** (Title). …` or `**Proof** (by induction). …`, with the
+/// blocks that follow it inside the statement (a proof runs on to its `∎`).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Theorem {
     pub kind: TheoremKind,
     pub body: Vec<Block>,
     /// For a proof: whether it ends at `∎` or `\qed`. Always true otherwise.
     pub closed: bool,
+    /// The number written in the heading (`2` in `**Lemma 2.**`, `2.1`), if any.
+    pub number: Option<String>,
+    /// The title in brackets after the heading (`Scaling` in `**Lemma 1** (Scaling).`).
+    pub title: Option<Vec<Inline>>,
 }
 
 /// A piece of running text.

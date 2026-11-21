@@ -225,8 +225,8 @@ fn block_at_line(
         return footnote(ctx, lines, i, name, ts + offset, ts, out);
     }
     if depth < MAX_BLOCK_DEPTH {
-        if let Some((kind, prefix)) = theorem_start(t) {
-            return theorem(ctx, lines, i, kind, ts, ts + prefix, depth, out);
+        if let Some(head) = theorem_start(t) {
+            return theorem(ctx, lines, i, head, ts, depth, out);
         }
     }
     if t.starts_with('>') {
@@ -277,13 +277,102 @@ fn footnote_def(t: &str) -> Option<(&str, usize)> {
     Some((name, 2 + close + 2 + gap))
 }
 
-fn theorem_start(t: &str) -> Option<(TheoremKind, usize)> {
+/// The heading of a theorem-style block, read from the start of its first line.
+struct TheoremHead {
+    kind: TheoremKind,
+    /// The number as written (`2`, `2.1`).
+    number: Option<String>,
+    /// Byte range of the title inside the line, without its brackets.
+    title: Option<(usize, usize)>,
+    /// Length of the whole heading, with the space after it.
+    prefix: usize,
+}
+
+/// Reads `**Kind.**`, `**Kind 2.**`, `**Kind 2** (Title).`, `**Kind** (Title).` or
+/// `**Kind 2**.` at the start of `t`. A bold word with neither a full stop nor a title
+/// in brackets after it (`**Theorem** is a word`) is ordinary prose.
+fn theorem_start(t: &str) -> Option<TheoremHead> {
     let rest = t.strip_prefix("**")?;
     TheoremKind::ALL.iter().find_map(|&kind| {
-        let after = rest.strip_prefix(kind.as_str())?.strip_prefix(".**")?;
-        let gap = after.len() - after.trim_start().len();
-        Some((kind, 2 + kind.as_str().len() + 3 + gap))
+        let after_kind = rest.strip_prefix(kind.as_str())?;
+        // The number: `2`, `2.1`, `A` (letters and digits, dots inside).
+        let (number, after_num) = match after_kind.strip_prefix(' ') {
+            Some(r) => {
+                let len = r
+                    .char_indices()
+                    .take_while(|&(_, c)| c.is_ascii_alphanumeric() || c == '.')
+                    .map(|(i, c)| i + c.len_utf8())
+                    .last()
+                    .unwrap_or(0);
+                let num = r[..len].trim_end_matches('.');
+                if num.is_empty() || !num.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+                    return None;
+                }
+                (Some(num.to_string()), &r[num.len()..])
+            }
+            None => (None, after_kind),
+        };
+        let (dot_inside, after_close) = match after_num.strip_prefix(".**") {
+            Some(r) => (true, r),
+            None => (false, after_num.strip_prefix("**")?),
+        };
+        let mut pos = t.len() - after_close.len();
+        let mut title = None;
+        let mut closed = dot_inside;
+        let gap = after_close.len() - after_close.trim_start().len();
+        if after_close[gap..].starts_with('(') {
+            let open = pos + gap;
+            if let Some(close) = matching_paren(t, open) {
+                title = Some((open + 1, close));
+                pos = close + 1;
+                if t[pos..].starts_with('.') {
+                    pos += 1;
+                    closed = true;
+                }
+            }
+        } else if !dot_inside && after_close.starts_with('.') {
+            pos += 1;
+            closed = true;
+        }
+        if !closed {
+            return None;
+        }
+        let tail = &t[pos..];
+        let gap = tail.len() - tail.trim_start().len();
+        Some(TheoremHead {
+            kind,
+            number,
+            title,
+            prefix: pos + gap,
+        })
     })
+}
+
+/// The byte offset of the `)` that closes the `(` at `open`, skipping brackets inside
+/// `$…$` maths. `None` when the line ends first.
+fn matching_paren(t: &str, open: usize) -> Option<usize> {
+    let mut depth = 0usize;
+    let mut in_math = false;
+    let mut escaped = false;
+    for (i, c) in t.get(open..)?.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match c {
+            '\\' => escaped = true,
+            '$' => in_math = !in_math,
+            '(' if !in_math => depth += 1,
+            ')' if !in_math => {
+                depth = depth.checked_sub(1)?;
+                if depth == 0 {
+                    return Some(open + i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// The span of the table rule on `lines[k]`, if that line is one.
@@ -710,17 +799,20 @@ fn display_math(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block
 
 // ---- theorem blocks --------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
 fn theorem(
     ctx: &mut Ctx<'_>,
     lines: &[Line],
     i: usize,
-    kind: TheoremKind,
+    head: TheoremHead,
     start: usize,
-    body_start: usize,
     depth: usize,
     out: &mut Vec<Block>,
 ) -> usize {
+    let kind = head.kind;
+    let body_start = start + head.prefix;
+    let title = head
+        .title
+        .map(|(a, b)| parse_inlines(ctx.src, Span::new(start + a, start + b), &mut ctx.diags));
     // The first line without the `**Kind.**` prefix.
     let mut body: Vec<Line> = vec![Line {
         start: body_start.min(lines[i].end),
@@ -775,6 +867,8 @@ fn theorem(
             kind,
             body: blocks,
             closed,
+            number: head.number,
+            title,
         }),
         Span::new(start, end),
     ));

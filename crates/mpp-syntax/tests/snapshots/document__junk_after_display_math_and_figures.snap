@@ -11,7 +11,5 @@ expression: "outline(concat!(\"$$ a $$ trailing words\\n\\n\", \"Figure: banana\
 [69..76] Directive NoEval "noeval"
 [77..87] Paragraph "Not maths."
 error at 7..22: unexpected text after the closing `$$`
-error at 32..33: expected a `$…$` item or a figure keyword
-error at 52..60: expected `,` or `.` after a figure item
 error at 62..67: an import needs a file path
 warning at 69..76: `%noeval` has no maths block right after it

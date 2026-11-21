@@ -177,7 +177,11 @@ impl Unit {
             .factors
             .iter()
             .all(|(a, _)| a.scale.is_one() && a.offset.is_none() && !a.angle);
-        if !(mixed || coherent) {
+        // A product of several units whose dimension has a name of its own is written
+        // with that name: kΩ·µF is s, kPa·L is J.
+        let named_whole = self.factors.len() > 1
+            && (best_named(&dim).is_some() || base_unit(&dim).factors.len() == 1);
+        if !(mixed || coherent || named_whole) {
             return (self.clone(), Expr::one());
         }
         let factor = if coherent { Expr::one() } else { self.scale() };

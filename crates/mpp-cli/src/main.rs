@@ -2,7 +2,10 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand, ValueEnum};
-use mpp_cli::{calc_line, check_report, run_file, run_lines, run_report_with};
+use mpp_cli::{
+    calc_line, check_report, proof_report, prove, run_file, run_lines, run_report_with,
+    split_target, ProveArgs, ProveIo,
+};
 use mpp_export::{export_path, load, render_page, ExportOptions, Format, PageSize};
 
 #[derive(Parser)]
@@ -65,6 +68,35 @@ enum Command {
         #[arg(long, default_value_t = 25.0)]
         margin: f32,
     },
+    /// Ask the proof agent to prove a result: mpp prove file.mpp#Theorem-2
+    Prove {
+        /// The file, with the result after `#` (default: its first result)
+        target: String,
+        /// The most this run may cost, in dollars
+        #[arg(long, default_value_t = 2.0)]
+        cap: f64,
+        /// Propose conjectures about this topic instead of proving
+        #[arg(long, value_name = "TOPIC")]
+        conjecture: Option<String>,
+        /// Write the proposed change without asking
+        #[arg(long)]
+        yes: bool,
+    },
+    /// The proof agent's API key (kept in Windows Credential Manager)
+    Key {
+        #[command(subcommand)]
+        action: KeyAction,
+    },
+    /// Export a file's theorems and proofs to a Lean 4 project
+    Lean {
+        file: PathBuf,
+        /// The project folder (default: the file's name with -lean)
+        #[arg(short, long)]
+        out: Option<PathBuf>,
+        /// Run `lake build` when Lean is installed
+        #[arg(long)]
+        build: bool,
+    },
     /// Quick calculator: mpp calc "\int_0^1 x^2 dx"
     Calc {
         #[arg(required = true, num_args = 1..)]
@@ -72,6 +104,16 @@ enum Command {
     },
     /// Open the Math++ editor
     Ide { file: Option<PathBuf> },
+}
+
+#[derive(Subcommand)]
+enum KeyAction {
+    /// Store a key (read from standard input, never echoed or printed)
+    Set,
+    /// Remove the stored key
+    Clear,
+    /// Say whether a key is stored
+    Status,
 }
 
 #[derive(Clone, Copy, ValueEnum)]
@@ -111,6 +153,14 @@ fn main() -> ExitCode {
             };
             export(&file, &to, output, &opts)
         }
+        Command::Prove {
+            target,
+            cap,
+            conjecture,
+            yes,
+        } => prove_cmd(&target, cap, conjecture, yes),
+        Command::Key { action } => key_cmd(&action),
+        Command::Lean { file, out, build } => lean_cmd(&file, out, build),
         Command::Calc { expression } => calc(&expression.join(" ")),
         Command::Ide { file } => ide(file.as_deref()),
     }
@@ -146,6 +196,12 @@ fn check(files: &[PathBuf]) -> ExitCode {
                     println!("{name}: ok");
                 } else {
                     eprint!("{report}");
+                }
+                let src = std::fs::read_to_string(file).unwrap_or_default();
+                let proofs = proof_report(&src, file.parent());
+                if !proofs.is_empty() {
+                    println!("{name}: proofs");
+                    print!("{proofs}");
                 }
                 if !ev.errors().is_empty() {
                     bad = true;
@@ -200,6 +256,103 @@ fn export(file: &Path, to: &str, output: Option<PathBuf>, opts: &ExportOptions) 
     }
     println!("wrote {}", out.display());
     ExitCode::SUCCESS
+}
+
+/// The key store: Windows Credential Manager, or an empty one when
+/// `MPP_NO_CREDENTIAL_STORE=1` (tests never touch the real entry).
+fn key_store() -> Box<dyn mpp_proof::agent::KeyStore> {
+    if std::env::var("MPP_NO_CREDENTIAL_STORE").is_ok_and(|v| v == "1") {
+        Box::new(mpp_proof::agent::MemoryStore::default())
+    } else {
+        Box::new(mpp_proof::agent::CredentialStore::default())
+    }
+}
+
+fn prove_cmd(target: &str, cap: f64, conjecture: Option<String>, yes: bool) -> ExitCode {
+    let (path, name) = split_target(target);
+    let args = ProveArgs {
+        path: &path,
+        target: name,
+        conjecture,
+        cap_usd: cap,
+        yes,
+    };
+    let store = key_store();
+    let mut out = std::io::stdout();
+    let mut err = std::io::stderr();
+    let mut answer = || {
+        let mut s = String::new();
+        let _ = std::io::stdin().read_line(&mut s);
+        s
+    };
+    let mut io = ProveIo {
+        out: &mut out,
+        err: &mut err,
+        answer: &mut answer,
+    };
+    let outcome = prove(
+        &args,
+        store.as_ref(),
+        None,
+        &mpp_proof::agent::AgentConfig::default(),
+        &mut io,
+    );
+    ExitCode::from(outcome.code())
+}
+
+fn key_cmd(action: &KeyAction) -> ExitCode {
+    let store = key_store();
+    match action {
+        KeyAction::Set => {
+            eprint!("Paste the API key and press Enter (it is not shown): ");
+            let mut s = String::new();
+            if std::io::stdin().read_line(&mut s).is_err() || s.trim().is_empty() {
+                return fail("no key was read");
+            }
+            match store.set(&mpp_proof::agent::ApiKey::new(s.trim())) {
+                Ok(()) => {
+                    eprintln!();
+                    println!("key stored");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => fail(e),
+            }
+        }
+        KeyAction::Clear => match store.delete() {
+            Ok(()) => {
+                println!("key removed");
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(e),
+        },
+        KeyAction::Status => match store.get() {
+            Ok(Some(_)) => {
+                println!("set");
+                ExitCode::SUCCESS
+            }
+            Ok(None) => {
+                println!("not set");
+                ExitCode::SUCCESS
+            }
+            Err(e) => fail(e),
+        },
+    }
+}
+
+fn lean_cmd(file: &Path, out: Option<PathBuf>, build: bool) -> ExitCode {
+    let dir = out.unwrap_or_else(|| {
+        let stem = file
+            .file_stem()
+            .map_or_else(|| "document".into(), |s| s.to_string_lossy().to_string());
+        file.with_file_name(format!("{stem}-lean"))
+    });
+    match mpp_cli::prove::lean(file, &dir, build) {
+        Ok(msg) => {
+            print!("{msg}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => fail(e),
+    }
 }
 
 fn calc(input: &str) -> ExitCode {

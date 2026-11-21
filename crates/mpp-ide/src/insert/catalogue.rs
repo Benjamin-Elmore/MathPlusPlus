@@ -1777,7 +1777,7 @@ fn build_catalogue() -> Vec<Template> {
         ),
     ]);
     // ----- Text and Document: notes and the paper features -----
-    let text_items: [(&str, Group, &str, &str, &str, &'static str); 11] = [
+    let text_items: [(&str, Group, &str, &str, &str, &'static str); 12] = [
         (
             "text.comment",
             Group::Text,
@@ -1817,6 +1817,14 @@ fn build_catalogue() -> Vec<Template> {
             r"\text{Lemma}",
             "lemma",
             "**Lemma.** ",
+        ),
+        (
+            "doc.conjecture",
+            Group::Document,
+            "Conjecture",
+            r"\text{Conjecture}",
+            "conjecture guess open problem proof agent",
+            "**Conjecture.** ",
         ),
         (
             "doc.definition",

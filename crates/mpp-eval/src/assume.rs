@@ -167,11 +167,7 @@ fn definite(f: &Expr, var: &str, lo: &Expr, hi: &Expr) -> Expr {
 fn with_constant(ctx: &Ctx<'_>, whole: &Expr, f: &Expr) -> Expr {
     let c = if f.contains_sym("C") { "C_1" } else { "C" };
     let value = simplify(&add(vec![f.clone(), Expr::sym(c)]));
-    ctx.show_as(
-        &value,
-        format!("{f} + {c}"),
-        format!("{} + {c}", f.to_latex()),
-    );
+    ctx.show_with_constant(&value, f, c);
     let note = matches!(f.node(), ExprNode::Piecewise { .. })
         .then(|| "the power rule needs n ≠ −1; n = −1 gives the logarithm".to_string());
     if note.is_some() {

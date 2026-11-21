@@ -316,6 +316,7 @@ impl Composer<'_> {
             }
             _ => {}
         });
+        refs.extend(doc.reference_list_entries());
         for f in files {
             if let Some(t) = self.provider.references_source(&f) {
                 refs.extend(parse_reference_entries(&t));
@@ -913,6 +914,7 @@ impl Composer<'_> {
                 | TheoremKind::Lemma
                 | TheoremKind::Corollary
                 | TheoremKind::Proposition
+                | TheoremKind::Conjecture
         );
         let bold = Style {
             bold: true,

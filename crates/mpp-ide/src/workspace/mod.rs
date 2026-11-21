@@ -572,6 +572,9 @@ impl IdeApp {
         s.auto_eval = self.eval_settings.auto_eval;
         s.show_steps = self.eval_settings.show_steps;
         s.decimals = self.eval_settings.number_format.style == mpp_core::display::Style::Decimal;
+        s.proof_cap = self.proof.agent.cap;
+        s.agent_id = self.proof.settings.agent_id.clone();
+        s.environment_id = self.proof.settings.environment_id.clone();
         s.last_folder = self.ws.explorer.root.clone();
         s.tabs = self.docs.iter().filter_map(|d| d.path.clone()).collect();
         s.active = self
@@ -616,6 +619,9 @@ impl IdeApp {
         }
         self.eval_settings.auto_eval = s.auto_eval;
         self.eval_settings.show_steps = s.show_steps;
+        self.proof.agent.cap = s.proof_cap;
+        self.proof.settings.agent_id = s.agent_id.clone();
+        self.proof.settings.environment_id = s.environment_id.clone();
         self.eval_settings.number_format.style = if s.decimals {
             mpp_core::display::Style::Decimal
         } else {

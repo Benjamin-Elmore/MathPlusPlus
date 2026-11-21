@@ -102,6 +102,8 @@ impl PaperInfo {
             ..PaperInfo::default()
         };
         p.refs.extend(extra.entries.iter().cloned());
+        // `- [@key] …` items under a References heading define keys too.
+        p.refs.extend(doc.reference_list_entries());
         let mut h1 = 0;
         let mut deeper = false;
         let mut defs: HashMap<String, (Span, String)> = HashMap::new();
@@ -294,6 +296,7 @@ pub fn italic_body(kind: TheoremKind) -> bool {
             | TheoremKind::Lemma
             | TheoremKind::Corollary
             | TheoremKind::Proposition
+            | TheoremKind::Conjecture
     )
 }
 

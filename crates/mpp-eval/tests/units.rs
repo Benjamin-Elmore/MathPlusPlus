@@ -21,7 +21,7 @@ fn answers(src: &str) -> Vec<String> {
     let errs = errors(&ev);
     assert!(errs.is_empty(), "{src}: unexpected errors {errs:?}");
     ev.queries()
-        .map(|(_, l)| l.text.clone().unwrap_or_else(|| "<none>".into()))
+        .map(|(_, l)| l.plain.clone().unwrap_or_else(|| "<none>".into()))
         .collect()
 }
 
@@ -56,7 +56,7 @@ fn the_example_worksheet_gives_its_expected_answers() {
             .map(|d| d.message.clone());
         got.push(match error {
             Some(e) => e,
-            None => line.text.clone().unwrap_or_default(),
+            None => line.plain.clone().unwrap_or_default(),
         });
     }
     let want: Vec<&str> = expected
@@ -177,9 +177,10 @@ fn definitions_show_their_units() {
         .iter()
         .flat_map(|b| b.values.iter())
         .filter(|l| matches!(l.kind, LineKind::Definition { .. }))
-        .filter_map(|l| l.text.clone())
+        .filter_map(|l| l.plain.clone())
         .collect();
-    assert_eq!(shown, vec!["36 km/h", "981/100 m/s^2"]);
+    // The decimal as typed, not 981/100.
+    assert_eq!(shown, vec!["36 km/h", "9.81 m/s^2"]);
 }
 
 #[test]
@@ -206,4 +207,140 @@ fn the_parser_and_the_core_agree_on_unit_names() {
     for n in names {
         assert_eq!(is_unit_name(&n), is_unit(&n), "`{n}`");
     }
+}
+
+fn plain_answers(src: &str) -> Vec<String> {
+    run(src)
+        .queries()
+        .map(|(_, l)| l.plain.clone().unwrap_or_default())
+        .collect()
+}
+
+#[test]
+fn a_single_solve_root_is_a_value() {
+    let src = r"$$ n(V) := 2\,\mathrm{mol/L} \cdot V $$
+
+$$ V_e := \operatorname{solve}_{V} \big(n(V) = 1\,\mathrm{mol}\big) $$
+
+$$ 2 V_e = ? $$";
+    assert_eq!(answer(src), "1 L");
+    // Two roots stay a set: there is no single value to compute with.
+    let src = r"$$ r := \operatorname{solve}_x (x^2 = 4) $$
+
+$$ r = ? $$";
+    assert_eq!(plain_answers(src), vec!["{-2, 2}".to_string()]);
+}
+
+#[test]
+fn piecewise_conditions_compare_quantities() {
+    let src = r"$$ f(V) := \begin{cases} 1 & V < 25\,\mathrm{mL} \\ 2 & V = 25\,\mathrm{mL} \\ 3 & V > 25\,\mathrm{mL} \end{cases} $$
+
+$$ f(0) = ? \qquad f(12.5\,\mathrm{mL}) = ? \qquad f(0.025\,\mathrm{L}) = ? \qquad f(1\,\mathrm{L}) = ? $$";
+    assert_eq!(answers(src), vec!["1", "1", "2", "3"]);
+    // Different kinds are never compared: the case stays undecided.
+    let src = r"$$ g(t) := \begin{cases} 1 & t < 2\,\mathrm{s} \\ 0 & t \ge 2\,\mathrm{s} \end{cases} $$
+
+$$ g(3\,\mathrm{m}) = ? $$";
+    let shown = plain_answers(src);
+    assert!(shown.iter().all(|p| p != "1" && p != "0"), "{shown:?}");
+}
+
+#[test]
+fn the_log_of_a_concentration_is_of_its_value_in_mol_per_litre() {
+    let src = r"$$ c := 0.001\,\mathrm{mol/L} $$
+
+$$ -\log_{10} c = ? \qquad -\log_{10}(1\,\mathrm{mmol/mL}) = ? $$";
+    assert_eq!(answers(src), vec!["3", "0"]);
+    assert!(run(src)
+        .all_diagnostics()
+        .iter()
+        .any(|d| d.message.contains("value in mol/L")));
+    // Any other dimension is still an error.
+    let (msg, _) = failure(r"$$ \ln(2\,\mathrm{m}) = ? $$");
+    assert!(msg.contains("dimensionless"), "{msg}");
+}
+
+#[test]
+fn differential_equations_with_units() {
+    // A damped spring: m ẍ + c ẋ + k x = 0 with SI coefficients.
+    let src = r"Let $m := 0.5\,\mathrm{kg}$, $k := 20\,\mathrm{N/m}$, $c := 0.4\,\mathrm{N\,s/m}$ and $x_0 := 10\,\mathrm{cm}$.
+
+$$ m\ddot x + c\dot x + kx = 0, \quad x(0) = x_0, \ \dot x(0) = 0 $$
+
+$$ x(0) = ? \qquad x(1\,\mathrm s) \approx ? \qquad x(500\,\mathrm{ms}) \approx ? $$";
+    let ev = run(src);
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+    let approx: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.approx.clone().or(l.plain.clone()).unwrap_or_default())
+        .collect();
+    // x(t) = x₀ e^{−0.4t}(cos ω_d t + (0.4/ω_d) sin ω_d t), ω_d = √39.84 rad/s, in the
+    // centimetres x₀ is written in.
+    let wd = 39.84f64.sqrt();
+    let x = |t: f64| 10.0 * (-0.4 * t).exp() * ((wd * t).cos() + 0.4 / wd * (wd * t).sin());
+    assert_eq!(approx[0], "10 cm", "{approx:?}");
+    for (shown, t) in approx[1..].iter().zip([1.0, 0.5]) {
+        let v: f64 = shown.trim_end_matches(" cm").parse().unwrap_or(f64::NAN);
+        assert!((v - x(t)).abs() < 1e-8, "{shown} vs {}", x(t));
+        assert!(shown.ends_with(" cm"), "{shown}");
+    }
+}
+
+#[test]
+fn uncoupled_systems_with_units_and_dotted_conditions() {
+    let src = r"Let $g \equiv 9.81\,\mathrm{m/s^2}$, $v_0 := 20\,\mathrm{m/s}$ and $k := 0.1\,\mathrm{s^{-1}}$.
+
+$$ \ddot x = -k\dot x, \quad \ddot y = -g - k\dot y, \quad x(0) = 0,\ y(0) = 0,\ \dot x(0) = v_0,\ \dot y(0) = v_0 $$
+
+$$ x(1\,\mathrm s) \approx ? \qquad y(1\,\mathrm s) \approx ? \qquad \dot y(0) = ? $$";
+    let ev = run(src);
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+    let shown: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.approx.clone().or(l.plain.clone()).unwrap_or_default())
+        .collect();
+    let e = (-0.1f64).exp();
+    let x1 = 200.0 * (1.0 - e);
+    let y1 = (20.0 + 98.1) * 10.0 * (1.0 - e) - 98.1;
+    for (s, want) in shown.iter().zip([x1, y1]) {
+        let v: f64 = s.trim_end_matches(" m").parse().unwrap_or(f64::NAN);
+        assert!((v - want).abs() < 1e-8, "{s} vs {want}");
+    }
+    assert_eq!(shown[2], "20 m/s");
+}
+
+#[test]
+fn units_that_do_not_fit_a_differential_equation_are_not_solved() {
+    // ẋ = −k x with k in metres: no unit for t makes the two sides agree.
+    let src = r"Let $k := 2\,\mathrm m$.
+
+$$ \dot x = -k x, \quad x(0) = 1 $$
+
+$$ x(1) = ? $$";
+    let ev = run(src);
+    assert!(
+        ev.queries().all(|(_, l)| l.plain.is_none()),
+        "no value may be given"
+    );
+}
+
+#[test]
+fn solving_with_units_keeps_the_conditions() {
+    // The landing time of a projectile with drag: y(t) = 0 at t = 0 and once later; the
+    // condition t > 0 must keep only the later root (t = 0 is found exactly).
+    let src = r"Let $g \equiv 9.81\,\mathrm{m/s^2}$, $v_0 := 20\,\mathrm{m/s}$ and $k := 0.1\,\mathrm{s^{-1}}$.
+
+$$ \ddot y = -g - k\dot y, \quad y(0) = 0,\ \dot y(0) = v_0 $$
+
+$$ T := \operatorname{solve}_t (y(t) = 0, t > 0) \approx ? $$";
+    let ev = run(src);
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+    let shown: Vec<String> = ev
+        .queries()
+        .map(|(_, l)| l.approx.clone().unwrap_or_default())
+        .collect();
+    let t: f64 = shown[0].trim_end_matches(" s").parse().unwrap_or(f64::NAN);
+    // y(T) = (v₀ + g/k)(1 − e^{−kT})/k − (g/k) T = 0.
+    let y = |t: f64| (20.0 + 98.1) * (1.0 - (-0.1 * t).exp()) / 0.1 - 98.1 * t;
+    assert!(y(t).abs() < 1e-6 && t > 1.0, "{shown:?}");
 }

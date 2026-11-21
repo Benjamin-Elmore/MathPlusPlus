@@ -11,6 +11,7 @@ pub(crate) fn parse_figure(src: &str, rest: Span, diags: &mut Vec<Diagnostic>) -
     let mut c = Cursor::new(src, rest);
     let mut items = Vec::new();
     let mut caption = Vec::new();
+    let mut words = Vec::new();
 
     loop {
         c.skip_ws();
@@ -20,6 +21,8 @@ pub(crate) fn parse_figure(src: &str, rest: Span, diags: &mut Vec<Diagnostic>) -
                 kind,
                 span: Span::new(start, c.pos),
             }),
+            // Words that describe the figure (`the data points and $V_C(t)$`).
+            None if prose(&mut c, &mut words) => {}
             None => {
                 c.skip_ws();
                 let at = c.pos;
@@ -34,8 +37,19 @@ pub(crate) fn parse_figure(src: &str, rest: Span, diags: &mut Vec<Diagnostic>) -
                 break;
             }
         }
+        c.skip_ws();
         if c.eat(',') {
             continue;
+        }
+        // `$P$ against $V$`, `$\theta(t)$ and the small-angle solution $…$`.
+        if c.rest().starts_with('$') {
+            continue;
+        }
+        if !c.rest().starts_with('.') && prose(&mut c, &mut words) {
+            c.skip_ws();
+            if c.eat(',') || c.rest().starts_with('$') {
+                continue;
+            }
         }
         if c.rest().starts_with('.') {
             let after = c.pos + 1;
@@ -64,7 +78,53 @@ pub(crate) fn parse_figure(src: &str, rest: Span, diags: &mut Vec<Diagnostic>) -
         }
         break;
     }
-    Figure { items, caption }
+    Figure {
+        items,
+        caption,
+        words,
+    }
+}
+
+/// Reads words up to the next `$`, `,` or sentence end (`. `), recording their span.
+/// False (reading nothing) when no word starts here.
+fn prose(c: &mut Cursor<'_>, words: &mut Vec<Span>) -> bool {
+    let rest = c.rest();
+    if !rest.starts_with(|ch: char| ch.is_alphabetic() || ch == '(') {
+        return false;
+    }
+    let start = c.pos;
+    let mut depth = 0usize;
+    let mut end = rest.len();
+    for (i, ch) in rest.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            '$' if depth == 0 => {
+                end = i;
+                break;
+            }
+            ',' if depth == 0 => {
+                end = i;
+                break;
+            }
+            '.' if depth == 0 => {
+                let next = rest[i + 1..].chars().next();
+                if next.is_none_or(char::is_whitespace) {
+                    end = i;
+                    break;
+                }
+            }
+            _ => {}
+        }
+    }
+    let text = rest[..end].trim_end();
+    if text.is_empty() {
+        return false;
+    }
+    let stop = start + text.len();
+    words.push(Span::new(start, stop));
+    c.pos = stop;
+    true
 }
 
 fn trim_start(src: &str, span: Span) -> Span {

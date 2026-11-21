@@ -484,11 +484,11 @@ fn the_library_imports_like_any_file() {
         "![[std/geometry.mpp]]\n\n$A_{\\text{circle}}(3) = ?$\n",
     ));
     assert!(ev.errors().is_empty(), "{}", ev.report());
-    let answers: Vec<String> = ev.queries().filter_map(|(_, l)| l.answer()).collect();
+    let answers: Vec<String> = ev.queries().filter_map(|(_, l)| l.plain_answer()).collect();
     assert_eq!(answers, ["✓ (proved symbolically)", "= 9*π ≈ 28.27433388"]);
     // A name the document defines itself is not overwritten by a whole-file import.
     let own = run("$$ A_{\\text{circle}}(r) := 2 r $$\n\n![[std/geometry.mpp]]\n\n$A_{\\text{circle}}(3) = ?$\n");
-    let last = own.queries().last().and_then(|(_, l)| l.text.clone());
+    let last = own.queries().last().and_then(|(_, l)| l.plain.clone());
     assert_ne!(last.as_deref(), Some("9*π"), "{}", own.report());
 }
 
@@ -531,7 +531,7 @@ fn textbook_names_reach_the_field_functions() {
         "$$ \\tau := 3 $$\n\n$\\tau(2) = ?$\n",
     ));
     assert!(ev.errors().is_empty(), "{}", ev.report());
-    let answers: Vec<String> = ev.queries().filter_map(|(_, l)| l.text.clone()).collect();
+    let answers: Vec<String> = ev.queries().filter_map(|(_, l)| l.plain.clone()).collect();
     assert_eq!(
         answers,
         [
@@ -556,8 +556,8 @@ fn seeds_make_samples_reproducible() {
     let doc = "%seed 42\n\n$\\operatorname{runif}(3) = ?$\n\n$\\operatorname{runif}(3) = ?$\n";
     let a = run(doc);
     let b = run(doc);
-    let first: Vec<Option<String>> = a.queries().map(|(_, l)| l.text.clone()).collect();
-    let again: Vec<Option<String>> = b.queries().map(|(_, l)| l.text.clone()).collect();
+    let first: Vec<Option<String>> = a.queries().map(|(_, l)| l.plain.clone()).collect();
+    let again: Vec<Option<String>> = b.queries().map(|(_, l)| l.plain.clone()).collect();
     assert_eq!(first, again);
     assert_ne!(
         first[0], first[1],
@@ -565,7 +565,7 @@ fn seeds_make_samples_reproducible() {
     );
     let other = run("%seed 7\n\n$\\operatorname{runif}(3) = ?$\n");
     assert_ne!(
-        other.queries().next().and_then(|(_, l)| l.text.clone()),
+        other.queries().next().and_then(|(_, l)| l.plain.clone()),
         first[0]
     );
     let bad = run("%seed x\n");
@@ -592,9 +592,9 @@ fn answers_of(path: &Path) -> Vec<String> {
         let text = if line.kind == LineKind::Check {
             line.verdict.as_ref().map(|v| v.mark().to_string())
         } else if approx {
-            line.approx.clone().or_else(|| line.text.clone())
+            line.approx.clone().or_else(|| line.plain.clone())
         } else {
-            line.text.clone()
+            line.plain.clone()
         };
         items.push((line.span.start, text.unwrap_or_else(|| "<none>".into())));
     }

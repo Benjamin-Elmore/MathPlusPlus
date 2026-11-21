@@ -69,6 +69,8 @@ impl Paper {
             }
             _ => {}
         });
+        // `- [@key] …` items under a References heading define keys too.
+        p.refs.extend(doc.reference_list_entries());
         p.base_level = if h1 == 1 && deeper { 2 } else { 1 };
         p.titles = doc
             .blocks

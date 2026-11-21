@@ -24,6 +24,7 @@ fn page_with(ed: &Editor, limits: IntegralLimits) -> Page {
         integral_limits: limits,
         slot_labels: &labels,
         extra_refs: &mpp_ide::page::ExtraRefs::default(),
+        proof: &mpp_ide::proof::ProofView::default(),
     })
 }
 

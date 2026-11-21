@@ -12,6 +12,7 @@
 //! returned; one that fails the check is discarded.
 
 pub mod first_order;
+pub mod ivp;
 pub mod laplace;
 pub mod linear;
 pub mod linsys;
@@ -261,6 +262,13 @@ pub fn solve_parsed(
         if let Some(c) = reduce_missing_y(ode, &consts, options, &mut local) {
             candidates.push(with_steps(c, local));
         }
+    }
+    // A linear first-order equation has a complete explicit solution (the integrating
+    // factor), so it is tried before an implicit one g(x, y) = 0: RC V′ + V = V₀ is
+    // solved for V even though it is also separable.
+    if ode.order == 1 && ode.is_linear() {
+        candidates
+            .sort_by_key(|c| u8::from(matches!(c, Ok(c) if matches!(c.form, Form::Implicit(_)))));
     }
     let mut first_error = None;
     for cand in candidates {

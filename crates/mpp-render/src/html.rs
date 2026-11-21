@@ -324,22 +324,34 @@ impl Renderer<'_> {
             BlockKind::Data(d) => self.data_block(b, d, out),
             BlockKind::Theorem(t) => {
                 let proof = t.kind == TheoremKind::Proof;
-                let head = if proof || t.kind == TheoremKind::Remark {
+                let mut head = if proof || t.kind == TheoremKind::Remark {
                     format!("{}.", t.kind.as_str())
                 } else {
                     self.theorem_label(t.kind)
                 };
+                // A number written in the heading (`**Lemma 2.**`) is kept as written.
+                if let Some(n) = &t.number {
+                    head = format!("{} {n}.", t.kind.as_str());
+                }
                 let class = match t.kind {
                     TheoremKind::Theorem
                     | TheoremKind::Lemma
                     | TheoremKind::Corollary
-                    | TheoremKind::Proposition => "theorem slanted",
+                    | TheoremKind::Proposition
+                    | TheoremKind::Conjecture => "theorem slanted",
                     TheoremKind::Proof => "theorem proof",
                     _ => "theorem",
                 };
+                let title = match &t.title {
+                    Some(title) => format!(
+                        " <span class=\"thm-title\">({})</span>",
+                        self.inlines(title)
+                    ),
+                    None => String::new(),
+                };
                 let _ = writeln!(
                     out,
-                    "<div class=\"{class}\"><span class=\"thm-head\">{}</span>",
+                    "<div class=\"{class}\"><span class=\"thm-head\">{}</span>{title}",
                     esc(&head)
                 );
                 let mut body = String::new();

@@ -30,6 +30,8 @@ struct CacheKey {
     quiet: Option<(usize, usize)>,
     /// Bumped when the view's display choices change.
     show: u64,
+    /// Bumped when a new proof check arrives.
+    proof: u64,
 }
 
 impl PageCache {
@@ -51,6 +53,8 @@ pub struct PageCache {
     pub problems: Vec<Problem>,
     /// Slider rows under each figure, as laid out.
     rows: Vec<(mpp_syntax::document::BlockId, usize)>,
+    /// The proof statuses drawn on this page (preview only).
+    pub proof: crate::proof::ProofView,
 }
 
 static NEXT_DOC_ID: AtomicU64 = AtomicU64::new(1);
@@ -92,6 +96,11 @@ pub struct Doc {
     eval_settings: EvalSettings,
     /// Automatic answers of the last evaluation are still being worked out.
     pending: bool,
+    /// The proof checker's thread and its newest report, with the text it checked.
+    proof_worker: crate::proof::ProofWorker,
+    pub proof: Option<Arc<mpp_proof::DocumentCheck>>,
+    proof_text: String,
+    proof_id: u64,
 }
 
 impl Doc {
@@ -121,6 +130,10 @@ impl Doc {
             figures: Figures::default(),
             eval_settings: EvalSettings::default(),
             pending: false,
+            proof_worker: crate::proof::ProofWorker::new(),
+            proof: None,
+            proof_text: String::new(),
+            proof_id: 0,
         };
         d.submit_now();
         d
@@ -189,12 +202,43 @@ impl Doc {
         let path = self.path.clone();
         self.worker
             .submit_file(&text, base.as_deref(), path.as_deref());
+        self.proof_worker.submit(&text, base.as_deref());
         self.submitted = Some(self.editor.revision());
+    }
+
+    fn took_proof(&mut self, done: crate::proof::ProofDone) {
+        self.proof = Some(done.check);
+        self.proof_text = done.text;
+        self.proof_id += 1;
+    }
+
+    /// True when the proof report is of exactly the text on screen.
+    pub fn proof_fresh(&self) -> bool {
+        self.proof.is_some() && self.proof_text == self.editor.text()
+    }
+
+    /// What the page draws from the newest proof report.
+    pub fn proof_view(&self) -> crate::proof::ProofView {
+        match &self.proof {
+            Some(c) => {
+                let doc = parse_document(self.editor.text());
+                crate::proof::ProofView::new(&doc, c, self.proof_fresh())
+            }
+            None => crate::proof::ProofView::default(),
+        }
+    }
+
+    /// A number that changes whenever a new proof report arrives.
+    pub fn proof_generation(&self) -> u64 {
+        self.proof_id
     }
 
     /// Picks up finished evaluations and, once typing has paused, asks for a new
     /// one. Returns how long to wait before calling again, if work is pending.
     pub fn pump(&mut self) -> Option<Duration> {
+        if let Some(done) = self.proof_worker.poll() {
+            self.took_proof(done);
+        }
         if let Some(done) = self.worker.poll() {
             self.eval_text = done.text;
             self.eval = Some(done.eval);
@@ -212,7 +256,8 @@ impl Doc {
                 return Some(wait - since);
             }
         }
-        (self.worker.busy() || self.pending).then_some(Duration::from_millis(30))
+        (self.worker.busy() || self.pending || self.proof_worker.busy())
+            .then_some(Duration::from_millis(30))
     }
 
     /// The evaluated line whose span holds `offset`: its block and index.
@@ -355,6 +400,9 @@ impl Doc {
             self.eval_id += 1;
             self.took_eval();
         }
+        if let Some(done) = self.proof_worker.wait(Duration::from_secs(60)) {
+            self.took_proof(done);
+        }
         self.cache = None;
         self.spare = None;
     }
@@ -415,6 +463,7 @@ impl Doc {
             limits: self.integral_limits,
             quiet: self.quiet_range(),
             show: self.show_version,
+            proof: self.proof_id,
         };
         self.last_layout = (width, size, mode);
         if self.cache.as_ref().is_some_and(|c| c.key != key) {
@@ -432,10 +481,16 @@ impl Doc {
         let background = self.background.clone();
         let show = &self.show;
         let base = self.path.as_deref().and_then(Path::parent);
+        let proof = self.proof.clone();
+        let proof_fresh = self.proof.is_some() && self.proof_text == editor.text();
         self.cache
             .get_or_insert_with(|| {
                 let src = editor.text();
                 let doc = parse_document(src);
+                let proof_view = proof
+                    .as_deref()
+                    .map(|c| crate::proof::ProofView::new(&doc, c, proof_fresh))
+                    .unwrap_or_default();
                 let labels = editor.slot_labels();
                 let extra_refs = crate::page::ExtraRefs::read(&doc, base);
                 let input = PageInput {
@@ -449,6 +504,7 @@ impl Doc {
                     slot_labels: &labels,
                     show,
                     extra_refs: &extra_refs,
+                    proof: &proof_view,
                 };
                 let page = build_page(&input);
                 let inputs = diagnostics::Inputs {
@@ -458,6 +514,7 @@ impl Doc {
                     eval_fresh: fresh,
                     background: background.as_deref(),
                     quiet: key.quiet.map(|(a, b)| a..b),
+                    proof: &proof_view.steps,
                 };
                 let problems = diagnostics::collect(&inputs, &page);
                 Arc::new(PageCache {
@@ -466,6 +523,7 @@ impl Doc {
                     doc,
                     problems,
                     rows: show.figure_rows.clone(),
+                    proof: proof_view,
                 })
             })
             .clone()

@@ -35,7 +35,9 @@ fn numeric_note(what: &str) -> String {
 /// Evaluates a calculus holder; `None` for nodes that are not calculus.
 pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     match e.node() {
-        ExprNode::Derivative { expr, vars } => Some(derivative(expr, vars, ctx)),
+        ExprNode::Derivative { expr, vars } => {
+            Some(derivative(expr, vars, ctx).map(|d| crate::ivp_wire::tidy(&d)))
+        }
         ExprNode::Integral { .. } => Some(integral(e, ctx)),
         ExprNode::Limit {
             expr,
@@ -186,15 +188,11 @@ fn integral(e: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
 /// `F + C`, shown with the constant last.
 fn with_constant(ctx: &Ctx<'_>, antiderivative: &Expr, constant: &str) -> Expr {
     let value = simplify(&add(vec![antiderivative.clone(), Expr::sym(constant)]));
-    let (text, latex) = if antiderivative.is_zero() {
-        (constant.to_string(), constant.to_string())
+    if antiderivative.is_zero() {
+        ctx.show_as(&value, constant.to_string(), constant.to_string());
     } else {
-        (
-            format!("{antiderivative} + {constant}"),
-            format!("{} + {constant}", antiderivative.to_latex()),
-        )
-    };
-    ctx.show_as(&value, text, latex);
+        ctx.show_with_constant(&value, antiderivative, constant);
+    }
     value
 }
 

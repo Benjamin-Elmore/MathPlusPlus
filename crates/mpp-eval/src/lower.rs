@@ -18,6 +18,7 @@ use mpp_syntax::math::{
     Derivative, Fence, FuncApp, IntKind, Integral, Limit, MatrixEnv, MulStyle, NablaOp, Name,
     NamedOp, Node, NodeKind, RelOp as SynRel, Side, UnaryOp, UnitText,
 };
+use mpp_syntax::symbols::Font;
 use mpp_syntax::Span;
 
 use crate::error::{EvalError, Located};
@@ -32,6 +33,11 @@ pub trait LowerScope {
     fn binding(&self, name: &str) -> Option<Arc<Binding>>;
     /// True when the document defines a recurrence for the sequence `base`.
     fn is_sequence(&self, base: &str) -> bool;
+    /// True when `name` is an unknown function of a differential equation of the
+    /// document, so `x(t)` elsewhere is that function at `t`, not `x · t`.
+    fn is_ode_unknown(&self, _name: &str) -> bool {
+        false
+    }
 }
 
 /// Result of lowering one node.
@@ -259,6 +265,11 @@ impl<'a> Lowerer<'a> {
                 EvalError::Invalid(format!("`{s}` has no value of its own")),
             )),
             K::Dots(_) => Err(fail(span, EvalError::Unsupported("an ellipsis".into()))),
+            // `\text{true}`, `\text{false}`: truth values (the right side of a check of
+            // an inequality).
+            K::Text(t) if matches!(t.trim(), "true" | "false") => {
+                Ok(Expr::new(ExprNode::Bool(t.trim() == "true")))
+            }
             K::Text(t) => Err(fail(
                 span,
                 EvalError::Invalid(format!("the text “{t}” cannot be evaluated")),
@@ -285,6 +296,9 @@ impl<'a> Lowerer<'a> {
                 if let Some(df) = self.total_differential(*op, lhs, rhs) {
                     return Ok(df);
                 }
+                if let Some(e) = self.ellipsis_chain(node)? {
+                    return Ok(e);
+                }
                 let a = self.lower(lhs)?;
                 let b = self.lower(rhs)?;
                 if let Some(m) = matrix_op(*op)
@@ -303,10 +317,29 @@ impl<'a> Lowerer<'a> {
                 Ok(n / d)
             }
             K::Pow { base, exp } => self.power(base, exp),
-            K::Subscript { .. } => Err(fail(
-                span,
-                EvalError::Unsupported("a subscript on this expression".into()),
-            )),
+            K::Subscript { base, sub } => match &base.ungrouped().kind {
+                // `|x|_p`: the p-adic absolute value; `‖v‖_p`: the L^p norm.
+                K::Fenced {
+                    fence: Fence::Abs,
+                    inner,
+                    ..
+                } => Ok(Expr::apply(
+                    "padicabs",
+                    vec![self.lower(sub)?, self.lower(inner)?],
+                )),
+                K::Fenced {
+                    fence: Fence::Norm,
+                    inner,
+                    ..
+                } => Ok(Expr::apply(
+                    "lpnorm",
+                    vec![self.lower(inner)?, self.lower(sub)?],
+                )),
+                _ => Err(fail(
+                    span,
+                    EvalError::Unsupported("a subscript on this expression".into()),
+                )),
+            },
             K::Prime { base, count } => self.prime(base, *count, span),
             K::Factorial { operand, count } => {
                 let x = self.lower(operand)?;
@@ -433,6 +466,10 @@ impl<'a> Lowerer<'a> {
     /// an index or a defined variable) is that name instead: `3 t` with `f(t) := 3 t`.
     fn quantity(&mut self, value: &Node, unit: &UnitText) -> LowerResult {
         let v = self.lower(value)?;
+        // `5\%` is the number 5/100: a percent is not a unit to carry along.
+        if unit.text == "%" {
+            return Ok(v / Expr::int(100));
+        }
         if unit.plain && !unit.text.contains(['/', '·']) {
             let letters: Vec<String> = unit
                 .text
@@ -464,6 +501,9 @@ impl<'a> Lowerer<'a> {
                 let index = self.lower(sub)?;
                 return Ok(Expr::apply(&base, vec![index]));
             }
+        }
+        if let Some(e) = self.indexed_member(n)? {
+            return Ok(e);
         }
         let key = name_key(n).ok_or_else(|| {
             fail(
@@ -526,6 +566,192 @@ impl<'a> Lowerer<'a> {
     }
 
     /// `\sum_i x_i` without bounds runs over every entry of the data column it indexes.
+    /// `1 + 2 + \dots + n`, `n + (n-1) + \dots + 1` and `p_1 p_2 \cdots p_k`: a sum or
+    /// product written with an ellipsis, read as the sum or product of its pattern.
+    /// The terms before the dots must be an arithmetic progression (numbers that differ
+    /// by a constant) or members of one indexed family with consecutive subscripts;
+    /// anything else stays unsupported. `None` when `node` has no ellipsis.
+    fn ellipsis_chain(&mut self, node: &Node) -> Result<Option<Expr>, Located> {
+        let NodeKind::Binary { op, .. } = &node.kind else {
+            return Ok(None);
+        };
+        let is_sum = match op {
+            BinOp::Add => true,
+            BinOp::Mul(_) => false,
+            _ => return Ok(None),
+        };
+        fn flatten<'n>(n: &'n Node, sum: bool, out: &mut Vec<&'n Node>) {
+            match &n.kind {
+                NodeKind::Binary {
+                    op: BinOp::Add,
+                    lhs,
+                    rhs,
+                } if sum => {
+                    flatten(lhs, sum, out);
+                    flatten(rhs, sum, out);
+                }
+                NodeKind::Binary {
+                    op: BinOp::Mul(_),
+                    lhs,
+                    rhs,
+                } if !sum => {
+                    flatten(lhs, sum, out);
+                    flatten(rhs, sum, out);
+                }
+                _ => out.push(n),
+            }
+        }
+        let mut terms = Vec::new();
+        flatten(node, is_sum, &mut terms);
+        let Some(at) = terms
+            .iter()
+            .position(|t| matches!(t.kind, NodeKind::Dots(_)))
+        else {
+            return Ok(None);
+        };
+        let unsupported = || {
+            fail(
+                node.span,
+                EvalError::Unsupported("this pattern with an ellipsis".into()),
+            )
+        };
+        let (before, after) = (&terms[..at], &terms[at + 1..]);
+        let ([first, second, ..], [last]) = (before, after) else {
+            return Err(unsupported());
+        };
+        let kind = if is_sum {
+            BigOpKind::Sum
+        } else {
+            BigOpKind::Product
+        };
+        let var = ["j", "k", "m", "r"]
+            .into_iter()
+            .find(|v| !self.is_bound_letter(v))
+            .ok_or_else(unsupported)?
+            .to_string();
+        // Members of an indexed family: p_1, p_2, …, p_k.
+        let member = |t: &Node| -> Option<(String, Node)> {
+            match &t.kind {
+                NodeKind::Name(n) if n.accent.is_none() => {
+                    n.sub.as_ref().map(|s| (base_key(n), (**s).clone()))
+                }
+                _ => None,
+            }
+        };
+        if let (Some((b1, s1)), Some((b2, s2)), Some((bl, sl))) =
+            (member(first), member(second), member(last))
+        {
+            if b1 == b2
+                && b1 == bl
+                && before
+                    .iter()
+                    .all(|t| member(t).is_some_and(|(b, _)| b == b1))
+            {
+                if self.scope.binding(&b1).is_some() || self.is_local(&b1) {
+                    return Err(unsupported());
+                }
+                let (i1, i2) = (self.lower(&s1)?, self.lower(&s2)?);
+                if !(i2.clone() - i1.clone()).simplify().is_one() {
+                    return Err(unsupported());
+                }
+                let upper = self.lower(&sl)?;
+                return Ok(Some(Expr::new(ExprNode::BigOp {
+                    kind,
+                    expr: Expr::apply(&b1, vec![Expr::sym(&var)]),
+                    var: var.as_str().into(),
+                    lower: i1,
+                    upper,
+                })));
+            }
+        }
+        // An arithmetic progression a, a + d, …, z: the terms a + j d, j = 0 … (z − a)/d.
+        let lowered: Vec<Expr> = before
+            .iter()
+            .map(|t| self.lower(t))
+            .collect::<Result<_, _>>()?;
+        let a = lowered[0].clone();
+        let d = (lowered[1].clone() - a.clone()).simplify();
+        let constant_step = d.as_number().is_some_and(|n| n.is_exact() && !n.is_zero());
+        let progression = lowered.windows(2).all(|w| {
+            (w[1].clone() - w[0].clone() - d.clone())
+                .simplify()
+                .is_zero()
+        });
+        if !constant_step || !progression {
+            return Err(unsupported());
+        }
+        let z = self.lower(last)?;
+        let count = ((z - a.clone()) / d.clone()).simplify();
+        // The last term must be reached: a whole, non-negative number of steps.
+        if let Some(n) = count.as_number() {
+            if n.as_i64().is_none_or(|k| k < 0) {
+                return Err(unsupported());
+            }
+        }
+        Ok(Some(Expr::new(ExprNode::BigOp {
+            kind,
+            expr: a + Expr::sym(&var) * d,
+            var: var.as_str().into(),
+            lower: Expr::zero(),
+            upper: count,
+        })))
+    }
+
+    /// The one index letter used as a subscript in `body` (`i` in `a_i b_i`), when it
+    /// is free here; `None` when there is none or several.
+    fn implied_index(&self, body: &Node) -> Option<String> {
+        fn walk(n: &Node, out: &mut Vec<String>) {
+            if let NodeKind::Name(name) = &n.kind {
+                if let Some(sub) = &name.sub {
+                    if let NodeKind::Name(s) = &sub.ungrouped().kind {
+                        if s.sub.is_none()
+                            && s.base.chars().count() == 1
+                            && s.accent.is_none()
+                            && !out.contains(&s.base)
+                        {
+                            out.push(s.base.clone());
+                        }
+                    }
+                }
+            }
+            mpp_syntax::math::visit::children(n, &mut |c| walk(c, out));
+        }
+        let mut found = Vec::new();
+        walk(body, &mut found);
+        match found.as_slice() {
+            [i] if !self.is_bound_letter(i) => Some(i.clone()),
+            _ => None,
+        }
+    }
+
+    /// `a_i` inside a sum over i, with neither `a_i` nor `a` defined: the i-th member
+    /// of the family a, written `a(i)` so that each term of the sum is its own value
+    /// (never `a_i` as one name repeated n times).
+    fn indexed_member(&mut self, n: &Name) -> Result<Option<Expr>, Located> {
+        let Some(sub) = &n.sub else {
+            return Ok(None);
+        };
+        let Some(index) = node_key(sub.ungrouped()) else {
+            return Ok(None);
+        };
+        if !self.is_local(&index) || n.accent.is_some() {
+            return Ok(None);
+        }
+        let base = base_key(n);
+        let key = name_key(n);
+        if base == index
+            || self.is_local(&base)
+            || self.scope.binding(&base).is_some()
+            || key
+                .as_ref()
+                .is_some_and(|k| self.scope.binding(k).is_some())
+        {
+            return Ok(None);
+        }
+        let i = self.lower(sub)?;
+        Ok(Some(Expr::apply(&base, vec![i])))
+    }
+
     fn data_bounds(&self, index: &str, body: &Node) -> Option<(Expr, Expr)> {
         let mut found = None;
         find_indexed(body, index, &mut |base| {
@@ -549,18 +775,55 @@ impl<'a> Lowerer<'a> {
     }
 
     fn call(&mut self, callee: &Node, args: &[Node], span: Span) -> LowerResult {
+        // `\mathbf 1[A]`: the indicator, 1 where the condition holds and 0 elsewhere.
+        if let (NodeKind::Name(n), [cond]) = (&callee.ungrouped().kind, args) {
+            let bold_one = n.base == "𝟏" || (n.base == "1" && n.font == Some(Font::Bold));
+            if bold_one && n.sub.is_none() && n.accent.is_none() {
+                let cond = self.lower(cond)?;
+                return Ok(Expr::new(ExprNode::Piecewise {
+                    cases: vec![(Expr::one(), cond)],
+                    otherwise: Some(Expr::zero()),
+                }));
+            }
+        }
         if let Some(t) = crate::fields_wire::textbook(self.scope, &self.locals, callee, args.len())
         {
             return Ok(t.apply(self.lower_all(args)?));
         }
         let inner = callee.ungrouped();
+        // `(\dot x)(0)` read as a call of the derivative: `x′(0)`.
+        if let NodeKind::Derivative(d) = &inner.kind {
+            if let (DerivNotation::Dot(n), Some(of)) = (d.notation, d.of.as_ref()) {
+                if let Some(key) = node_key(of.ungrouped()) {
+                    if let Some(params) = self.function_params(&key) {
+                        return self.prime_call(&key, &params, n, args, span);
+                    }
+                    if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
+                        return self.unknown_fn_call(&key, n, arg);
+                    }
+                }
+            }
+        }
         if let NodeKind::Prime { base, count } = &inner.kind {
             if let Some(key) = node_key(base) {
                 if let Some(params) = self.function_params(&key) {
                     return self.prime_call(&key, &params, *count, args, span);
                 }
+                // A built-in function (Γ′, ψ′) is never an unknown of a differential
+                // equation; a textbook letter (W, J_0) is one when the line says so.
+                let builtin = Func::from_name(&key).is_some();
+                if let ([arg], true) = (args, builtin) {
+                    if let Some(d) = self.known_prime(base, &key, *count, arg, span)? {
+                        return Ok(d);
+                    }
+                }
                 if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
                     return self.unknown_fn_call(&key, *count, arg);
+                }
+                if let ([arg], false) = (args, builtin) {
+                    if let Some(d) = self.known_prime(base, &key, *count, arg, span)? {
+                        return Ok(d);
+                    }
                 }
             }
         }
@@ -569,14 +832,51 @@ impl<'a> Lowerer<'a> {
                 if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
                     return self.unknown_fn_call(&key, 0, arg);
                 }
+                // `u(0, t)`, `u(x, 0)`: the unknown of a partial differential equation at
+                // a point, which its solver reads as a condition.
+                if args.len() >= 2 && self.is_unknown_fn(&key) {
+                    return Ok(Expr::apply(&key, self.lower_all(args)?));
+                }
                 // The Heaviside step and the Dirac delta, when the names are free.
                 if let ([arg], Some(special)) = (args, special_function(&key)) {
                     if !self.is_bound_letter(&key) {
                         return Ok(Expr::apply(special, vec![self.lower(arg)?]));
                     }
                 }
+                // `V(x(t), y(t))` with x, y the unknowns of the document's differential
+                // equations: the functions at the variable t (their derivatives stay
+                // symbolic). Anything else in the brackets (`x (1 - x)`) is a product.
+                if let [arg] = args {
+                    let var = node_key(arg.ungrouped())
+                        .filter(|v| v != &key && self.scope.binding(v).is_none() && arg.is_name());
+                    if var.is_some()
+                        && self.scope.is_ode_unknown(&key)
+                        && self.scope.binding(&key).is_none()
+                        && !self.is_local(&key)
+                    {
+                        return Ok(Expr::apply(&key, vec![self.lower(arg)?]));
+                    }
+                }
             }
             if let Some(params) = self.function_params(&key) {
+                // `V(t)` for `V(x, y)` whose parameters are the unknowns of the
+                // document's differential equations, now functions of t: the physics
+                // shorthand for V(x(t), y(t)).
+                if let ([arg], true) = (args, params.len() >= 2) {
+                    let along_solution = params.iter().all(|p| {
+                        !self.is_local(p)
+                            && self.scope.is_ode_unknown(p)
+                            && self.function_params(p).is_some_and(|q| q.len() == 1)
+                    });
+                    if along_solution {
+                        let t = self.lower(arg)?;
+                        let at: Vec<Expr> = params
+                            .iter()
+                            .map(|p| Expr::apply(p, vec![t.clone()]))
+                            .collect();
+                        return Ok(Expr::apply(&key, at));
+                    }
+                }
                 if params.len() != args.len() {
                     return Err(fail(
                         span,
@@ -653,6 +953,35 @@ impl<'a> Lowerer<'a> {
         Ok(Expr::apply("subs", vec![inner, at]))
     }
 
+    /// `Γ'(1)`, `\operatorname{erf}''(x)`, `J_0'(x)`, `W'(x)`: the derivative of a built-in
+    /// or textbook function of one variable, at the argument. `None` when `key` is not
+    /// one (or the document gives the name a meaning of its own).
+    fn known_prime(
+        &mut self,
+        base: &Node,
+        key: &str,
+        count: u8,
+        arg: &Node,
+        span: Span,
+    ) -> Result<Option<Expr>, Located> {
+        const VAR: &str = "#prime";
+        let t = Expr::sym(VAR);
+        let f = if let Some(tb) = crate::fields_wire::textbook(self.scope, &self.locals, base, 1) {
+            tb.apply(vec![t])
+        } else if !self.is_local(key)
+            && self.scope.binding(key).is_none()
+            && Func::from_name(key)
+                .is_some_and(|f| f.arity() == mpp_core::functions::Arity::Exactly(1))
+        {
+            Expr::call(key, vec![t]).map_err(math(span))?
+        } else {
+            return Ok(None);
+        };
+        let d = f.diff(VAR, u32::from(count)).map_err(math(span))?;
+        let at = self.lower(arg)?;
+        Ok(Some(d.subs(VAR, &at).simplify()))
+    }
+
     /// `f'` with no argument; `y'` for a name that is not a function means d/dx.
     fn prime(&mut self, base: &Node, count: u8, span: Span) -> LowerResult {
         if let Some(key) = node_key(base) {
@@ -701,8 +1030,47 @@ impl<'a> Lowerer<'a> {
     }
 
     fn func_app(&mut self, app: &FuncApp, span: Span) -> LowerResult {
-        let args = self.lower_all(&app.args)?;
         let name = app.func;
+        // `\max_{t \in [0, 50]} f(t)`: the extremum over an interval.
+        if let (Some(sub), "max" | "min", false) = (&app.sub, name, app.inverse) {
+            if let NodeKind::Relation { first, rest } = &sub.ungrouped().kind {
+                if let (Some(var), [(mpp_syntax::math::RelOp::In, set)]) =
+                    (node_key(first), rest.as_slice())
+                {
+                    let set = self.lower(set)?;
+                    let ExprNode::Interval { lo, hi, .. } = set.node() else {
+                        return Err(fail(
+                            sub.span,
+                            EvalError::Unsupported(format!(
+                                "{name} over a set that is not an interval"
+                            )),
+                        ));
+                    };
+                    let body =
+                        self.bound(std::slice::from_ref(&var), |s| s.lower_all(&app.args))?;
+                    let [body] = <[Expr; 1]>::try_from(body).map_err(|_| {
+                        fail(
+                            span,
+                            EvalError::Unsupported(format!(
+                                "{name} over an interval of several values"
+                            )),
+                        )
+                    })?;
+                    let op = if name == "max" {
+                        crate::extremum::MAX_OVER
+                    } else {
+                        crate::extremum::MIN_OVER
+                    };
+                    let value =
+                        Expr::apply(op, vec![body, Expr::sym(&var), lo.clone(), hi.clone()]);
+                    return match &app.power {
+                        Some(p) => Ok(value.pow(self.lower(p)?)),
+                        None => Ok(value),
+                    };
+                }
+            }
+        }
+        let args = self.lower_all(&app.args)?;
         if let ([one], "max" | "min", None, false) = (args.as_slice(), name, &app.sub, app.inverse)
         {
             if one.as_sym().is_some_and(|s| self.is_column(s)) {
@@ -812,9 +1180,18 @@ impl<'a> Lowerer<'a> {
                 EvalError::Unsupported("a sum over a set".into()),
             ));
         }
-        let var = self.bound_name(op.index.as_ref(), span, "sum")?;
+        // `\sum a_i^2`: no index written; the subscript of an indexed family gives it,
+        // over its usual range i = 1, …, n.
+        let implied = op.index.is_none() && op.from.is_none() && op.to.is_none();
+        let var = match (implied, self.implied_index(&op.body)) {
+            (true, Some(i)) => i,
+            _ => self.bound_name(op.index.as_ref(), span, "sum")?,
+        };
         let (lower, upper) = match (&op.from, &op.to) {
             (Some(from), Some(to)) => (self.lower(from)?, self.lower(to)?),
+            (None, None) if implied && self.data_bounds(&var, &op.body).is_none() => {
+                (Expr::one(), Expr::sym("n"))
+            }
             _ => match (&op.from, &op.to, self.data_bounds(&var, &op.body)) {
                 (None, None, Some(bounds)) => bounds,
                 _ => {
@@ -852,6 +1229,15 @@ impl<'a> Lowerer<'a> {
                 EvalError::Unsupported(format!(
                     "{what} (parametrise it and integrate over the parameter instead)"
                 )),
+            ));
+        }
+        if i.form {
+            return Err(fail(
+                span,
+                EvalError::Unsupported(
+                    "a line integral of P dx + Q dy along a named curve (write the circle x² + y² = r² under the ∮, or parametrise it and integrate over the parameter)"
+                        .into(),
+                ),
             ));
         }
         if i.dot {
@@ -1004,6 +1390,19 @@ impl<'a> Lowerer<'a> {
                 EvalError::Invalid("there is nothing to differentiate".into()),
             )
         })?;
+        // `\dot x(0)`: the time derivative of the function x at 0, like `x′(0)`.
+        if let DerivNotation::Dot(n) = d.notation {
+            if let NodeKind::Call { callee, args, .. } = &of.ungrouped().kind {
+                if let Some(key) = node_key(callee.ungrouped()) {
+                    if let Some(params) = self.function_params(&key) {
+                        return self.prime_call(&key, &params, n, args, span);
+                    }
+                    if let ([arg], true) = (args.as_slice(), self.is_unknown_fn(&key)) {
+                        return self.unknown_fn_call(&key, n, arg);
+                    }
+                }
+            }
+        }
         let mut vars: Vec<(String, u32)> = Vec::new();
         for v in &d.vars {
             let name = node_key(&v.var).ok_or_else(|| {
@@ -1058,6 +1457,27 @@ impl<'a> Lowerer<'a> {
     }
 
     fn named_op(&mut self, op: &NamedOp) -> LowerResult {
+        // `\operatorname{solve}_{x, y}(…)`: the unknowns are plain variables inside, even
+        // when the names are defined (as functions of t, say) elsewhere.
+        if matches!(op.name.as_str(), "solve" | "nsolve") {
+            if let Some(sub) = &op.sub {
+                let names: Vec<String> = match &sub.ungrouped().kind {
+                    NodeKind::Tuple { elems, .. } => elems.iter().filter_map(node_key).collect(),
+                    _ => node_key(sub.ungrouped()).into_iter().collect(),
+                };
+                let fresh: Vec<String> = names
+                    .into_iter()
+                    .filter(|n| !self.is_local(n) && self.function_params(n).is_some())
+                    .collect();
+                if !fresh.is_empty() {
+                    return self.bound(&fresh, |s| s.named_op_plain(op));
+                }
+            }
+        }
+        self.named_op_plain(op)
+    }
+
+    fn named_op_plain(&mut self, op: &NamedOp) -> LowerResult {
         let analysed = crate::helpers::is_helper(&op.name);
         let mut args = op
             .args

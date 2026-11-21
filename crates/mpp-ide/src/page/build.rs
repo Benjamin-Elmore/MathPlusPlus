@@ -39,6 +39,8 @@ pub struct PageInput<'a> {
     pub show: &'a ShowState,
     /// Entries of the document's `References from [[file]]` files.
     pub extra_refs: &'a ExtraRefs,
+    /// The proof checker's summaries (drawn under theorems; never in the file).
+    pub proof: &'a crate::proof::ProofView,
 }
 
 /// The column width for a window width: about 70 em, never wider than the window.
@@ -176,10 +178,18 @@ fn place_theorem(
     gap: f32,
     page: &mut Page,
 ) {
-    let label = match cx.paper {
+    let mut label = match cx.paper {
         Some(p) => p.theorem_label(t.kind),
         None => format!("{}.", t.kind.as_str()),
     };
+    // A number written in the heading (`**Lemma 2.**`) is shown as written.
+    if let Some(n) = &t.number {
+        label = format!("{} {n}.", t.kind.as_str());
+    }
+    let title = t.title.clone();
+    if title.is_some() {
+        label = label.trim_end_matches('.').to_string();
+    }
     let body_font = if italic_body(t.kind) {
         FontId::TextItalic
     } else {
@@ -194,6 +204,23 @@ fn place_theorem(
         }]),
         span: at(o),
     };
+    // `(Scaling).` after the label, in the body's font.
+    let title_inlines = |o: usize| -> Vec<Inline> {
+        let Some(title) = &title else {
+            return vec![];
+        };
+        let mut v = vec![Inline {
+            kind: InlineKind::Text("(".into()),
+            span: at(o),
+        }];
+        v.extend(title.iter().cloned());
+        let end = title.last().map_or(o, |i| i.span.end);
+        v.push(Inline {
+            kind: InlineKind::Text("). ".into()),
+            span: at(end),
+        });
+        v
+    };
     let n = t.body.len();
     for (i, inner) in t.body.iter().enumerate() {
         let last = i + 1 == n;
@@ -201,6 +228,7 @@ fn place_theorem(
             let mut inl = Vec::with_capacity(content.len() + 2);
             if i == 0 {
                 inl.push(label_inline(inner.span.start));
+                inl.extend(title_inlines(inner.span.start));
             }
             inl.extend(content.iter().cloned());
             if last && qed {
@@ -217,7 +245,8 @@ fn place_theorem(
         }
         if i == 0 {
             let mut c = Canvas::default();
-            let inl = [label_inline(b.span.start)];
+            let mut inl = vec![label_inline(b.span.start)];
+            inl.extend(title_inlines(b.span.start));
             let h = flow(
                 cx,
                 &inl,
@@ -252,7 +281,8 @@ fn place_theorem(
     }
     if n == 0 {
         let mut c = Canvas::default();
-        let inl = [label_inline(b.span.start)];
+        let mut inl = vec![label_inline(b.span.start)];
+        inl.extend(title_inlines(b.span.start));
         let h = flow(
             cx,
             &inl,
@@ -265,6 +295,42 @@ fn place_theorem(
         push_block(page, b, *y, h, c, BlockTag::Prose, input);
         *y += h + gap;
     }
+    place_proof_summary(input, cx, b, x0, w, y, gap, page);
+}
+
+/// The checker's summary under a theorem ("Checker: proved", green only for
+/// proved). Preview only: it has no caret stops and is never in the file.
+#[allow(clippy::too_many_arguments)]
+fn place_proof_summary(
+    input: &PageInput<'_>,
+    cx: &Cx<'_>,
+    b: &Block,
+    x0: f32,
+    w: f32,
+    y: &mut f32,
+    gap: f32,
+    page: &mut Page,
+) {
+    let Some(line) = input.proof.summary_for(b.span) else {
+        return;
+    };
+    let inl = [Inline {
+        kind: InlineKind::Text(format!("Checker: {}", line.text)),
+        span: Span::new(b.span.end, b.span.end),
+    }];
+    let st = Style {
+        font: FontId::TextItalic,
+        size: input.size * 0.9,
+        color: line.tone.color(&input.theme),
+    };
+    let mut c = Canvas::default();
+    let h = flow(cx, &inl, st, x0, 0.0, w, &mut c);
+    c.stops.clear();
+    c.chars.clear();
+    c.hits.clear();
+    let top = *y - gap * 0.55;
+    push_block(page, b, top, h, c, BlockTag::Prose, input);
+    *y = top + h + gap;
 }
 
 impl Canvas {
@@ -1728,6 +1794,7 @@ mod tests {
             slot_labels: &[],
             show: &ShowState::default(),
             extra_refs: &ExtraRefs::default(),
+            proof: &crate::proof::ProofView::default(),
         })
     }
 

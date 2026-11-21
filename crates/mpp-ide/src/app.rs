@@ -58,6 +58,8 @@ pub struct IdeApp {
     pub show_comments: bool,
     /// File → Export…
     pub export: crate::export::ExportDialog,
+    /// The proof agent panel, Settings → Proof agent and the Lean alignment view.
+    pub proof: crate::proof::ProofUi,
 }
 
 impl Default for IdeApp {
@@ -90,6 +92,7 @@ impl IdeApp {
             problems: Default::default(),
             show_comments: true,
             export: Default::default(),
+            proof: Default::default(),
         }
     }
 
@@ -443,6 +446,7 @@ impl IdeApp {
                 }
             });
             ui.menu_button("Edit", |ui| self.edit_menu(ui));
+            ui.menu_button("Proof", |ui| self.proof_menu(ui));
             ui.menu_button("View", |ui| {
                 ui.menu_button("Theme", |ui| {
                     for c in ThemeChoice::ALL {
@@ -553,6 +557,7 @@ impl IdeApp {
             self.export_dialog_save();
         }
         self.overlays(&ctx);
+        self.proof_windows(&ctx);
         if self.ws.explorer.poll() {
             self.reload_changed();
         }

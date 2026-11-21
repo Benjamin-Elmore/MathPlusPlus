@@ -166,6 +166,8 @@ The $p$-adic absolute value $|x|_p = p^{-v_p(x)}$ for $x \ne 0$, and $|0|_p = 0$
 
 $$ \operatorname{padicabs}(2, 8) \overset{?}{=} \frac{1}{8} $$
 
+$$ |8|_2 \overset{?}{=} \frac{1}{8} $$
+
 $$ \operatorname{padicabs}(3, 0) \overset{?}{=} 0 $$
 
 $$ \operatorname{padicabs}(5, \tfrac{3}{50}) \overset{?}{=} 25 $$

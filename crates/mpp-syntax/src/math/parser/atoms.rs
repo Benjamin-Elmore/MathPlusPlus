@@ -36,7 +36,11 @@ impl Parser<'_> {
         match tok {
             Tok::Number(text) => {
                 self.bump();
-                Node::new(NodeKind::Number(text), span)
+                let (text, end) = self.digit_groups(text, span);
+                if let Some(node) = self.digit_expansion(&text, span.join(end)) {
+                    return node;
+                }
+                Node::new(NodeKind::Number(text), span.join(end))
             }
             Tok::Letter(c) => {
                 self.bump();
@@ -253,6 +257,81 @@ impl Parser<'_> {
         Node::new(kind, span)
     }
 
+    /// `0.d_1 d_2 d_3 \dots`: a decimal expansion with symbolic digits, written right
+    /// after a whole number and its point. It is read as one text node (prose
+    /// describing a number, with nothing to compute), so it is not a syntax error.
+    fn digit_expansion(&mut self, whole: &str, number: Span) -> Option<Node> {
+        if !whole.chars().all(|c| c.is_ascii_digit()) {
+            return None;
+        }
+        let point = self.toks.get(self.pos).filter(|_| self.pos < self.stop)?;
+        if !matches!(point.kind, Tok::Period) || point.span.start != number.end {
+            return None;
+        }
+        let digit = self
+            .toks
+            .get(self.pos + 1)
+            .filter(|_| self.pos + 1 < self.stop)?;
+        let letter = match &digit.kind {
+            Tok::Letter(_) => true,
+            Tok::Sym(s) => s.kind == SymbolKind::Letter,
+            _ => false,
+        };
+        if !letter || digit.span.start != point.span.end {
+            return None;
+        }
+        self.bump();
+        let mut end = number.end;
+        // The digits: names (with subscripts) and dots, side by side.
+        loop {
+            let next = self.peek();
+            let more = match next {
+                Some(Tok::Letter(_)) => true,
+                Some(Tok::Sym(s)) => {
+                    s.kind == SymbolKind::Letter
+                        || (s.kind == SymbolKind::Misc
+                            && matches!(s.name, "dots" | "ldots" | "cdots"))
+                }
+                _ => false,
+            };
+            if !more {
+                break;
+            }
+            let part = self.parse_postfix();
+            end = part.span.end;
+        }
+        let span = Span::new(number.start, end);
+        let text = self.text(span).to_string();
+        Some(Node::new(NodeKind::Text(text), span))
+    }
+
+    /// `10\,000` and `1\,234\,567.5`: groups of three digits joined by a thin space
+    /// are one number, as in printed tables. Returns the digits and the last span.
+    fn digit_groups(&mut self, mut text: String, mut end: Span) -> (String, Span) {
+        if text.contains('.') {
+            return (text, end);
+        }
+        while let Some(Tok::Number(next)) = self.peek().cloned() {
+            let at = self.cur_span();
+            let between = self
+                .src
+                .get(end.end.saturating_sub(self.base)..at.start.saturating_sub(self.base))
+                .unwrap_or("");
+            let thin = matches!(between, "\\," | "\\ " | "{,}" | "\u{2009}" | "\u{202F}");
+            let group = next.split('.').next().unwrap_or("");
+            if !thin || group.len() != 3 || !group.chars().all(|c| c.is_ascii_digit()) {
+                break;
+            }
+            self.bump();
+            text.push_str(&next);
+            end = at;
+            if next.contains('.') {
+                break;
+            }
+        }
+        (text, end)
+    }
+
     /// A known function after its name: scripts, then bracketed or bare arguments.
     pub(super) fn func_app(&mut self, sym: &'static Symbol, start: Span) -> Node {
         let mut sub = None;
@@ -284,7 +363,18 @@ impl Parser<'_> {
         if inverse {
             power = None;
         }
-        let (args, bracketed, end) = if self.at(|t| {
+        // `\max_{t \in [0, 50]} (x - 1)^2 + …`: over a range, max and min take the whole
+        // term after them, as a sum does.
+        let over_range = matches!(sym.name, "max" | "min")
+            && sub.as_ref().is_some_and(|s| {
+                matches!(&s.ungrouped().kind, NodeKind::Relation { rest, .. }
+                    if rest.len() == 1 && rest[0].0 == RelOp::In)
+            });
+        let (args, bracketed, end) = if over_range && !inverse {
+            let body = self.op_body(&format!("the term after `{}`", self.text(start)));
+            let end = body.span;
+            (vec![body], false, end)
+        } else if self.at(|t| {
             matches!(
                 t,
                 Tok::Open {
@@ -299,6 +389,13 @@ impl Parser<'_> {
             let arg = self.func_arg();
             let end = arg.span;
             (vec![arg], false, end)
+        } else if sub.is_none() && power.is_none() && !inverse && self.at_name_end() {
+            // `$\sin$` on its own (prose about the function): the function's name.
+            let name = Name {
+                font: Some(Font::Roman),
+                ..Name::simple(sym.name)
+            };
+            return Node::new(NodeKind::Name(name), start);
         } else {
             let what = format!("the argument of `{}`", self.text(start));
             let missing = self.missing(&what, &["an expression", "`(`"]);
@@ -317,6 +414,12 @@ impl Parser<'_> {
             })),
             span,
         )
+    }
+
+    /// True at the end of the line or before a `,`: nothing an argument could start with.
+    fn at_name_end(&self) -> bool {
+        self.peek()
+            .is_none_or(|t| matches!(t, Tok::NewLine | Tok::Comma))
     }
 
     /// A bracket-less function argument: the product to the right, up to the next

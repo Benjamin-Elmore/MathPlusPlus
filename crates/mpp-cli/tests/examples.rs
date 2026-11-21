@@ -9,6 +9,22 @@ use std::path::{Path, PathBuf};
 
 use mpp_cli::{run_file, run_lines};
 
+/// Examples whose `.expected.txt` belongs to another harness, in that harness's own
+/// format (file, harness). Here they must run like `mpp run` with an answer on every
+/// line, and every error they show must be one their expected file records.
+const OWNED: &[(&str, &str)] = &[
+    ("auto-evaluation.mpp", "mpp-eval tests/auto_eval.rs"),
+    ("checks.mpp", "mpp-eval tests/checks.rs"),
+    ("curve-sketching.mpp", "mpp-eval tests/tools_examples.rs"),
+    ("steps.mpp", "mpp-eval tests/tools_examples.rs"),
+    ("vector-calculus.mpp", "mpp-eval tests/tools_examples.rs"),
+    ("differential-equations.mpp", "mpp-eval tests/examples_b.rs"),
+    ("integral-applications.mpp", "mpp-eval tests/examples_b.rs"),
+    ("numerical-methods.mpp", "mpp-eval tests/examples_b.rs"),
+    ("insert-helpers.mpp", "mpp-eval tests/examples_b.rs"),
+    ("standard-library.mpp", "mpp-eval tests/stdlib.rs"),
+];
+
 /// Examples whose features are not on this branch yet: (file, reason). The
 /// integrator clears the list; an example that starts passing is reported so
 /// it can be removed.
@@ -65,9 +81,9 @@ fn actual(doc: &Path) -> Vec<String> {
         .into_iter()
         .map(|l| {
             if l.error {
-                format!("{} → {}", l.asked, l.answer)
+                format!("{} → {}", l.asked, l.plain)
             } else {
-                format!("{} ? → {}", l.asked, l.answer)
+                format!("{} ? → {}", l.asked, l.plain)
             }
         })
         .collect();
@@ -124,6 +140,17 @@ fn every_example_matches_its_expected_output() {
             continue;
         }
         let want_text = std::fs::read_to_string(&path).expect("read expected");
+        if OWNED.iter().any(|(f, _)| name.replace('\\', "/") == *f) {
+            let ev = run_file(&doc).unwrap_or_else(|e| panic!("{e}"));
+            for l in run_lines(&ev) {
+                if l.answer == "(no answer)" {
+                    failures.push(format!("{name}: no answer for {}", l.asked));
+                } else if l.error && !want_text.contains(&l.answer) {
+                    failures.push(format!("{name}: unexpected error {}", l.answer));
+                }
+            }
+            continue;
+        }
         let want: Vec<String> = want_text.lines().map(str::to_string).collect();
         let same = answers(&got) == answers(&want);
         match (skip, same) {

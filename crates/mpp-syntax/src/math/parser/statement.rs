@@ -29,7 +29,7 @@ const ALIGN_ENVS: &[&str] = &[
 ];
 
 /// Per-line facts pulled out of the token stream before parsing.
-#[derive(Default)]
+#[derive(Default, Clone)]
 struct LineMeta {
     noeval: bool,
     align: Vec<usize>,
@@ -41,15 +41,20 @@ impl Parser<'_> {
         let (metas, label, aligned) = self.preprocess();
         let mut lines = Vec::new();
         let mut metas = metas.into_iter();
+        let mut meta = metas.next().unwrap_or_default();
         loop {
             let mut line = self.parse_line();
-            let meta = metas.next().unwrap_or_default();
             line.noeval = meta.noeval;
-            line.align = meta.align;
+            line.align = meta.align.clone();
             lines.push(line);
+            if std::mem::take(&mut self.continues) {
+                // Several statements on one line, each asking for its answer.
+                continue;
+            }
             if self.eat(|t| matches!(t, Tok::NewLine)).is_none() {
                 break;
             }
+            meta = metas.next().unwrap_or_default();
         }
         // A trailing `\\` leaves an empty last line; drop it.
         if lines.len() > 1
@@ -138,9 +143,26 @@ impl Parser<'_> {
             };
         }
         let mut statement = self.parse_statement();
-        let mut clauses = Vec::new();
+        let mut clauses = std::mem::take(&mut self.quantified);
         loop {
             if self.at_line_end() {
+                break;
+            }
+            // `a \approx ? \qquad b \approx ?`: another statement starts here.
+            if Self::asks(&statement)
+                && clauses.is_empty()
+                && !self.at(|t| matches!(t, Tok::Comma | Tok::Period | Tok::Bang))
+                && !self.at(|t| {
+                    matches!(
+                        t,
+                        Tok::Open {
+                            delim: Delim::Paren,
+                            ..
+                        }
+                    )
+                })
+            {
+                self.continues = true;
                 break;
             }
             if let Some(cond) = self.bracketed_assumption(&statement) {
@@ -149,6 +171,12 @@ impl Parser<'_> {
             }
             if self.eat(|t| matches!(t, Tok::Comma)).is_some() {
                 if self.at_line_end() {
+                    break;
+                }
+                // `n_a := c_a V_a, \qquad n_b(V_b) := c_b V_b`: after a definition, a
+                // further definition is a statement of its own.
+                if matches!(statement, Statement::Definition { .. }) && self.definition_ahead() {
+                    self.continues = true;
                     break;
                 }
                 clauses.push(self.parse_clause());
@@ -239,22 +267,51 @@ impl Parser<'_> {
             return Statement::Range(range);
         }
         let lhs = self.parse_line_relation();
+        // `\frac{dE}{dt} \le 0 \text{ for all } t \ge 0 \overset{?}{=} \text{true}`: the
+        // domain after the quantifier is a condition of the line.
+        if self.at(|t| matches!(t, Tok::Text(text) if expr::is_for_all(text))) {
+            let quantifier = self.cur_span();
+            self.bump();
+            if self.at_line_end() || self.at(|t| matches!(t, Tok::CheckEq | Tok::Comma)) {
+                self.error(
+                    quantifier,
+                    "expected the values the statement holds for, such as `t \\ge 0`",
+                    &["a condition such as `t \\ge 0`", "`t \\in [0, 1]`"],
+                );
+            } else if let Some(range) = self.try_range() {
+                self.quantified.push(Clause::Range(range));
+            } else {
+                let domain = self.parse_line_relation();
+                self.quantified.push(Clause::Condition(domain));
+            }
+        }
         match self.peek() {
             Some(Tok::Assign) => {
                 self.bump();
-                let mut body = self.parse_body("the value after `:=`");
+                let mut body = if self.at_line_end() || self.at(|t| matches!(t, Tok::Comma)) {
+                    self.missing("the value after `:=`", &["an expression"])
+                } else {
+                    self.parse_line_relation()
+                };
                 let head = self.def_head(lhs, ":=");
                 rebind_params(&head, &mut body);
+                let query = self.definition_query();
                 Statement::Definition {
                     head,
                     kind: DefKind::Assign,
                     body,
+                    query,
                 }
             }
             Some(Tok::CheckEq) => {
                 self.bump();
                 let rhs = self.parse_body("the right side of the check");
                 Statement::Check { lhs, rhs }
+            }
+            Some(Tok::CheckEquiv) => {
+                self.bump();
+                let rhs = self.parse_body("the right side of the check");
+                self.congruence_check(lhs, rhs)
             }
             Some(Tok::Rel(op @ (RelOp::Eq | RelOp::Approx)))
                 if matches!(self.peek_n(1), Some(Tok::Question)) =>
@@ -275,6 +332,64 @@ impl Parser<'_> {
             }
             _ => self.relation_or_const(lhs),
         }
+    }
+
+    /// `a \overset{?}{\equiv} b \pmod{n}` as the check `a mod n = b mod n`: the
+    /// remainders on division by `n` agree exactly when `n` divides `a - b`.
+    fn congruence_check(&mut self, lhs: Node, rhs: Node) -> Statement {
+        let Some((rhs, modulus)) = split_pmod(&rhs) else {
+            self.error(
+                rhs.span,
+                "a congruence check needs its modulus after the right side",
+                &["`\\pmod{n}`"],
+            );
+            return Statement::Check { lhs, rhs };
+        };
+        let remainder = |side: Node| {
+            let span = side.span;
+            Node::new(
+                NodeKind::Binary {
+                    op: BinOp::Mod,
+                    lhs: Box::new(side),
+                    rhs: Box::new(modulus.clone()),
+                },
+                span,
+            )
+        };
+        Statement::Check {
+            lhs: remainder(lhs),
+            rhs: remainder(rhs),
+        }
+    }
+
+    /// True when a definition (`head :=` or `head ≡`) starts here; reads nothing.
+    fn definition_ahead(&mut self) -> bool {
+        let cp = self.checkpoint();
+        let _ = self.parse_expr();
+        let found = self.at(|t| matches!(t, Tok::Assign));
+        self.restore(cp);
+        found
+    }
+
+    /// `≈ ?` or `= ?` after a definition: show the value just defined.
+    fn definition_query(&mut self) -> Option<QueryMode> {
+        let mode = match (self.peek(), self.peek_n(1)) {
+            (Some(Tok::Rel(RelOp::Eq)), Some(Tok::Question)) => QueryMode::Exact,
+            (Some(Tok::Rel(RelOp::Approx)), Some(Tok::Question)) => QueryMode::Approx,
+            _ => return None,
+        };
+        self.bump();
+        self.bump();
+        Some(mode)
+    }
+
+    /// True when the statement just read asked for an answer (`= ?`, `≈ ?`), so what
+    /// follows on the line (after `\qquad`) is a statement of its own.
+    fn asks(statement: &Statement) -> bool {
+        matches!(
+            statement,
+            Statement::Query { .. } | Statement::Definition { query: Some(_), .. }
+        )
     }
 
     /// The right side of `:=` or a check, or an error node if it is missing.
@@ -299,10 +414,12 @@ impl Parser<'_> {
             let (_, mut body) = rest.remove(0);
             let head = self.def_head(*first, "≡");
             rebind_params(&head, &mut body);
+            let query = self.definition_query();
             return Statement::Definition {
                 head,
                 kind: DefKind::Const,
                 body,
+                query,
             };
         }
         Statement::Relation(Node::new(NodeKind::Relation { first, rest }, lhs.span))
@@ -466,6 +583,33 @@ fn rebind_params(head: &DefHead, body: &mut Node) {
     }
 }
 
+/// Splits a trailing `\pmod{n}` off `b \pmod{n}` (`a^p + 1 \pmod p` is read as
+/// `a^p + (1 \pmod p)`, so the modulus is taken off the rightmost term): the side without
+/// it and the modulus.
+fn split_pmod(node: &Node) -> Option<(Node, Node)> {
+    let NodeKind::Binary { op, lhs, rhs } = &node.kind else {
+        return None;
+    };
+    if matches!(op, BinOp::Mul(_)) {
+        if let NodeKind::NamedOp(m) = &rhs.kind {
+            if m.name == "mod" && m.args.len() == 1 {
+                return Some(((**lhs).clone(), m.args.first()?.clone()));
+            }
+        }
+    }
+    let (inner, modulus) = split_pmod(rhs)?;
+    let span = lhs.span.join(inner.span);
+    let side = Node::new(
+        NodeKind::Binary {
+            op: *op,
+            lhs: lhs.clone(),
+            rhs: Box::new(inner),
+        },
+        span,
+    );
+    Some((side, modulus))
+}
+
 /// True when `node` contains `\pmod`, so `a \equiv b \pmod{n}` stays a congruence.
 fn mentions_mod(node: &Node) -> bool {
     if let NodeKind::NamedOp(op) = &node.kind {
@@ -516,4 +660,37 @@ fn name_list(statement: &Statement, clauses: &[Clause]) -> Option<Vec<Node>> {
         }
     }
     Some(names)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::math::ast::{BinOp, NodeKind, Statement};
+    use crate::math::parse_math;
+
+    #[test]
+    fn congruence_check_compares_remainders() {
+        let src = r"(a + 1)^p \overset{?}{\equiv} a^p + 1 \pmod p";
+        let (ast, diags) = parse_math(src, 0);
+        assert!(diags.is_empty(), "{diags:?}");
+        let Statement::Check { lhs, rhs } = &ast.lines[0].statement else {
+            panic!("expected a check");
+        };
+        for side in [lhs, rhs] {
+            let NodeKind::Binary { op, rhs: m, .. } = &side.kind else {
+                panic!("expected a remainder");
+            };
+            assert_eq!(*op, BinOp::Mod);
+            assert_eq!(&src[m.span.start..m.span.end], "p");
+        }
+        let NodeKind::Binary { lhs: b, .. } = &rhs.kind else {
+            unreachable!()
+        };
+        assert_eq!(&src[b.span.start..b.span.end], "a^p + 1");
+    }
+
+    #[test]
+    fn congruence_check_needs_a_modulus() {
+        let (_, diags) = parse_math(r"2^{10} \overset{?}{\equiv} 1", 0);
+        assert!(diags.iter().any(|d| d.message.contains("modulus")));
+    }
 }

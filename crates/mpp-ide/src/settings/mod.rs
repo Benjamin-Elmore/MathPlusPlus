@@ -54,6 +54,12 @@ pub struct Settings {
     pub show_steps: bool,
     /// Results as decimals by default (View → Numbers).
     pub decimals: bool,
+    /// The proof agent's default spend cap per run, in dollars.
+    pub proof_cap: f64,
+    /// The proof agent and environment the first run created (ids, not secrets;
+    /// the API key itself is in Windows Credential Manager, never here).
+    pub agent_id: Option<String>,
+    pub environment_id: Option<String>,
 }
 
 impl Default for Settings {
@@ -74,6 +80,9 @@ impl Default for Settings {
             auto_eval: true,
             show_steps: false,
             decimals: false,
+            proof_cap: 2.0,
+            agent_id: None,
+            environment_id: None,
         }
     }
 }
@@ -89,6 +98,10 @@ impl Settings {
             v.side_width = 250.0;
         }
         v.side_width = v.side_width.clamp(140.0, 700.0);
+        if !(v.proof_cap.is_finite() && v.proof_cap > 0.0) {
+            v.proof_cap = 2.0;
+        }
+        v.proof_cap = v.proof_cap.min(100.0);
         v
     }
 

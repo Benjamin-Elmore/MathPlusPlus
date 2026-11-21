@@ -221,7 +221,10 @@ pub fn solve(
                 Some("sign changes bracketed, then bisection and Newton steps".into()),
             );
             Solutions::Finite {
-                values: roots.into_iter().map(Expr::float).collect(),
+                values: roots
+                    .into_iter()
+                    .map(|r| exact_root_near(&f, var, r).unwrap_or_else(|| Expr::float(r)))
+                    .collect(),
                 exact: false,
             }
         }
@@ -234,6 +237,26 @@ pub fn solve(
         ctx.note(format!("{param} is any integer"));
     }
     Ok(found)
+}
+
+/// A numerical root that is an integer or a fraction with a small denominator, when
+/// substituting it makes `f` exactly zero (`t = 0` of `y(t) = 0` for a projectile), so
+/// conditions such as `t > 0` can be decided at it.
+fn exact_root_near(f: &Expr, var: &str, r: f64) -> Option<Expr> {
+    if !r.is_finite() || r.abs() > 1e9 {
+        return None;
+    }
+    for den in 1..=12_i64 {
+        let num = (r * den as f64).round();
+        if (num / den as f64 - r).abs() > 1e-9 * r.abs().max(1.0) {
+            continue;
+        }
+        let q = Expr::rational(num as i64, den);
+        if is_zero(&f.subs(var, &q).simplify()) {
+            return Some(q);
+        }
+    }
+    None
 }
 
 /// Keeps the real solutions inside `r`, listing periodic families there.
@@ -715,6 +738,12 @@ fn guess_var(eq: &Expr) -> MathResult<String> {
 }
 
 fn solve_op(args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
+    // `solve(x^2 = 4, x > 0)`: conditions written as further arguments join the list.
+    if args.len() >= 2 && !is_inequality(&args[0]) && args[1..].iter().all(is_inequality) {
+        let mut all = list(&args[0]);
+        all.extend(args[1..].iter().cloned());
+        return solve_op(&[Expr::new(ExprNode::Tuple(all))], ctx);
+    }
     expect_args_between("solve", args, 1, 3)?;
     if is_inequality(&args[0]) {
         let var = match args.get(1) {
@@ -730,7 +759,33 @@ fn solve_op(args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
         );
         return Ok(set.to_expr());
     }
-    let eqs: Vec<Expr> = list(&args[0]).iter().flat_map(vector_components).collect();
+    let all: Vec<Expr> = list(&args[0]).iter().flat_map(vector_components).collect();
+    // `solve(x^2 = 4, x > 0)`: the inequalities are conditions on the solutions of the
+    // equations, never equations themselves.
+    let (conditions, eqs): (Vec<Expr>, Vec<Expr>) = all.into_iter().partition(is_inequality);
+    if !conditions.is_empty() && !eqs.is_empty() {
+        let mut rest = args.to_vec();
+        rest[0] = if eqs.len() == 1 {
+            eqs[0].clone()
+        } else {
+            Expr::new(ExprNode::Tuple(eqs.clone()))
+        };
+        let vars: Vec<String> = match args.get(1) {
+            Some(v) => list(v)
+                .iter()
+                .map(|e| sym_arg("solve", e))
+                .collect::<MathResult<_>>()?,
+            None => {
+                let mut all = BTreeSet::new();
+                for e in &eqs {
+                    all.extend(e.free_symbols().iter().map(|s| s.to_string()));
+                }
+                all.into_iter().collect()
+            }
+        };
+        let found = solve_op(&rest, ctx)?;
+        return Ok(keep_satisfying(found, &conditions, &vars, ctx));
+    }
     if eqs.len() > 1 {
         let vars: Vec<String> = match args.get(1) {
             Some(v) => list(v)
@@ -759,6 +814,104 @@ fn solve_op(args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
         None => None,
     };
     Ok(solve(&args[0], &var, range.as_ref(), ctx)?.to_expr())
+}
+
+/// The solutions in `found` that satisfy every condition. A solution is dropped only
+/// when a condition is decided false at it; one that cannot be decided is kept, and the
+/// note says so.
+fn keep_satisfying(found: Expr, conditions: &[Expr], vars: &[String], ctx: &mut Ctx<'_>) -> Expr {
+    let ExprNode::Set(items) = found.node() else {
+        return found;
+    };
+    let mut undecided = false;
+    let kept: Vec<Expr> = items
+        .iter()
+        .filter(|item| {
+            // `(x = 2, y = 3)`, `x = 2` or a bare value of the one unknown.
+            let pairs: Vec<(String, Expr)> = match item.node() {
+                ExprNode::Tuple(parts) => parts
+                    .iter()
+                    .filter_map(|p| match p.node() {
+                        ExprNode::Relation(crate::expr::RelOp::Eq, l, r) => {
+                            l.as_sym().map(|s| (s.to_string(), r.clone()))
+                        }
+                        _ => None,
+                    })
+                    .collect(),
+                ExprNode::Relation(crate::expr::RelOp::Eq, l, r) => l
+                    .as_sym()
+                    .map(|s| vec![(s.to_string(), r.clone())])
+                    .unwrap_or_default(),
+                _ => match vars {
+                    [v] => vec![(v.clone(), (*item).clone())],
+                    _ => Vec::new(),
+                },
+            };
+            conditions.iter().all(|c| {
+                let mut at = c.clone();
+                for (name, value) in &pairs {
+                    at = at.subs(name, value);
+                }
+                match decide(&at.simplify()) {
+                    Some(holds) => holds,
+                    None => {
+                        undecided = true;
+                        true
+                    }
+                }
+            })
+        })
+        .cloned()
+        .collect();
+    if undecided {
+        ctx.note("some conditions could not be checked at every solution, which are kept");
+    }
+    Expr::new(ExprNode::Set(kept))
+}
+
+/// The truth of a closed relation: exactly for exact numbers, otherwise numerically
+/// when clearly away from equality; `None` when it cannot be told.
+fn decide(e: &Expr) -> Option<bool> {
+    use crate::expr::RelOp;
+    match e.node() {
+        ExprNode::Bool(b) => Some(*b),
+        ExprNode::Relation(op, a, b) => {
+            if !a.free_symbols().is_empty() || !b.free_symbols().is_empty() {
+                return None;
+            }
+            let d = (a - b).simplify();
+            let sign = match d.as_number().filter(|n| n.is_exact()) {
+                Some(n) => n.sign()?,
+                None => {
+                    let x = d.eval_f64(&crate::eval::EmptyEnv).ok()?;
+                    if !x.is_finite() || x.abs() < 1e-12 {
+                        return None;
+                    }
+                    x.partial_cmp(&0.0)?
+                }
+            };
+            use std::cmp::Ordering::{Equal, Greater, Less};
+            Some(match op {
+                RelOp::Eq | RelOp::Approx => sign == Equal,
+                RelOp::Ne => sign != Equal,
+                RelOp::Lt => sign == Less,
+                RelOp::Le => sign != Greater,
+                RelOp::Gt => sign == Greater,
+                RelOp::Ge => sign != Less,
+            })
+        }
+        ExprNode::Logic(crate::expr::LogicOp::And, parts) => {
+            let vals: Vec<Option<bool>> = parts.iter().map(decide).collect();
+            if vals.contains(&Some(false)) {
+                Some(false)
+            } else if vals.iter().all(|v| *v == Some(true)) {
+                Some(true)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
 }
 
 /// `nsolve(eq, x, [a, b])` or `nsolve(eq, x, x0)`; systems take tuples.

@@ -67,6 +67,12 @@ pub fn sub_text(node: &Node) -> Option<String> {
             Constant::E | Constant::I => c.letter()?.to_string(),
         }),
         NodeKind::Group { inner, .. } => sub_text(inner),
+        // `t_{1/2}`, `E_{a,	ext{fit}}`.
+        NodeKind::Frac { num, den, .. } => Some(format!("{}/{}", sub_text(num)?, sub_text(den)?)),
+        NodeKind::Tuple { elems, .. } => {
+            let parts = elems.iter().map(sub_text).collect::<Option<Vec<_>>>()?;
+            Some(parts.join(","))
+        }
         NodeKind::Unary {
             op: UnaryOp::Neg,
             operand,
@@ -105,5 +111,7 @@ mod tests {
         assert_eq!(key("\\mathbf{v}").as_deref(), Some("𝐯"));
         assert_eq!(key("e").as_deref(), Some("e"));
         assert_eq!(key("2"), None);
+        assert_eq!(key("t_{1/2}").as_deref(), Some("t_1/2"));
+        assert_eq!(key(r"E_{a,\text{fit}}").as_deref(), Some("E_a,fit"));
     }
 }

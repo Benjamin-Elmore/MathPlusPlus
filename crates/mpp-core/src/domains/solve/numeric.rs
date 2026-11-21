@@ -122,6 +122,12 @@ pub fn roots_in(f: &Expr, var: &str, lo: f64, hi: f64) -> MathResult<Vec<f64>> {
     let step = (hi - lo) / SAMPLES as f64;
     let xs: Vec<f64> = (0..=SAMPLES).map(|i| lo + step * i as f64).collect();
     let ys: Vec<Option<f64>> = xs.iter().map(|&x| eval_at(f, var, x)).collect();
+    // Nothing could be evaluated: that is no evidence of "no roots".
+    if ys.iter().all(Option::is_none) {
+        return Err(MathError::NotANumber(format!(
+            "{f} at every point of [{lo}, {hi}]"
+        )));
+    }
     let scale = ys
         .iter()
         .flatten()
@@ -270,6 +276,9 @@ mod tests {
         assert!((rs[0] - 1.0).abs() < 1e-6);
         let f = x.recip();
         assert!(roots_in(&f, "x", -1.3, 1.0).unwrap().is_empty());
+        // Nothing can be evaluated (an unknown function): an error, never "no roots".
+        let f = Expr::apply("g", vec![x.clone()]) - Expr::one();
+        assert!(roots_in(&f, "x", -1.0, 1.0).is_err());
     }
 
     #[test]

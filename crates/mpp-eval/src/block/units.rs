@@ -22,6 +22,15 @@ impl Run<'_, '_> {
         span: Span,
     ) -> bool {
         match units_wire::present(value) {
+            // `≈ ?` needs a number: a quantity whose value still has names in it, or a
+            // piecewise value whose case could not be decided, is not one, so the usual
+            // path reports why (never `≈ 10000·a/24788191 mol/J`).
+            Ok(Some(_))
+                if mode == QueryMode::Approx
+                    && units_wire::approximate(value).ok().flatten().is_none() =>
+            {
+                false
+            }
             Ok(Some(p)) => {
                 lr.set_value(Value::from_expr(value.clone()));
                 lr.text = Some(p.text);

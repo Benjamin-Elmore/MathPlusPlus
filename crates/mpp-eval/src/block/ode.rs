@@ -19,7 +19,11 @@ impl Run<'_, '_> {
         let mut found = Vec::new();
         let mut visit_node = |n: &Node| collect_unknowns(n, &mut found);
         match &line.statement {
-            Statement::Query { expr, .. } => visit_node(expr),
+            // A query is a differential equation only when it holds an equation (or
+            // a solver): `J_0'(2) ≈ ?` asks for a derivative, not for an unknown.
+            Statement::Query { expr, .. } if has_equation(expr) || !line.clauses.is_empty() => {
+                visit_node(expr)
+            }
             Statement::Relation(n) => visit_node(n),
             Statement::Check { lhs, rhs } => {
                 visit_node(lhs);
@@ -52,6 +56,28 @@ impl Run<'_, '_> {
             .filter_map(|c| self.lower(c, s.names).ok())
             .collect();
         if is_ode(input, &self.unknown_fns) {
+            // `\dot x = …, \quad \dot y = …, \quad x(0) = …`: the other differential
+            // equations of the line make a system with this one.
+            let (more, conditions): (Vec<Expr>, Vec<Expr>) = conditions
+                .into_iter()
+                .partition(|c| is_ode(c, &self.unknown_fns) && free_unknown(c, &self.unknown_fns));
+            if !more.is_empty() {
+                let mut eqs = vec![input.clone()];
+                eqs.extend(more);
+                let mut args = vec![Expr::new(ExprNode::Tuple(eqs))];
+                args.extend(conditions);
+                return Some(Expr::apply("dsolve", args));
+            }
+            // One equation of a coupled system cannot be solved alone: the other
+            // unknown is not a constant.
+            let solved = differentiated(input, &self.unknown_fns);
+            if self
+                .unknown_fns
+                .iter()
+                .any(|u| !solved.contains(u) && mentions(input, u))
+            {
+                return None;
+            }
             let mut args = vec![input.clone()];
             args.extend(conditions);
             return Some(Expr::apply("dsolve", args));
@@ -105,6 +131,40 @@ pub(crate) fn is_ode(e: &Expr, unknowns: &[String]) -> bool {
     }
 }
 
+/// True when an unknown appears in `e` as a function (`y`, `dy/dx`), not only at a
+/// point as in the condition `y'(0) = 0`.
+fn free_unknown(e: &Expr, unknowns: &[String]) -> bool {
+    match e.node() {
+        ExprNode::Sym(s) => unknowns.iter().any(|u| **u == **s),
+        ExprNode::Apply(f, _) if &**f == "subs" => false,
+        ExprNode::Apply(f, args)
+            if unknowns.iter().any(|u| &**f == u || primed_name(f, u))
+                && args.iter().all(Expr::is_constant) =>
+        {
+            false
+        }
+        _ => e.children().into_iter().any(|c| free_unknown(c, unknowns)),
+    }
+}
+
+/// The unknowns whose derivatives appear in `e`.
+fn differentiated(e: &Expr, unknowns: &[String]) -> Vec<String> {
+    unknowns
+        .iter()
+        .filter(|u| has_unknown_derivative(e, std::slice::from_ref(u)))
+        .cloned()
+        .collect()
+}
+
+/// True when `e` uses the name `u` (as a symbol, a call or a primed call).
+fn mentions(e: &Expr, u: &str) -> bool {
+    match e.node() {
+        ExprNode::Sym(s) => &**s == u,
+        ExprNode::Apply(f, _) if &**f == u || primed_name(f, u) => true,
+        _ => e.children().into_iter().any(|c| mentions(c, u)),
+    }
+}
+
 fn has_unknown_derivative(e: &Expr, unknowns: &[String]) -> bool {
     match e.node() {
         ExprNode::Derivative { expr, vars } => {
@@ -134,6 +194,19 @@ fn primed_name(f: &str, y: &str) -> bool {
         .is_some_and(|rest| !rest.is_empty() && rest.chars().all(|c| matches!(c, '′' | '\'')))
 }
 
+/// True when `node` holds an equation or a `solve`/`dsolve` operator.
+fn has_equation(node: &Node) -> bool {
+    match &node.kind {
+        NodeKind::Relation { .. } => true,
+        NodeKind::NamedOp(op) if matches!(op.name.as_str(), "solve" | "dsolve") => true,
+        _ => {
+            let mut found = false;
+            visit::children(node, &mut |c| found = found || has_equation(c));
+            found
+        }
+    }
+}
+
 /// Collects the names differentiated in `node` (and the `y` of `y(x)` under
 /// `\operatorname{solve}`).
 fn collect_unknowns(node: &Node, out: &mut Vec<String>) {
@@ -143,7 +216,7 @@ fn collect_unknowns(node: &Node, out: &mut Vec<String>) {
                 out.push(k);
             }
         }
-        NodeKind::Derivative(d) if !d.partial => {
+        NodeKind::Derivative(d) => {
             if let Some(k) = d.of.as_ref().and_then(|of| node_key(of.ungrouped())) {
                 let vars: Vec<String> = d.vars.iter().filter_map(|v| node_key(&v.var)).collect();
                 if !vars.contains(&k) {

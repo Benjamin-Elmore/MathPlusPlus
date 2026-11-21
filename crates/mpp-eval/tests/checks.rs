@@ -34,7 +34,7 @@ fn render(src: &str) -> String {
     for (block, line) in ev.queries() {
         let text = src.get(line.span.start..line.span.end).unwrap_or("").trim();
         let _ = writeln!(out, "{}: {text}", index.line_of(line.span.start));
-        if let Some(a) = line.answer() {
+        if let Some(a) = line.plain_answer() {
             let _ = writeln!(out, "    {a}");
         }
         for d in &block.diagnostics {
@@ -129,7 +129,7 @@ fn checks_never_auto_evaluate() {
 fn trig_answers_are_tidied() {
     let ev = run(r"$$ \frac{\partial(r \cos\theta, r \sin\theta)}{\partial(r, \theta)} = ? $$");
     let (_, line) = ev.queries().next().expect("a query");
-    assert_eq!(line.text.as_deref(), Some("r"));
+    assert_eq!(line.plain.as_deref(), Some("r"));
 }
 
 #[test]
@@ -137,7 +137,7 @@ fn quick_calculator() {
     assert_eq!(calc_line(r"\int_0^1 x^2 dx").as_deref(), Ok("1/3"));
     assert_eq!(
         calc_line(r"\sum_{n=1}^{\infty} \frac{1}{n^2}").as_deref(),
-        Ok("π^2/6 ≈ 1.644934067")
+        Ok("π²/6 ≈ 1.644934067")
     );
     assert_eq!(
         calc_line(r"y'' + y = 0, \quad y(0) = 1, y'(0) = 0").as_deref(),
@@ -149,4 +149,41 @@ fn quick_calculator() {
     );
     let err = calc_line(r"\int_0^{} x \, dx").unwrap_err();
     assert!(err.to_string().contains("upper bound"), "{err}");
+}
+
+#[test]
+fn checks_for_all_values_of_a_domain() {
+    // Holds over the domain, though not for every real x.
+    let v = verdict(r"$$ x^2 - 1 \ge 0 \text{ for all } x \ge 1 \overset{?}{=} \text{true} $$");
+    assert_eq!(v.passed(), Some(true), "{}", v.describe());
+    // Fails far out in the domain: the counterexample is reported.
+    let v = verdict(r"$$ 10 - x > 0 \text{ for all } x \ge 0 \overset{?}{=} \text{true} $$");
+    assert_eq!(v.passed(), Some(false), "{}", v.describe());
+    assert!(v.describe().contains("x = "), "{}", v.describe());
+    // A bounded domain.
+    let v =
+        verdict(r"$$ \sin x \ge 0 \text{ for all } 0 \le x \le 3 \overset{?}{=} \text{true} $$");
+    assert_eq!(v.passed(), Some(true), "{}", v.describe());
+    let v =
+        verdict(r"$$ \sin x \ge 0 \text{ for all } 0 \le x \le 4 \overset{?}{=} \text{true} $$");
+    assert_eq!(v.passed(), Some(false), "{}", v.describe());
+}
+
+#[test]
+fn checks_for_all_times_with_units() {
+    let src = r"Let $m := 0.5\,\mathrm{kg}$, $k := 20\,\mathrm{N/m}$, $c := 0.4\,\mathrm{N\,s/m}$ and $x_0 := 0.1\,\mathrm m$.
+
+$$ m\ddot x + c\dot x + kx = 0, \quad x(0) = x_0, \ \dot x(0) = 0 $$
+
+$$ E(t) := \tfrac12 m \dot x^2 + \tfrac12 k x^2 $$
+$$ \frac{dE}{dt} \le 0 \ \text{ for all } t \ge 0 \overset{?}{=} \text{true} $$
+$$ \frac{dE}{dt} \ge 0 \ \text{ for all } t \ge 0 \overset{?}{=} \text{true} $$";
+    let ev = run(src);
+    let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
+    assert!(errs.is_empty(), "{errs:?}");
+    let verdicts: Vec<Option<bool>> = ev
+        .queries()
+        .map(|(_, l)| l.verdict.as_ref().and_then(Verdict::passed))
+        .collect();
+    assert_eq!(verdicts, vec![Some(true), Some(false)]);
 }

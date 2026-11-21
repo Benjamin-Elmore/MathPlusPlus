@@ -17,8 +17,10 @@ fn the_guide_example_counts() {
     let src = "# Problems on purpose\n\nLet $\\vartheta := 0.3$ and $m := 2$.\n\n$$ \\frac{1}{} = ? $$\n\n$$ \\sin \\theta \\approx ? $$\n\n$$ 2 (x + 1 $$\n\n$$ \\Gamma(x + 1) \\overset{?}{=} x \\Gamma(x) $$\n\n$$ \\int_0^1 e^{-x^2} \\, dx \\approx ? $$\n\n$$ \\operatorname{erf}(x) + \\operatorname{erfc}(x) \\overset{?}{=} 1 $$\n";
     let (ps, _) = problems_of(src);
     let c = Counts::of(&ps);
-    assert_eq!((c.errors, c.warnings, c.infos), (3, 3, 1), "{ps:#?}");
-    assert_eq!(c.summary(), "3 errors, 3 warnings");
+    // The N9 guide expected 3 errors, 3 warnings and 1 note; the evaluator now works out
+    // the line that was the note, so both identities are numeric checks and none is left.
+    assert_eq!((c.errors, c.warnings, c.infos), (3, 4, 0), "{ps:#?}");
+    assert_eq!(c.summary(), "3 errors, 4 warnings");
 }
 
 /// The page box of the node with exactly this source text.
@@ -195,6 +197,7 @@ fn the_template_being_filled_in_is_quiet() {
         eval_fresh: false,
         background: None,
         quiet,
+        proof: &[],
     };
     assert!(!gather(&mk(None)).is_empty());
     assert!(gather(&mk(Some(3..13))).is_empty());
