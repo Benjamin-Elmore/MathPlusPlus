@@ -367,6 +367,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 peek_card(ui, doc, &pc, origin, &theme, cx);
                 fix_menu(ui, doc, cx, &mut events, resp.id);
                 completion_popup(ui, doc, &pc, origin, cx, &theme, caret_rect);
+                command_list(ui, doc, &pc, cx, caret_rect);
                 if focused || cx.insert.menu.open {
                     template_toolbar(ui, doc, &pc, origin, cx, resp.id);
                 }
@@ -453,6 +454,7 @@ fn key_filter(doc: &Doc, pc: &PageCache, cx: &ViewCtx<'_>, menu: bool) -> EventF
         || cx.completion.is_some()
         || cx.diag.peek.is_some()
         || cx.insert.menu.open
+        || cx.insert.commands.open
         || cx.diag.menu_open();
     EventFilter {
         tab: popup || in_template || !empty_slots(&pc.page, caret).is_empty(),
@@ -993,6 +995,23 @@ fn insert_menu(
     }
 }
 
+/// The command list at `\` and `/` (U22), under the caret.
+fn command_list(ui: &Ui, doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, caret: Option<Rect>) {
+    cx.insert
+        .commands
+        .refresh(doc.editor.text(), doc.editor.caret());
+    let Some(cr) = caret else {
+        return;
+    };
+    let at = Pos2::new(cr.left(), cr.bottom() + 2.0);
+    if let Some(i) = insert::commands::popup(ui.ctx(), &cx.insert.commands, at, cx.mode) {
+        cx.insert.commands.selected = i;
+        if insert::commands::accept(&mut doc.editor, &pc.page, cx.insert) {
+            doc.touched();
+        }
+    }
+}
+
 /// The controls of the template the caret is in (mode, rows, infinity buttons).
 fn template_toolbar(
     ui: &Ui,
@@ -1275,6 +1294,13 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     doc.caret_side = crate::page::Side::Before;
     cx.diag.peek = None;
     update_completion(doc, in_math, cx);
+    let caret = doc.editor.caret();
+    cx.insert
+        .commands
+        .typed(doc.editor.text(), caret, in_math, text.chars().next_back());
+    if cx.insert.commands.open {
+        *cx.completion = None;
+    }
 }
 
 fn update_completion(doc: &Doc, in_math: bool, cx: &mut ViewCtx<'_>) {
@@ -1387,7 +1413,7 @@ fn handle_keys(
                     // The menu that was open closes on this Esc; nothing else.
                     continue;
                 }
-                if cx.completion.is_none() {
+                if cx.completion.is_none() && !cx.insert.commands.open {
                     if let Some(dir) = edge_release(doc, pc, key, modifiers) {
                         ui.memory_mut(|m| m.move_focus(dir));
                         continue;
@@ -1417,6 +1443,20 @@ fn key_pressed(
     let caret = doc.editor.caret();
     let in_math = page.in_math(caret);
     let shift = mods.shift;
+    if !mods.command && !mods.alt {
+        use crate::insert::commands::{accept, KeyOutcome};
+        match cx.insert.commands.key(key, shift) {
+            KeyOutcome::Accept => {
+                if accept(&mut doc.editor, page, cx.insert) {
+                    doc.touched();
+                    doc.want_x = None;
+                }
+                return true;
+            }
+            KeyOutcome::Handled => return false,
+            KeyOutcome::Ignored => {}
+        }
+    }
     if mods.command {
         match key {
             Key::Period => {

@@ -250,3 +250,112 @@ fn double_click_selects_a_name_or_number_and_triple_click_the_line() {
     click_at(&mut h, at, 3);
     assert_eq!(editor(&h).selected_text(), Some("x := alpha1 + 12.5"));
 }
+
+// ---- U22: the command list ----
+
+fn list_open(h: &H) -> bool {
+    h.state().insert.commands.open
+}
+
+fn first_entry(h: &H) -> String {
+    h.state()
+        .insert
+        .commands
+        .items
+        .first()
+        .map(|e| e.id.clone())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_backslash_in_maths_opens_a_list_that_filters_as_you_type() {
+    let mut h = maths("x = ");
+    type_text(&mut h, "\\");
+    assert!(list_open(&h));
+    let all = h.state().insert.commands.items.len();
+    type_text(&mut h, "fr");
+    assert!(list_open(&h));
+    assert_eq!(first_entry(&h), "frac");
+    type_text(&mut h, "xyz");
+    assert!(!list_open(&h), "nothing matches: the list closes");
+    assert!(all > 1);
+    assert_eq!(text(&h), r"$$ x = \frxyz $$");
+}
+
+#[test]
+fn enter_accepts_and_the_typed_text_is_replaced() {
+    let mut h = maths("x = ");
+    type_text(&mut h, r"\al");
+    assert_eq!(first_entry(&h), "sym.alpha");
+    plain(&mut h, Key::Enter);
+    assert_eq!(text(&h), "$$ x = α $$");
+    assert!(!list_open(&h));
+    // A template: the fraction goes in with boxes to fill.
+    let mut h = maths("");
+    type_text(&mut h, r"\frac");
+    plain(&mut h, Key::Tab);
+    assert!(text(&h).contains(r"\frac{"), "{}", text(&h));
+    assert!(!text(&h).contains(r"\frac "), "{}", text(&h));
+}
+
+#[test]
+fn escape_closes_the_list_and_leaves_what_was_typed() {
+    let mut h = maths("");
+    type_text(&mut h, r"\fr");
+    plain(&mut h, Key::Escape);
+    assert!(!list_open(&h));
+    assert_eq!(text(&h), r"$$ \fr $$");
+    // The first Esc only closed the list: we are still in the maths.
+    type_text(&mut h, "a");
+    assert_eq!(text(&h), r"$$ \fra $$");
+}
+
+#[test]
+fn arrows_move_the_choice_without_moving_the_caret() {
+    let mut h = maths("");
+    type_text(&mut h, "\\");
+    let caret = editor(&h).caret();
+    plain(&mut h, Key::ArrowDown);
+    assert_eq!(h.state().insert.commands.selected, 1);
+    plain(&mut h, Key::ArrowUp);
+    assert_eq!(h.state().insert.commands.selected, 0);
+    assert_eq!(editor(&h).caret(), caret);
+}
+
+#[test]
+fn a_slash_at_the_start_of_a_prose_line_lists_blocks() {
+    let mut h = open("Hello\n\n", 7);
+    type_text(&mut h, "/");
+    assert!(list_open(&h));
+    type_text(&mut h, "head");
+    assert_eq!(first_entry(&h), "block.heading");
+    plain(&mut h, Key::Enter);
+    assert_eq!(text(&h), "Hello\n\n# ");
+    // A slash after words is just a slash.
+    let mut h = open("", 0);
+    type_text(&mut h, "and/or");
+    assert!(!list_open(&h));
+    assert_eq!(text(&h), "and/or");
+}
+
+#[test]
+fn a_maths_line_from_the_list_goes_where_the_slash_was() {
+    let mut h = open("Intro\n\n", 7);
+    type_text(&mut h, "/math");
+    assert_eq!(first_entry(&h), "block.math");
+    plain(&mut h, Key::Enter);
+    assert_eq!(text(&h), "Intro\n\n$$  $$");
+    assert_eq!(editor(&h).caret(), 10);
+}
+
+#[test]
+fn a_template_from_prose_keeps_one_blank_line_each_side() {
+    let mut h = open("Intro\n\n\n\nOutro", 7);
+    type_text(&mut h, "/theo");
+    assert_eq!(first_entry(&h), "doc.theorem");
+    plain(&mut h, Key::Enter);
+    let t = text(&h);
+    assert!(t.starts_with("Intro\n\n"), "{t:?}");
+    assert!(t.ends_with("Outro"), "{t:?}");
+    assert!(!t.contains("\n\n\n"), "no stray blank lines: {t:?}");
+}
