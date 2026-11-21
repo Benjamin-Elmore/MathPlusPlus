@@ -8,7 +8,9 @@ use num_bigint::BigInt;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 
-use crate::expr::{BigOpKind, Constant, Expr, ExprNode, LimitDir, LogicOp, Name, RelOp};
+use crate::expr::{
+    BigOpKind, Constant, Expr, ExprNode, LimitDir, LogicOp, Name, RelOp, EULER_GAMMA,
+};
 use crate::functions::Func;
 use crate::number::{format_f64, Number};
 use crate::simplify::{split_coeff, split_pow, with_coeff};
@@ -24,6 +26,157 @@ enum Prec {
     Mul,
     Pow,
     Atom,
+}
+
+thread_local! {
+    /// True while [`Expr::to_text`] prints: implicit products, superscript powers,
+    /// `√`, Unicode subscripts and textbook names of the special functions.
+    static UNICODE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+fn unicode() -> bool {
+    UNICODE.with(std::cell::Cell::get)
+}
+
+/// Restores the printing mode when dropped, so a panic cannot leave it switched on.
+struct UnicodeGuard(bool);
+
+impl Drop for UnicodeGuard {
+    fn drop(&mut self) {
+        UNICODE.with(|u| u.set(self.0));
+    }
+}
+
+fn superscript(c: char) -> Option<char> {
+    Some(match c {
+        '0' => '⁰',
+        '1' => '¹',
+        '2' => '²',
+        '3' => '³',
+        '4' => '⁴',
+        '5' => '⁵',
+        '6' => '⁶',
+        '7' => '⁷',
+        '8' => '⁸',
+        '9' => '⁹',
+        '-' => '⁻',
+        _ => return None,
+    })
+}
+
+fn subscript(c: char) -> Option<char> {
+    Some(match c {
+        '0' => '₀',
+        '1' => '₁',
+        '2' => '₂',
+        '3' => '₃',
+        '4' => '₄',
+        '5' => '₅',
+        '6' => '₆',
+        '7' => '₇',
+        '8' => '₈',
+        '9' => '₉',
+        '+' => '₊',
+        '-' => '₋',
+        'a' => 'ₐ',
+        'e' => 'ₑ',
+        'o' => 'ₒ',
+        'x' => 'ₓ',
+        'h' => 'ₕ',
+        'k' => 'ₖ',
+        'l' => 'ₗ',
+        'm' => 'ₘ',
+        'n' => 'ₙ',
+        'p' => 'ₚ',
+        's' => 'ₛ',
+        't' => 'ₜ',
+        'i' => 'ᵢ',
+        'j' => 'ⱼ',
+        'r' => 'ᵣ',
+        'u' => 'ᵤ',
+        'v' => 'ᵥ',
+        _ => return None,
+    })
+}
+
+/// `C_1` as `C₁` when every character of the subscript has a subscript form.
+fn unicode_name(name: &str) -> String {
+    let Some((base, sub)) = name.split_once('_') else {
+        return name.to_string();
+    };
+    let sub = sub.trim_start_matches('{').trim_end_matches('}');
+    match sub.chars().map(subscript).collect::<Option<String>>() {
+        Some(s) if !s.is_empty() && !base.is_empty() => format!("{base}{s}"),
+        _ => name.to_string(),
+    }
+}
+
+/// True when a printed factor is one symbol (a letter with optional subscripts and
+/// primes), a number, a bracket, a call `f(…)` or a power of one of these, so it can
+/// stand next to another without a sign.
+fn juxtaposable(s: &str) -> bool {
+    let mut chars = s.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    if first == '(' || first == '[' || first == '|' || first == '√' {
+        return true;
+    }
+    if first.is_ascii_digit() {
+        return s.chars().all(|c| {
+            c.is_ascii_digit() || c == '.' || superscript(c).is_some() || "⁰¹²³⁴⁵⁶⁷⁸⁹⁻".contains(c)
+        });
+    }
+    if !first.is_alphabetic() {
+        return false;
+    }
+    // A call: a word straight before its bracket (`sin(x)`, `W(x)`).
+    let word: String = s.chars().take_while(|c| c.is_alphabetic()).collect();
+    if s[word.len()..].starts_with('(') {
+        return true;
+    }
+    // One letter, then subscripts, primes, superscripts, a call or a power.
+    let rest: String = chars.collect();
+    let after_letters =
+        rest.trim_start_matches(|c: char| "₀₁₂₃₄₅₆₇₈₉₊₋ₐₑₒₓₕₖₗₘₙₚₛₜᵢⱼᵣᵤᵥ′″⁰¹²³⁴⁵⁶⁷⁸⁹⁻".contains(c));
+    after_letters.is_empty() || after_letters.starts_with('(') || after_letters.starts_with('^')
+}
+
+/// A word at the start of a factor (`sin(x)`, `ln(x)`): set apart by a space.
+fn starts_with_word(s: &str) -> bool {
+    let letters = s.chars().take_while(|c| c.is_alphabetic()).count();
+    letters >= 2
+}
+
+/// Joins printed factors the way they are written by hand: `2xy`, `9π`, `x sin(x)`,
+/// with `·` where two would run together (`2·3^x`, `x·kg`).
+fn join_factors(parts: &[String]) -> String {
+    let mut out = String::new();
+    for (k, s) in parts.iter().enumerate() {
+        if k > 0 {
+            let prev = &parts[k - 1];
+            let number_before = prev.starts_with(|c: char| c.is_ascii_digit());
+            // `e^x` ends in its exponent, which the next factor would join.
+            let open_power = prev.contains('^') && !prev.ends_with(')');
+            let sep = if s.starts_with(|c: char| c.is_ascii_digit() || c == '.')
+                || !juxtaposable(prev)
+                || !juxtaposable(s)
+            {
+                "·"
+            } else if open_power
+                || starts_with_word(s)
+                || (starts_with_word(prev) && !prev.ends_with(')'))
+                || (s.contains('^') && !number_before)
+            {
+                " "
+            } else {
+                ""
+            };
+            out.push_str(sep);
+        }
+        out.push_str(s);
+    }
+    out
 }
 
 /// Degrees of a term in each symbol it is a power of.
@@ -229,6 +382,7 @@ fn plain_number(n: &Number) -> (String, Prec) {
 fn plain(e: &Expr) -> (String, Prec) {
     match e.node() {
         ExprNode::Num(n) => plain_number(n),
+        ExprNode::Sym(s) if unicode() => (unicode_name(s), Prec::Atom),
         ExprNode::Sym(s) => (s.to_string(), Prec::Atom),
         ExprNode::Const(c) => (
             match c {
@@ -265,11 +419,28 @@ fn plain(e: &Expr) -> (String, Prec) {
                 return plain_product(e);
             }
             if x.as_number() == Some(&Number::Rational(BigRational::new(1.into(), 2.into()))) {
+                if unicode() {
+                    let (s, p) = plain(b);
+                    let simple = p == Prec::Atom && !s.contains('(');
+                    return if simple {
+                        (format!("√{s}"), Prec::Atom)
+                    } else {
+                        (format!("√({s})"), Prec::Atom)
+                    };
+                }
                 return (format!("sqrt({})", plain(b).0), Prec::Atom);
             }
             let (bs, bp) = plain(b);
             let (xs, xp) = plain(x);
             let base = paren(bs, bp, Prec::Atom);
+            if unicode()
+                && x.as_number()
+                    .is_some_and(|n| n.as_rational().is_some_and(|r| r.is_integer()))
+            {
+                if let Some(sup) = xs.chars().map(superscript).collect::<Option<String>>() {
+                    return (format!("{base}{sup}"), Prec::Pow);
+                }
+            }
             let exp = if xp == Prec::Atom {
                 xs
             } else {
@@ -285,6 +456,13 @@ fn plain(e: &Expr) -> (String, Prec) {
                 .join(" ∪ "),
             Prec::Add,
         ),
+        ExprNode::Apply(name, args) if args.is_empty() && &**name == EULER_GAMMA => {
+            ("γ".into(), Prec::Atom)
+        }
+        ExprNode::Apply(name, args) if unicode() => match textbook_apply(name, args) {
+            Some(s) => (s, Prec::Atom),
+            None => (format!("{name}({})", plain_list(args)), Prec::Atom),
+        },
         ExprNode::Apply(name, args) => (format!("{name}({})", plain_list(args)), Prec::Atom),
         ExprNode::Relation(op, a, b) => {
             let (sa, pa) = plain(a);
@@ -446,6 +624,35 @@ fn plain(e: &Expr) -> (String, Prec) {
     }
 }
 
+/// The textbook spelling of a special function in Unicode text: `W(x)`, `J₁(x)`,
+/// `K(k)`, `δ′(x)`, `ψ′(x)`.
+fn textbook_apply(name: &str, args: &[Expr]) -> Option<String> {
+    let order = |e: &Expr| -> Option<String> {
+        let s = plain(e).0;
+        s.chars().map(subscript).collect::<Option<String>>()
+    };
+    let primes = |n: &Expr| -> Option<String> {
+        let k = n.as_number()?.as_i64()?;
+        match k {
+            1 => Some("′".into()),
+            2 => Some("″".into()),
+            3 => Some("‴".into()),
+            _ => None,
+        }
+    };
+    Some(match (name, args) {
+        ("lambertw", [x]) => format!("W({})", plain(x).0),
+        ("lambertw", [x, k]) => format!("W{}({})", order(k)?, plain(x).0),
+        ("besselj", [n, x]) => format!("J{}({})", order(n)?, plain(x).0),
+        ("ellipk", [k]) => format!("K({})", plain(k).0),
+        ("ellipe", [k]) => format!("E({})", plain(k).0),
+        ("delta", [x]) => format!("δ({})", plain(x).0),
+        ("delta", [x, j]) => format!("δ{}({})", primes(j)?, plain(x).0),
+        ("polygamma", [n, x]) => format!("ψ{}({})", primes(n)?, plain(x).0),
+        _ => return None,
+    })
+}
+
 trait OrAtom {
     fn unwrap_or_default_atom(self) -> (String, Prec);
 }
@@ -469,8 +676,22 @@ fn plain_list(v: &[Expr]) -> String {
     v.iter().map(|a| plain(a).0).collect::<Vec<_>>().join(", ")
 }
 
+/// In Unicode text, letters come before exponentials and function calls (`x e^x`,
+/// `x sin(x)`), as they are written by hand.
+fn hand_rank(e: &Expr) -> u8 {
+    match e.node() {
+        ExprNode::Sym(_) | ExprNode::Const(_) => 0,
+        ExprNode::Pow(b, x) if x.as_number().is_some() && matches!(b.node(), ExprNode::Sym(_)) => 0,
+        _ => 1,
+    }
+}
+
 fn plain_product(e: &Expr) -> (String, Prec) {
-    let p = product_shape(e);
+    let mut p = product_shape(e);
+    if unicode() {
+        p.num.sort_by_key(hand_rank);
+        p.den.sort_by_key(hand_rank);
+    }
     let mut num: Vec<String> = Vec::new();
     if let Some(c) = &p.num_coeff {
         let (s, pr) = plain_number(c);
@@ -495,10 +716,17 @@ fn plain_product(e: &Expr) -> (String, Prec) {
     if p.negative {
         out.push('-');
     }
+    let join = |v: &[String]| {
+        if unicode() {
+            join_factors(v)
+        } else {
+            v.join("*")
+        }
+    };
     if num.is_empty() {
         out.push('1');
     } else {
-        out.push_str(&num.join("*"));
+        out.push_str(&join(&num));
     }
     if !den.is_empty() {
         out.push('/');
@@ -506,7 +734,7 @@ fn plain_product(e: &Expr) -> (String, Prec) {
             out.push_str(&den[0]);
         } else {
             out.push('(');
-            out.push_str(&den.join("*"));
+            out.push_str(&join(&den));
             out.push(')');
         }
     }
@@ -537,6 +765,7 @@ fn plain_func(f: Func, args: &[Expr]) -> (String, Prec) {
             (format!("log_{b}({x})"), Prec::Atom)
         }
         Func::Gamma => (format!("Γ({})", plain_list(args)), Prec::Atom),
+        Func::Digamma if unicode() => (format!("ψ({})", plain_list(args)), Prec::Atom),
         _ => (format!("{}({})", f.name(), plain_list(args)), Prec::Atom),
     }
 }
@@ -791,6 +1020,9 @@ fn latex(e: &Expr) -> (String, Prec) {
                 .join(" \\cup "),
             Prec::Add,
         ),
+        ExprNode::Apply(name, args) if args.is_empty() && &**name == EULER_GAMMA => {
+            ("\\gamma".into(), Prec::Atom)
+        }
         ExprNode::Apply(name, args) => (
             format!("{}\\left({}\\right)", latex_name(name), latex_list(args)),
             Prec::Atom,
@@ -1130,6 +1362,14 @@ impl Expr {
     /// LaTeX source for this expression.
     pub fn to_latex(&self) -> String {
         latex(self).0
+    }
+
+    /// Unicode text for people to read: `9π`, `2xy`, `x² + 1`, `√2`, `C₁`, `x sin(x)`,
+    /// with `·` only where two factors would otherwise run together. The plain form
+    /// ([`fmt::Display`], `9*π`) stays the stable ASCII one for tools and tests.
+    pub fn to_text(&self) -> String {
+        let _restore = UnicodeGuard(UNICODE.with(|u| u.replace(true)));
+        plain(self).0
     }
 }
 

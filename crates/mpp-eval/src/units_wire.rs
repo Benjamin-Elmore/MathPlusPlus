@@ -155,6 +155,30 @@ pub fn fold(e: &Expr) -> MathResult<Folded> {
         ExprNode::Mul(factors) => fold_product(factors),
         ExprNode::Pow(base, exp) => fold_power(base, exp),
         ExprNode::Func(f, args) => fold_function(*f, args),
+        // A special function (`K(sin 15°)`, `W(x)`): every argument dimensionless.
+        ExprNode::Apply(name, args) if !args.is_empty() => {
+            let mut plain = Vec::with_capacity(args.len());
+            let mut all_certain = true;
+            for a in args {
+                let Folded::Known { q, certain, .. } = fold(a)? else {
+                    return Ok(Folded::Unknown);
+                };
+                if !q.unit.is_dimensionless() {
+                    if !certain {
+                        return Ok(Folded::Unknown);
+                    }
+                    return Err(q.require_dimensionless(name).err().unwrap_or_else(|| {
+                        MathError::Dimension(format!("{name} needs dimensionless arguments"))
+                    }));
+                }
+                all_certain &= certain;
+                plain.push(q.require_dimensionless(name)?);
+            }
+            Ok(known(
+                Quantity::number(Expr::apply(name, plain)),
+                all_certain,
+            ))
+        }
         _ => Ok(Folded::Unknown),
     }
 }
@@ -379,6 +403,93 @@ pub fn evaluate(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
     }
 }
 
+/// Asked before the other solvers: an equation to solve that carries units.
+pub fn evaluate_solve(e: &Expr, ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    match e.node() {
+        ExprNode::Apply(name, args) if &**name == "operatorname" => solve_with_units(args, ctx),
+        _ => None,
+    }
+}
+
+/// `\operatorname{solve}_t (V_C(t) = 0.99\,V_0)` when the equation carries units: the
+/// unknown gets the unit that makes the equation consistent (tried from the units in
+/// it), both sides are measured in SI units, and the plain equation is solved; each
+/// root comes back with that unit (`4.605 s`).
+fn solve_with_units(args: &[Expr], ctx: &Ctx<'_>) -> Option<MathResult<Expr>> {
+    let [which, sub, _sup, body] = args else {
+        return None;
+    };
+    if which.as_sym() != Some("solve") {
+        return None;
+    }
+    let var = sub.as_sym()?;
+    let ExprNode::Tuple(items) = body.node() else {
+        return None;
+    };
+    let [eq] = items.as_slice() else {
+        return None;
+    };
+    let ExprNode::Relation(RelOp::Eq, l, r) = eq.node() else {
+        return None;
+    };
+    if !contains_units(eq) {
+        return None;
+    }
+    let difference = (l.clone() - r.clone()).simplify();
+    // The units met in the equation, their reciprocals, and none at all.
+    let mut candidates = vec![Unit::one()];
+    collect_units(&difference, &mut candidates);
+    let x = "#x";
+    for unit in candidates {
+        let trial = difference.subs(var, &(Expr::sym(x) * factor(&unit)));
+        let Ok(Folded::Known { q, .. }) = fold(&trial) else {
+            continue;
+        };
+        // The value of the difference in SI units, as a plain function of x.
+        let plain = (q.value.clone() * q.unit.scale()).simplify();
+        if plain.free_symbols().iter().any(|s| **s != *x) {
+            return None;
+        }
+        let call = Expr::apply(
+            "operatorname",
+            vec![
+                Expr::sym("solve"),
+                Expr::sym(x),
+                Expr::new(ExprNode::Tuple(Vec::new())),
+                Expr::new(ExprNode::Tuple(vec![Expr::equation(plain, Expr::zero())])),
+            ],
+        );
+        let roots = match evaluate_holder(&call, ctx) {
+            Ok(v) => v,
+            Err(e) => return Some(Err(e)),
+        };
+        let with_unit = |v: &Expr| (v.clone() * factor(&unit)).simplify();
+        return Some(Ok(match roots.node() {
+            ExprNode::Set(vs) => Expr::new(ExprNode::Set(vs.iter().map(with_unit).collect())),
+            ExprNode::Tuple(vs) => Expr::new(ExprNode::Tuple(vs.iter().map(with_unit).collect())),
+            _ => with_unit(&roots),
+        }));
+    }
+    None
+}
+
+/// The units (made coherent) of the parts of `e` that carry one, and their reciprocals.
+fn collect_units(e: &Expr, out: &mut Vec<Unit>) {
+    if let Ok(Folded::Known { q, .. }) = fold(e) {
+        if !q.unit.is_one() {
+            let u = q.simplified().unit;
+            for cand in [u.clone(), Unit::one().div(&u).unwrap_or_else(|_| u.clone())] {
+                if !out.contains(&cand) {
+                    out.push(cand);
+                }
+            }
+        }
+    }
+    for c in e.children() {
+        collect_units(c, out);
+    }
+}
+
 fn convert(args: &[Expr]) -> MathResult<Expr> {
     let [value, target] = args else {
         return Err(MathError::WrongArity {
@@ -487,7 +598,7 @@ fn check_inside(e: &Expr) -> MathResult<()> {
 }
 
 /// `a op b` for quantities: decided when both sides are known numbers.
-fn relation(op: RelOp, a: &Expr, b: &Expr) -> MathResult<Option<bool>> {
+pub(crate) fn relation(op: RelOp, a: &Expr, b: &Expr) -> MathResult<Option<bool>> {
     let (
         Folded::Known {
             q: x, certain: cx, ..
@@ -613,6 +724,54 @@ fn approx_of(q: &Quantity) -> Option<String> {
 
 /// The decimal value of a quantity, unit included (`≈ ?` with units).
 pub fn approximate(e: &Expr) -> MathResult<Option<String>> {
+    // An interval of quantities (a confidence interval): each end.
+    if let ExprNode::Interval {
+        lo,
+        hi,
+        lo_closed,
+        hi_closed,
+    } = e.node()
+    {
+        let end = |x: &Expr| -> MathResult<Option<String>> {
+            if contains_units(x) {
+                approximate(x)
+            } else {
+                Ok(crate::numeric::approximate(x).ok())
+            }
+        };
+        let (Some(a), Some(b)) = (end(lo)?, end(hi)?) else {
+            return Ok(None);
+        };
+        return Ok(Some(format!(
+            "{}{a}, {b}{}",
+            if *lo_closed { "[" } else { "(" },
+            if *hi_closed { "]" } else { ")" }
+        )));
+    }
+    // A set or list of quantities (the roots of an equation with units): each entry.
+    if let ExprNode::Set(items) | ExprNode::Tuple(items) = e.node() {
+        if !items.iter().any(contains_units) {
+            return Ok(None);
+        }
+        let mut parts = Vec::with_capacity(items.len());
+        for item in items {
+            let shown = if contains_units(item) {
+                approximate(item)?
+            } else {
+                crate::numeric::approximate(item).ok()
+            };
+            let Some(s) = shown else {
+                return Ok(None);
+            };
+            parts.push(s);
+        }
+        let (open, close) = if matches!(e.node(), ExprNode::Set(_)) {
+            ("{", "}")
+        } else {
+            ("(", ")")
+        };
+        return Ok(Some(format!("{open}{}{close}", parts.join(", "))));
+    }
     let Folded::Known { q, exact, .. } = fold(e)? else {
         return Ok(None);
     };

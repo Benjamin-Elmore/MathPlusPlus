@@ -486,6 +486,16 @@ fn pow_numbers(b: &Number, n: &Number) -> Expr {
     let Some(den) = q.denom().to_u32().filter(|d| *d <= 1000) else {
         return raw();
     };
+    // Exact roots only while the numbers stay small: 2^(−1000/573) would need the
+    // 573rd root of a 170 000-digit integer, so it stays a power (its value is
+    // computed numerically when asked for).
+    const MAX_BITS: u64 = 4_096;
+    let bits = |x: &BigInt| x.bits().max(1);
+    let p_abs = q.numer().abs().to_u64().unwrap_or(u64::MAX);
+    let powered_bits = p_abs.saturating_mul(bits(r.numer()).max(bits(r.denom())));
+    if powered_bits > MAX_BITS || powered_bits.saturating_mul(u64::from(den)) > 64 * MAX_BITS {
+        return raw();
+    }
     // r^(p/den) = (r^p)^(1/den)
     let powered = match Number::Rational(r.clone()).pow_int(q.numer()) {
         Ok(Number::Rational(v)) => v,

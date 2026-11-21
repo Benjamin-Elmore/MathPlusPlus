@@ -17,7 +17,7 @@ fn answers(ev: &Evaluated) -> Vec<&LineResult> {
 }
 
 fn exact(line: &LineResult) -> String {
-    line.text.clone().unwrap_or_else(|| "<none>".into())
+    line.plain.clone().unwrap_or_else(|| "<none>".into())
 }
 
 fn approx(line: &LineResult) -> String {
@@ -223,7 +223,7 @@ $$ (a+b)^2 \\overset{?}{=} a^2 + 2ab + b^2 $$
         .map(|l| l.verdict.as_ref().and_then(|v| v.passed()))
         .collect();
     assert_eq!(verdicts, [Some(true), Some(false), Some(true)]);
-    let fail = a[1].answer().unwrap_or_default();
+    let fail = a[1].plain_answer().unwrap_or_default();
     assert!(fail.starts_with('✗') && fail.contains("x = "), "{fail}");
 }
 
@@ -483,7 +483,7 @@ Figure: $z = x^2 - y^2$, $x, y \\in [-2, 2]$.
     assert!(d.contains("981") && !d.contains("v_0"), "{d}");
     assert_eq!(exact(a[4]), "200*m");
     let report = ev.report();
-    assert!(report.contains("E = ?  = 200*m"), "{report}");
+    assert!(report.contains("E = ?  = 200m"), "{report}");
     assert!(report.contains("warning"), "{report}");
 }
 

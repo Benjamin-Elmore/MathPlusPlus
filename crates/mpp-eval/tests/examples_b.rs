@@ -25,7 +25,7 @@ fn render(src: &str) -> String {
     for (block, line) in ev.queries() {
         let text = src.get(line.span.start..line.span.end).unwrap_or("").trim();
         let _ = writeln!(out, "{}: {text}", index.line_of(line.span.start));
-        if let Some(answer) = line.answer() {
+        if let Some(answer) = line.plain_answer() {
             let _ = writeln!(out, "    {answer}");
         }
         if let Some(steps) = &line.steps {

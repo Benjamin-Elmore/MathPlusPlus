@@ -210,3 +210,29 @@ fn run_shows_steps_when_asked() {
     assert!(with.lines().count() > plain.lines().count(), "{with}");
     assert!(with.contains("integration by parts"));
 }
+
+#[test]
+fn an_exact_query_without_a_closed_form_shows_its_number() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("numeric.mpp");
+    std::fs::write(
+        &file,
+        concat!(
+            r"$$ \zeta(3) = ? $$",
+            "\n\n",
+            r"$$ \operatorname{erf}(\tfrac12) = ? $$",
+            "\n\n",
+            r"$$ \zeta(2) = ? $$",
+            "\n"
+        ),
+    )
+    .unwrap();
+    let out = mpp().arg("run").arg(&file).output().unwrap();
+    let s = text(&out.stdout);
+    assert!(out.status.success(), "{s}");
+    // No "(no answer)", and the number is marked as approximate.
+    assert!(s.contains("ζ(3) ≈ 1.202056903"), "{s}");
+    assert!(s.contains("erf(1/2) ≈ 0.5204998778"), "{s}");
+    // A closed form stays exact.
+    assert!(s.contains("ζ(2) = π"), "{s}");
+}

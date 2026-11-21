@@ -221,6 +221,14 @@ fn lift_conditions(e: &Expr, conds: &mut Vec<Expr>) -> Expr {
             conds.push(e.clone());
             Expr::sym(&format!("{PLACEHOLDER}{}", conds.len() - 1))
         }
+        // A piecewise function decides its own conditions; only its values are lifted.
+        ExprNode::Piecewise { cases, otherwise } => Expr::new(ExprNode::Piecewise {
+            cases: cases
+                .iter()
+                .map(|(v, c)| (lift_conditions(v, conds), c.clone()))
+                .collect(),
+            otherwise: otherwise.as_ref().map(|o| lift_conditions(o, conds)),
+        }),
         _ if e.children().is_empty() => e.clone(),
         _ => Expr::new(e.map_children(&mut |c| lift_conditions(c, conds))),
     }

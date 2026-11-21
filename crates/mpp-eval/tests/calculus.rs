@@ -40,7 +40,7 @@ fn no_errors(ev: &Evaluated) {
 }
 
 fn exact(line: &LineResult) -> String {
-    line.text.clone().unwrap_or_else(|| "<none>".into())
+    line.plain.clone().unwrap_or_else(|| "<none>".into())
 }
 
 fn number(line: &LineResult) -> f64 {
@@ -263,7 +263,7 @@ $$ ∫_0^1 sin(x^2) dx ≈ ? $$
     let cubic = Expr::e().pow(-x.pow(3));
     let (check, _) = numeric_integrate(&cubic, "x", 0.0, 1.0, 1e-12).expect("quadrature");
     assert!((number(a[2]) - check).abs() < 1e-9);
-    assert!(a[2].answer().is_some_and(|t| t.starts_with('≈')));
+    assert!(a[2].plain_answer().is_some_and(|t| t.starts_with('≈')));
     assert!((number(a[3]) - 0.310_268_301_723_381).abs() < 1e-9);
     let w = warnings(&ev);
     assert_eq!(w.len(), 1, "{w:?}");

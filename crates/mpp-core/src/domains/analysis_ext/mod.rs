@@ -40,6 +40,13 @@ const OPS: &[&str] = &[
     "fixedpoint",
 ];
 
+/// The name the step function keeps once applied: the same `H` the ODE solver and the
+/// Laplace tables read, so `\operatorname{heaviside}(t)` and `H(t)` are one function.
+pub const STEP: &str = "H";
+
+/// The name the delta keeps once applied (`delta(x)`, `delta(x, j)` for `δ^{(j)}`).
+pub const DELTA: &str = "delta";
+
 /// Samples used for the sup norm of a function.
 const SUP_SAMPLES: usize = 4_001;
 
@@ -63,14 +70,16 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
             expect_args(op, args, 1)?;
             let x = &args[0];
             if !x.is_constant() {
-                return Ok(Expr::apply(op, args.to_vec()));
+                return Ok(Expr::apply(STEP, args.to_vec()));
             }
             Ok(match sign(x) {
                 Some(std::cmp::Ordering::Greater) => Expr::one(),
                 Some(std::cmp::Ordering::Less) => Expr::zero(),
                 Some(std::cmp::Ordering::Equal) => {
-                    ctx.note("H(0) = 1/2 by the half-maximum convention");
-                    Expr::rational(1, 2)
+                    ctx.note(
+                        "H(0) is 0, 1/2 or 1 depending on the convention, so it stays as written",
+                    );
+                    Expr::apply(STEP, args.to_vec())
                 }
                 None => return Err(domain_err(op, format!("{x} is not a real number"))),
             })
@@ -84,9 +93,9 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
             };
             if !x.is_constant() {
                 return Ok(if order == 0 {
-                    Expr::apply(op, vec![x.clone()])
+                    Expr::apply(DELTA, vec![x.clone()])
                 } else {
-                    Expr::apply(op, vec![x.clone(), Expr::int(order as i64)])
+                    Expr::apply(DELTA, vec![x.clone(), Expr::int(order as i64)])
                 });
             }
             match sign(x) {
@@ -265,16 +274,20 @@ mod tests {
         let x = Expr::sym("x");
         assert_eq!(run("heaviside", &[Expr::int(3)]), Ok(Expr::one()));
         assert_eq!(run("heaviside", &[Expr::int(-3)]), Ok(Expr::zero()));
-        assert_eq!(run("heaviside", &[Expr::zero()]), Ok(Expr::rational(1, 2)));
+        // At the jump the conventions differ, so H(0) stays as written.
+        assert_eq!(
+            run("heaviside", &[Expr::zero()]),
+            Ok(Expr::apply(STEP, vec![Expr::zero()]))
+        );
         assert_eq!(
             run("heaviside", std::slice::from_ref(&x)),
-            Ok(Expr::apply("heaviside", vec![x.clone()]))
+            Ok(Expr::apply(STEP, vec![x.clone()]))
         );
         assert_eq!(run("dirac", &[Expr::int(2)]), Ok(Expr::zero()));
         assert!(run("dirac", &[Expr::zero()]).is_err());
         assert_eq!(
             run("dirac", &[x.clone(), Expr::zero()]),
-            Ok(Expr::apply("dirac", vec![x.clone()]))
+            Ok(Expr::apply(DELTA, vec![x.clone()]))
         );
         // ⟨δ, cos⟩ = 1, ⟨δ′, sin⟩ = −cos 0 = −1, ⟨δ″, x³ + x²⟩ = 2 (catalogue: δ′(ψ) = −ψ′(0)).
         let cos = func(Func::Cos, vec![x.clone()]);

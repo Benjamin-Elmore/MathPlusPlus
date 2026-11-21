@@ -188,6 +188,29 @@ fn order(op: &str, x: f64) -> MathResult<i64> {
     Ok(x as i64)
 }
 
+/// True for the names [`call_real`] evaluates.
+pub fn has_numeric_value(name: &str) -> bool {
+    matches!(
+        name,
+        crate::expr::EULER_GAMMA
+            | "polygamma"
+            | "erf"
+            | "erfc"
+            | "lambertw"
+            | "besselj"
+            | "beta"
+            | "legendrep"
+            | "chebyshevt"
+            | "chebyshevu"
+            | "ellipk"
+            | "ellipe"
+            | "heaviside"
+            | "H"
+            | "dirac"
+            | "delta"
+    )
+}
+
 /// Numeric values of the special functions (and the distributions of the analysis
 /// domain) by name, for evaluating them inside larger expressions. `None` when the
 /// name is not one of them.
@@ -205,6 +228,8 @@ pub fn call_real(name: &str, args: &[f64]) -> Option<MathResult<f64>> {
         }
     };
     Some(match name {
+        crate::expr::EULER_GAMMA if args.is_empty() => Ok(std::f64::consts::EULER_GAMMA),
+        "polygamma" => two(&|n, x| polygamma_f64(order(name, n)?, x)),
         "erf" => one(|x| Ok(erf::erf(x))),
         "erfc" => one(|x| Ok(erf::erfc(x))),
         "lambertw" => match args {
@@ -237,17 +262,19 @@ pub fn call_real(name: &str, args: &[f64]) -> Option<MathResult<f64>> {
         }),
         "ellipk" => one(elliptic::ellip_k),
         "ellipe" => one(elliptic::ellip_e),
-        // H(0) = 1/2 (the half-maximum convention).
-        "heaviside" => one(|x| {
-            Ok(if x > 0.0 {
-                1.0
+        // At the jump the conventions differ (0, 1/2 or 1), so H(0) has no value here.
+        "heaviside" | "H" => one(|x| {
+            if x > 0.0 {
+                Ok(1.0)
             } else if x < 0.0 {
-                0.0
+                Ok(0.0)
             } else {
-                0.5
-            })
+                Err(MathError::Undefined(
+                    "H(0): the value at the jump depends on the convention".into(),
+                ))
+            }
         }),
-        "dirac" => match args {
+        "dirac" | "delta" => match args {
             [x] | [x, _] if *x != 0.0 => Ok(0.0),
             _ => Err(MathError::Undefined(
                 "δ at 0 (it is a distribution, not a function)".into(),
@@ -255,6 +282,56 @@ pub fn call_real(name: &str, args: &[f64]) -> Option<MathResult<f64>> {
         },
         _ => return None,
     })
+}
+
+/// The polygamma function ψ^{(n)}(x) = dⁿ⁺¹/dxⁿ⁺¹ ln Γ(x) for n ≥ 1 (n = 0 is the
+/// digamma function): the recurrence ψ^{(n)}(x) = ψ^{(n)}(x + 1) + (−1)ⁿ⁺¹ n!/xⁿ⁺¹ moves
+/// x above 20, then the asymptotic series (DLMF 5.15.8) finishes it.
+pub fn polygamma_f64(n: i64, x: f64) -> MathResult<f64> {
+    if n == 0 {
+        return crate::functions::digamma_f64(x);
+    }
+    if !(1..=50).contains(&n) {
+        return Err(domain_err(
+            "polygamma",
+            "the order must be a whole number from 0 to 50",
+        ));
+    }
+    if x <= 0.0 && x.fract() == 0.0 {
+        return Err(MathError::Undefined(format!("ψ^({n}) at the pole {x}")));
+    }
+    if !x.is_finite() {
+        return Err(domain_err("polygamma", "the argument must be finite"));
+    }
+    let nf = n as f64;
+    let sign = if n % 2 == 1 { 1.0 } else { -1.0 }; // (−1)^{n+1}
+    let fact: f64 = (1..=n).map(|k| k as f64).product();
+    let mut x = x;
+    let mut acc = 0.0;
+    while x < 20.0 {
+        acc += sign * fact / x.powf(nf + 1.0);
+        x += 1.0;
+    }
+    // (−1)^{n+1} [ (n−1)!/xⁿ + n!/(2xⁿ⁺¹) + Σₖ B₂ₖ (2k+n−1)!/((2k)! x^{2k+n}) ]
+    const B2K: [f64; 8] = [
+        1.0 / 6.0,
+        -1.0 / 30.0,
+        1.0 / 42.0,
+        -1.0 / 30.0,
+        5.0 / 66.0,
+        -691.0 / 2730.0,
+        7.0 / 6.0,
+        -3617.0 / 510.0,
+    ];
+    let fact_m1: f64 = (1..n).map(|k| k as f64).product();
+    let mut series = fact_m1 / x.powf(nf) + fact / (2.0 * x.powf(nf + 1.0));
+    for (i, b) in B2K.iter().enumerate() {
+        let k = (i + 1) as i64;
+        // (2k+n−1)! / (2k)!
+        let ratio: f64 = ((2 * k + 1)..=(2 * k + n - 1)).map(|j| j as f64).product();
+        series += b * ratio / x.powf((2 * k) as f64 + nf);
+    }
+    Ok(acc + sign * series)
 }
 
 /// Complex evaluation hook: the beta function takes complex arguments, the others are
@@ -299,7 +376,11 @@ pub fn partial(name: &str, args: &[Expr], index: usize) -> Option<Expr> {
         }
         ("besselj", 1) => {
             let x = args.get(1)?.clone();
-            (app("besselj", vec![&u - &one, x.clone()]) - app("besselj", vec![&u + &one, x])) / two
+            (bessel_j_of(&u - &one, x.clone()) - bessel_j_of(&u + &one, x)) / two
+        }
+        ("polygamma", 1) => {
+            let x = args.get(1)?.clone();
+            app("polygamma", vec![(&u + &one).simplify(), x])
         }
         ("legendrep", 1) => {
             let x = args.get(1)?.clone();
@@ -331,17 +412,28 @@ pub fn partial(name: &str, args: &[Expr], index: usize) -> Option<Expr> {
             app("beta", vec![a.clone(), b.clone()])
                 * (func(Func::Digamma, vec![this]) - func(Func::Digamma, vec![&a + &b]))
         }
-        ("heaviside", 0) => app("dirac", vec![u]),
-        ("dirac", 0) => {
+        ("heaviside" | "H", 0) => app("delta", vec![u]),
+        ("dirac" | "delta", 0) => {
             let j = match args.get(1) {
                 Some(j) => j + &one,
                 None => one,
             };
-            app("dirac", vec![u, j.simplify()])
+            app("delta", vec![u, j.simplify()])
         }
         _ => return None,
     };
     Some(d.simplify())
+}
+
+/// `J_n(x)` with a negative whole order written with a positive one,
+/// `J_{−n} = (−1)ⁿ J_n` (DLMF 10.4.1), so `J_0′ = −J_1`.
+fn bessel_j_of(n: Expr, x: Expr) -> Expr {
+    let n = n.simplify();
+    if let Some(k) = n.as_number().and_then(|v| v.as_i64()).filter(|k| *k < 0) {
+        let j = Expr::apply("besselj", vec![Expr::int(-k), x]);
+        return if k % 2 == 0 { j } else { -j };
+    }
+    Expr::apply("besselj", vec![n, x])
 }
 
 /// True when `e` is an application of one of this domain's functions.
@@ -360,6 +452,37 @@ mod tests {
 
     fn num(e: &Expr) -> f64 {
         eval_at(e, &[], &[]).unwrap()
+    }
+
+    #[test]
+    fn polygamma_values() {
+        let pi2 = std::f64::consts::PI.powi(2);
+        // ψ′(1) = π²/6, ψ′(1/2) = π²/2, ψ″(1) = −2ζ(3), ψ‴(1) = π⁴/15 (DLMF 5.15.2–5.15.3).
+        assert!(close(polygamma_f64(1, 1.0).unwrap(), pi2 / 6.0, 1e-12));
+        assert!(close(polygamma_f64(1, 0.5).unwrap(), pi2 / 2.0, 1e-12));
+        assert!(close(
+            polygamma_f64(2, 1.0).unwrap(),
+            -2.404_113_806_319_188_5,
+            1e-12
+        ));
+        assert!(close(
+            polygamma_f64(3, 1.0).unwrap(),
+            pi2 * pi2 / 15.0,
+            1e-12
+        ));
+        // Across the switch to the asymptotic series: ψ′(x) − ψ′(x + 1) = 1/x².
+        let (a, b) = (
+            polygamma_f64(1, 19.5).unwrap(),
+            polygamma_f64(1, 20.5).unwrap(),
+        );
+        assert!(close(a - b, 1.0 / 19.5f64.powi(2), 1e-12));
+        assert!(polygamma_f64(1, -2.0).is_err());
+        assert!(polygamma_f64(-1, 1.0).is_err());
+        assert!(close(
+            eval_at(&Expr::euler_gamma(), &[], &[]).unwrap(),
+            std::f64::consts::EULER_GAMMA,
+            1e-15
+        ));
     }
 
     #[test]
@@ -459,11 +582,15 @@ mod tests {
         }
         assert_eq!(
             partial("heaviside", std::slice::from_ref(&x), 0),
-            Some(Expr::apply("dirac", vec![x.clone()]))
+            Some(Expr::apply("delta", vec![x.clone()]))
+        );
+        assert_eq!(
+            partial("H", std::slice::from_ref(&x), 0),
+            Some(Expr::apply("delta", vec![x.clone()]))
         );
         assert_eq!(
             partial("dirac", std::slice::from_ref(&x), 0),
-            Some(Expr::apply("dirac", vec![x, Expr::one()]))
+            Some(Expr::apply("delta", vec![x, Expr::one()]))
         );
     }
 }

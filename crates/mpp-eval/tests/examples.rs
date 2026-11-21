@@ -35,9 +35,9 @@ fn answers_of(path: &Path) -> Vec<String> {
                     }
                 );
                 let shown = if approx_query {
-                    line.approx.clone().or_else(|| line.text.clone())
+                    line.approx.clone().or_else(|| line.plain.clone())
                 } else {
-                    line.text.clone()
+                    line.plain.clone()
                 };
                 shown.unwrap_or_else(|| "<none>".into())
             }

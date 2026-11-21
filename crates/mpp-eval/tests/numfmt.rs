@@ -18,7 +18,7 @@ fn texts(src: &str) -> Vec<String> {
     let errs: Vec<_> = ev.errors().iter().map(|d| d.message.clone()).collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     ev.queries()
-        .map(|(_, l)| l.text.clone().unwrap_or_else(|| "<none>".into()))
+        .map(|(_, l)| l.plain.clone().unwrap_or_else(|| "<none>".into()))
         .collect()
 }
 
@@ -263,16 +263,16 @@ fn reformat_switches_without_changing_the_file() {
     );
 
     // Reformatting is a pure query: the line itself did not change.
-    assert_eq!(lines[0].text.as_deref(), Some("22/7"));
+    assert_eq!(lines[0].plain.as_deref(), Some("22/7"));
 
     // A result already shown under a directive can still be switched back.
     let ev = run("%sf 3\n%decimal\n$$ \\frac{22}{7} + 0 = ? $$\n");
     let line = ev.queries().next().unwrap().1.clone();
-    assert_eq!(line.text.as_deref(), Some("3.14"));
+    assert_eq!(line.plain.as_deref(), Some("3.14"));
     assert_eq!(line.reformat(&base).0.as_deref(), Some("22/7"));
     let mut line = line;
     line.set_format(&base);
-    assert_eq!(line.text.as_deref(), Some("22/7"));
+    assert_eq!(line.plain.as_deref(), Some("22/7"));
     assert_eq!(line.format(), Some(&base));
 }
 
@@ -299,6 +299,6 @@ fn applying_a_format_never_changes_values() {
     let src = "%decimal\n%sf 3\n$$ a := \\frac{1}{3} $$\n\n$$ a + \\frac{1}{6} = ? $$\n";
     let ev = run(src);
     let line = ev.queries().next().unwrap().1;
-    assert_eq!(line.text.as_deref(), Some("0.500"));
+    assert_eq!(line.plain.as_deref(), Some("0.500"));
     assert_eq!(line.value.as_ref().unwrap().expr().to_string(), "1/2");
 }

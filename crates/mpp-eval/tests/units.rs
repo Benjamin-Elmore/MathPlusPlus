@@ -21,7 +21,7 @@ fn answers(src: &str) -> Vec<String> {
     let errs = errors(&ev);
     assert!(errs.is_empty(), "{src}: unexpected errors {errs:?}");
     ev.queries()
-        .map(|(_, l)| l.text.clone().unwrap_or_else(|| "<none>".into()))
+        .map(|(_, l)| l.plain.clone().unwrap_or_else(|| "<none>".into()))
         .collect()
 }
 
@@ -56,7 +56,7 @@ fn the_example_worksheet_gives_its_expected_answers() {
             .map(|d| d.message.clone());
         got.push(match error {
             Some(e) => e,
-            None => line.text.clone().unwrap_or_default(),
+            None => line.plain.clone().unwrap_or_default(),
         });
     }
     let want: Vec<&str> = expected
@@ -177,7 +177,7 @@ fn definitions_show_their_units() {
         .iter()
         .flat_map(|b| b.values.iter())
         .filter(|l| matches!(l.kind, LineKind::Definition { .. }))
-        .filter_map(|l| l.text.clone())
+        .filter_map(|l| l.plain.clone())
         .collect();
     assert_eq!(shown, vec!["36 km/h", "981/100 m/s^2"]);
 }

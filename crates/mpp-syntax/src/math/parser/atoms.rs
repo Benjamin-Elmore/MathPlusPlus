@@ -36,7 +36,8 @@ impl Parser<'_> {
         match tok {
             Tok::Number(text) => {
                 self.bump();
-                Node::new(NodeKind::Number(text), span)
+                let (text, end) = self.digit_groups(text, span);
+                Node::new(NodeKind::Number(text), span.join(end))
             }
             Tok::Letter(c) => {
                 self.bump();
@@ -253,6 +254,33 @@ impl Parser<'_> {
         Node::new(kind, span)
     }
 
+    /// `10\,000` and `1\,234\,567.5`: groups of three digits joined by a thin space
+    /// are one number, as in printed tables. Returns the digits and the last span.
+    fn digit_groups(&mut self, mut text: String, mut end: Span) -> (String, Span) {
+        if text.contains('.') {
+            return (text, end);
+        }
+        while let Some(Tok::Number(next)) = self.peek().cloned() {
+            let at = self.cur_span();
+            let between = self
+                .src
+                .get(end.end.saturating_sub(self.base)..at.start.saturating_sub(self.base))
+                .unwrap_or("");
+            let thin = matches!(between, "\\," | "\\ " | "{,}" | "\u{2009}" | "\u{202F}");
+            let group = next.split('.').next().unwrap_or("");
+            if !thin || group.len() != 3 || !group.chars().all(|c| c.is_ascii_digit()) {
+                break;
+            }
+            self.bump();
+            text.push_str(&next);
+            end = at;
+            if next.contains('.') {
+                break;
+            }
+        }
+        (text, end)
+    }
+
     /// A known function after its name: scripts, then bracketed or bare arguments.
     pub(super) fn func_app(&mut self, sym: &'static Symbol, start: Span) -> Node {
         let mut sub = None;
@@ -299,6 +327,13 @@ impl Parser<'_> {
             let arg = self.func_arg();
             let end = arg.span;
             (vec![arg], false, end)
+        } else if sub.is_none() && power.is_none() && !inverse && self.at_name_end() {
+            // `$\sin$` on its own (prose about the function): the function's name.
+            let name = Name {
+                font: Some(Font::Roman),
+                ..Name::simple(sym.name)
+            };
+            return Node::new(NodeKind::Name(name), start);
         } else {
             let what = format!("the argument of `{}`", self.text(start));
             let missing = self.missing(&what, &["an expression", "`(`"]);
@@ -317,6 +352,12 @@ impl Parser<'_> {
             })),
             span,
         )
+    }
+
+    /// True at the end of the line or before a `,`: nothing an argument could start with.
+    fn at_name_end(&self) -> bool {
+        self.peek()
+            .is_none_or(|t| matches!(t, Tok::NewLine | Tok::Comma))
     }
 
     /// A bracket-less function argument: the product to the right, up to the next

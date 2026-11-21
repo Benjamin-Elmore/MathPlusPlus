@@ -186,15 +186,11 @@ fn integral(e: &Expr, ctx: &Ctx<'_>) -> MathResult<Expr> {
 /// `F + C`, shown with the constant last.
 fn with_constant(ctx: &Ctx<'_>, antiderivative: &Expr, constant: &str) -> Expr {
     let value = simplify(&add(vec![antiderivative.clone(), Expr::sym(constant)]));
-    let (text, latex) = if antiderivative.is_zero() {
-        (constant.to_string(), constant.to_string())
+    if antiderivative.is_zero() {
+        ctx.show_as(&value, constant.to_string(), constant.to_string());
     } else {
-        (
-            format!("{antiderivative} + {constant}"),
-            format!("{} + {constant}", antiderivative.to_latex()),
-        )
-    };
-    ctx.show_as(&value, text, latex);
+        ctx.show_with_constant(&value, antiderivative, constant);
+    }
     value
 }
 

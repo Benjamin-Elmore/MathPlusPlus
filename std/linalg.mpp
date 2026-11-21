@@ -100,6 +100,8 @@ $$ \operatorname{rank}(S_{\text{ex}}) \overset{?}{=} 1 $$
 
 $$ S_{\text{ex}} \begin{pmatrix} -2 \\ 1 \end{pmatrix} \overset{?}{=} \begin{pmatrix} 0 \\ 0 \end{pmatrix} $$
 
+$$ \ker S_{\text{ex}} \overset{?}{=} \operatorname{kernel}(S_{\text{ex}}) $$
+
 **Theorem.** (Rank–nullity) For a linear map $T: V \to W$ with $V$ finite-dimensional, $\dim V = \operatorname{rank}(T) + \dim\ker(T)$.
 
 **Theorem.** (Determinants multiply) For square matrices of the same size, $\det(AB) = \det(A)\det(B)$; for square $A$, $\operatorname{tr}(A)$ is the sum and $\det(A)$ the product of its eigenvalues, counted with algebraic multiplicity.

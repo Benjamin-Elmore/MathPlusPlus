@@ -17,7 +17,7 @@ fn answer(src: &str) -> String {
     let errs: Vec<String> = ev.errors().iter().map(|d| d.message.clone()).collect();
     assert!(errs.is_empty(), "{src}: {errs:?}");
     let (_, line) = ev.queries().next().expect("a query");
-    line.text.clone().unwrap_or_default()
+    line.plain.clone().unwrap_or_default()
 }
 
 fn error(src: &str) -> String {

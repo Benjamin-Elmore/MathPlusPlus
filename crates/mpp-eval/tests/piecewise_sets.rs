@@ -31,7 +31,7 @@ fn answers(src: &str) -> Vec<String> {
     let errs = errors(&ev);
     assert!(errs.is_empty(), "{src}: unexpected errors {errs:?}");
     ev.queries()
-        .map(|(_, l)| l.text.clone().unwrap_or_else(|| "<none>".into()))
+        .map(|(_, l)| l.plain.clone().unwrap_or_else(|| "<none>".into()))
         .collect()
 }
 

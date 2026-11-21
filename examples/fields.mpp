@@ -14,7 +14,7 @@ $\operatorname{convergents}\big(\tfrac{1 + \sqrt 5}{2}, 6\big) = ?$.
 
 In the Gaussian integers 5 splits: $\operatorname{gaussfactor}(5) = ?$. In $\mathbb F_8 = \mathbb F_2[x]/(x^3 + x + 1)$, $x \cdot x^2$ is $\operatorname{gfmul}(2, 3, (0, 1, 0), (0, 0, 1)) = ?$.
 
-$\zeta(2) = ?$, $\zeta(3) = ?$, and the Leibniz series $L(1, \chi_4) = \operatorname{dirichletl}(1, (1, 0, -1, 0)) = ?$.
+$\zeta(2) = ?$, $\zeta(3) = ?$, and the Leibniz series $L(1, \chi_4)$ is $\operatorname{dirichletl}(1, (1, 0, -1, 0)) = ?$.
 
 ## Special functions
 
@@ -57,6 +57,6 @@ $\operatorname{expm}(J, t) = ?$, $\operatorname{chartable}(S_3) = ?$.
 
 $\operatorname{gamevalue}\begin{pmatrix} 3 & 1 \\ 2 & 4 \end{pmatrix} = ?$
 
-Hamilton's equations for the oscillator $H = \tfrac12(p^2 + q^2)$: $\operatorname{hamilton}(H, q, p) = ?$.
+Hamilton's equations for the oscillator $H := \tfrac12(p^2 + q^2)$: $\operatorname{hamilton}(H, q, p) = ?$.
 
 A call at 10 on a spot of 100, strike 100, $r = 5\%$, one year: the put is $\operatorname{putfromcall}(10, 100, 100, \tfrac1{20}, 1) = ?$.

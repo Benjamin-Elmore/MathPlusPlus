@@ -64,6 +64,12 @@ $$ \operatorname{liebracket}(X_{\text{L}}, Y_{\text{L}}) \overset{?}{=} Z_{\text
 
 $$ \operatorname{liebracket}(X_{\text{L}}, Y_{\text{L}}) \overset{?}{=} X_{\text{L}} Y_{\text{L}} - Y_{\text{L}} X_{\text{L}} $$
 
+The textbook bracket $[X, Y]$ of two matrices is the same operator, and $\operatorname{Tr}$ is the trace:
+
+$$ [X_{\text{L}}, Y_{\text{L}}] \overset{?}{=} Z_{\text{L}} $$
+
+$$ \operatorname{Tr}([X_{\text{L}}, Z_{\text{L}}]) \overset{?}{=} 0 $$
+
 $$ \operatorname{trace}(\operatorname{liebracket}(X_{\text{L}}, Z_{\text{L}})) \overset{?}{=} 0 $$
 
 $$ \operatorname{matadd}(\operatorname{matadd}(\operatorname{liebracket}(X_{\text{L}}, \operatorname{liebracket}(Y_{\text{L}}, Z_{\text{L}})), \operatorname{liebracket}(Y_{\text{L}}, \operatorname{liebracket}(Z_{\text{L}}, X_{\text{L}}))), \operatorname{liebracket}(Z_{\text{L}}, \operatorname{liebracket}(X_{\text{L}}, Y_{\text{L}}))) \overset{?}{=} \begin{pmatrix} 0 & 0 \\ 0 & 0 \end{pmatrix} $$
@@ -71,6 +77,10 @@ $$ \operatorname{matadd}(\operatorname{matadd}(\operatorname{liebracket}(X_{\tex
 The matrix exponential $\exp(tX) = \sum_{k \ge 0} (tX)^k/k!$ generates a one-parameter subgroup: $\exp(sX)\exp(tX) = \exp((s + t)X)$.
 
 $$ \operatorname{expm}(X_{\text{L}}, t) \overset{?}{=} \begin{pmatrix} 1 & t \\ 0 & 1 \end{pmatrix} $$
+
+Written as a power of $e$ it is the same exponential:
+
+$$ e^{t X_{\text{L}}} \overset{?}{=} \operatorname{expm}(X_{\text{L}}, t) $$
 
 $$ \operatorname{matmul}(\operatorname{expm}(X_{\text{L}}, s), \operatorname{expm}(X_{\text{L}}, t)) \overset{?}{=} \operatorname{expm}(X_{\text{L}}, s + t) $$
 

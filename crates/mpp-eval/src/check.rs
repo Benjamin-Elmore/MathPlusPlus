@@ -102,6 +102,40 @@ pub fn check(lhs: &Expr, rhs: &Expr) -> Verdict {
     if lhs == rhs {
         return Verdict::Proved;
     }
+    if crate::units_wire::contains_units(lhs) || crate::units_wire::contains_units(rhs) {
+        return check_units(lhs, rhs);
+    }
+    match (lhs.node(), rhs.node()) {
+        (ExprNode::Bool(a), ExprNode::Bool(b)) => {
+            return if a == b {
+                Verdict::Proved
+            } else {
+                fails_whole(lhs, rhs)
+            };
+        }
+        (ExprNode::Bool(want), _) if is_proposition(rhs) => return check_truth(rhs, *want),
+        (_, ExprNode::Bool(want)) if is_proposition(lhs) => return check_truth(lhs, *want),
+        (ExprNode::Tuple(a), ExprNode::Tuple(b)) => return check_entries(lhs, rhs, a, b),
+        (
+            ExprNode::Matrix {
+                rows: ra,
+                cols: ca,
+                data: a,
+            },
+            ExprNode::Matrix {
+                rows: rb,
+                cols: cb,
+                data: b,
+            },
+        ) => {
+            if (ra, ca) != (rb, cb) {
+                return fails_whole(lhs, rhs);
+            }
+            return check_entries(lhs, rhs, a, b);
+        }
+        (ExprNode::Set(a), ExprNode::Set(b)) => return check_sets(lhs, rhs, a, b),
+        _ => {}
+    }
     if !is_comparable(lhs) || !is_comparable(rhs) {
         return Verdict::Unknown("only numbers and expressions can be compared".into());
     }
@@ -119,6 +153,218 @@ pub fn check(lhs: &Expr, rhs: &Expr) -> Verdict {
         );
     }
     spot_check(lhs, rhs)
+}
+
+/// `✗ (left side …, right side …)` for the two whole sides.
+fn fails_whole(lhs: &Expr, rhs: &Expr) -> Verdict {
+    Verdict::Fails {
+        at: Vec::new(),
+        lhs: shown(lhs),
+        rhs: shown(rhs),
+    }
+}
+
+/// A side as text, with its units when it has them.
+fn shown(e: &Expr) -> String {
+    match crate::units_wire::present(e) {
+        Ok(Some(p)) => p.text,
+        _ => e.to_string(),
+    }
+}
+
+/// Lists and matrices: entry by entry. Every entry must pass; the first that fails is
+/// reported with its position.
+fn check_entries(lhs: &Expr, rhs: &Expr, a: &[Expr], b: &[Expr]) -> Verdict {
+    if a.len() != b.len() {
+        return fails_whole(lhs, rhs);
+    }
+    let mut fewest = None;
+    for (k, (x, y)) in a.iter().zip(b).enumerate() {
+        match check(x, y) {
+            Verdict::Proved => {}
+            Verdict::Holds { points } => {
+                fewest = Some(fewest.map_or(points, |p: usize| p.min(points)));
+            }
+            Verdict::Fails { at, lhs, rhs } => {
+                return Verdict::Fails {
+                    at,
+                    lhs: format!("{lhs} in entry {}", k + 1),
+                    rhs,
+                }
+            }
+            Verdict::Unknown(why) => return Verdict::Unknown(format!("entry {}: {why}", k + 1)),
+        }
+    }
+    match fewest {
+        Some(points) => Verdict::Holds { points },
+        None => Verdict::Proved,
+    }
+}
+
+/// Sets: equal when every element of each side is proved equal to one on the other.
+fn check_sets(lhs: &Expr, rhs: &Expr, a: &[Expr], b: &[Expr]) -> Verdict {
+    let covered = |from: &[Expr], to: &[Expr]| {
+        from.iter()
+            .all(|x| to.iter().any(|y| check(x, y) == Verdict::Proved))
+    };
+    if covered(a, b) && covered(b, a) {
+        return Verdict::Proved;
+    }
+    let numbers = |s: &[Expr]| s.iter().all(|x| x.free_symbols().is_empty());
+    if numbers(a) && numbers(b) {
+        return fails_whole(lhs, rhs);
+    }
+    Verdict::Unknown("the elements of the sets could not all be matched".into())
+}
+
+/// Values with units: compared as quantities (`100 cm = 1 m`); different dimensions
+/// can never be equal.
+fn check_units(lhs: &Expr, rhs: &Expr) -> Verdict {
+    match crate::units_wire::relation(mpp_core::RelOp::Eq, lhs, rhs) {
+        Ok(Some(true)) => Verdict::Proved,
+        Ok(Some(false)) | Err(mpp_core::MathError::Dimension(_)) => fails_whole(lhs, rhs),
+        Ok(None) | Err(_) => {
+            Verdict::Unknown("the two sides have units that could not be compared".into())
+        }
+    }
+}
+
+fn is_proposition(e: &Expr) -> bool {
+    matches!(
+        e.node(),
+        ExprNode::Relation(..) | ExprNode::Logic(..) | ExprNode::Bool(_)
+    )
+}
+
+/// The truth of a relation (or a combination of them) at a point; `None` when it
+/// cannot be decided there (a side cannot be evaluated, or the two sides are too close
+/// to tell a strict inequality from an equality).
+fn truth_at(e: &Expr, env: &HashMap<String, f64>) -> Option<bool> {
+    use mpp_core::{LogicOp, RelOp};
+    match e.node() {
+        ExprNode::Bool(b) => Some(*b),
+        ExprNode::Relation(op, a, b) => {
+            let (x, y) = (a.eval_f64(env).ok()?, b.eval_f64(env).ok()?);
+            if !(x.is_finite() && y.is_finite()) {
+                return None;
+            }
+            let close = (x - y).abs() <= 1e-9 * x.abs().max(y.abs()).max(1.0);
+            Some(match op {
+                RelOp::Eq | RelOp::Approx => close,
+                RelOp::Ne => !close,
+                RelOp::Lt | RelOp::Gt if close => return None,
+                RelOp::Lt => x < y,
+                RelOp::Gt => x > y,
+                RelOp::Le => x < y || close,
+                RelOp::Ge => x > y || close,
+            })
+        }
+        ExprNode::Logic(op, items) => {
+            let vals: Vec<Option<bool>> = items.iter().map(|i| truth_at(i, env)).collect();
+            match op {
+                LogicOp::And => {
+                    if vals.contains(&Some(false)) {
+                        Some(false)
+                    } else if vals.iter().all(|v| *v == Some(true)) {
+                        Some(true)
+                    } else {
+                        None
+                    }
+                }
+                LogicOp::Or => {
+                    if vals.contains(&Some(true)) {
+                        Some(true)
+                    } else if vals.iter().all(|v| *v == Some(false)) {
+                        Some(false)
+                    } else {
+                        None
+                    }
+                }
+                LogicOp::Not => vals.first().copied().flatten().map(|v| !v),
+            }
+        }
+        _ => None,
+    }
+}
+
+/// A relation checked against `true` or `false`: decided exactly for numbers, and for
+/// expressions with free names tried at the same random points as an equation (it
+/// passes when it has the wanted truth value at every point tried).
+fn check_truth(prop: &Expr, want: bool) -> Verdict {
+    let mut names: Vec<String> = prop.free_symbols().iter().map(|s| s.to_string()).collect();
+    names.sort();
+    if names.is_empty() {
+        // Exactly, when the difference of the two sides is an exact number.
+        if let ExprNode::Relation(op, a, b) = prop.node() {
+            let d = (a - b).simplify();
+            if let Some(n) = d.as_number().filter(|n| n.is_exact()) {
+                if let Some(sign) = n.sign() {
+                    use mpp_core::RelOp;
+                    use std::cmp::Ordering::{Equal, Greater, Less};
+                    let holds = match op {
+                        RelOp::Eq | RelOp::Approx => sign == Equal,
+                        RelOp::Ne => sign != Equal,
+                        RelOp::Lt => sign == Less,
+                        RelOp::Le => sign != Greater,
+                        RelOp::Gt => sign == Greater,
+                        RelOp::Ge => sign != Less,
+                    };
+                    return truth_verdict(holds, want, Vec::new());
+                }
+            }
+        }
+        return match truth_at(prop, &HashMap::new()) {
+            Some(holds) => truth_verdict(holds, want, Vec::new()),
+            None => Verdict::Unknown("the relation could not be decided".into()),
+        };
+    }
+    let mut rng = Rng(0x9E37_79B9_7F4A_7C15);
+    let mut agreed = 0;
+    for attempt in 0..ATTEMPTS {
+        let env: HashMap<String, f64> = names
+            .iter()
+            .map(|n| {
+                let u = rng.next();
+                let x = if attempt % 2 == 0 {
+                    -3.0 + 6.0 * u
+                } else {
+                    0.1 + 2.9 * u
+                };
+                (n.clone(), x)
+            })
+            .collect();
+        let Some(holds) = truth_at(prop, &env) else {
+            continue;
+        };
+        if holds != want {
+            let at = names
+                .iter()
+                .map(|n| (n.clone(), format_f64(env.get(n).copied().unwrap_or(0.0), 6)))
+                .collect();
+            return truth_verdict(holds, want, at);
+        }
+        agreed += 1;
+        if agreed >= WANTED {
+            break;
+        }
+    }
+    if agreed == 0 {
+        Verdict::Unknown("the relation could not be decided at any point".into())
+    } else {
+        Verdict::Holds { points: agreed }
+    }
+}
+
+fn truth_verdict(holds: bool, want: bool, at: Vec<(String, String)>) -> Verdict {
+    if holds == want {
+        Verdict::Proved
+    } else {
+        Verdict::Fails {
+            at,
+            lhs: holds.to_string(),
+            rhs: want.to_string(),
+        }
+    }
 }
 
 /// Checks an antiderivative: `∫ f dx` and an answer agree when they differ by a constant.

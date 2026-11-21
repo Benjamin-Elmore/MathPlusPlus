@@ -6,6 +6,9 @@
 //! expectation becomes a named check. A file passes when all its checks pass. The test
 //! prints a table of every file with the reason for each failure.
 //!
+//! Numbers are compared at the precision each document writes them to (`0.2983` means
+//! anything that rounds to it), or with the tolerance the document states.
+//!
 //! What fails the test in the default mode:
 //! - a proof reported as more proved than its expectation (over-claiming);
 //! - Navier–Stokes Theorem 6 coming back proved;
@@ -41,49 +44,16 @@ const KNOWN_FAILURES: &[(&str, &str)] = &[
         "historic/pythagoras.mpp",
         "area-counting premise; prose figure",
     ),
-    (
-        "historic/euler-basel.mpp",
-        "two queries on one line with \\qquad",
-    ),
     ("historic/fermat-little.mpp", "\\overset{?}{\\equiv} checks"),
-    (
-        "labs/01-projectile-drag.mpp",
-        "define-and-query lines, \\qquad lines, ODE landing time",
-    ),
-    (
-        "labs/02-pendulum.mpp",
-        "define-and-query lines, numeric ODE period, elliptic K",
-    ),
-    (
-        "labs/03-damped-spring.mpp",
-        "define-and-query lines, \\text in checks",
-    ),
-    (
-        "labs/04-rc-circuit.mpp",
-        "define-and-query lines, ODE solution as a function, fits",
-    ),
-    (
-        "labs/05-radioactive-decay.mpp",
-        "t_{1/2} names, define-and-query lines",
-    ),
-    (
-        "labs/06-reaction-kinetics.mpp",
-        "[A] names, fraction heads, fits",
-    ),
-    ("labs/07-boyles-law.mpp", "\\qquad lines, fits from tables"),
-    (
-        "labs/08-titration.mpp",
-        "several definitions per line, \\qquad lines",
-    ),
-    (
-        "labs/09-predator-prey.mpp",
-        "numeric ODE systems, max over a solution",
-    ),
-    ("labs/10-heat-rod.mpp", "PDE solving"),
-    (
-        "labs/11-monte-carlo-pi.mpp",
-        "random sampling, \\hat names, \\qquad lines",
-    ),
+    ("labs/01-projectile-drag.mpp", "`T ≈ ?` has no definition: T is introduced only by the prose \"lands when $y(T) = 0$ with $T > 0$\" (prose relations define nothing; for Ben: `T := \\operatorname{solve}_t(y(t) = 0, t > 0)` would say it in maths); and the drag system ẍ = −kẋ, ÿ = −g − kẏ has unit-carrying coefficients, which the ODE solver does not take yet, so x and y are not defined"),
+    ("labs/02-pendulum.mpp", "`T ≈ ?` has no definition: T is \"the time between successive maxima of θ(t)\" in prose only (for Ben: there is no maths construct for it); the nonlinear pendulum also needs a numerical solution defined from the statement. T₀ ≈ 2.006 s and T_exact ≈ 2.041 s are computed"),
+    ("labs/03-damped-spring.mpp", "`\\text{ for all } t \\ge 0` quantified checks are not supported, and the ODE m ẍ + c ẋ + k x = 0 with unit-carrying m, c, k is not solved yet, so x and E(t) have no value; ζ ≈ 0.0632 and T_d ≈ 0.9954 s are computed"),
+    ("labs/06-reaction-kinetics.mpp", "needs design (for Ben): a definition whose head is an expression (`\\frac{k(T_2)}{k(T_1)} := …` with where-clauses), bracket names `[A]_0` and the function `[A](t)`, and a fit of `ln k = ln A − (E_a/R)(1/T)` where E_a is already defined, with `E_{a,fit}` read as its fitted value"),
+    ("labs/07-boyles-law.mpp", "for Ben: the least-squares slope of the table is 99.30 J (within the stated 0.5 of 99.2), so the recovered amount is n_fit = 0.04006 mol, which rounds to 0.0401, not the expected 0.0400; and `R^2 ≈ ?` is the square of the gas constant R defined above, not the fit's coefficient of determination (the fit line reports R² ≈ 0.999985 itself)"),
+    ("labs/08-titration.mpp", "`V_{eq} := \\operatorname{solve}…` is a one-element set rather than a value; piecewise conditions comparing quantities (12.5 mL < 25 mL) are not decided; and the log of a concentration (mol/L) is a dimension error (the lab asks for the convention log of its value in mol/L)"),
+    ("labs/09-predator-prey.mpp", "`\\max_{t \\in [0, 50]} |V(t) − V(0)|` writes V with one argument for V(x(t), y(t)), and the nonlinear system needs a numerical (RK45) solution defined from the statement; the equilibrium (4, 11/4) and the chain rule for dV/dt are computed"),
+    ("labs/10-heat-rod.mpp", "PDE statements (the heat equation with boundary and initial conditions, by separation of variables) do not define u(x, t) yet"),
+    ("labs/11-monte-carlo-pi.mpp", "`\\hat\\pi :=` as a definition head, random variables `X_j, Y_j \\sim \\mathrm{Uniform}[0, 1]` summed over samples, and p is defined only in prose (`$p = \\pi/4$` in a sentence is not a definition)"),
 ];
 
 fn root() -> PathBuf {
@@ -286,16 +256,58 @@ fn number_in(text: &str) -> Option<f64> {
 fn value_of(l: &LineResult) -> Option<f64> {
     l.approx
         .as_deref()
-        .and_then(number_in)
-        .or_else(|| l.text.as_deref().and_then(number_in))
+        .and_then(single_number)
+        .or_else(|| l.text.as_deref().and_then(single_number))
 }
 
-/// `fragment ≈ want ± tol`.
-fn approx(s: &Session, fragment: &str, want: f64, tol: f64) -> Check {
-    let what = format!("{fragment} ≈ {want}");
+/// A number, or the one number in a one-element set (`≈ {4.605170186 s}`, the solution
+/// set of an equation with a single root).
+fn single_number(text: &str) -> Option<f64> {
+    let t = text.trim_start_matches(['≈', '=', ' ']).trim_end();
+    match t.strip_prefix('{').and_then(|r| r.strip_suffix('}')) {
+        Some(inner) if !inner.contains(',') => number_in(inner),
+        _ => number_in(text),
+    }
+}
+
+/// The value written in `written` (`0.2983`, `1.2097e-4`, `7575`) and the tolerance
+/// that precision means: half a unit in its last written decimal place, since the labs
+/// state their results rounded to the digits they show.
+fn written_precision(written: &str) -> Option<(f64, f64)> {
+    let want: f64 = written.parse().ok()?;
+    let (mantissa, exp) = match written.split_once(['e', 'E']) {
+        Some((m, e)) => (m, e.parse::<i32>().ok()?),
+        None => (written, 0),
+    };
+    let decimals = mantissa.split_once('.').map_or(0, |(_, d)| d.len()) as i32;
+    Some((want, 0.5 * 10f64.powi(exp - decimals)))
+}
+
+/// `fragment ≈ written`, at the precision the document writes it to.
+fn approx(s: &Session, fragment: &str, written: &str) -> Check {
+    let what = format!("{fragment} ≈ {written}");
+    match written_precision(written) {
+        Some((want, tol)) => compare(s, what, fragment, want, tol),
+        None => fail(what, "the expectation is not a number"),
+    }
+}
+
+/// `fragment ≈ want ± tol`, for a tolerance the document states (or an exact value).
+fn within(s: &Session, fragment: &str, want: f64, tol: f64) -> Check {
+    compare(
+        s,
+        format!("{fragment} ≈ {want} ± {tol}"),
+        fragment,
+        want,
+        tol,
+    )
+}
+
+fn compare(s: &Session, what: String, fragment: &str, want: f64, tol: f64) -> Check {
     match line(s, fragment) {
         Some(l) => match value_of(l) {
-            Some(v) if (v - want).abs() <= tol => ok(what),
+            // A little slack so a value on the rounding boundary is not lost to floating point.
+            Some(v) if (v - want).abs() <= tol * (1.0 + 1e-9) => ok(what),
             Some(v) => fail(what, format!("got {v}")),
             None => fail(
                 what,
@@ -517,7 +529,7 @@ fn proof_file(rel: &str, overclaims: &mut Vec<String>) -> Vec<Check> {
                 both,
                 "a proof is not proved",
             ));
-            out.push(approx(s, "\\sum_{k=1}^{100} k", 5050.0, 0.0));
+            out.push(within(s, "\\sum_{k=1}^{100} k", 5050.0, 0.0));
         }
         "historic/fermat-little.mpp" => {
             out.extend(statuses(
@@ -544,13 +556,13 @@ fn proof_file(rel: &str, overclaims: &mut Vec<String>) -> Vec<Check> {
                 rel,
             ));
             out.push(deleted_citation(&src, "weierstrass1876", "Theorem 1", 2));
-            out.push(approx(
+            out.push(within(
                 s,
                 "\\sum_{k=1}^{\\infty}",
                 std::f64::consts::PI.powi(2) / 6.0,
                 1e-9,
             ));
-            out.push(approx(s, "\\sum_{k=1}^{10^6}", 1.644933, 1e-6));
+            out.push(approx(s, "\\sum_{k=1}^{10^6}", "1.644933"));
         }
         "historic/archimedes-parabola.mpp" => {
             out.extend(statuses(
@@ -570,7 +582,7 @@ fn proof_file(rel: &str, overclaims: &mut Vec<String>) -> Vec<Check> {
                 overclaims,
                 rel,
             ));
-            out.push(approx(s, "e^{i\\pi}", -1.0, 1e-12));
+            out.push(within(s, "e^{i\\pi}", -1.0, 1e-12));
         }
         "historic/cantor-diagonal.mpp" => {
             out.extend(statuses(
@@ -626,54 +638,55 @@ fn lab_file(rel: &str) -> Vec<Check> {
     ));
     match rel {
         "labs/01-projectile-drag.mpp" => {
-            out.push(approx(s, "R_0", 40.77, 0.01));
-            out.push(approx(s, "T_0", 2.883, 0.001));
-            out.push(approx(s, "T \\approx", 2.757, 0.005));
-            out.push(approx(s, "R :=", 34.07, 0.05));
+            out.push(approx(s, "R_0", "40.77"));
+            out.push(approx(s, "T_0", "2.883"));
+            out.push(approx(s, "T \\approx", "2.757"));
+            out.push(within(s, "R :=", 34.07, 0.05));
         }
         "labs/02-pendulum.mpp" => {
-            out.push(approx(s, "T_0", 2.006, 0.001));
-            out.push(approx(s, "T \\approx", 2.041, 0.001));
-            out.push(approx(s, "T_{\\text{exact}}", 2.041, 0.001));
-            out.push(approx(s, "T_{\\text{series}}", 2.041, 0.001));
+            out.push(approx(s, "T_0", "2.006"));
+            out.push(within(s, "T \\approx", 2.041, 0.001));
+            out.push(approx(s, "T_{\\text{exact}}", "2.041"));
+            out.push(within(s, "T_{\\text{series}}", 2.041, 1e-4));
         }
         "labs/03-damped-spring.mpp" => {
-            out.push(approx(s, "\\omega_0", 6.325, 0.001));
-            out.push(approx(s, "\\zeta", 0.0632, 0.0001));
-            out.push(approx(s, "\\omega_d", 6.312, 0.001));
-            out.push(approx(s, "T_d", 0.9954, 0.0001));
-            out.push(approx(s, "\\delta", 0.398, 0.001));
+            out.push(approx(s, "\\omega_0", "6.325"));
+            out.push(approx(s, "\\zeta", "0.0632"));
+            out.push(approx(s, "\\omega_d", "6.312"));
+            out.push(approx(s, "T_d", "0.9954"));
+            out.push(approx(s, "\\delta", "0.398"));
             out.push(check_passes(s, "\\frac{dE}{dt}"));
         }
         "labs/04-rc-circuit.mpp" => {
-            out.push(approx(s, "\\tau := RC", 1.0, 1e-9));
-            out.push(approx(s, "V_C(\\tau)", 3.161, 0.001));
-            out.push(approx(s, "\\operatorname{solve}_t", 4.605, 0.001));
-            out.push(approx(s, "\\tau_{\\text{fit}}", 1.0, 0.05));
+            out.push(within(s, "\\tau := RC", 1.0, 1e-9));
+            out.push(approx(s, "V_C(\\tau)", "3.161"));
+            out.push(approx(s, "\\operatorname{solve}_t", "4.605"));
+            out.push(approx(s, "\\tau_{\\text{fit}}", "1.0"));
         }
         "labs/05-radioactive-decay.mpp" => {
-            out.push(approx(s, "\\lambda :=", 1.2097e-4, 1e-7));
-            out.push(approx(s, "\\frac{N(10", 0.2983, 1e-4));
-            out.push(approx(s, "\\operatorname{solve}_t", 7575.0, 1.0));
+            out.push(approx(s, "\\lambda :=", "1.2097e-4"));
+            out.push(approx(s, "\\frac{N(10", "0.2983"));
+            out.push(approx(s, "\\operatorname{solve}_t", "7575"));
         }
         "labs/06-reaction-kinetics.mpp" => {
-            out.push(approx(s, "\\frac{k(T_2)}{k(T_1)} \\approx", 1.926, 0.001));
-            out.push(approx(s, "[A](60", 0.0549, 1e-4));
-            out.push(approx(s, "E_{a,\\text{fit}}", 50.0, 1.0));
+            out.push(approx(s, "\\frac{k(T_2)}{k(T_1)} \\approx", "1.926"));
+            out.push(approx(s, "[A](60", "0.0549"));
+            out.push(approx(s, "E_{a,\\text{fit}}", "50"));
         }
         "labs/07-boyles-law.mpp" => {
-            out.push(approx(s, "nRT", 99.15, 0.01));
-            out.push(approx(s, "a \\approx", 99.2, 0.5));
-            out.push(approx(s, "b \\approx", 0.0, 1.0));
-            out.push(approx(s, "R^2", 0.9995, 0.0005));
-            out.push(approx(s, "n_{\\text{fit}}", 0.0400, 0.0005));
+            out.push(approx(s, "nRT", "99.15"));
+            // The lab states the slope's tolerance: 0.5.
+            out.push(within(s, "a \\approx", 99.2, 0.5));
+            out.push(within(s, "b \\approx", 0.0, 1.0));
+            out.push(within(s, "R^2", 0.9995, 0.0005));
+            out.push(approx(s, "n_{\\text{fit}}", "0.0400"));
         }
         "labs/08-titration.mpp" => {
-            out.push(approx(s, "V_{\\text{eq}}", 25.0, 0.01));
-            out.push(approx(s, "\\mathrm{pH}(0)", 1.000, 0.001));
-            out.push(approx(s, "\\mathrm{pH}(12.5", 1.477, 0.001));
-            out.push(approx(s, "\\mathrm{pH}(25.0", 7.00, 0.001));
-            out.push(approx(s, "\\mathrm{pH}(30.0", 11.959, 0.001));
+            out.push(approx(s, "V_{\\text{eq}}", "25.0"));
+            out.push(approx(s, "\\mathrm{pH}(0)", "1.000"));
+            out.push(approx(s, "\\mathrm{pH}(12.5", "1.477"));
+            out.push(approx(s, "\\mathrm{pH}(25.0", "7.00"));
+            out.push(approx(s, "\\mathrm{pH}(30.0", "11.959"));
         }
         "labs/09-predator-prey.mpp" => {
             let eq = line(s, "\\operatorname{solve}_{x, y}");
@@ -683,14 +696,14 @@ fn lab_file(rel: &str) -> Vec<Check> {
                 text.contains("x = 4") && (text.contains("11/4") || text.contains("2.75")),
                 format!("got {text:?}"),
             ));
-            out.push(approx(s, "\\max_{t", 0.0, 1e-6));
+            out.push(within(s, "\\max_{t", 0.0, 1e-6));
         }
         "labs/10-heat-rod.mpp" => {
             out.push(check_passes(s, "\\frac{\\partial u}{\\partial t}"));
-            out.push(approx(s, "\\operatorname{solve}_t", 702.3, 0.5));
+            out.push(approx(s, "\\operatorname{solve}_t", "702.3"));
         }
         "labs/11-monte-carlo-pi.mpp" => {
-            out.push(approx(s, "\\sigma :=", 0.00164, 0.00001));
+            out.push(approx(s, "\\sigma :=", "0.00164"));
             out.push(check_passes(s, "|\\hat\\pi - \\pi| < 3\\sigma"));
         }
         _ => out.push(fail(
@@ -796,4 +809,15 @@ fn numbers_are_read_from_answers() {
     let x = number_in("≈ 1.2097 × 10⁻⁴ yr⁻¹").unwrap_or(0.0);
     assert!((x - 1.2097e-4).abs() < 1e-12);
     assert_eq!(number_in("= −1"), Some(-1.0));
+    assert_eq!(single_number("≈ {4.605 s}"), Some(4.605));
+    assert_eq!(single_number("= {1, 2}"), None);
+}
+
+#[test]
+fn written_numbers_carry_their_precision() {
+    assert_eq!(written_precision("7575"), Some((7575.0, 0.5)));
+    let (x, tol) = written_precision("0.2983").unwrap_or_default();
+    assert!((x - 0.2983).abs() < 1e-15 && (tol - 0.00005).abs() < 1e-15);
+    let (x, tol) = written_precision("1.2097e-4").unwrap_or_default();
+    assert!((x - 1.2097e-4).abs() < 1e-18 && (tol - 0.5e-8).abs() < 1e-20);
 }

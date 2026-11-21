@@ -101,11 +101,24 @@ impl Lowerer<'_> {
         let t = Expr::sym("t");
         let (x, y) = (r.clone() * cos(t.clone()), r.clone() * sin(t.clone()));
         let at = |e: &Expr| e.subs("x", &x).subs("y", &y);
+        let dx = -(r.clone() * sin(t.clone()));
+        let dy = r.clone() * cos(t.clone());
         let integrand = match (i.dot, diffs, body.node()) {
-            (true, [_], ExprNode::Tuple(f)) if f.len() == 2 => {
-                let dx = -(r.clone() * sin(t.clone()));
-                let dy = r.clone() * cos(t.clone());
+            (true, [_], ExprNode::Tuple(f)) if f.len() == 2 && !i.form => {
                 at(&f[0]) * dx + at(&f[1]) * dy
+            }
+            // `∮ (P dx + Q dy)`, the differentials in either order.
+            (true, vars, ExprNode::Tuple(f)) if i.form && f.len() == vars.len() => {
+                let mut sum = Expr::zero();
+                for (c, v) in f.iter().zip(vars) {
+                    let dv = match v.as_str() {
+                        "x" => dx.clone(),
+                        "y" => dy.clone(),
+                        _ => return Ok(None),
+                    };
+                    sum = sum + at(c) * dv;
+                }
+                sum
             }
             (false, [s], _) if s == "s" => at(&body) * r,
             _ => return Ok(None),

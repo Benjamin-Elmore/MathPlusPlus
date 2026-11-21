@@ -18,6 +18,7 @@ use mpp_syntax::math::{
     Derivative, Fence, FuncApp, IntKind, Integral, Limit, MatrixEnv, MulStyle, NablaOp, Name,
     NamedOp, Node, NodeKind, RelOp as SynRel, Side, UnaryOp, UnitText,
 };
+use mpp_syntax::symbols::Font;
 use mpp_syntax::Span;
 
 use crate::error::{EvalError, Located};
@@ -32,6 +33,11 @@ pub trait LowerScope {
     fn binding(&self, name: &str) -> Option<Arc<Binding>>;
     /// True when the document defines a recurrence for the sequence `base`.
     fn is_sequence(&self, base: &str) -> bool;
+    /// True when `name` is an unknown function of a differential equation of the
+    /// document, so `x(t)` elsewhere is that function at `t`, not `x · t`.
+    fn is_ode_unknown(&self, _name: &str) -> bool {
+        false
+    }
 }
 
 /// Result of lowering one node.
@@ -259,6 +265,11 @@ impl<'a> Lowerer<'a> {
                 EvalError::Invalid(format!("`{s}` has no value of its own")),
             )),
             K::Dots(_) => Err(fail(span, EvalError::Unsupported("an ellipsis".into()))),
+            // `\text{true}`, `\text{false}`: truth values (the right side of a check of
+            // an inequality).
+            K::Text(t) if matches!(t.trim(), "true" | "false") => {
+                Ok(Expr::new(ExprNode::Bool(t.trim() == "true")))
+            }
             K::Text(t) => Err(fail(
                 span,
                 EvalError::Invalid(format!("the text “{t}” cannot be evaluated")),
@@ -303,10 +314,29 @@ impl<'a> Lowerer<'a> {
                 Ok(n / d)
             }
             K::Pow { base, exp } => self.power(base, exp),
-            K::Subscript { .. } => Err(fail(
-                span,
-                EvalError::Unsupported("a subscript on this expression".into()),
-            )),
+            K::Subscript { base, sub } => match &base.ungrouped().kind {
+                // `|x|_p`: the p-adic absolute value; `‖v‖_p`: the L^p norm.
+                K::Fenced {
+                    fence: Fence::Abs,
+                    inner,
+                    ..
+                } => Ok(Expr::apply(
+                    "padicabs",
+                    vec![self.lower(sub)?, self.lower(inner)?],
+                )),
+                K::Fenced {
+                    fence: Fence::Norm,
+                    inner,
+                    ..
+                } => Ok(Expr::apply(
+                    "lpnorm",
+                    vec![self.lower(inner)?, self.lower(sub)?],
+                )),
+                _ => Err(fail(
+                    span,
+                    EvalError::Unsupported("a subscript on this expression".into()),
+                )),
+            },
             K::Prime { base, count } => self.prime(base, *count, span),
             K::Factorial { operand, count } => {
                 let x = self.lower(operand)?;
@@ -433,6 +463,10 @@ impl<'a> Lowerer<'a> {
     /// an index or a defined variable) is that name instead: `3 t` with `f(t) := 3 t`.
     fn quantity(&mut self, value: &Node, unit: &UnitText) -> LowerResult {
         let v = self.lower(value)?;
+        // `5\%` is the number 5/100: a percent is not a unit to carry along.
+        if unit.text == "%" {
+            return Ok(v / Expr::int(100));
+        }
         if unit.plain && !unit.text.contains(['/', '·']) {
             let letters: Vec<String> = unit
                 .text
@@ -549,6 +583,17 @@ impl<'a> Lowerer<'a> {
     }
 
     fn call(&mut self, callee: &Node, args: &[Node], span: Span) -> LowerResult {
+        // `\mathbf 1[A]`: the indicator, 1 where the condition holds and 0 elsewhere.
+        if let (NodeKind::Name(n), [cond]) = (&callee.ungrouped().kind, args) {
+            let bold_one = n.base == "𝟏" || (n.base == "1" && n.font == Some(Font::Bold));
+            if bold_one && n.sub.is_none() && n.accent.is_none() {
+                let cond = self.lower(cond)?;
+                return Ok(Expr::new(ExprNode::Piecewise {
+                    cases: vec![(Expr::one(), cond)],
+                    otherwise: Some(Expr::zero()),
+                }));
+            }
+        }
         if let Some(t) = crate::fields_wire::textbook(self.scope, &self.locals, callee, args.len())
         {
             return Ok(t.apply(self.lower_all(args)?));
@@ -559,8 +604,21 @@ impl<'a> Lowerer<'a> {
                 if let Some(params) = self.function_params(&key) {
                     return self.prime_call(&key, &params, *count, args, span);
                 }
+                // A built-in function (Γ′, ψ′) is never an unknown of a differential
+                // equation; a textbook letter (W, J_0) is one when the line says so.
+                let builtin = Func::from_name(&key).is_some();
+                if let ([arg], true) = (args, builtin) {
+                    if let Some(d) = self.known_prime(base, &key, *count, arg, span)? {
+                        return Ok(d);
+                    }
+                }
                 if let ([arg], true) = (args, self.is_unknown_fn(&key)) {
                     return self.unknown_fn_call(&key, *count, arg);
+                }
+                if let ([arg], false) = (args, builtin) {
+                    if let Some(d) = self.known_prime(base, &key, *count, arg, span)? {
+                        return Ok(d);
+                    }
                 }
             }
         }
@@ -573,6 +631,20 @@ impl<'a> Lowerer<'a> {
                 if let ([arg], Some(special)) = (args, special_function(&key)) {
                     if !self.is_bound_letter(&key) {
                         return Ok(Expr::apply(special, vec![self.lower(arg)?]));
+                    }
+                }
+                // `V(x(t), y(t))` with x, y the unknowns of the document's differential
+                // equations: the functions at the variable t (their derivatives stay
+                // symbolic). Anything else in the brackets (`x (1 - x)`) is a product.
+                if let [arg] = args {
+                    let var = node_key(arg.ungrouped())
+                        .filter(|v| v != &key && self.scope.binding(v).is_none() && arg.is_name());
+                    if var.is_some()
+                        && self.scope.is_ode_unknown(&key)
+                        && self.scope.binding(&key).is_none()
+                        && !self.is_local(&key)
+                    {
+                        return Ok(Expr::apply(&key, vec![self.lower(arg)?]));
                     }
                 }
             }
@@ -651,6 +723,35 @@ impl<'a> Lowerer<'a> {
         }
         let at = Expr::equation(Expr::sym(param), arg);
         Ok(Expr::apply("subs", vec![inner, at]))
+    }
+
+    /// `Γ'(1)`, `\operatorname{erf}''(x)`, `J_0'(x)`, `W'(x)`: the derivative of a built-in
+    /// or textbook function of one variable, at the argument. `None` when `key` is not
+    /// one (or the document gives the name a meaning of its own).
+    fn known_prime(
+        &mut self,
+        base: &Node,
+        key: &str,
+        count: u8,
+        arg: &Node,
+        span: Span,
+    ) -> Result<Option<Expr>, Located> {
+        const VAR: &str = "#prime";
+        let t = Expr::sym(VAR);
+        let f = if let Some(tb) = crate::fields_wire::textbook(self.scope, &self.locals, base, 1) {
+            tb.apply(vec![t])
+        } else if !self.is_local(key)
+            && self.scope.binding(key).is_none()
+            && Func::from_name(key)
+                .is_some_and(|f| f.arity() == mpp_core::functions::Arity::Exactly(1))
+        {
+            Expr::call(key, vec![t]).map_err(math(span))?
+        } else {
+            return Ok(None);
+        };
+        let d = f.diff(VAR, u32::from(count)).map_err(math(span))?;
+        let at = self.lower(arg)?;
+        Ok(Some(d.subs(VAR, &at).simplify()))
     }
 
     /// `f'` with no argument; `y'` for a name that is not a function means d/dx.
@@ -852,6 +953,15 @@ impl<'a> Lowerer<'a> {
                 EvalError::Unsupported(format!(
                     "{what} (parametrise it and integrate over the parameter instead)"
                 )),
+            ));
+        }
+        if i.form {
+            return Err(fail(
+                span,
+                EvalError::Unsupported(
+                    "a line integral of P dx + Q dy along a named curve (write the circle x² + y² = r² under the ∮, or parametrise it and integrate over the parameter)"
+                        .into(),
+                ),
             ));
         }
         if i.dot {

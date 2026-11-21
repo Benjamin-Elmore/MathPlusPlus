@@ -275,7 +275,9 @@ fn a_missing_import_is_an_error_with_a_close_file_name() {
 
 #[test]
 fn errors_light_and_dark() {
-    let src = "# Problems\n\nA ball is thrown at angle $\\vartheta$.\n\nLet $\\vartheta := 0.3$ and $m := 2$.\n\n$$ \\frac{1}{} + \\sin \\theta \\approx ? $$\n\n$$ 2 (x + 1 $$\n\n$$ \\Gamma(x + 1) \\overset{?}{=} x \\Gamma(x) $$\n\n$$ \\int_0^1 e^{-x^2} \\, dx \\approx ? $$\n\n$$ \\operatorname{erf}(x) + \\operatorname{erfc}(x) \\overset{?}{=} 1 $$\n";
+    let src = "# Problems\n\nA ball is thrown at angle $\\vartheta$.\n\nLet $\\vartheta := 0.3$ and $m := 2$.\n\n$$ \\frac{1}{} + \\sin \\theta \\approx ? $$\n\n$$ 2 (x + 1 $$\n\n$$ \\Gamma(x + 1) \\overset{?}{=} x \\Gamma(x) $$\n\n$$ \\int_0^1 e^{-x^2} \\, dx \\approx ? $$\n\n$$ \\operatorname{erf}(x) + \\operatorname{erfc}(x) \\overset{?}{=} 1 $$\n\n**Theorem 1.** Every integer $N > 1$ has a prime factor.\n\n**Proof.**\n1. This is Elements VII.31 — *(cited: every integer greater than 1 has a prime factor [@euclid])*.\n∎\n\n## References\n- [@euclid] Euclid, *Elements*, Book VII Prop. 31.\n";
+    // The evaluator now works out every line above, so the note comes from a cited
+    // proof step.
     for (suffix, choice) in [
         ("light", theme::ThemeChoice::Light),
         ("dark", theme::ThemeChoice::Dark),

@@ -22,7 +22,7 @@ fn answers(src: &str) -> Vec<String> {
     let errs = errors(&ev);
     assert!(errs.is_empty(), "{src}: unexpected errors {errs:?}");
     ev.queries()
-        .map(|(_, l)| l.text.clone().unwrap_or_else(|| "<none>".into()))
+        .map(|(_, l)| l.plain.clone().unwrap_or_else(|| "<none>".into()))
         .collect()
 }
 
@@ -161,13 +161,13 @@ fn adding_an_assumption_reruns_the_blocks_below() {
     let first = session.run_str(before).clone();
     let a: Vec<String> = first
         .queries()
-        .filter_map(|(_, l)| l.text.clone())
+        .filter_map(|(_, l)| l.plain.clone())
         .collect();
     assert_eq!(a, vec!["|x|"]);
     let second = session.update(after).clone();
     let b: Vec<String> = second
         .queries()
-        .filter_map(|(_, l)| l.text.clone())
+        .filter_map(|(_, l)| l.plain.clone())
         .collect();
     assert_eq!(b, vec!["x"]);
 }

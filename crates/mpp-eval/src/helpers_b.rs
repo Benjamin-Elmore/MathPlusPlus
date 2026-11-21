@@ -834,9 +834,9 @@ mod ode {
                         });
                     }
                 }
-                ExprNode::Tuple(items)
-                    if items.len() >= 2 && items.iter().all(Expr::is_constant) =>
-                {
+                // The starting point must be a number; the starting values may be
+                // names (`(0, N_0)` gives N(0) = N_0).
+                ExprNode::Tuple(items) if items.len() >= 2 && items[0].is_constant() => {
                     for (k, v) in items[1..].iter().enumerate() {
                         out.push(Condition::derivative(k as u32, items[0].clone(), v.clone()));
                     }

@@ -245,6 +245,15 @@ fn apply(op: &str, args: &[Value], ctx: &mut Ctx<'_>) -> MathResult<Value> {
             expect_args(op, args, 3)?;
             let qs = var_list(op, &args[1])?;
             let ps = var_list(op, &args[2])?;
+            if !qs.iter().chain(&ps).any(|v| args[0].contains_sym(v)) {
+                return Err(domain_err(
+                    op,
+                    format!(
+                        "the Hamiltonian {} does not depend on the coordinates or momenta (is it defined?)",
+                        args[0]
+                    ),
+                ));
+            }
             let sys = hamilton_system(&args[0], &qs, &ps, ctx.calculus)?;
             ctx.note("pairs (x, dx/dt): q̇ = ∂H/∂p, ṗ = −∂H/∂q");
             Ok(tuple(

@@ -28,7 +28,7 @@ impl Run<'_, '_> {
         let Some(heads) = t
             .header
             .iter()
-            .map(header_of)
+            .map(|c| header_of(c, self.inputs.source))
             .collect::<Option<Vec<(String, Option<String>, Span)>>>()
         else {
             return false;
@@ -295,7 +295,20 @@ fn fit(op: &str, args: &[Expr], var: &str) -> mpp_core::MathResult<regression::F
 }
 
 /// A header cell `$t$`, `$t$ (s)` or `$x$ [m]`: the name key, the unit and the span.
-fn header_of(cell: &Cell) -> Option<(String, Option<String>, Span)> {
+/// `\mathrm{kPa}`, `\mathrm L`, `\mathrm{s^{-1}}`, `\mathrm{mol/L}` as plain unit text.
+fn plain_unit(tex: &str) -> String {
+    let mut s = tex
+        .replace("\\mathrm", "")
+        .replace("\\text", "")
+        .replace("\\Omega", "Ω")
+        .replace("\\mu", "µ")
+        .replace("\\,", " ")
+        .replace("\\ ", " ");
+    s.retain(|c| c != '{' && c != '}');
+    s.trim().to_string()
+}
+
+fn header_of(cell: &Cell, src: &str) -> Option<(String, Option<String>, Span)> {
     let mut name = None;
     let mut rest = String::new();
     let mut span = None;
@@ -312,6 +325,11 @@ fn header_of(cell: &Cell) -> Option<(String, Option<String>, Span)> {
                 span = Some(inline.span);
             }
             InlineKind::Text(t) if name.is_some() => rest.push_str(t),
+            // `$V$ ($\mathrm L$)`: the unit written as maths.
+            InlineKind::Math(m) if name.is_some() => {
+                let tex = src.get(m.raw.start..m.raw.end)?;
+                rest.push_str(&plain_unit(tex));
+            }
             InlineKind::Text(t) if t.trim().is_empty() => {}
             _ => return None,
         }
