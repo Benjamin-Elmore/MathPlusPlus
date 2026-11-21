@@ -1,6 +1,6 @@
 //! The results of running a document: per block, per statement line.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -398,7 +398,8 @@ impl LineIndex {
 /// The result of running a whole document.
 #[derive(Debug, Clone)]
 pub struct Evaluated {
-    pub document: Document,
+    /// The parse of the text (shared with the editor, which parsed the same text).
+    pub document: Arc<Document>,
     /// One result per block, nested blocks included, in document order.
     pub blocks: Vec<BlockResult>,
     /// The blocks that ran in the last run or update (the others were reused).
@@ -411,6 +412,8 @@ pub struct Evaluated {
     pub graph: DepGraph,
     pub(crate) source: String,
     pub(crate) lines: LineIndex,
+    /// Where each block's result is in [`Evaluated::blocks`] (see [`Evaluated::block`]).
+    pub(crate) index: HashMap<BlockId, usize>,
 }
 
 /// True for the evaluator's own hidden keys in the environment (the document seed,
@@ -446,7 +449,7 @@ impl Evaluated {
     /// The result of an empty document.
     pub fn empty() -> Self {
         Evaluated {
-            document: mpp_syntax::document::parse_document(""),
+            document: Arc::new(mpp_syntax::document::parse_document("")),
             blocks: Vec::new(),
             recomputed: Vec::new(),
             diagnostics: Vec::new(),
@@ -454,6 +457,7 @@ impl Evaluated {
             graph: DepGraph::default(),
             source: String::new(),
             lines: LineIndex::default(),
+            index: HashMap::new(),
         }
     }
 
@@ -489,7 +493,23 @@ impl Evaluated {
 
     /// The result of the block `id`.
     pub fn block(&self, id: BlockId) -> Option<&BlockResult> {
-        self.blocks.iter().find(|b| b.id == id)
+        // The page asks for every block of a long file: look it up, and fall back to
+        // a search if the list was changed since the index was made.
+        match self.index.get(&id).and_then(|&i| self.blocks.get(i)) {
+            Some(b) if b.id == id => Some(b),
+            _ => self.blocks.iter().find(|b| b.id == id),
+        }
+    }
+
+    /// Makes the index [`Evaluated::block`] reads.
+    pub(crate) fn index_blocks(&mut self) {
+        self.index = self
+            .blocks
+            .iter()
+            .enumerate()
+            .rev()
+            .map(|(i, b)| (b.id, i))
+            .collect();
     }
 
     /// Every diagnostic, block ones included, in source order.

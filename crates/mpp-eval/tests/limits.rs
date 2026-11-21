@@ -82,7 +82,7 @@ fn a_stop_asked_for_before_a_kept_run_starts_is_not_lost() {
     let handle = session.cancel_handle();
     handle.cancel();
     let start = Instant::now();
-    let _ = session.update_keeping_cancel(SLOW);
+    let _ = session.update_keeping_cancel(SLOW, None);
     assert!(
         start.elapsed() < Duration::from_secs(5),
         "{:?}",
@@ -91,6 +91,9 @@ fn a_stop_asked_for_before_a_kept_run_starts_is_not_lost() {
     assert!(handle.is_cancelled());
     handle.reset();
     assert!(!handle.is_cancelled());
-    let ev = session.update_keeping_cancel("$$ 3 + 4 = ? $$\n");
+    // With a parse handed in, as the editor does.
+    let src = "$$ 3 + 4 = ? $$\n";
+    let parsed = std::sync::Arc::new(mpp_syntax::document::parse_document(src));
+    let ev = session.update_keeping_cancel(src, Some(parsed));
     assert!(ev.errors().is_empty());
 }

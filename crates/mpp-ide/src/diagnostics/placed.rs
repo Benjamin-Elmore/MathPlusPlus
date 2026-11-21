@@ -213,9 +213,10 @@ struct ClassifyCache {
     generation: u64,
 }
 
-thread_local! {
-    static CLASSIFIED: RefCell<ClassifyCache> = RefCell::new(ClassifyCache::default());
-}
+/// Shared by every thread: the editor finds a page's problems on a thread of their
+/// own while the page is laid out.
+static CLASSIFIED: std::sync::LazyLock<std::sync::Mutex<ClassifyCache>> =
+    std::sync::LazyLock::new(Default::default);
 
 /// Moves every source offset a problem holds by `delta` (before it is placed).
 fn shift_problem(p: &mut Problem, delta: isize) {
@@ -241,8 +242,10 @@ pub(super) fn classify_cached(
     mut classify: impl FnMut(&mpp_syntax::Diagnostic) -> Vec<Problem>,
 ) -> Vec<Problem> {
     let blocks = &doc.blocks;
-    CLASSIFIED.with(|c| {
-        let mut c = c.borrow_mut();
+    {
+        let mut c = CLASSIFIED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         c.generation += 1;
         let generation = c.generation;
         let mut out = Vec::with_capacity(raw.len());
@@ -298,5 +301,5 @@ pub(super) fn classify_cached(
             c.entries.clear();
         }
         out
-    })
+    }
 }

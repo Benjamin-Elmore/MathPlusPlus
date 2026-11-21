@@ -909,7 +909,10 @@ fn paint_page(
     }
     // Unfilled template boxes: a typeset hint beside the equation, no answer.
     for b in &page.blocks {
-        if b.tag != BlockTag::Math {
+        // Only the equations on screen (a long file has hundreds, and finding a hint
+        // reads the editor's template boxes each time).
+        let top = origin.y + b.top;
+        if b.tag != BlockTag::Math || top > clip.bottom() || top + b.height < clip.top() {
             continue;
         }
         let span = b.span.start..b.span.end;
