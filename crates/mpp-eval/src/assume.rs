@@ -111,7 +111,7 @@ fn improper(
 fn explain_split(ctx: &Ctx<'_>, v: &Expr) {
     if let ExprNode::Piecewise { cases, otherwise } = v.node() {
         ctx.note(
-            "the answer depends on a parameter; add an assumption (Assume $…$.) to pick a case",
+            "the answer depends on a parameter; add an assumption (such as Assume $a > 0$.) to pick a case",
         );
         let infinite = cases.iter().any(|(c, _)| c.is_infinite())
             || otherwise.as_ref().is_some_and(Expr::is_infinite);

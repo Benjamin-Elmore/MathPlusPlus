@@ -233,3 +233,88 @@ fn counts_summarise() {
     assert_eq!(c.worst(), Some(Level::Error));
     assert_eq!(Counts::default().summary(), "No problems");
 }
+
+/// Every message the IDE shows for the example files and the guides (problem text,
+/// "Expected", "How to fix" and each quick fix) is words and typeset maths: no source
+/// characters appear in the words.
+#[test]
+fn no_message_from_any_example_shows_source_text() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(rd) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, out);
+            } else if p.extension().is_some_and(|x| x == "mpp") {
+                out.push(p);
+            }
+        }
+    }
+    let mut files: Vec<std::path::PathBuf> = vec![];
+    for dir in ["examples", "docs", "work/pipeline-tests"] {
+        walk(&root.join(dir), &mut files);
+    }
+    files.sort();
+    assert!(files.len() > 20, "found {files:?}");
+    let mut bad = vec![];
+    let mut seen = 0;
+    for path in &files {
+        let mut d = Doc::open(path).expect("readable");
+        d.settle();
+        let pc = d.page(900.0, 19.0, Mode::Light);
+        let src = d.editor.text().to_string();
+        let doc = mpp_syntax::document::parse_document(&src);
+        for p in &pc.problems {
+            let mut lines: Vec<&Rich> = vec![&p.rich];
+            lines.extend(p.expected.iter());
+            lines.extend(p.fix.iter());
+            let fixes = fixes::quick_fixes(p, &src, &doc);
+            lines.extend(fixes.iter().map(|f| &f.title));
+            for r in lines {
+                seen += 1;
+                for seg in &r.0 {
+                    if let Seg::Text(t) | Seg::Italic(t) = seg {
+                        if t.contains(['$', '\\', '^', '_', '{', '}']) {
+                            bad.push(format!("{}: {t:?} in {:?}", path.display(), r.plain()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(seen > 10, "only {seen} messages");
+    assert!(bad.is_empty(), "{}", bad.join("\n"));
+}
+
+#[test]
+fn inline_maths_in_messages_is_typeset() {
+    let r = rich::from_message(
+        r"the answer depends on whether the exponent is −1; add an assumption such as Assume $n \neq -1$. to pick a case",
+    );
+    assert!(r.0.contains(&Seg::Math(r"n \neq -1".into())), "{r:?}");
+    let r = rich::from_message(r"ln(e^{y}) = y only for real y; `Assume $y \in \mathbb{R}$.`");
+    assert!(
+        r.0.iter()
+            .any(|s| matches!(s, Seg::Math(m) if m.contains("mathbb"))),
+        "{r:?}"
+    );
+}
+
+#[test]
+fn text_maths_words_in_notes_are_typeset() {
+    let r = rich::from_message(
+        "the series is exact up to x^9; Σ 1/k^2 converges (|aₖ|^(1/k) tends to 1)",
+    );
+    let maths: Vec<&str> =
+        r.0.iter()
+            .filter_map(|s| match s {
+                Seg::Math(m) => Some(m.as_str()),
+                _ => None,
+            })
+            .collect();
+    assert_eq!(maths, ["x^{9}", "1/k^{2}", "|aₖ|^{1/k}"], "{r:?}");
+    assert!(r.plain().contains("(|aₖ|"), "{}", r.plain());
+}

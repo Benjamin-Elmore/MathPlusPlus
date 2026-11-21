@@ -920,15 +920,17 @@ fn proof_problems(steps: &[crate::proof::StepMark]) -> Vec<Problem> {
         let step = s
             .number
             .map_or_else(|| "This step".to_string(), |n| format!("Step {n}"));
-        let mut text = format!(
-            "{step} of the proof of {}: {} {}",
-            s.result,
-            s.status.mark(),
-            s.status.name()
-        );
-        if !s.detail.is_empty() {
+        // The status in words (the mark itself is drawn in the margin); the detail
+        // often starts with the same word ("wrong: …"), which is said once.
+        let name = s.status.name();
+        let mut text = format!("{step} of the proof of {}: {name}", s.result);
+        let detail = s.detail.trim();
+        let detail = detail
+            .strip_prefix(name)
+            .map_or(detail, |d| d.trim_start_matches([':', ' ']));
+        if !detail.is_empty() {
             text.push_str(" \u{2014} ");
-            text.push_str(&s.detail);
+            text.push_str(detail);
         }
         let mut p = Problem::new(
             s.span,
@@ -937,7 +939,7 @@ fn proof_problems(steps: &[crate::proof::StepMark]) -> Vec<Problem> {
             from_message(&text),
         );
         if let Some(cx) = &s.counterexample {
-            p = p.fixing(Rich::text(format!("Counterexample: {cx}")));
+            p = p.fixing(from_message(&format!("Counterexample: {cx}")));
         }
         out.push(p);
     }
