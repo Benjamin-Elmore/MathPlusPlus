@@ -138,6 +138,9 @@ fn contains_const(e: &Expr, c: Constant) -> bool {
 
 /// `e` with `var = target`, if that gives a plain value.
 fn substitute(e: &Expr, var: &str, target: &Expr) -> Option<Expr> {
+    if has_indeterminate_power(e, var, target) {
+        return None;
+    }
     let v = e.subs(var, target);
     if v.contains_sym(var) || contains_const(&v, Constant::Undefined) {
         return None;
@@ -146,6 +149,25 @@ fn substitute(e: &Expr, var: &str, target: &Expr) -> Option<Expr> {
         return None;
     }
     Some(v)
+}
+
+/// True when putting in `var = target` meets `0⁰`, `∞⁰` or `1^∞` in a power whose base
+/// and exponent both depend on `var` (`x^x` at 0): substitution would hide the form the
+/// working has to resolve.
+fn has_indeterminate_power(e: &Expr, var: &str, target: &Expr) -> bool {
+    if let ExprNode::Pow(b, x) = e.node() {
+        if b.contains_sym(var) && x.contains_sym(var) {
+            let bv = simplify(&b.subs(var, target));
+            let xv = simplify(&x.subs(var, target));
+            if (bv.is_zero() || bv.is_infinite()) && xv.is_zero() || bv.is_one() && xv.is_infinite()
+            {
+                return true;
+            }
+        }
+    }
+    e.children()
+        .into_iter()
+        .any(|c| has_indeterminate_power(c, var, target))
 }
 
 #[derive(Clone, Debug)]
@@ -562,6 +584,10 @@ impl<'s> Ctx<'s> {
             }),
             ExprNode::Add(ts) => self.lim_add(e, ts),
             ExprNode::Mul(_) => {
+                if let Some(joined) = self.join_equal_powers(e) {
+                    self.record("combine powers with the same exponent", e, &joined, None);
+                    return self.lim(&joined);
+                }
                 let (num, den) = split_fraction(e);
                 if den.is_empty() {
                     self.lim_product(&num)
@@ -579,6 +605,57 @@ impl<'s> Ctx<'s> {
             ExprNode::Func(f, args) => self.lim_func(e, *f, args),
             _ => Err(unsupported()),
         }
+    }
+
+    /// `aⁿ · b⁻ⁿ = (a/b)ⁿ` (and `aⁿ bⁿ = (ab)ⁿ`) for powers whose base and exponent both
+    /// depend on the variable, when the bases are positive near the point: the joined
+    /// power is a `1^∞` form the exponential rewrite settles (`nⁿ/(n+1)ⁿ → 1/e`).
+    fn join_equal_powers(&self, e: &Expr) -> Option<Expr> {
+        let ExprNode::Mul(fs) = e.node() else {
+            return None;
+        };
+        let var = &self.var;
+        let varying = |f: &Expr| match f.node() {
+            ExprNode::Pow(b, x) if b.contains_sym(var) && x.contains_sym(var) => {
+                Some((b.clone(), x.clone()))
+            }
+            _ => None,
+        };
+        for i in 0..fs.len() {
+            let Some((bi, xi)) = varying(&fs[i]) else {
+                continue;
+            };
+            for j in i + 1..fs.len() {
+                let Some((bj, xj)) = varying(&fs[j]) else {
+                    continue;
+                };
+                let base = if xi == xj {
+                    mul(vec![bi.clone(), bj.clone()])
+                } else if simplify(&add(vec![xi.clone(), xj.clone()])).is_zero() {
+                    mul(vec![bi.clone(), pow(bj.clone(), Expr::int(-1))])
+                } else {
+                    continue;
+                };
+                let positive = |b: &Expr| self.approach_sign(b) == Some(Ordering::Greater);
+                if !positive(&bi) || !positive(&bj) {
+                    continue;
+                }
+                let mut rest: Vec<Expr> = fs
+                    .iter()
+                    .enumerate()
+                    .filter(|(k, _)| *k != i && *k != j)
+                    .map(|(_, f)| f.clone())
+                    .collect();
+                let base = simplify(&base);
+                let joined = Expr::new(ExprNode::Pow(base, xi.clone()));
+                if rest.is_empty() {
+                    return Some(joined);
+                }
+                rest.push(joined);
+                return Some(Expr::new(ExprNode::Mul(rest)));
+            }
+        }
+        None
     }
 
     fn lim_add(&mut self, e: &Expr, ts: &[Expr]) -> MathResult<Lv> {

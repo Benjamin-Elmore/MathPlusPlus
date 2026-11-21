@@ -93,6 +93,23 @@ fn factor_splits_over_the_rationals() {
 }
 
 #[test]
+fn the_ratio_test_decides_factorial_over_power() {
+    // aₖ₊₁/aₖ = (k/(k+1))^k → 1/e < 1.
+    let ev = run(r"$$ \sum_{n=1}^{\infty} \frac{n!}{n^n} \approx ? $$");
+    assert!(ev.errors().is_empty());
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.approx.as_deref(), Some("1.879853862"));
+    let ev = run(r"$$ \sum_{n=1}^{\infty} \frac{1}{\binom{2n}{n}} \approx ? $$");
+    assert!(ev.errors().is_empty());
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.approx.as_deref(), Some("0.7363998587"));
+    assert_eq!(
+        answer(r"$$ \lim_{n \to \infty} \frac{n^n}{(n+1)^{n}} = ? $$"),
+        "1/e"
+    );
+}
+
+#[test]
 fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
     assert_eq!(
         answer(r"$$ \frac{d}{dx} \int_0^{x} e^{t^2} \, dt = ? $$"),
@@ -106,6 +123,17 @@ fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
         answer(r"$$ \frac{d}{dx} \int_0^{x^2} \sin t \, dt = ? $$"),
         "2x sin(x²)"
     );
+}
+
+#[test]
+fn x_to_the_x_is_not_direct_substitution() {
+    let ev = run(r"$$ \lim_{x \to 0^+} x^{x} = ?! $$");
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.text.as_deref(), Some("1"));
+    let steps = line.steps.as_ref().expect("steps");
+    let rules: Vec<&str> = steps.iter().map(|s| s.rule.as_str()).collect();
+    assert!(!rules.contains(&"direct substitution"), "{rules:?}");
+    assert_eq!(rules.first(), Some(&"rewrite as an exponential"));
 }
 
 #[test]

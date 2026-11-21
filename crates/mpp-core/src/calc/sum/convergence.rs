@@ -131,8 +131,29 @@ fn expand_factorial_shifts(e: &Expr, k: &str) -> Expr {
     rebuilt
 }
 
+/// Binomial coefficients that depend on `k` written with factorials.
+fn binomials_as_factorials(e: &Expr, k: &str) -> Expr {
+    let node = e.map_children(&mut |c| binomials_as_factorials(c, k));
+    let rebuilt = crate::simplify::canonical(node);
+    if let ExprNode::Func(Func::Binomial, args) = rebuilt.node() {
+        if let [a, b] = args.as_slice() {
+            if rebuilt.contains_sym(k) {
+                let diff = simplify(&add(vec![a.clone(), mul(vec![Expr::int(-1), b.clone()])]));
+                return mul(vec![
+                    func(Func::Factorial, vec![a.clone()]),
+                    pow(func(Func::Factorial, vec![b.clone()]), Expr::int(-1)),
+                    pow(func(Func::Factorial, vec![diff]), Expr::int(-1)),
+                ]);
+            }
+        }
+    }
+    rebuilt
+}
+
 /// `t(k + 1)/t(k)` with factorials cancelled.
 pub(crate) fn term_ratio(t: &Expr, k: &str) -> Expr {
+    // `C(a, b) = a!/(b! (a − b)!)`, so ratios of binomial coefficients cancel too.
+    let t = &binomials_as_factorials(t, k);
     let next = expand_factorial_shifts(&shift(t, k, 1), k);
     simplify(&mul(vec![next, pow(t.clone(), Expr::int(-1))]))
 }
