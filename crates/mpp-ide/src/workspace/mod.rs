@@ -475,11 +475,7 @@ impl IdeApp {
 
     /// Shows a side-bar view (and the side bar).
     pub fn show_side(&mut self, view: SideView) {
-        self.open_pane(match view {
-            SideView::Explorer => crate::layout::Pane::Explorer,
-            SideView::Search => crate::layout::Pane::Search,
-            SideView::Outline => crate::layout::Pane::Outline,
-        });
+        self.open_pane(crate::layout::Pane::of_side(view));
         self.ws.side_view = view;
         self.ws.side_visible = true;
         if view == SideView::Search {
@@ -487,9 +483,31 @@ impl IdeApp {
         }
     }
 
-    /// Ctrl+B.
+    /// Hides the side column (the activity bar stays).
+    pub fn hide_side(&mut self) {
+        self.ws.side_visible = false;
+        if let Some(t) = self.ws.tiles.tree.as_mut() {
+            crate::layout::tiles::sync_side(t, self.ws.side_view, false);
+        }
+    }
+
+    /// Ctrl+B: hides the side column, or shows it again with its last view.
     pub fn toggle_side(&mut self) {
-        self.toggle_side_tiles();
+        if self.ws.side_visible {
+            self.hide_side();
+        } else {
+            self.show_side(self.ws.side_view);
+        }
+    }
+
+    /// A click on an activity-bar icon: shows that view, or hides the side
+    /// column when the view is already showing (VS Code's behaviour).
+    pub fn activity_click(&mut self, view: SideView) {
+        if self.ws.side_visible && self.ws.side_view == view {
+            self.hide_side();
+        } else {
+            self.show_side(view);
+        }
     }
 
     /// Opens a hit of a search.

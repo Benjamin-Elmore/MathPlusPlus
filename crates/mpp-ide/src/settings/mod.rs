@@ -26,6 +26,27 @@ pub enum SideView {
     Explorer,
     Search,
     Outline,
+    Variables,
+}
+
+impl SideView {
+    /// The views in activity-bar order.
+    pub const ALL: [SideView; 4] = [
+        SideView::Explorer,
+        SideView::Search,
+        SideView::Outline,
+        SideView::Variables,
+    ];
+
+    /// The name on the icon's tooltip and the panel's header.
+    pub fn label(self) -> &'static str {
+        match self {
+            SideView::Explorer => "Explorer",
+            SideView::Search => "Search",
+            SideView::Outline => "Outline",
+            SideView::Variables => "Variables",
+        }
+    }
 }
 
 /// Everything remembered between runs.

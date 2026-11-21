@@ -81,15 +81,6 @@ impl IdeApp {
     /// numbers get a slider and an input box.
     pub(crate) fn variables_tile(&mut self, ui: &mut Ui, theme: &Theme) {
         ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.add_space(10.0);
-            ui.label(
-                egui::RichText::new("VARIABLES")
-                    .size(13.5)
-                    .color(c32(theme.muted)),
-            );
-        });
-        ui.add_space(4.0);
         if self.docs.get(self.active).is_none() {
             ui.weak("  No file open.");
             return;

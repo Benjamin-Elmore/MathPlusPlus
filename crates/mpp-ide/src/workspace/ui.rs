@@ -123,15 +123,37 @@ impl IdeApp {
     }
 
     fn activity_bar(&mut self, ui: &mut Ui, theme: &Theme) {
-        let items: [(SideView, &str, IconFn); 3] = [
-            (SideView::Explorer, "Explorer", icons::activity_explorer),
-            (SideView::Search, "Search", icons::activity_search),
+        // The only way to switch side panels: click an icon to show its panel,
+        // click the lit icon to hide the side column.
+        let items: [(SideView, &str, IconFn); 4] = [
+            (
+                SideView::Explorer,
+                "Explorer (Ctrl+Shift+E)",
+                icons::activity_explorer,
+            ),
+            (
+                SideView::Search,
+                "Search (Ctrl+Shift+F)",
+                icons::activity_search,
+            ),
             (SideView::Outline, "Outline", icons::activity_outline),
+            (SideView::Variables, "Variables", icons::activity_variables),
         ];
-        for (view, label, draw) in items {
-            let (rect, resp) = ui.allocate_exact_size(Vec2::new(46.0, 46.0), Sense::click());
-            resp.widget_info(|| WidgetInfo::labeled(Role::Button, true, label));
+        // Clicks first, painting after: every icon is drawn with the state the
+        // click left, in the same frame.
+        let laid: Vec<(Rect, egui::Response)> = items
+            .iter()
+            .map(|_| ui.allocate_exact_size(Vec2::new(46.0, 46.0), Sense::click()))
+            .collect();
+        for ((view, ..), (_, resp)) in items.iter().zip(&laid) {
+            if resp.clicked() {
+                self.activity_click(*view);
+            }
+        }
+        for ((view, tip, draw), (rect, resp)) in items.into_iter().zip(laid) {
+            let label = view.label();
             let active = self.ws.side_visible && self.ws.side_view == view;
+            resp.widget_info(|| WidgetInfo::selected(Role::Button, true, active, label));
             let p = ui.painter_at(rect);
             let color = if active || resp.hovered() {
                 c32(theme.text)
@@ -145,20 +167,12 @@ impl IdeApp {
                 );
             }
             draw(&p, rect, color);
-            if resp.clicked() {
-                if active {
-                    self.ws.side_visible = false;
-                } else {
-                    self.show_side(view);
-                }
-            }
-            resp.on_hover_text(label);
+            resp.on_hover_text(tip);
         }
     }
 
     /// The outline as a tile.
     pub(crate) fn outline_tile(&mut self, ui: &mut Ui, theme: &Theme) {
-        view_title(ui, "OUTLINE", theme);
         egui::ScrollArea::vertical()
             .id_salt("outline-view")
             .auto_shrink([false, false])
@@ -352,7 +366,7 @@ impl IdeApp {
     }
 
     pub(crate) fn search_view(&mut self, ui: &mut Ui, theme: &Theme) {
-        view_title(ui, "SEARCH", theme);
+        ui.add_space(4.0);
         let mut run = None;
         ui.horizontal(|ui| {
             ui.add_space(10.0);
@@ -775,18 +789,6 @@ impl IdeApp {
             None => {}
         }
     }
-}
-
-fn view_title(ui: &mut Ui, title: &str, theme: &Theme) {
-    ui.horizontal(|ui| {
-        ui.add_space(10.0);
-        ui.label(
-            egui::RichText::new(title)
-                .size(13.5)
-                .color(c32(theme.muted)),
-        );
-    });
-    ui.add_space(4.0);
 }
 
 fn plural(n: usize, one: &str, many: &str) -> String {

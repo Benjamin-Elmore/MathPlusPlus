@@ -108,6 +108,17 @@ pub fn activity_search(painter: &Painter, rect: Rect, color: Color32) {
     );
 }
 
+/// Activity bar: the variables (two sliders).
+pub fn activity_variables(painter: &Painter, rect: Rect, color: Color32) {
+    let r = rect.shrink(rect.width() * 0.26);
+    let st = Stroke::new(1.8, color);
+    for (i, knob) in [0.3_f32, 0.7].iter().enumerate() {
+        let y = r.top() + r.height() * (0.25 + 0.5 * i as f32);
+        painter.line_segment([Pos2::new(r.left(), y), Pos2::new(r.right(), y)], st);
+        painter.circle_filled(Pos2::new(r.left() + r.width() * knob, y), 3.2, color);
+    }
+}
+
 /// Activity bar: an outline (indented lines).
 pub fn activity_outline(painter: &Painter, rect: Rect, color: Color32) {
     let r = rect.shrink(rect.width() * 0.26);
