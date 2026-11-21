@@ -264,3 +264,21 @@ fn a_product_too_long_to_compute_is_called_a_product() {
     let errs = errors(&ev);
     assert!(errs.iter().any(|e| e.contains("this product")), "{errs:?}");
 }
+
+#[test]
+fn user_functions_recurse_thousands_of_levels_with_a_clear_limit_past_that() {
+    let def =
+        r"$$ f(n) := \begin{cases} 0 & n \le 0 \\ f(n-1) + 1 & \text{otherwise} \end{cases} $$";
+    let ev = timed(
+        &format!("{def}\n\n$$ f(9000) = ? $$\n"),
+        Duration::from_secs(60),
+    );
+    assert_eq!(answer_of(&ev), "9000");
+    let ev = run(&format!("{def}\n\n$$ f(20000) = ? $$\n"));
+    let errs = errors(&ev);
+    assert!(
+        errs.iter()
+            .any(|e| e.contains("more than 10000 nested calls")),
+        "{errs:?}"
+    );
+}

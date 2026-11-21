@@ -133,7 +133,11 @@ impl fmt::Display for EvalError {
                 "{name} takes {expected} argument{}, but got {got}",
                 if *expected == 1 { "" } else { "s" }
             ),
-            EvalError::TooDeep(name) => write!(f, "`{name}` calls itself too deeply"),
+            EvalError::TooDeep(name) => write!(
+                f,
+                "`{name}` calls itself too deeply (more than {} nested calls)",
+                crate::resolve::MAX_CALL_DEPTH
+            ),
             EvalError::TooMuchWork => write!(f, "this needs too much work to evaluate"),
             EvalError::Unsupported(what) => write!(f, "{what} is not supported yet"),
             EvalError::Invalid(what) => write!(f, "{what}"),

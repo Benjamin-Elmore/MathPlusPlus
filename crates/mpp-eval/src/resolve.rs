@@ -28,8 +28,9 @@ pub trait Lookup {
     fn lookup(&self, name: &str) -> Option<Arc<Binding>>;
 }
 
-/// Deepest nesting of user-function calls.
-const MAX_CALL_DEPTH: usize = 1000;
+/// Deepest nesting of user-function calls. Evaluation runs on a thread with a
+/// large stack, so this is set by patience, not by the stack.
+pub(crate) const MAX_CALL_DEPTH: usize = 10_000;
 /// Most nodes visited for one statement.
 const MAX_WORK: usize = 400_000;
 /// Most terms of a sequence computed for one statement.
