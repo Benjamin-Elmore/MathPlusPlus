@@ -8,7 +8,7 @@ A name means the constant unless it is applied to an argument or brought in from
 
 The ratio of a circle's circumference to its diameter, here to 50 digits (OEIS A000796).
 
-$$ \pi \overset{?}{=} 3.14159265358979323846264338327950288419716939937510582 $$
+$$ \left| \pi - 3.14159265358979323846264338327950288419716939937510582 \right| < 10^{-50} \overset{?}{=} \text{true} $$
 
 Leibniz's series and the Basel problem both give it.
 
@@ -20,7 +20,7 @@ $$ \sum_{k=1}^{\infty} \frac{1}{k^2} \overset{?}{=} \frac{\pi^2}{6} $$
 
 The base of the natural logarithm, to 50 digits (OEIS A001113).
 
-$$ e \overset{?}{=} 2.71828182845904523536028747135266249775724709369995957 $$
+$$ \left| e - 2.71828182845904523536028747135266249775724709369995957 \right| < 10^{-50} \overset{?}{=} \text{true} $$
 
 The compound-interest limit and the factorial series.
 

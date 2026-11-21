@@ -112,6 +112,9 @@ fn closed_form(t: &Expr, k: &str, a: &Expr, depth: u32) -> MathResult<Option<Clo
     if let Some(found) = telescoping(t, k, a) {
         return Ok(Some(found));
     }
+    if let Some(value) = super::zeta_series::hurwitz_series(t, k, a) {
+        return Ok(closed(value, "Hurwitz zeta function", None));
+    }
     if let ExprNode::Add(ts) = t.node() {
         let mut values = Vec::with_capacity(ts.len());
         for p in ts {

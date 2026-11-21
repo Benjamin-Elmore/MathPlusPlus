@@ -18,7 +18,7 @@ $$ \hbar \equiv \frac{h}{2\pi} $$
 
 $$ \frac{\hbar}{h} \overset{?}{=} \frac{1}{2\pi} $$
 
-$$ \frac{\hbar}{1\,\mathrm{J\,s}} \overset{?}{=} 1.054571817646156 \times 10^{-34} $$
+$$ \left| \frac{\hbar}{1\,\mathrm{J\,s}} - 1.054571817646156 \times 10^{-34} \right| < 10^{-48} \overset{?}{=} \text{true} $$
 
 The elementary charge.
 
@@ -44,7 +44,7 @@ The Stefan–Boltzmann constant, exact from $2\pi^5 k_B^4/(15 h^3 c^2)$.
 
 $$ \sigma_{\text{SB}} \equiv 5.670374419184429 \times 10^{-8}\,\mathrm{W/(m^2\,K^4)} $$
 
-$$ \frac{2 \pi^5 (1.380649 \times 10^{-23})^4}{15 (6.62607015 \times 10^{-34})^3 \cdot 299792458^2} \overset{?}{=} 5.670374419184429 \times 10^{-8} $$
+$$ \left| \frac{2 \pi^5 (1.380649 \times 10^{-23})^4}{15 (6.62607015 \times 10^{-34})^3 \cdot 299792458^2} - 5.670374419184429 \times 10^{-8} \right| < 10^{-22} \overset{?}{=} \text{true} $$
 
 ## Measured constants (CODATA 2022)
 
@@ -58,7 +58,7 @@ $$ \varepsilon_0 \equiv 8.8541878188 \times 10^{-12}\,\mathrm{F/m} $$
 
 $$ \mu_0 \equiv 1.25663706127 \times 10^{-6}\,\mathrm{N/A^2} $$
 
-$$ 299792458^2 \cdot 1.25663706127 \times 10^{-6} \cdot 8.8541878188 \times 10^{-12} \overset{?}{=} 1 $$
+$$ \left| 299792458^2 \cdot 1.25663706127 \times 10^{-6} \cdot 8.8541878188 \times 10^{-12} - 1 \right| < 10^{-10} \overset{?}{=} \text{true} $$
 
 The electron and proton masses.
 
@@ -66,15 +66,15 @@ $$ m_e \equiv 9.1093837139 \times 10^{-31}\,\mathrm{kg} $$
 
 $$ m_p \equiv 1.67262192595 \times 10^{-27}\,\mathrm{kg} $$
 
-$$ \frac{m_p}{m_e} \overset{?}{=} 1836.152673426 $$
+$$ \left| \frac{m_p}{m_e} - 1836.152673426 \right| < 10^{-8} \overset{?}{=} \text{true} $$
 
 The fine-structure constant, $\alpha = q_e^2/(4\pi\varepsilon_0\hbar c)$, a pure number.
 
 $$ \alpha_{\text{fs}} \equiv 7.2973525643 \times 10^{-3} $$
 
-$$ \frac{(1.602176634 \times 10^{-19})^2 \cdot 2\pi}{4 \pi \cdot 8.8541878188 \times 10^{-12} \cdot 6.62607015 \times 10^{-34} \cdot 299792458} \overset{?}{=} \alpha_{\text{fs}} $$
+$$ \left| \frac{(1.602176634 \times 10^{-19})^2 \cdot 2\pi}{4 \pi \cdot 8.8541878188 \times 10^{-12} \cdot 6.62607015 \times 10^{-34} \cdot 299792458} - \alpha_{\text{fs}} \right| < 10^{-12} \overset{?}{=} \text{true} $$
 
-$$ \frac{1}{\alpha_{\text{fs}}} \overset{?}{=} 137.035999177 $$
+$$ \left| \frac{1}{\alpha_{\text{fs}}} - 137.035999177 \right| < 10^{-9} \overset{?}{=} \text{true} $$
 
 ## Kinematics (suvat)
 

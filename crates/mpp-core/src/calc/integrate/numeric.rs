@@ -49,11 +49,13 @@ fn gk15(f: &mut dyn FnMut(f64) -> Option<f64>, a: f64, b: f64) -> Option<(f64, f
     let fc = f(c)?;
     let mut kronrod = WGK[7] * fc;
     let mut gauss = WG[3] * fc;
+    let mut size = WGK[7] * fc.abs();
     for (j, x) in XGK.iter().enumerate().take(7) {
         let dx = h * x;
         let f1 = f(c - dx)?;
         let f2 = f(c + dx)?;
         kronrod += WGK[j] * (f1 + f2);
+        size += WGK[j] * (f1.abs() + f2.abs());
         if j % 2 == 1 {
             gauss += WG[j / 2] * (f1 + f2);
         }
@@ -63,7 +65,8 @@ fn gk15(f: &mut dyn FnMut(f64) -> Option<f64>, a: f64, b: f64) -> Option<(f64, f
     if !k.is_finite() {
         return None;
     }
-    Some((k, (k - g).abs()))
+    // Rounding noise scales with ∫|f|, which matters when the values cancel.
+    Some((k, (k - g).abs().max(4e-15 * size * h.abs())))
 }
 
 #[derive(Clone, Copy)]
@@ -151,7 +154,10 @@ fn adaptive_at(
             ));
         }
         if err <= tol.max(tol * total.abs()) {
-            return Ok((total, err));
+            // Rounding in the panel sums is an error too: a total far below the size
+            // of its parts (positive and negative pieces cancelling) is noise there.
+            let parts: f64 = panels.iter().map(|p| p.value.abs()).sum();
+            return Ok((total, err.max(4e-15 * parts)));
         }
         if panels.len() >= max_intervals {
             return Err(not_settled(total, err));
@@ -166,7 +172,8 @@ fn adaptive_at(
         if (worst.b - worst.a).abs() <= 1e-14 * (1.0 + m.abs()) {
             // Cannot split further: accept if the rest is good enough.
             if err <= 1e3 * tol.max(tol * total.abs()) {
-                return Ok((total, err));
+                let parts: f64 = panels.iter().map(|p| p.value.abs()).sum();
+                return Ok((total, err.max(4e-15 * parts)));
             }
             return Err(not_settled(total, err));
         }

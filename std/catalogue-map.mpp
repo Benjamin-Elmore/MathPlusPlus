@@ -14,8 +14,8 @@ Name clashes are resolved as the catalogue asks: a name means the constant unles
 
 | Catalogue line | Class | File | Entry |
 |---|---|---|---|
-| π = 3.1415926536…                    Circle circumference / diameter | check | `std/prelude.mpp` | `\pi \overset{?}{=} 3.14159` |
-| e = 2.7182818285…                    Base of the natural logarithm | check | `std/prelude.mpp` | `e \overset{?}{=} 2.71828` |
+| π = 3.1415926536…                    Circle circumference / diameter | check | `std/prelude.mpp` | `\pi - 3.14159` |
+| e = 2.7182818285…                    Base of the natural logarithm | check | `std/prelude.mpp` | `e - 2.71828` |
 | φ = (1 + √5)/2 = 1.6180339887…        Golden ratio, φ² = φ + 1 | compute | `std/constants.mpp` | `\varphi \equiv` |
 | γ = 0.5772156649…                    Euler–Mascheroni constant | compute | `std/constants.mpp` | `\gamma \equiv` |
 | γ = lim[n→∞] (Σ_{k=1}^n 1/k − ln n) | check | `std/constants.mpp` | `\ln 1000 - \frac{1}{2000}` |
@@ -103,7 +103,7 @@ Name clashes are resolved as the catalogue asks: a name means the constant unles
 | Catalan C_n = C(2n,n)/(n+1), beginning 1, 1, 2, 5, 14, 42. | compute | `std/numbers.mpp` | `C_{\text{Cat}}(n) :=` |
 | Fibonacci F_0=0, F_1=1, F_{n+2}=F_{n+1}+F_n. | compute | `std/numbers.mpp` | `F_{n+1} := F_n + F_{n-1}` |
 | Σ_{n≥0} x^n = 1/(1−x) for \|x\|<1. | check | `std/discrete.mpp` | `\sum_{n=0}^{\infty} x^n \overset{?}{=} \frac{1}{1 - x}` |
-| Fibonacci generating function: Σ_{n≥0} F_n x^n = x/(1−x−x²) | check | `std/numbers.mpp` | `\overset{?}{=} G_{\text{Fib}}(\tfrac{1}{10})` |
+| Fibonacci generating function: Σ_{n≥0} F_n x^n = x/(1−x−x²) | check | `std/numbers.mpp` | `- G_{\text{Fib}}(\tfrac{1}{10})` |
 | as a formal power series. | compute | `std/numbers.mpp` | `G_{\text{Fib}}(x) :=` |
 | Σ_v deg(v) = 2\|E\| for a finite undirected graph. | check | `std/discrete.mpp` | `4 \operatorname{mean}(\operatorname{graphdegrees}(K_{\text{4 edges}}))` |
 | A connected finite graph is a tree exactly when \|E\| = \|V\|−1. | state | `std/discrete.mpp` | `(Trees)` |

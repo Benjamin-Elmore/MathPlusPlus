@@ -120,7 +120,7 @@ $$ \sum_{n=0}^{\infty} \frac{(-1)^n}{2n+1} \overset{?}{=} \arctan 1 $$
 
 $$ \sum_{n=0}^{\infty} \frac{(-1)^n}{2n+1} \left(\frac{1}{2}\right)^{2n+1} \overset{?}{=} \arctan\frac{1}{2} $$
 
-$$ \sum_{n=0}^{40} \binom{1/2}{n} \left(\frac{1}{4}\right)^n \overset{?}{=} \sqrt{\frac{5}{4}} $$
+$$ \left| \sum_{n=0}^{40} \binom{1/2}{n} \left(\frac{1}{4}\right)^n - \sqrt{\frac{5}{4}} \right| < 10^{-25} \overset{?}{=} \text{true} $$
 
 The first terms of the binomial series $(1 + x)^\alpha = 1 + \alpha x + \frac{\alpha(\alpha - 1)}{2} x^2 + …$, as a polynomial.
 

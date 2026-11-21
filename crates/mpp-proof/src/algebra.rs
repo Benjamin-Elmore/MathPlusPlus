@@ -221,6 +221,9 @@ fn direct(claim: &Claim, defs: &[Def], k: &Knowledge) -> Attempt {
                 LineOut::Verdict(v @ Verdict::Fails { .. }) => {
                     Attempt::Fails(v.describe().trim_start_matches("✗ ").to_string())
                 }
+                LineOut::Verdict(Verdict::Agrees { digits }) => {
+                    Attempt::Holds(format!("agrees numerically to {digits} digits"))
+                }
                 LineOut::Verdict(Verdict::Unknown(why)) => Attempt::Unknown(why),
                 LineOut::Error(e) => Attempt::Unknown(e),
                 LineOut::Value(_) => Attempt::Unknown("the claim was not read as a check".into()),

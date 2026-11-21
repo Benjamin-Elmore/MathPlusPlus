@@ -80,7 +80,7 @@ impl Method {
             Method::Direct => "terms added until they no longer change the sum",
             Method::Wynn => "partial sums accelerated with Wynn's ε-algorithm",
             Method::EulerMaclaurin => {
-                "60 terms added, the tail estimated by the Euler–Maclaurin formula"
+                "120 terms added, the tail from the Euler–Maclaurin formula (checked against 60 terms)"
             }
             Method::Brute => "100000 terms added (the tail is below the last digits shown)",
         }
@@ -148,6 +148,22 @@ pub(crate) fn wynn_epsilon(s: &[f64]) -> Option<f64> {
     Some(best)
 }
 
+/// Relative accuracy a numeric value must be confirmed to before it is shown (ten
+/// digits with a margin).
+const WANTED: f64 = 5e-12;
+
+/// A value that cannot be confirmed to the digits shown is refused, never guessed.
+fn too_slow() -> MathError {
+    MathError::Undetermined(
+        "its value to 10 digits: the series converges, but too slowly for the numeric methods"
+            .into(),
+    )
+}
+
+fn agree(a: f64, b: f64) -> bool {
+    (a - b).abs() <= WANTED * a.abs().max(b.abs()).max(f64::MIN_POSITIVE)
+}
+
 fn alternating(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
     let mut partial = Vec::with_capacity(WYNN_TERMS);
     let mut acc = Kahan::default();
@@ -157,7 +173,26 @@ fn alternating(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
         acc.add(term_f64(t, k, n).ok_or_else(|| bad_term(k, n))?);
         partial.push(acc.value());
     }
-    wynn_epsilon(&partial).ok_or_else(|| MathError::Inconclusive("the numeric sum".into()))
+    let all = wynn_epsilon(&partial).ok_or_else(too_slow)?;
+    // The estimate from fewer partial sums must agree, or the digits are not settled.
+    let fewer = wynn_epsilon(&partial[..WYNN_TERMS - 6]).ok_or_else(too_slow)?;
+    if agree(all, fewer) {
+        Ok(all)
+    } else {
+        Err(too_slow())
+    }
+}
+
+/// True when the first terms alternate in sign (`cos(nπ)/n`, `(−1)^n/√n` …).
+fn alternates(t: &Expr, k: &str, a: f64) -> bool {
+    let signs: Option<Vec<bool>> = (0..24)
+        .map(|i| {
+            term_f64(t, k, a + f64::from(i))
+                .filter(|v| *v != 0.0)
+                .map(|v| v > 0.0)
+        })
+        .collect();
+    signs.is_some_and(|s| s.windows(2).all(|w| w[0] != w[1]))
 }
 
 /// `∫_N^∞ t` from an antiderivative, when the integrator finds one.
@@ -170,9 +205,11 @@ fn exact_tail(t: &Expr, k: &str, n: f64) -> Option<f64> {
         .filter(|v| v.is_finite())
 }
 
-/// `Σ_{k=a}^{N−1} t + ∫_N^∞ t + t(N)/2 − t′(N)/12 + t‴(N)/720 − t⁽⁵⁾(N)/30240`.
-fn euler_maclaurin(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
-    let n_head = a + EM_HEAD;
+/// `Σ_{k=a}^{N−1} t + ∫_N^∞ t + t(N)/2 − t′(N)/12 + t‴(N)/720 − t⁽⁵⁾(N)/30240` with
+/// `N = a + head`, and an estimate of its error (the last correction, the tail
+/// integral's error and rounding).
+fn euler_maclaurin_at(t: &Expr, k: &str, a: f64, head: f64) -> MathResult<(f64, f64)> {
+    let n_head = a + head;
     let mut acc = Kahan::default();
     let mut n = a;
     while n < n_head {
@@ -180,20 +217,40 @@ fn euler_maclaurin(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
         acc.add(term_f64(t, k, n).ok_or_else(|| bad_term(k, n))?);
         n += 1.0;
     }
-    let tail = exact_tail(t, k, n_head).map_or_else(
-        || numeric_integrate(t, k, n_head, f64::INFINITY, 1e-13).map(|r| r.0),
-        Ok,
-    )?;
+    let (tail, tail_err) = match exact_tail(t, k, n_head) {
+        Some(v) => (v, 1e-15 * v.abs()),
+        None => numeric_integrate(t, k, n_head, f64::INFINITY, 1e-14)?,
+    };
     let d1 = diff(t, k, 1, None)?;
     let d3 = diff(&d1, k, 2, None)?;
     let d5 = diff(&d3, k, 2, None)?;
     let at = |e: &Expr| term_f64(e, k, n_head).ok_or_else(|| bad_term(k, n_head));
     let correction = at(t)? / 2.0 - at(&d1)? / 12.0 + at(&d3)? / 720.0 - at(&d5)? / 30240.0;
+    // The last correction used bounds the remainder (the next one, with t⁽⁷⁾, is
+    // smaller still for these smooth decreasing terms).
+    let next = at(&d5)?.abs() / 30240.0;
     acc.add(tail);
     acc.add(correction);
-    Ok(acc.value())
+    let value = acc.value();
+    let rounding = 1e-15 * (value.abs() + tail.abs());
+    Ok((value, next + tail_err.abs() + rounding))
 }
 
+/// Euler–Maclaurin with two head lengths: the values must agree and the error estimate
+/// must be below the digits shown.
+fn euler_maclaurin(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
+    let (short, _) = euler_maclaurin_at(t, k, a, EM_HEAD)?;
+    let (long, err) = euler_maclaurin_at(t, k, a, 2.0 * EM_HEAD)?;
+    if long.is_finite() && agree(short, long) && err <= WANTED * long.abs() {
+        Ok(long)
+    } else {
+        Err(too_slow())
+    }
+}
+
+/// Plain addition of many terms, kept only when the terms left over are provably
+/// negligible: they must shrink at least like `1/n^p` with `p` comfortably above 1, and
+/// the tail that implies must be below the digits shown.
 fn brute(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
     let mut acc = Kahan::default();
     let mut n = a;
@@ -202,20 +259,41 @@ fn brute(t: &Expr, k: &str, a: f64) -> MathResult<f64> {
         acc.add(term_f64(t, k, n).ok_or_else(|| bad_term(k, n))?);
         n += 1.0;
     }
-    Ok(acc.value())
+    let sum = acc.value();
+    let last = term_f64(t, k, n - 1.0).ok_or_else(|| bad_term(k, n))?;
+    let mid_n = a + (BRUTE_TERMS / 2) as f64;
+    let mid = term_f64(t, k, mid_n).ok_or_else(|| bad_term(k, mid_n))?;
+    if last == 0.0 {
+        return Ok(sum);
+    }
+    if last.signum() != mid.signum() {
+        return Err(too_slow());
+    }
+    let p = (mid / last).abs().ln() / ((n - 1.0) / mid_n).ln();
+    if p.is_nan() || p <= 1.1 {
+        return Err(too_slow());
+    }
+    let tail = (n * last / (p - 1.0)).abs();
+    if tail <= WANTED * sum.abs() {
+        Ok(sum)
+    } else {
+        Err(too_slow())
+    }
 }
 
 /// The value of a convergent `Σ_{k=a}^{∞} t`, choosing the method from the test that proved
-/// convergence.
+/// convergence. Every method checks its own error; a value that cannot be confirmed to
+/// the digits shown is an error, never a wrong number.
 pub(crate) fn infinite(t: &Expr, k: &str, a: f64, test: &str) -> MathResult<(f64, Method)> {
     match test {
         "geometric series" | "ratio test" | "root test" => {
             direct(t, k, a).map(|v| (v, Method::Direct))
         }
         "alternating series test" => alternating(t, k, a).map(|v| (v, Method::Wynn)),
+        _ if alternates(t, k, a) => alternating(t, k, a).map(|v| (v, Method::Wynn)),
         _ => match euler_maclaurin(t, k, a) {
-            Ok(v) if v.is_finite() => Ok((v, Method::EulerMaclaurin)),
-            _ => brute(t, k, a).map(|v| (v, Method::Brute)),
+            Ok(v) => Ok((v, Method::EulerMaclaurin)),
+            Err(_) => brute(t, k, a).map(|v| (v, Method::Brute)),
         },
     }
 }

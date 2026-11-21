@@ -159,11 +159,22 @@ fn real_float(x: f64, fmt: &NumberFormat, default_sig: usize) -> Real {
     decimal(x < 0.0, Src::F(x.abs()), fmt, default_sig, false)
 }
 
+/// A high-precision decimal (its digits go past the ones shown) under `fmt`.
+pub(super) fn render_decimal(
+    d: &crate::hp::Decimal,
+    fmt: &NumberFormat,
+    default_sig: usize,
+) -> (String, String, Hint) {
+    decimal(d.neg, Src::D(d), fmt, default_sig, false).signed()
+}
+
 /// The magnitude being formatted.
 #[derive(Clone, Copy)]
 enum Src<'a> {
     Q(&'a BigRational),
     F(f64),
+    /// Decimal digits from a high-precision evaluation (sign ignored).
+    D(&'a crate::hp::Decimal),
 }
 
 impl Src<'_> {
@@ -184,6 +195,10 @@ impl Src<'_> {
                 }
                 (digits, exp.parse().unwrap_or(0))
             }
+            Src::D(d) => {
+                let r = d.rounded(sig);
+                (r.digits, r.k)
+            }
         }
     }
 
@@ -191,6 +206,7 @@ impl Src<'_> {
         match self {
             Src::Q(q) => Some(q.clone()),
             Src::F(x) => BigRational::from_float(x),
+            Src::D(d) => d.to_ratio().map(|q| q.abs()),
         }
     }
 }
@@ -248,7 +264,7 @@ fn decimal(
             None if lossless => {
                 let all = match src {
                     Src::Q(q) => q.numer().to_string(),
-                    Src::F(_) => probe.clone(),
+                    Src::F(_) | Src::D(_) => probe.clone(),
                 };
                 let trimmed = all.trim_end_matches('0');
                 let k = i64::try_from(all.len()).unwrap_or(1) - 1;

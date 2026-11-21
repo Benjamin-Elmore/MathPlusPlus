@@ -657,6 +657,8 @@ fn textbook_apply(name: &str, args: &[Expr]) -> Option<String> {
         ("delta", [x]) => format!("δ({})", plain(x).0),
         ("delta", [x, j]) => format!("δ{}({})", primes(j)?, plain(x).0),
         ("polygamma", [n, x]) => format!("ψ{}({})", primes(n)?, plain(x).0),
+        ("zeta", [s]) => format!("ζ({})", plain(s).0),
+        ("hurwitzzeta", [s, a]) => format!("ζ({}, {})", plain(s).0, plain(a).0),
         _ => return None,
     })
 }

@@ -12,6 +12,7 @@ mod numeric;
 mod product;
 mod rational;
 mod special;
+mod zeta_series;
 
 #[cfg(test)]
 mod tests;

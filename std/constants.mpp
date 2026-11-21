@@ -16,13 +16,13 @@ $$ \varphi^2 \overset{?}{=} \varphi + 1 $$
 
 $$ \frac{1}{\varphi} \overset{?}{=} \varphi - 1 $$
 
-$$ \varphi \overset{?}{=} 1.6180339887498948482045868343656381177203091798057628621 $$
+$$ \left| \varphi - 1.6180339887498948482045868343656381177203091798057628621 \right| < 10^{-50} \overset{?}{=} \text{true} $$
 
 Its continued fraction is all ones, $[1; 1, 1, 1, …]$, so its convergents are ratios of Fibonacci numbers: six ones give $13/8$, and they close in on $\varphi$.
 
 $$ \operatorname{contfracvalue}((1, 1, 1, 1, 1, 1)) \overset{?}{=} \frac{13}{8} $$
 
-$$ \operatorname{contfracvalue}((1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)) - \varphi \overset{?}{=} 0 $$
+$$ \left| \operatorname{contfracvalue}((1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)) - \varphi \right| < 10^{-12} \overset{?}{=} \text{true} $$
 
 ## The Euler–Mascheroni constant γ
 
@@ -32,7 +32,7 @@ $$ \gamma \equiv 0.577215664901532860606512090082402431042159335939923598805767 
 
 Checked against the harmonic sum with its Euler–Maclaurin correction, which at $n = 1000$ is good to about $10^{-14}$.
 
-$$ \sum_{k=1}^{1000} \frac{1}{k} - \ln 1000 - \frac{1}{2000} + \frac{1}{12000000} \overset{?}{=} \gamma $$
+$$ \left| \left(\sum_{k=1}^{1000} \frac{1}{k} - \ln 1000 - \frac{1}{2000} + \frac{1}{12000000}\right) - \gamma \right| < 10^{-14} \overset{?}{=} \text{true} $$
 
 $$ \gamma \overset{?}{=} -\mathrm{digamma}(1) $$
 
@@ -56,15 +56,15 @@ $$ \zeta(3) \overset{?}{=} \zeta_3 $$
 
 ## Square roots and logarithms
 
-These are exact as written ($\sqrt{2}$, $\ln 2$ …); the checks give their first 50 digits (OEIS A002193, A002194, A002162, A002392).
+These are exact as written ($\sqrt{2}$, $\ln 2$ …); the checks bound them to their first 50 digits (OEIS A002193, A002194, A002162, A002392).
 
-$$ \sqrt{2} \overset{?}{=} 1.41421356237309504880168872420969807856967187537694807 $$
+$$ \left| \sqrt{2} - 1.41421356237309504880168872420969807856967187537694807 \right| < 10^{-50} \overset{?}{=} \text{true} $$
 
-$$ \sqrt{3} \overset{?}{=} 1.73205080756887729352744634150587236694280525381038062 $$
+$$ \left| \sqrt{3} - 1.73205080756887729352744634150587236694280525381038062 \right| < 10^{-50} \overset{?}{=} \text{true} $$
 
-$$ \ln 2 \overset{?}{=} 0.69314718055994530941723212145817656807550013436025525 $$
+$$ \left| \ln 2 - 0.69314718055994530941723212145817656807550013436025525 \right| < 10^{-50} \overset{?}{=} \text{true} $$
 
-$$ \ln 10 \overset{?}{=} 2.30258509299404568401799145468436420760110148862877297 $$
+$$ \left| \ln 10 - 2.30258509299404568401799145468436420760110148862877297 \right| < 10^{-50} \overset{?}{=} \text{true} $$
 
 $$ \sum_{n=1}^{\infty} \frac{(-1)^{n+1}}{n} \overset{?}{=} \ln 2 $$
 
@@ -78,4 +78,4 @@ $$ \alpha_{\text{F}} \equiv 2.50290787509589282228390287321821578638127137672714
 
 A rough check from the first superstable parameters of $x \mapsto r x (1 - x)$: $r_2 = 1 + \sqrt{5}$, $r_3 = 3.4985616993277$ and $r_4 = 3.5546408627688$ give a gap ratio $(r_3 - r_2)/(r_4 - r_3)$ about $0.0116$ above $\delta$, and the ratios converge to $\delta$ as the doublings go on.
 
-$$ \frac{3.4985616993277 - (1 + \sqrt{5})}{3.5546408627688 - 3.4985616993277} \overset{?}{=} \delta_{\text{F}} + 0.0115693889096262 $$
+$$ \left| \frac{3.4985616993277 - (1 + \sqrt{5})}{3.5546408627688 - 3.4985616993277} - (\delta_{\text{F}} + 0.0115693889096262) \right| < 10^{-15} \overset{?}{=} \text{true} $$

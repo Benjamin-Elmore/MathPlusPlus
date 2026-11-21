@@ -124,6 +124,9 @@ fn verdict_latex(v: &mpp_eval::Verdict) -> String {
                 num(rhs)
             )
         }
+        mpp_eval::Verdict::Agrees { digits } => {
+            format!("\\approx\\; \\text{{checked numerically to {digits} digits}}")
+        }
         mpp_eval::Verdict::Unknown(_) => "\\text{could not decide}".into(),
     }
 }

@@ -2,8 +2,10 @@
 
 use std::collections::HashMap;
 
+use mpp_core::hp::Rational as BigRational;
 use mpp_core::number::format_f64;
 use mpp_core::{Expr, ExprNode};
+use num_bigint::BigInt;
 use num_complex::Complex64;
 
 use crate::holders::contains_holder;
@@ -28,6 +30,9 @@ pub enum Verdict {
         lhs: String,
         rhs: String,
     },
+    /// Two closed expressions agree to this many significant digits in high-precision
+    /// arithmetic, but no proof was found (shown with ≈, never ✓).
+    Agrees { digits: usize },
     /// Neither a proof nor a numeric check was possible.
     Unknown(String),
 }
@@ -36,14 +41,17 @@ impl Verdict {
     /// `Some(true)` for ✓, `Some(false)` for ✗, `None` when undecided.
     pub fn passed(&self) -> Option<bool> {
         match self {
-            Verdict::Proved | Verdict::Holds { .. } => Some(true),
+            Verdict::Proved | Verdict::Holds { .. } | Verdict::Agrees { .. } => Some(true),
             Verdict::Fails { .. } => Some(false),
             Verdict::Unknown(_) => None,
         }
     }
 
-    /// ✓, ✗ or ?.
+    /// ✓, ✗, ≈ (agrees numerically, not proved) or ?.
     pub fn mark(&self) -> &'static str {
+        if matches!(self, Verdict::Agrees { .. }) {
+            return "≈";
+        }
         match self.passed() {
             Some(true) => "✓",
             Some(false) => "✗",
@@ -66,6 +74,9 @@ impl Verdict {
                         point.join(", ")
                     )
                 }
+            }
+            Verdict::Agrees { digits } => {
+                format!("≈ (checked numerically to {digits} digits, not proved)")
             }
             Verdict::Unknown(why) => format!("? ({why})"),
         }
@@ -152,7 +163,191 @@ pub fn check(lhs: &Expr, rhs: &Expr) -> Verdict {
             "a side holds a calculus expression that is not evaluated yet".into(),
         );
     }
+    // A difference that is an exact nonzero number can never vanish: x and x + 10⁻¹²,
+    // or 2¹⁰⁰ + 1 and 2¹⁰⁰, are different however close they look.
+    if diff
+        .as_number()
+        .is_some_and(|n| n.is_exact() && !n.is_zero())
+    {
+        return exact_difference(lhs, rhs);
+    }
+    if lhs.free_symbols().is_empty() && rhs.free_symbols().is_empty() {
+        if let Some(v) = closed_check(lhs, rhs) {
+            return v;
+        }
+    }
     spot_check(lhs, rhs)
+}
+
+/// Significant digits a closed check is worked out to.
+const CHECK_DIGITS: usize = 30;
+/// Digits an approximate (floating-point) input is trusted to.
+const FLOAT_DIGITS: usize = 12;
+
+/// The difference `lhs − rhs` as written (not simplified), for numeric evaluation.
+fn raw_difference(lhs: &Expr, rhs: &Expr) -> Expr {
+    use mpp_core::Number;
+    let minus = Expr::new(ExprNode::Mul(vec![
+        Expr::num(Number::from(-1)),
+        rhs.clone(),
+    ]));
+    Expr::new(ExprNode::Add(vec![lhs.clone(), minus]))
+}
+
+/// Text of a high-precision value with `sig` digits.
+fn decimal_shown(d: &mpp_core::hp::Decimal, sig: usize) -> String {
+    mpp_core::number::format_decimal_digits(d, sig)
+}
+
+/// The sign of `a − b` for closed expressions when high precision shows it is not zero
+/// (a gap below a floating-point input's resolution decides nothing).
+fn closed_sign(a: &Expr, b: &Expr) -> Option<std::cmp::Ordering> {
+    use mpp_core::hp::{approx_closed, Approx};
+    if !(a.free_symbols().is_empty() && b.free_symbols().is_empty()) {
+        return None;
+    }
+    let Approx::Value { value, inexact } = approx_closed(&raw_difference(a, b), 15)? else {
+        return None;
+    };
+    if inexact {
+        let size = |e: &Expr| match approx_closed(e, 3) {
+            Some(Approx::Value { value, .. }) => Some(value.k),
+            _ => None,
+        };
+        let top = size(a).into_iter().chain(size(b)).max()?;
+        if top - value.k >= FLOAT_DIGITS as i64 {
+            return None;
+        }
+    }
+    Some(if value.neg {
+        std::cmp::Ordering::Less
+    } else {
+        std::cmp::Ordering::Greater
+    })
+}
+
+/// The two sides compared in high precision at one point: `Some(true)` when they agree
+/// to every digit tried (or, with floating-point inputs, to the digits those carry),
+/// `Some(false)` when they differ, `None` when the evaluator cannot handle a side here.
+fn point_check(lhs: &Expr, rhs: &Expr, vars: &HashMap<String, BigRational>) -> Option<bool> {
+    use mpp_core::hp::{approx, Approx};
+    match approx(&raw_difference(lhs, rhs), vars, 20)? {
+        Approx::Zero { .. } => Some(true),
+        Approx::Value { value, inexact } => {
+            if !inexact {
+                return Some(false);
+            }
+            let size = |e: &Expr| match approx(e, vars, 3) {
+                Some(Approx::Value { value, .. }) => Some(value.k),
+                _ => None,
+            };
+            let top = size(lhs).into_iter().chain(size(rhs)).max()?;
+            Some(top - value.k >= FLOAT_DIGITS as i64)
+        }
+    }
+}
+
+/// Both sides as decimals, with enough digits to show where they differ.
+fn sides_shown(
+    lhs: &Expr,
+    rhs: &Expr,
+    vars: &HashMap<String, BigRational>,
+) -> Option<(String, String)> {
+    use mpp_core::hp::{approx, Approx};
+    let diff = approx(&raw_difference(lhs, rhs), vars, 3)?;
+    let side = |e: &Expr, sig: usize| match approx(e, vars, sig) {
+        // Integers are shown whole while they are short enough to read.
+        _ if e
+            .as_number()
+            .and_then(mpp_core::Number::as_integer)
+            .is_some_and(|n| n.to_string().len() <= 40) =>
+        {
+            Some(e.to_string())
+        }
+        Some(Approx::Value { value, .. }) => Some(decimal_shown(&value, sig)),
+        Some(Approx::Zero { .. }) => Some("0".to_string()),
+        None => None,
+    };
+    let big = |e: &Expr| match approx(e, vars, 3) {
+        Some(Approx::Value { value, .. }) => Some(value.k),
+        _ => None,
+    };
+    let top = big(lhs).into_iter().chain(big(rhs)).max()?;
+    let sig = match diff {
+        Approx::Value { value, .. } => usize::try_from(top - value.k + 3).unwrap_or(0),
+        Approx::Zero { .. } => 0,
+    }
+    .clamp(DIGITS, 400);
+    Some((side(lhs, sig)?, side(rhs, sig)?))
+}
+
+/// `✗` for two sides whose difference is an exact nonzero number.
+fn exact_difference(lhs: &Expr, rhs: &Expr) -> Verdict {
+    let mut names: Vec<String> = lhs
+        .free_symbols()
+        .union(&rhs.free_symbols())
+        .map(|s| s.to_string())
+        .collect();
+    names.sort();
+    // At one sample point the two values show the gap.
+    let point: HashMap<String, BigRational> = names
+        .iter()
+        .enumerate()
+        .map(|(i, n)| {
+            (
+                n.clone(),
+                BigRational::new(BigInt::from(i as i64 + 1), BigInt::from(2)),
+            )
+        })
+        .collect();
+    let at = names
+        .iter()
+        .map(|n| (n.clone(), point[n].to_string()))
+        .collect();
+    match sides_shown(lhs, rhs, &point) {
+        Some((l, r)) => Verdict::Fails { at, lhs: l, rhs: r },
+        None => fails_whole(lhs, rhs),
+    }
+}
+
+/// A check between two closed expressions, decided in high precision: different
+/// values are ✗; values equal to every digit tried are ≈ (never ✓, since agreement to
+/// many digits is not a proof). `None` when the high-precision evaluator cannot handle
+/// a side.
+fn closed_check(lhs: &Expr, rhs: &Expr) -> Option<Verdict> {
+    use mpp_core::hp::{approx_closed, Approx};
+    let vars = HashMap::new();
+    let diff = approx_closed(&raw_difference(lhs, rhs), CHECK_DIGITS)?;
+    let size = |e: &Expr| match approx_closed(e, 3) {
+        Some(Approx::Value { value, .. }) => Some(value.k),
+        Some(Approx::Zero { .. }) => Some(i64::MIN / 2),
+        None => None,
+    };
+    let top = size(lhs)?.max(size(rhs)?);
+    match diff {
+        Approx::Zero { below } => {
+            let digits = usize::try_from(top.max(below) - below).unwrap_or(CHECK_DIGITS);
+            Some(Verdict::Agrees {
+                digits: digits.max(CHECK_DIGITS),
+            })
+        }
+        Approx::Value { value, inexact } => {
+            // A floating-point input carries only about 15 good digits, so a gap below
+            // that is no evidence either way.
+            let gap_digits = top - value.k;
+            if inexact && gap_digits >= FLOAT_DIGITS as i64 {
+                return Some(Verdict::Agrees {
+                    digits: FLOAT_DIGITS,
+                });
+            }
+            let (l, r) = sides_shown(lhs, rhs, &vars)?;
+            Some(Verdict::Fails {
+                at: Vec::new(),
+                lhs: l,
+                rhs: r,
+            })
+        }
+    }
 }
 
 /// `✗ (left side …, right side …)` for the two whole sides.
@@ -185,6 +380,7 @@ fn check_entries(lhs: &Expr, rhs: &Expr, a: &[Expr], b: &[Expr]) -> Verdict {
             Verdict::Holds { points } => {
                 fewest = Some(fewest.map_or(points, |p: usize| p.min(points)));
             }
+            Verdict::Agrees { digits } => return Verdict::Agrees { digits },
             Verdict::Fails { at, lhs, rhs } => {
                 return Verdict::Fails {
                     at,
@@ -311,6 +507,22 @@ fn check_truth(prop: &Expr, want: bool) -> Verdict {
                     };
                     return truth_verdict(holds, want, Vec::new());
                 }
+            }
+        }
+        // Otherwise by the sign of the difference in high precision, when it is clear.
+        if let ExprNode::Relation(op, a, b) = prop.node() {
+            if let Some(sign) = closed_sign(a, b) {
+                use mpp_core::RelOp;
+                use std::cmp::Ordering::{Equal, Greater, Less};
+                let holds = match op {
+                    RelOp::Eq | RelOp::Approx => sign == Equal,
+                    RelOp::Ne => sign != Equal,
+                    RelOp::Lt => sign == Less,
+                    RelOp::Le => sign != Greater,
+                    RelOp::Gt => sign == Greater,
+                    RelOp::Ge => sign != Less,
+                };
+                return truth_verdict(holds, want, Vec::new());
             }
         }
         return match truth_at(prop, &HashMap::new()) {
@@ -447,6 +659,34 @@ fn spot_check(lhs: &Expr, rhs: &Expr) -> Verdict {
                 (n.clone(), Complex64::new(x, 0.0))
             })
             .collect();
+        // High precision first: a gap far below f64's resolution still shows.
+        let exact: Option<HashMap<String, BigRational>> = env
+            .iter()
+            .map(|(n, z)| BigRational::from_float(z.re).map(|q| (n.clone(), q)))
+            .collect();
+        match exact.as_ref().and_then(|q| point_check(lhs, rhs, q)) {
+            Some(true) => {
+                agreed += 1;
+                if agreed >= WANTED {
+                    break;
+                }
+                continue;
+            }
+            Some(false) => {
+                let q = exact.unwrap_or_default();
+                let at = names
+                    .iter()
+                    .map(|n| {
+                        let v = env.get(n).map_or(0.0, |z| z.re);
+                        (n.clone(), format_f64(v, 6))
+                    })
+                    .collect();
+                if let Some((l, r)) = sides_shown(lhs, rhs, &q) {
+                    return Verdict::Fails { at, lhs: l, rhs: r };
+                }
+            }
+            None => {}
+        }
         let (Ok(l), Ok(r)) = (lhs.eval_complex(&env), rhs.eval_complex(&env)) else {
             continue;
         };
@@ -454,6 +694,23 @@ fn spot_check(lhs: &Expr, rhs: &Expr) -> Verdict {
             continue;
         }
         let scale = l.norm().max(r.norm()).max(1.0);
+        if names.is_empty() {
+            // Two constants the high-precision evaluator cannot handle: agreement to
+            // floating-point resolution is ≈ (not a proof), a gap well above it is ✗,
+            // and a gap in between decides nothing.
+            let gap = (l - r).norm() / l.norm().max(r.norm()).max(f64::MIN_POSITIVE);
+            if gap <= 1e-12 {
+                return Verdict::Agrees {
+                    digits: FLOAT_DIGITS,
+                };
+            }
+            if gap <= 1e-8 {
+                return Verdict::Unknown(format!(
+                    "the two sides agree to only about {} digits in floating point, which cannot decide it",
+                    (-gap.log10()).floor()
+                ));
+            }
+        }
         if (l - r).norm() <= 1e-8 * scale {
             agreed += 1;
             if agreed >= WANTED {
