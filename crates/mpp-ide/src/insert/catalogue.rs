@@ -596,7 +596,7 @@ fn graph_h_tplane(_: Knobs, _: &BuildCx) -> String {
 }
 
 fn graph_h_taylor(_: Knobs, _: &BuildCx) -> String {
-    let mut s = String::from(r"Figure: ${⟨*function⟩}$, taylor $n = {⟨n=5#n⟩}$");
+    let mut s = String::from(r"Figure: ${⟨*function⟩}$, taylor ${⟨degree=5#n⟩}$");
     s.push_str(", ");
     s.push_str(&range("x"));
     s.push('.');
@@ -2107,6 +2107,26 @@ fn plus_minus(
     }
 }
 
+/// Draws pressed the fill buttons whose text is already in their box (the
+/// current rule of a Riemann sum, the current axis and method of a volume), from
+/// the template's box contents (see [`crate::editor::Session::contents`]).
+pub fn mark_current(controls: &mut [Control], contents: &[(String, String)]) {
+    for c in controls {
+        if let Action::Fill { keys, text } = &c.action {
+            let Some(k) = keys.first() else {
+                continue;
+            };
+            let key = format!("{k}#0");
+            if contents
+                .iter()
+                .any(|(kk, t)| *kk == key && !t.is_empty() && t.trim() == text.trim())
+            {
+                c.active = true;
+            }
+        }
+    }
+}
+
 /// The controls a template shows while the caret is in it.
 pub fn controls(template: &str, knobs: Knobs) -> Vec<Control> {
     let mut out = vec![];
@@ -2344,20 +2364,25 @@ pub fn controls(template: &str, knobs: Knobs) -> Vec<Control> {
                 "x = 0",
             ));
             if template == "helper.volume" {
-                for m in ["disk", "washer", "shell", "auto"] {
-                    out.push(fill(m, "Method", &["method"], &format!(r"\text{{{m}}}")));
+                for (m, label, tip) in [
+                    ("disk", "Discs", "Slice into discs"),
+                    ("washer", "Washers", "Slice into washers"),
+                    ("shell", "Shells", "Use cylindrical shells"),
+                    ("auto", "Automatic", "Choose the method automatically"),
+                ] {
+                    out.push(fill(label, tip, &["method"], &format!(r"\text{{{m}}}")));
                 }
             }
         }
         "helper.riemann" => {
-            for (m, tip) in [
-                ("left", "Left endpoints"),
-                ("right", "Right endpoints"),
-                ("mid", "Midpoints"),
-                ("trap", "Trapezoid rule"),
-                ("Simpson", "Simpson's rule"),
+            for (m, label, tip) in [
+                ("left", "Left", "Left endpoints"),
+                ("right", "Right", "Right endpoints"),
+                ("mid", "Midpoint", "Midpoints"),
+                ("trapezoid", "Trapezoid", "Trapezoid rule"),
+                ("simpson", "Simpson", "Simpson's rule"),
             ] {
-                out.push(fill(m, tip, &["rule"], &format!(r"\text{{{m}}}")));
+                out.push(fill(label, tip, &["rule"], &format!(r"\text{{{m}}}")));
             }
         }
         "graph.2d" | "graph.3d" | "graph.param" | "graph.slope" => {

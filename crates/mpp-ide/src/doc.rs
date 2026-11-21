@@ -30,6 +30,8 @@ struct CacheKey {
     quiet: Option<(usize, usize)>,
     /// Bumped when the view's display choices change.
     show: u64,
+    /// The caret is in the title block (its empty fields show their labels).
+    title: bool,
     /// Bumped when a new proof check arrives.
     proof: u64,
 }
@@ -543,6 +545,7 @@ impl Doc {
             mode,
             limits: self.integral_limits,
             quiet: self.quiet_range(),
+            title: caret_in_title(self.editor.text(), self.editor.caret()),
             show: self.show_version,
             proof: self.proof_id,
         };
@@ -560,7 +563,9 @@ impl Doc {
         let fresh = self.eval.is_some() && self.eval_text == editor.text();
         let limits = self.integral_limits;
         let background = self.background.clone();
-        let show = &self.show;
+        let mut show = self.show.clone();
+        show.editing_title = key.title;
+        let show = &show;
         let base = self.path.as_deref().and_then(Path::parent);
         let proof = self.proof.clone();
         let proof_fresh = self.proof.is_some() && self.proof_text == editor.text();
@@ -613,5 +618,42 @@ impl Doc {
                 })
             })
             .clone()
+    }
+}
+
+/// True when the caret is on one of the title-block lines at the top of the file
+/// (`Title:`, `Author:`, `Date:`, `Abstract:`), or just after them.
+fn caret_in_title(text: &str, caret: usize) -> bool {
+    let mut at = 0;
+    let mut seen = false;
+    for line in text.split_inclusive('\n') {
+        let t = line.trim_start();
+        let field = ["Title:", "Author:", "Date:", "Abstract:"]
+            .iter()
+            .any(|k| t.starts_with(k));
+        if !field {
+            break;
+        }
+        seen = true;
+        let end = at + line.trim_end_matches(['\n', '\r']).len();
+        if caret >= at && caret <= end {
+            return true;
+        }
+        at += line.len();
+    }
+    seen && caret == at && at == text.len()
+}
+
+#[cfg(test)]
+mod title_tests {
+    use super::caret_in_title;
+
+    #[test]
+    fn the_caret_is_in_the_title_block_only_on_its_lines() {
+        let t = "Title: Waves\nAuthor:\nDate:\n\nSome prose.\n";
+        assert!(caret_in_title(t, 3));
+        assert!(caret_in_title(t, 19));
+        assert!(!caret_in_title(t, t.len() - 3));
+        assert!(!caret_in_title("Some prose.", 2));
     }
 }

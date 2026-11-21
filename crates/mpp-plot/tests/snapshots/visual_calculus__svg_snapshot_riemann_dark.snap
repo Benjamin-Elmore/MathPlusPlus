@@ -44,6 +44,6 @@ expression: "to_svg(&fig.scene_2d(420.0, 320.0, &PlotTheme::dark()))"
 <text x="40" y="249.79" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="12" text-anchor="end" fill="#e6e6e3">0</text>
 <text x="398" y="225.79" font-family="Latin Modern Math, STIX Two Math, Cambria Math, serif" font-size="14" text-anchor="end" fill="#e6e6e3">𝑥</text>
 <text x="55" y="28" font-family="Latin Modern Math, STIX Two Math, Cambria Math, serif" font-size="14" text-anchor="start" fill="#e6e6e3">𝑦</text>
-<text x="50" y="295" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="13" text-anchor="start" fill="#e6e6e3">midpoint sum with n = 4: 2.625</text>
+<text x="50" y="295" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="13" text-anchor="start" fill="#e6e6e3">Midpoint rule, n = 4: 2.625</text>
 <text x="50" y="312" font-family="Latin Modern Roman, STIX Two Text, Times New Roman, serif" font-size="13" text-anchor="start" fill="#e6e6e3">exact integral ≈ 2.667</text>
 </svg>

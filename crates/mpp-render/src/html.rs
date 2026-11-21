@@ -520,7 +520,8 @@ impl Renderer<'_> {
                             parts.push(self.inline_math(&ast));
                         }
                         FigureItemKind::Keyword { keyword, arg } => {
-                            let mut s = esc(keyword.as_str());
+                            let mut s =
+                                esc(mpp_syntax::math::display::figure_keyword_words(*keyword));
                             if let Some(c) = arg {
                                 let _ = write!(s, " {}", self.clause(c));
                             }

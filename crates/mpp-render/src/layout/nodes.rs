@@ -1,6 +1,6 @@
 //! Typesetting each kind of expression node.
 
-use mpp_syntax::math::display::{operator_display, OpDisplay, Piece};
+use mpp_syntax::math::display::{choice_words, operator_display, sentence, OpDisplay, Piece};
 use mpp_syntax::math::visit;
 use mpp_syntax::math::{
     Accent, BigOp, BigOpKind, BinOp, Bracket, CaseCondition, Constant, DerivNotation, Derivative,
@@ -897,14 +897,18 @@ impl Engine<'_> {
     }
 
     fn named_op(&mut self, n: &Node, op: &NamedOp, st: Style, path: &NodePath) -> Atom {
+        if let Some(pieces) = sentence(&op.name, op.args.len()).filter(|p| sentence_fits(p, op)) {
+            return self.phrase(n, op, pieces, st, path);
+        }
         match operator_display(&op.name) {
             Some(OpDisplay::Transform { letter, inverse }) => {
                 return self.transform(n, op, letter, inverse, st, path)
             }
-            Some(OpDisplay::Phrase(pieces, _)) if op.args.len() == 1 => {
-                return self.phrase(n, op, pieces, st, path)
-            }
-            Some(OpDisplay::Words(words) | OpDisplay::Phrase(_, words)) => {
+            Some(
+                OpDisplay::Words(words)
+                | OpDisplay::Phrase(_, words)
+                | OpDisplay::Sentence(_, _, words),
+            ) => {
                 let word = self.text(words, FontId::Text, st);
                 return self.named_op_with(n, op, word, st, path);
             }
@@ -954,35 +958,89 @@ impl Engine<'_> {
     ) -> Atom {
         let space = 0.3 * self.scale(st);
         let mut parts: Vec<LBox> = vec![];
-        for piece in pieces {
-            let (words, node) = match piece {
-                Piece::Text(w) => (*w, None),
-                Piece::Args => ("", Some(None)),
-                Piece::Sub(w) => match &op.sub {
-                    Some(s) => (*w, Some(Some(s))),
-                    None => continue,
-                },
-                Piece::Sup(w) => match &op.sup {
-                    Some(s) => (*w, Some(Some(s))),
-                    None => continue,
-                },
-            };
-            if !words.is_empty() {
-                let punct = words.starts_with([',', ':', '?', '.']);
-                if !punct && !parts.is_empty() {
-                    parts.push(LBox::kern(space));
-                }
-                parts.push(self.text(words, FontId::Text, st));
+        let words = |e: &mut Self, parts: &mut Vec<LBox>, w: &str| {
+            if w.is_empty() {
+                return;
             }
-            if let Some(node) = node {
-                let b = match node {
-                    Some(s) => self.child(n, s, st, path).b,
-                    None => self.list(n, &op.args, st, path).b,
-                };
-                if !parts.is_empty() {
-                    parts.push(LBox::kern(space));
+            let punct = w.starts_with([',', ':', '?', '.']);
+            if !punct && !parts.is_empty() {
+                parts.push(LBox::kern(space));
+            }
+            parts.push(e.text(w, FontId::Text, st));
+        };
+        let maths = |parts: &mut Vec<LBox>, b: LBox| {
+            if !parts.is_empty() {
+                parts.push(LBox::kern(space));
+            }
+            parts.push(b);
+        };
+        for piece in pieces {
+            match *piece {
+                Piece::Text(w) => words(self, &mut parts, w),
+                Piece::Var(v) => {
+                    let b = LBox::hlist(v.chars().map(|c| self.letter(c, st, false)).collect());
+                    maths(&mut parts, b);
                 }
-                parts.push(b);
+                Piece::Args => {
+                    let b = self.list(n, &op.args, st, path).b;
+                    maths(&mut parts, b);
+                }
+                Piece::Arg(i) => {
+                    if let Some(a) = op.args.get(i) {
+                        let b = self.child(n, a, st, path).b;
+                        maths(&mut parts, b);
+                    }
+                }
+                Piece::Choice(i, table, before, after) => {
+                    let Some(a) = op.args.get(i) else {
+                        continue;
+                    };
+                    match option_word(a).and_then(|w| choice_words(table, w)) {
+                        Some(w) => {
+                            // The words stand for the option box: clicking them
+                            // puts the caret there.
+                            let mut b = self.text(w, FontId::Text, st);
+                            let p = child_path(n, a, path);
+                            if let Some(hit) = self.hit(a.span, &p, HitKind::Node) {
+                                b = b.with_hit(hit);
+                            }
+                            if !parts.is_empty() && !w.starts_with([',', '.']) {
+                                parts.push(LBox::kern(space));
+                            }
+                            parts.push(b);
+                        }
+                        None => {
+                            words(self, &mut parts, before);
+                            let b = self.child(n, a, st, path).b;
+                            maths(&mut parts, b);
+                            words(self, &mut parts, after);
+                        }
+                    }
+                }
+                Piece::Sub(w) | Piece::Sup(w) => {
+                    let node = if matches!(piece, Piece::Sub(_)) {
+                        &op.sub
+                    } else {
+                        &op.sup
+                    };
+                    if let Some(s) = node {
+                        words(self, &mut parts, w);
+                        let b = self.child(n, s, st, path).b;
+                        maths(&mut parts, b);
+                    }
+                }
+                Piece::Interval(w) => {
+                    if let (Some(a), Some(b)) = (&op.sub, &op.sup) {
+                        words(self, &mut parts, w);
+                        let open = Atom::new(Class::Open, self.sym('[', st));
+                        let lo = self.child(n, a, st, path);
+                        let comma = Atom::new(Class::Punct, self.sym(',', st));
+                        let hi = self.child(n, b, st, path);
+                        let close = Atom::new(Class::Close, self.sym(']', st));
+                        let g = self.group(vec![open, lo, comma, hi, close], st).b;
+                        maths(&mut parts, g);
+                    }
+                }
             }
         }
         Atom::new(Class::Inner, LBox::hlist(parts))
@@ -1182,4 +1240,32 @@ fn bracket_chars(b: Bracket) -> (Option<char>, Option<char>) {
         Bracket::TexGroup | Bracket::None => (None, None),
         Bracket::EvalBar => (None, Some('|')),
     }
+}
+
+/// The option word a helper operand spells (`\text{mid}`, or a bare name).
+fn option_word(n: &Node) -> Option<&str> {
+    match &n.ungrouped().kind {
+        NodeKind::Text(t) => Some(t.trim()),
+        NodeKind::Name(name) if name.sub.is_none() && name.accent.is_none() => {
+            Some(name.base.as_str())
+        }
+        _ => None,
+    }
+}
+
+/// True when a helper's operands are in the order its sentence reads them (the
+/// order the Insert menu writes): no interval among them (the bounds are
+/// scripts), and option boxes that hold a known word or are still empty.
+fn sentence_fits(pieces: &[Piece], op: &NamedOp) -> bool {
+    pieces.iter().all(|p| match *p {
+        Piece::Arg(i) => op
+            .args
+            .get(i)
+            .is_some_and(|a| !matches!(a.ungrouped().kind, NodeKind::Interval { .. })),
+        Piece::Choice(i, table, _, _) => op.args.get(i).is_some_and(|a| {
+            a.ungrouped().is_slot()
+                || option_word(a).is_some_and(|w| choice_words(table, w).is_some())
+        }),
+        _ => true,
+    })
 }

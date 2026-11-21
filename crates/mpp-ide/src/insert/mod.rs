@@ -12,7 +12,9 @@ use std::ops::Range;
 
 use crate::editor::{likely_variable, parse_snippet, Editor, Knobs, Snippet};
 use crate::page::Page;
-pub use catalogue::{catalogue, controls, find, Action, BuildCx, Control, Group, Template};
+pub use catalogue::{
+    catalogue, controls, find, mark_current, Action, BuildCx, Control, Group, Template,
+};
 
 /// Settings for inserting maths (View → Insert settings), saved between runs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -506,8 +508,20 @@ pub fn long_label(label: &str) -> String {
 /// that must be filled before it can be worked out.
 pub fn fill_in_hint(editor: &Editor, page: &Page, span: &Range<usize>) -> Option<String> {
     let inside = |o: usize| span.start <= o && o <= span.end;
-    if let Some((_, label)) = editor.missing_boxes().into_iter().find(|(o, _)| inside(*o)) {
-        return Some(format!("fill in: {}", long_label(&label)));
+    let missing: Vec<(usize, String)> = editor
+        .missing_boxes()
+        .into_iter()
+        .filter(|(o, _)| inside(*o))
+        .collect();
+    // The box being typed in comes first (an improper integral's integrand, not
+    // its lower bound), then the first one in the text.
+    let caret = editor.caret();
+    let first = missing
+        .iter()
+        .find(|(o, _)| *o == caret)
+        .or_else(|| missing.first());
+    if let Some((_, label)) = first {
+        return Some(format!("fill in: {}", long_label(label)));
     }
     // Empty boxes nobody is tracking (a file opened later): every one counts,
     // except optional boxes of a template that is being edited.

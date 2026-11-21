@@ -926,12 +926,12 @@ fn cases() -> Vec<Case> {
             "graph.taylor",
             &[
                 ("function", "", R),
-                ("n", "5", R),
+                ("degree", "5", R),
                 ("from", "-10", R),
                 ("to", "10", R),
             ],
             &[r"\sin x", r"5", r"-3", r"3"],
-            r"Figure: ${\sin x}$, taylor $n = {5}$, $x \in [{-3}, {3}]$.",
+            r"Figure: ${\sin x}$, taylor ${5}$, $x \in [{-3}, {3}]$.",
             None,
         ),
         case(
@@ -1365,6 +1365,113 @@ fn shift_tab_goes_back_and_templates_nest() {
     assert!(doc.errors().next().is_none(), "{}", ed.text());
 }
 
+/// The label of the box the caret (or selection) is in.
+fn label_now(ed: &Editor, sid: u64) -> String {
+    let s = ed.session(sid).expect("session");
+    let at = ed.selection().map_or(ed.caret(), |r| r.start);
+    s.box_at(at)
+        .map(|i| s.boxes[i].label.clone())
+        .unwrap_or_default()
+}
+
+/// Tab (or Shift+Tab) `n` times, giving the label after each press.
+fn walk(ed: &mut Editor, sid: u64, forward: bool, n: usize) -> Vec<String> {
+    (0..n)
+        .map(|_| {
+            assert!(ed.tab(forward));
+            label_now(ed, sid)
+        })
+        .collect()
+}
+
+#[test]
+fn shift_tab_is_exactly_tab_backwards_in_every_template() {
+    let mut runs: Vec<(String, Option<Knobs>)> = catalogue()
+        .iter()
+        .filter(|t| !t.is_symbol() && !t.is_text())
+        .map(|t| (t.id.clone(), None))
+        .collect();
+    for id in ["int.double", "int.triple"] {
+        runs.push((id.into(), Some(knobs(0, 0, 1, 0, false))));
+    }
+    for (id, kn) in runs {
+        let mut ed = Editor::new("");
+        let sid = insert_into(&mut ed, &id, kn);
+        let s = ed.session(sid).expect("session").clone();
+        let order: Vec<String> = s.tab_boxes().map(|b| b.label.clone()).collect();
+        let n = order.len();
+        if n == 0 {
+            continue;
+        }
+        // Forward from the first box: every box in order, then out.
+        ed.focus_box(sid, s.tab[0]);
+        let fwd = walk(&mut ed, sid, true, n - 1);
+        assert_eq!(fwd, order[1..].to_vec(), "{id}: Tab order");
+        ed.tab(true);
+        let end = ed.session(sid).expect("session").range.end;
+        assert_eq!(ed.caret(), end, "{id}: Tab past the last box leaves");
+
+        // Backward from the last box: the same boxes reversed, then out.
+        let mut ed = Editor::new("");
+        let sid = insert_into(&mut ed, &id, kn);
+        let s = ed.session(sid).expect("session").clone();
+        ed.focus_box(sid, s.tab[n - 1]);
+        let back = walk(&mut ed, sid, false, n - 1);
+        let mut want: Vec<String> = order[..n - 1].to_vec();
+        want.reverse();
+        assert_eq!(back, want, "{id}: Shift+Tab is Tab reversed");
+        ed.tab(false);
+        let start = ed.session(sid).expect("session").range.start;
+        assert_eq!(
+            ed.caret(),
+            start,
+            "{id}: Shift+Tab before the first box leaves"
+        );
+    }
+}
+
+#[test]
+fn integrals_tab_from_the_integrand_through_the_slot_table_order() {
+    let bounds = Some(knobs(0, 0, 1, 0, false));
+    for (id, kn) in [
+        ("int.def", None),
+        ("int.improper", None),
+        ("int.double", None),
+        ("int.double", bounds),
+        ("int.triple", None),
+        ("int.triple", bounds),
+    ] {
+        let mut ed = Editor::new("");
+        let sid = insert_into(&mut ed, id, kn);
+        let s = ed.session(sid).expect("session").clone();
+        let order: Vec<String> = s.tab_boxes().map(|b| b.label.clone()).collect();
+        // The caret starts in the integrand …
+        assert_eq!(
+            label_now(&ed, sid),
+            "integrand",
+            "{id}: starts in the integrand"
+        );
+        // … and Tab walks the table's order from its first box (bounds or
+        // region, integrand, differential), then leaves.
+        let got = walk(&mut ed, sid, true, order.len());
+        assert_eq!(got, order, "{id}: Tab from the start");
+        ed.tab(true);
+        let end = ed.session(sid).expect("session").range.end;
+        assert_eq!(ed.caret(), end, "{id}: then out of the template");
+    }
+    // Shift+Tab from the integrand goes back through the bounds, then out.
+    let mut ed = Editor::new("");
+    let sid = insert_into(&mut ed, "int.def", None);
+    assert_eq!(walk(&mut ed, sid, false, 2), ["upper", "lower"]);
+    // A sum's index and limits have defaults: Tab from the term leaves.
+    let mut ed = Editor::new("");
+    let sid = insert_into(&mut ed, "sum", None);
+    ed.insert_text("n");
+    ed.tab(true);
+    let end = ed.session(sid).expect("session").range.end;
+    assert_eq!(ed.caret(), end, "sum: Tab from the term leaves");
+}
+
 #[test]
 fn typing_after_leaving_a_template_stays_outside_it() {
     let mut ed = Editor::new("");
@@ -1671,9 +1778,16 @@ fn empty_required_boxes_give_a_fill_in_hint_and_no_answer() {
         insert::fill_in_hint(&ed, &page, &(b.span.start..b.span.end)),
         None
     );
-    // An improper integral needs its bounds.
+    // An improper integral needs its bounds; while the caret is in the empty
+    // integrand, the hint names the integrand.
     let mut ed = Editor::new("");
     insert_into(&mut ed, "int.improper", None);
+    let page = page_of(&ed);
+    let b = &page.blocks[0];
+    assert_eq!(
+        insert::fill_in_hint(&ed, &page, &(b.span.start..b.span.end)).as_deref(),
+        Some("fill in: integrand")
+    );
     ed.insert_text("x");
     let page = page_of(&ed);
     let b = &page.blocks[0];
@@ -1728,4 +1842,88 @@ fn insert_into_block(ed: &mut Editor, id: &str) {
     let t = find(id).unwrap_or_else(|| panic!("no template {id}"));
     let page = page_of(ed);
     insert::insert(ed, &page, t, t.knobs, &BuildCx::default());
+}
+
+#[test]
+fn figure_lines_name_their_graphs_in_words() {
+    for (id, want, gone) in [
+        ("graph.riemann", "midpoint rule,", "riemann"),
+        ("graph.trapezoid", "trapezoid rule,", "riemann"),
+        ("graph.taylor", "Taylor polynomial of degree", "taylor"),
+        ("graph.newton", "Newton's method from", "newton"),
+        ("graph.param", "Parametric curve", "parametric"),
+        ("graph.slope", "Slope field of", "slope field"),
+        ("graph.contour", "contour plot", "xx"),
+        ("graph.scatter", "Scatter plot of", "scatter"),
+        ("graph.histogram", "Histogram of", "histogram"),
+        ("graph.boxplot", "Box plot of", "box plot"),
+    ] {
+        let mut ed = Editor::new("");
+        insert_into(&mut ed, id, None);
+        let shown = visible(&ed);
+        let squash = |s: &str| s.replace(" ", "");
+        assert!(shown.contains(&squash(want)), "{id}: {shown:?}");
+        assert!(!shown.contains(&squash(gone)), "{id}: {shown:?}");
+    }
+}
+
+#[test]
+fn the_toolbar_clears_the_words_that_start_a_figure_line() {
+    for id in ["graph.param", "graph.slope"] {
+        let mut ed = Editor::new("");
+        let sid = insert_into(&mut ed, id, None);
+        let s = ed.session(sid).expect("session").clone();
+        let page = page_of(&ed);
+        let span = mpp_syntax::Span::new(s.range.start, s.range.end);
+        let boxes = page.rect_of_span(span).expect("rect");
+        let ink = page.line_ink(span, boxes);
+        // The heading words sit left of the first box and are now included.
+        assert!(
+            ink.left() < boxes.left() - 20.0,
+            "{id}: {ink:?} vs {boxes:?}"
+        );
+        let bounds = egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(900.0, 800.0));
+        let width = 110.0;
+        let (at, pivot) = mpp_ide::insert::menu::toolbar_anchor(ink, width, bounds);
+        let left = if pivot == egui::Align2::RIGHT_TOP {
+            at.x - width
+        } else {
+            at.x
+        };
+        let bar = egui::Rect::from_min_size(egui::pos2(left, at.y), egui::vec2(width, 60.0));
+        assert!(
+            !bar.intersects(ink),
+            "{id}: toolbar {bar:?} covers the line {ink:?}"
+        );
+    }
+}
+
+#[test]
+fn helper_templates_read_as_sentences_with_their_options_in_words() {
+    for (id, want) in [
+        ("helper.riemann", "MidpointRiemannsumof"),
+        ("helper.volume", "(methodchosenautomatically)"),
+        ("helper.rk4", "RK4solutionof"),
+        ("helper.newton", "Newton'smethodfor"),
+    ] {
+        let mut ed = Editor::new("");
+        insert_into(&mut ed, id, None);
+        let shown = visible(&ed);
+        assert!(shown.contains(want), "{id}: {shown:?}");
+        for word in [",mid", ",auto", "(□", "riemann"] {
+            assert!(!shown.contains(word), "{id}: {word} in {shown:?}");
+        }
+    }
+    // The rule buttons show which rule is in use.
+    let mut ed = Editor::new("");
+    let sid = insert_into(&mut ed, "helper.riemann", None);
+    let s = ed.session(sid).expect("session").clone();
+    let mut c = mpp_ide::insert::controls(&s.template, s.knobs);
+    mpp_ide::insert::mark_current(&mut c, &s.contents(ed.text()));
+    let pressed: Vec<&str> = c
+        .iter()
+        .filter(|c| c.active)
+        .map(|c| c.label.as_str())
+        .collect();
+    assert_eq!(pressed, ["Midpoint"]);
 }

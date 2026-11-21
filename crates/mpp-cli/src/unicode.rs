@@ -241,8 +241,19 @@ impl Parser {
             }
             "quad" | "qquad" => " ".into(),
             "pmod" => format!("(mod {})", self.operand()),
-            "mathrm" | "operatorname" | "text" | "textrm" | "mathit" | "mathsf" | "mathtt"
-            | "textit" | "boldsymbol" | "bm" | "mathbf" | "textbf" => self.operand(),
+            "operatorname" => {
+                let save = self.i;
+                let name = self.raw_group();
+                match self.helper_sentence(&name) {
+                    Some(s) => s,
+                    None => {
+                        self.i = save;
+                        self.operand()
+                    }
+                }
+            }
+            "mathrm" | "text" | "textrm" | "mathit" | "mathsf" | "mathtt" | "textit"
+            | "boldsymbol" | "bm" | "mathbf" | "textbf" => self.operand(),
             "mathbb" => font(Font::Blackboard, &self.operand()),
             "mathcal" | "mathscr" => font(Font::Calligraphic, &self.operand()),
             "mathfrak" => font(Font::Fraktur, &self.operand()),
@@ -301,6 +312,47 @@ impl Parser {
                 None => other.to_string(),
             },
         }
+    }
+
+    /// A helper written as a sentence, the way the page shows it ("Midpoint Riemann
+    /// sum of f on [0, 2] with n = 4"), from the shared display table. Reads the
+    /// scripts and the operands after the name; `None` (nothing read for good)
+    /// when the helper is not a sentence with that many operands.
+    fn helper_sentence(&mut self, name: &str) -> Option<String> {
+        mpp_syntax::math::display::operator_display(name)?;
+        let (mut sub, mut sup) = (None, None);
+        loop {
+            self.skip_space();
+            if self.eat('_') {
+                sub = Some(self.operand());
+            } else if self.eat('^') {
+                sup = Some(self.operand());
+            } else {
+                break;
+            }
+        }
+        self.skip_space();
+        let rest: String = self.chars[self.i..].iter().collect();
+        let (inner, used) = if let Some(r) = rest.strip_prefix(r"\left(") {
+            let end = r.find(r"\right)")?;
+            (r[..end].to_string(), 6 + end + 7)
+        } else if let Some(r) = rest.strip_prefix('(') {
+            let end = close_of(r, '(', ')')?;
+            (r[..end].to_string(), 1 + end + 1)
+        } else {
+            // A single operand without brackets.
+            let start = self.i;
+            self.operand();
+            let raw: String = self.chars[start..self.i].iter().collect();
+            self.i = start;
+            let used = raw.len();
+            (raw, used)
+        };
+        let args: Vec<String> = split_top(&inner).iter().map(|a| to_unicode(a)).collect();
+        let s =
+            mpp_syntax::math::display::sentence_text(name, sub.as_deref(), sup.as_deref(), &args)?;
+        self.i += rest[..used].chars().count();
+        Some(s)
     }
 
     fn matrix_body(&mut self, env: &str) -> String {
@@ -385,6 +437,43 @@ fn script(arg: &str, up: bool) -> String {
     }
 }
 
+/// The byte offset of the bracket closing an already-opened `open`.
+fn close_of(s: &str, open: char, close: char) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in s.char_indices() {
+        if c == open {
+            depth += 1;
+        } else if c == close {
+            if depth == 0 {
+                return Some(i);
+            }
+            depth -= 1;
+        }
+    }
+    None
+}
+
+/// Splits at the commas outside any bracket or brace.
+fn split_top(s: &str) -> Vec<String> {
+    let mut out = vec![];
+    let mut depth = 0i32;
+    let mut cur = String::new();
+    for c in s.chars() {
+        match c {
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(std::mem::take(&mut cur));
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(c);
+    }
+    out.push(cur);
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::to_unicode;
@@ -413,6 +502,20 @@ mod tests {
         // `\Delta x` is one name: no space inside it.
         assert_eq!(to_unicode(r"\frac{\Delta x}{\Delta t}"), "Δx/Δt");
         assert_eq!(to_unicode(r"\Delta + 1"), "Δ + 1");
+    }
+
+    #[test]
+    fn helpers_read_as_the_page_shows_them() {
+        assert_eq!(
+            to_unicode(r"\operatorname{riemann}_{0}^{2}\left( x^2, 4, \text{mid} \right)"),
+            "Midpoint Riemann sum of x² on [0, 2] with n = 4"
+        );
+        assert_eq!(
+            to_unicode(r"\operatorname{crit}_{[0, 4]} {x^3 - 3x}"),
+            "Critical points of x³ - 3x on [0, 4]"
+        );
+        // Not a helper: the name is shown as written.
+        assert_eq!(to_unicode(r"\operatorname{foo}(x)"), "foo(x)");
     }
 
     #[test]

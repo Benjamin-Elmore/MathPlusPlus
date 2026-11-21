@@ -55,6 +55,16 @@ impl RiemannRule {
             RiemannRule::Trapezoid => "trapezoid",
         }
     }
+
+    /// The rule as a figure's read-out names it ("Midpoint rule").
+    pub fn readout_name(self) -> &'static str {
+        match self {
+            RiemannRule::Left => "Left Riemann sum",
+            RiemannRule::Right => "Right Riemann sum",
+            RiemannRule::Mid => "Midpoint rule",
+            RiemannRule::Trapezoid => "Trapezoid rule",
+        }
+    }
 }
 
 /// The line a region is turned about.

@@ -168,7 +168,7 @@ fn the_problems_tile_lists_the_project_and_tabs_show_error_counts() {
     let label = h
         .state()
         .doc()
-        .map(|d| d.problem_counts().summary())
+        .map(|d| format!("{} in this file", d.problem_counts().summary()))
         .unwrap_or_default();
     h.get_by_label(&label).click();
     run(&mut h);

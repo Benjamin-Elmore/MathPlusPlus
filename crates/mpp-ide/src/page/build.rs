@@ -1141,6 +1141,11 @@ fn layout_empty_title_field(
     w: f32,
     c: &mut Canvas,
 ) -> f32 {
+    // Once the caret has left the title block, an empty author or date takes no
+    // space: a finished page shows no words that are not content.
+    if kind != TitleKind::Title && !input.show.editing_title {
+        return 0.0;
+    }
     let size = input.size;
     let scale = match kind {
         TitleKind::Title => 1.75,
@@ -1296,7 +1301,73 @@ fn figure_spec_inlines(src: &str, b: &Block, f: &mpp_syntax::document::Figure) -
         t.truncate(kept);
     }
     inl.retain(|i| !matches!(&i.kind, InlineKind::Text(t) if t.is_empty()));
-    inl
+    figure_keywords_in_words(inl)
+}
+
+/// Shows the figure keywords of a `Figure:` line in words ("riemann mid" →
+/// "midpoint rule,", "taylor" → "Taylor polynomial of degree"), from the shared
+/// display table. The words stand at the keyword's place but cover no source
+/// text: the keyword is the file's structure, not something to type over.
+fn figure_keywords_in_words(inl: Vec<Inline>) -> Vec<Inline> {
+    use mpp_syntax::document::FigureKeyword;
+    use mpp_syntax::math::display::{capitalised, figure_keyword_words};
+    let mut out: Vec<Inline> = vec![];
+    for (n, it) in inl.into_iter().enumerate() {
+        let InlineKind::Text(t) = &it.kind else {
+            out.push(it);
+            continue;
+        };
+        let (t, base) = (t.clone(), it.span.start);
+        let mut plain = 0;
+        let mut i = 0;
+        while i < t.len() {
+            let at_word = t[..i].chars().last().is_none_or(|c| !c.is_alphanumeric());
+            let found = at_word
+                .then(|| {
+                    FigureKeyword::ALL.iter().find(|k| {
+                        let kw = k.as_str();
+                        t[i..].starts_with(kw)
+                            && t[i + kw.len()..]
+                                .chars()
+                                .next()
+                                .is_none_or(|c| !c.is_alphanumeric())
+                    })
+                })
+                .flatten();
+            if let Some(k) = found {
+                if i > plain {
+                    out.push(Inline {
+                        kind: InlineKind::Text(t[plain..i].to_string()),
+                        span: Span::new(base + plain, base + i),
+                    });
+                }
+                let words = figure_keyword_words(*k);
+                let first = n == 0 && t[..i].trim().is_empty();
+                let words = if first {
+                    capitalised(words)
+                } else {
+                    words.to_string()
+                };
+                out.push(Inline {
+                    kind: InlineKind::Text(words),
+                    span: Span::new(base + i, base + i),
+                });
+                i += k.as_str().len();
+                plain = i;
+            } else {
+                i += t[i..].chars().next().map_or(1, char::len_utf8);
+            }
+        }
+        if plain == 0 {
+            out.push(it);
+        } else if plain < t.len() {
+            out.push(Inline {
+                kind: InlineKind::Text(t[plain..].to_string()),
+                span: Span::new(base + plain, base + t.len()),
+            });
+        }
+    }
+    out
 }
 
 fn rrect(x: f32, y: f32, w: f32, h: f32) -> RRect {
@@ -1355,11 +1426,18 @@ fn layout_display(
     c: &mut Canvas,
 ) -> f32 {
     let size = input.size;
-    let extras = input
+    let mut extras = input
         .eval
         .and_then(|ev| ev.block(b.id))
         .map(|br| extras_for(br, m, input.show))
         .unwrap_or_default();
+    // A line read as a product of letters it probably did not mean (`sinn(2)`)
+    // gets a warning and no answer, never a nonsense one.
+    if !extras.results.is_empty() {
+        let known = crate::diagnostics::known_names(input.eval);
+        let bad = crate::diagnostics::lines_with_letter_runs(m, &known);
+        extras.results.retain(|r| !bad.contains(&r.line));
+    }
     let opts = LayoutOptions {
         style: MathStyle::Display,
         font_size: size * 1.1,
@@ -1497,14 +1575,11 @@ pub(crate) fn prose_latex(note: &str) -> String {
     }
     fn flush_text(out: &mut String, text: &mut String) {
         if !text.is_empty() {
-            // `\text` drops spaces at its ends: they are written as spaces of maths.
-            if text.starts_with(' ') {
-                out.push_str("\\;");
-            }
-            out.push_str(&format!("\\text{{{}}}", plain_text(text)));
-            if text.ends_with(' ') {
-                out.push_str("\\;");
-            }
+            // The spaces at the ends stay inside `\text` (maths spacing commands
+            // are not drawn), so "with u" never runs together as "withu".
+            let lead = if text.starts_with(' ') { " " } else { "" };
+            let trail = if text.ends_with(' ') { " " } else { "" };
+            out.push_str(&format!("\\text{{{lead}{}{trail}}}", plain_text(text)));
             text.clear();
         }
     }
@@ -1999,15 +2074,45 @@ mod tests {
     #[test]
     fn step_notes_are_words_with_maths_in_them() {
         let tex = prose_latex("derivative of sin with u = 3·x");
-        assert!(tex.starts_with(r"\text{derivative of sin with}"), "{tex}");
+        assert!(tex.starts_with(r"\text{derivative of sin with }"), "{tex}");
         assert!(tex.contains("u = 3·x"), "{tex}");
         let dl = mpp_render::layout_latex(&tex, &mpp_render::LayoutOptions::display(18.0));
         // The words are upright Latin letters, not maths italics.
         assert!(dl.text().contains("derivativeofsinwith"), "{}", dl.text());
+        // A visible space between the last word and the maths ("with u", not "withu").
+        let glyphs: Vec<(char, f32, f32)> = dl
+            .items
+            .iter()
+            .filter_map(|p| match p {
+                mpp_render::Primitive::Glyph { ch, x, size, .. } => Some((*ch, *x, *size)),
+                _ => None,
+            })
+            .collect();
+        let h = glyphs.iter().rposition(|g| g.0 == 'h').expect("h of with");
+        let (_, hx, size) = glyphs[h];
+        let (_, ux, _) = glyphs[h + 1];
+        assert!(ux - hx > 0.75 * size, "gap {} at size {size}", ux - hx);
         assert_eq!(
             prose_latex("power rule on u^2 with u = x + 1"),
-            r"\text{power rule on}\; u^{2} \;\text{with}\; u = x + 1"
+            r"\text{power rule on } u^{2} \text{ with } u = x + 1"
         );
+    }
+
+    /// The Insert menu's proof puts the caret between the heading and the ∎; it
+    /// is drawn there, not back at the start of the block.
+    #[test]
+    fn the_caret_of_an_empty_proof_sits_after_its_heading() {
+        let src = "# P\n\n**Proof.**  ∎";
+        let page = page_for(src);
+        let at = page.caret_stop(16).expect("a stop");
+        let heading_end = page
+            .stops
+            .iter()
+            .filter(|s| s.offset == 17)
+            .map(|s| s.x)
+            .fold(f32::MIN, f32::max);
+        assert!(at.x > 20.0, "{at:?}");
+        assert_eq!(at.x, heading_end, "{:?}", page.stops);
     }
 
     fn page_for(src: &str) -> Page {

@@ -346,3 +346,45 @@ fn a_spelled_word_that_is_not_a_name_is_pointed_out() {
         "{ps:#?}"
     );
 }
+
+/// `sinn(2)`: the warning names the whole word as typed, and the page shows no
+/// answer for the line (the product of the letters is not what was meant).
+#[test]
+fn a_letter_run_warning_shows_no_answer() {
+    let src = "$$ sinn(2) = ? $$\n\n$$ 2 + 3 = ? $$\n";
+    let (ps, pc) = problems_of(src);
+    let p = ps
+        .iter()
+        .find(|p| matches!(&p.kind, Kind::LetterRun { .. }))
+        .expect("a warning on sinn");
+    assert!(
+        matches!(&p.kind, Kind::LetterRun { word } if word == "sinn"),
+        "{p:#?}"
+    );
+    let text: String = pc
+        .page
+        .blocks
+        .iter()
+        .map(|b| b.dl.text())
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(!text.contains("in²s") && !text.contains("2in"), "{text}");
+    // Other lines still get their answers.
+    assert!(text.contains("=5"), "{text}");
+}
+
+/// An empty box says what goes in it in words, never ending in a bare bracket.
+#[test]
+fn an_empty_box_message_names_brackets_in_words() {
+    let (ps, _) = problems_of("$$ \\frac{1}{} = ? $$\n");
+    let p = ps
+        .iter()
+        .find(|p| matches!(p.kind, Kind::EmptyBox { .. }))
+        .expect("an empty box");
+    let expected = p.expected.as_ref().map(|r| r.plain()).unwrap_or_default();
+    assert!(
+        !expected.contains('(') && !expected.contains('`'),
+        "{expected}"
+    );
+    assert!(expected.contains("bracketed expression"), "{expected}");
+}

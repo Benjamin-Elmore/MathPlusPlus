@@ -800,7 +800,8 @@ fn template_toolbar(
     let Some(s) = doc.editor.session_at(caret) else {
         return;
     };
-    let controls = insert::controls(&s.template, s.knobs);
+    let mut controls = insert::controls(&s.template, s.knobs);
+    insert::mark_current(&mut controls, &s.contents(doc.editor.text()));
     if controls.is_empty() {
         return;
     }
@@ -816,6 +817,14 @@ fn template_toolbar(
     let r = match pc.page.rect_of_span(mpp_syntax::Span::point(caret)) {
         Some(c) if (c.center().y - r.center().y).abs() < r.height() => r.union(c),
         _ => r,
+    };
+    // A figure line starts with words that have no box of their own
+    // ("Parametric", "Slope field"): the toolbar must not cover them either.
+    let r = if insert::find(&s.template).is_some_and(|t| t.is_figure()) {
+        pc.page
+            .line_ink(mpp_syntax::Span::new(range.start, range.end), r)
+    } else {
+        r
     };
     let rect = r.translate(origin.to_vec2());
     if let Some(i) = insert::menu::toolbar(ui.ctx(), &controls, rect, ui.clip_rect()) {
@@ -1011,7 +1020,7 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
         if in_math {
             let caret = doc.editor.caret();
             if let Some(r) = live_replacement(doc.editor.text(), caret, &s) {
-                doc.editor.replace_inline(r.range, r.with);
+                doc.editor.replace_inline(r.range, &r.with);
             }
         }
     }

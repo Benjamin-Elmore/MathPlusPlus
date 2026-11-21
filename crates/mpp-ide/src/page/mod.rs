@@ -49,6 +49,9 @@ pub struct ShowState {
     pub hide_comments: bool,
     /// Notes folded to one line, by block id (never saved in the file).
     pub folded: Vec<BlockId>,
+    /// The caret is in the title block: its empty fields show grey labels
+    /// ("Author", "Date") to type into; otherwise they take no space.
+    pub editing_title: bool,
 }
 
 impl ShowState {
@@ -300,12 +303,27 @@ impl Page {
     /// greatest offset not past it (the first stop when there is none).
     pub fn caret_stop(&self, offset: usize) -> Option<CaretStop> {
         let mut best: Option<&CaretStop> = None;
+        let mut after: Option<&CaretStop> = None;
         for s in &self.stops {
             if s.offset <= offset {
                 match best {
                     Some(b) if b.offset > s.offset => {}
                     _ => best = Some(s),
                 }
+            } else if after
+                .is_none_or(|a| s.offset < a.offset || (s.offset == a.offset && s.x > a.x))
+            {
+                // Of the stops at the next offset, the one right before what
+                // follows (a heading's end and the ∎ after it share an offset).
+                after = Some(s);
+            }
+        }
+        // Spaces that are not drawn (between a proof's heading and its ∎) have no
+        // stop of their own: the caret goes to the nearer drawn neighbour, not
+        // back to the start of the block.
+        if let (Some(b), Some(a)) = (best, after) {
+            if b.offset < offset && a.offset - offset < offset - b.offset {
+                return Some(*a);
             }
         }
         best.or_else(|| self.stops.first()).copied()
@@ -420,6 +438,28 @@ impl Page {
             .filter(on_line)
             .max_by(|a, b| cmp_f(a.x, b.x))?;
         Some((first.offset, last.offset))
+    }
+
+    /// `line` (page coordinates) widened to every glyph drawn on the same line by
+    /// the blocks overlapping `span`, including words that have no box of their
+    /// own (a figure line's "Parametric" heading).
+    pub fn line_ink(&self, span: Span, line: Rect) -> Rect {
+        let mut out = line;
+        for b in &self.blocks {
+            if b.span.end < span.start || b.span.start > span.end {
+                continue;
+            }
+            for p in &b.dl.items {
+                if let mpp_render::Primitive::Glyph { x, y, size, .. } = *p {
+                    let y = y + b.top;
+                    if y >= line.top() && y <= line.bottom() + 0.3 * size {
+                        let g = Rect::from_min_max(Pos2::new(x, y - 0.7 * size), Pos2::new(x, y));
+                        out = out.union(g);
+                    }
+                }
+            }
+        }
+        out
     }
 
     /// The page rectangle covered by a source span (union of the boxes inside it),
