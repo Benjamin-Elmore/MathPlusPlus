@@ -152,3 +152,28 @@ fn total_differential_reads_like_a_textbook() {
     let (_, line) = ev.queries().next().expect("a query");
     assert_eq!(line.latex.as_deref(), Some(r"2 x y\,dx + x^{2}\,dy"));
 }
+
+#[test]
+fn line_integrals_of_differential_forms() {
+    let (ast, diags) = mpp_syntax::math::parse_math(r"\oint_C (P\,dx + Q\,dy)", 0);
+    assert!(diags.is_empty(), "{diags:?}");
+    assert_eq!(
+        mpp_syntax::math::sexpr::ast(&ast, mpp_syntax::math::sexpr::Mode::Semantic),
+        "(oint :lower C (tuple paren P Q) (·d x y))"
+    );
+    assert_eq!(
+        answer(r"$$ \oint_{x^2 + y^2 = 1} (-y\,dx + x\,dy) = ? $$"),
+        "2*π"
+    );
+    // The differentials in either order, and a bare `dx` has the coefficient 1.
+    assert_eq!(
+        answer(r"$$ \oint_{x^2 + y^2 = 4} (x\,dy - y\,dx) = ? $$"),
+        "8*π"
+    );
+    assert_eq!(answer(r"$$ \oint_{x^2 + y^2 = 1} (dx + x\,dy) = ? $$"), "π");
+    // A named curve has no parametrisation to integrate over: said, not guessed.
+    let errs = errors(r"$$ \oint_C (P\,dx + Q\,dy) = ? $$");
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    // Prose about the form is not an error.
+    assert!(errors(r"Green: $\oint_C (P\,dx + Q\,dy) = \iint_D (Q_x - P_y)\,dA$.").is_empty());
+}

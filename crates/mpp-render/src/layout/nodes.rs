@@ -695,6 +695,24 @@ impl Engine<'_> {
             self.scripts(sign, lower, upper, st, true)
         };
         let mut atoms = vec![Atom::new(Class::Op, head)];
+        if let (true, NodeKind::Tuple { elems, .. }) = (int.form, &int.body.kind) {
+            // `(P\,dx + Q\,dy)`: each coefficient followed by its differential.
+            let bpath = child_path(n, &int.body, path);
+            let mut inner = vec![];
+            for (i, (c, v)) in elems.iter().zip(&int.diffs).enumerate() {
+                if i > 0 {
+                    inner.push(Atom::new(Class::Bin, self.sym('+', st)));
+                }
+                inner.push(self.child(&int.body, c, st, &bpath));
+                inner.push(Atom::ord(LBox::kern(3.0 * self.mu(st))));
+                let d = self.letter('d', st, false);
+                let x = self.child_h(n, v, st, path, "variable");
+                inner.push(Atom::ord(LBox::hlist(vec![d, x.b])));
+            }
+            let body = self.group(inner, st);
+            atoms.push(self.fenced(Some('('), body, Some(')'), st));
+            return self.group(atoms, st);
+        }
         let mut diffs_done = false;
         match (&int.body.kind, int.diff_in_numerator) {
             (NodeKind::Frac { den, style, .. }, true) if *style != FracStyle::Slash => {

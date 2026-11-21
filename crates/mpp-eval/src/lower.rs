@@ -912,6 +912,15 @@ impl<'a> Lowerer<'a> {
                 )),
             ));
         }
+        if i.form {
+            return Err(fail(
+                span,
+                EvalError::Unsupported(
+                    "a line integral of P dx + Q dy along a named curve (write the circle x² + y² = r² under the ∮, or parametrise it and integrate over the parameter)"
+                        .into(),
+                ),
+            ));
+        }
         if i.dot {
             return Err(fail(
                 span,

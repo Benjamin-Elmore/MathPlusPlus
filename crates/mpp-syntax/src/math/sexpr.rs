@@ -561,6 +561,9 @@ impl Printer {
         if int.diff_in_numerator {
             self.key(&mut list, ":d-in-numerator");
         }
+        if int.form {
+            self.key(&mut list, ":form");
+        }
         self.opt(&mut list, ":lower", int.lower.as_ref());
         self.opt(&mut list, ":upper", int.upper.as_ref());
         list.push(self.node(&int.body));

@@ -636,6 +636,9 @@ pub struct Integral {
     pub dot: bool,
     /// Written `\int \frac{dx}{x}`: the differential sat in the numerator, which is now `1`.
     pub diff_in_numerator: bool,
+    /// Written as a differential form, `\oint_C (P\,dx + Q\,dy)`: the body is the tuple of
+    /// coefficients `(P, Q)`, one per differential in `diffs`.
+    pub form: bool,
 }
 
 /// ∫ ∬ ∭ ∮ ∯.
