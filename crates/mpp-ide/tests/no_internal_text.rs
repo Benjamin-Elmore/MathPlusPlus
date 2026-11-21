@@ -204,3 +204,38 @@ $$ \operatorname{series}_{x=0}^{5} \sin x = ? $$
     assert!(text.contains('ℒ') && text.contains('ℱ'), "{text}");
     assert!(text.contains("Taylorseriesof"), "{text}");
 }
+
+/// A helper whose answer is a table points at it with a plain arrow: no empty box is
+/// drawn on a finished page.
+#[test]
+fn a_table_answer_draws_no_empty_boxes() {
+    let path = root().join("examples/curve-sketching.mpp");
+    let src = r"$$ f(x) := x^3 - 3x $$
+
+$$ \operatorname{extrema}_{[-2, 2]} f = ? $$
+";
+    let (doc, ev) = evaluate(src, &path);
+    let page = build_page(&PageInput {
+        show: &mpp_ide::page::ShowState::default(),
+        src,
+        doc: &doc,
+        eval: Some(&ev),
+        theme: Theme::LIGHT,
+        size: 18.0,
+        width: 900.0,
+        integral_limits: IntegralLimits::AboveBelow,
+        slot_labels: &[],
+        extra_refs: &mpp_ide::page::ExtraRefs::default(),
+        proof: &mpp_ide::proof::ProofView::default(),
+    });
+    let text = page_text(src, &doc, &ev);
+    assert!(text.contains('↓'), "{text}");
+    for b in &page.blocks {
+        let outlines =
+            b.dl.items
+                .iter()
+                .filter(|p| matches!(p, mpp_render::Primitive::Outline { .. }))
+                .count();
+        assert_eq!(outlines, 0, "{}", b.dl.text());
+    }
+}

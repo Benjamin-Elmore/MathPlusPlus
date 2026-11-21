@@ -1450,13 +1450,21 @@ fn extras_for(br: &BlockResult, m: &DisplayMath, show: &ShowState) -> Extras {
                         .map(|(label, e)| (label.clone(), e.to_latex()))
                         .collect(),
                 );
+                // An arrow pointing at the table under the line: a lone symbol, not
+                // the relation `\downarrow`, which would ask for a box on each side.
+                let arrow = mpp_syntax::math::Node::new(
+                    mpp_syntax::math::NodeKind::Symbol("↓"),
+                    Span::point(0),
+                );
                 ex.results.push(LineResult {
+                    line: i,
+                    value: mpp_render::ResultValue::Node(arrow),
                     kind: if v.auto {
                         ResultKind::Ghost
                     } else {
                         ResultKind::Filled
                     },
-                    ..LineResult::filled(i, "\\downarrow")
+                    relation: None,
                 });
                 continue;
             }
