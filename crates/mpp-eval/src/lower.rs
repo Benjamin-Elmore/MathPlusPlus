@@ -168,6 +168,11 @@ impl<'a> Lowerer<'a> {
     /// ODE solver reads as a condition, or `y` / `dy/dx` itself when `a` is the variable.
     fn unknown_fn_call(&mut self, key: &str, primes: u8, arg: &Node) -> LowerResult {
         let a = self.lower(arg)?;
+        // `y (1 - y)` in `y' = y (1 - y)`: a bracket that mentions `y` itself is not a
+        // point to evaluate `y` at, but a factor.
+        if primes == 0 && a.contains_sym(key) {
+            return Ok(Expr::sym(key) * a);
+        }
         if let Some(v) = a.as_sym() {
             if !self.scope.binding(v).is_some_and(|b| b.params().is_none()) {
                 let y = Expr::sym(key);

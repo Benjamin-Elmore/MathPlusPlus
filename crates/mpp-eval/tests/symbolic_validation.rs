@@ -110,6 +110,18 @@ fn the_ratio_test_decides_factorial_over_power() {
 }
 
 #[test]
+fn the_logistic_equation_is_solved_exactly() {
+    assert_eq!(
+        answer(r"$$ \operatorname{dsolve}(y' = y (1 - y)) = ? $$"),
+        "y(x) = 1/(C e^(-x) + 1)"
+    );
+    assert_eq!(
+        answer(r"$$ \operatorname{dsolve}(y' = y (1 - y), (0, 1/2)) = ? $$"),
+        "y(x) = 1/(e^(-x) + 1)"
+    );
+}
+
+#[test]
 fn the_fundamental_theorem_differentiates_an_integral_with_no_closed_form() {
     assert_eq!(
         answer(r"$$ \frac{d}{dx} \int_0^{x} e^{t^2} \, dt = ? $$"),

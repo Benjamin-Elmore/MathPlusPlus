@@ -268,7 +268,9 @@ fn integrate(
         function: "a numerical solution".into(),
         detail: "the solution is not finite here (it may blow up)".into(),
     };
-    sys.eval(x, &y, &mut k[0]).ok_or_else(blow_up)?;
+    // Failing at the starting point is not a blow-up: the equation has no value there.
+    sys.eval(x, &y, &mut k[0])
+        .ok_or_else(|| super::ivp::not_at_start(x0))?;
     while (x_end - x) * dir > 1e-14 * span.max(1.0) {
         if accepted > MAX_STEPS {
             return Err(MathError::TooLarge(

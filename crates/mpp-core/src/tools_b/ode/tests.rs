@@ -130,19 +130,21 @@ fn first_order_separable() {
         (n(1) - x()).recip(),
         "separable",
     );
-    // y′ = x/y, y(0) = 2: y = √(x² + 4) (the branch through the point).
+    // y′ = x/y, y(0) = 2: y = √(x² + 4) (the branch through the point). Explicit
+    // solutions are tried first, so Bernoulli (n = −1) answers before the implicit
+    // separable form.
     check_ivp(
         eq(d(1), x() / y()),
         &[at0(0, n(2))],
         (x().pow(2) + n(4)).sqrt(),
-        "separable",
+        "Bernoulli",
     );
-    // Logistic: y′ = y − y², y(0) = 1/2.
+    // Logistic: y′ = y − y², y(0) = 1/2 (Bernoulli with n = 2).
     check_ivp(
         eq(d(1), y() - y().pow(2)),
         &[at0(0, q(1, 2))],
         (n(1) + exp(-x())).recip(),
-        "separable",
+        "Bernoulli",
     );
 }
 
