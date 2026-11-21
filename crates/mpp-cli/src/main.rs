@@ -212,7 +212,7 @@ fn check(files: &[PathBuf], limit: Option<std::time::Duration>) -> ExitCode {
                 } else {
                     eprint!("{report}");
                 }
-                let src = std::fs::read_to_string(file).unwrap_or_default();
+                let src = mpp_eval::read_text(file).unwrap_or_default();
                 let proofs = proof_report(&src, file.parent());
                 if !proofs.is_empty() {
                     println!("{name}: proofs");

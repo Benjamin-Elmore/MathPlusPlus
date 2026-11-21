@@ -87,13 +87,21 @@ fn widen(rect: Rect) -> Rect {
 
 /// Underlines every problem; `off` moves page coordinates to the screen.
 pub fn paint_marks(painter: &Painter, problems: &[Problem], off: Vec2, theme: &Theme) {
-    // Draw notes first and errors last, so the worst mark is on top.
-    let mut order: Vec<&Problem> = problems.iter().collect();
+    // Draw notes first and errors last, so the worst mark is on top. Only marks
+    // on screen are drawn (a long file can have thousands).
+    let clip = painter.clip_rect().expand(8.0);
+    let mut order: Vec<&Problem> = problems
+        .iter()
+        .filter(|p| p.rect.translate(off).intersects(clip))
+        .collect();
     order.sort_by_key(|p| std::cmp::Reverse(p.level));
     for p in order {
         let color = c32(p.level.color(theme));
         for r in &p.rects {
             let r = r.translate(off);
+            if !r.intersects(clip) {
+                continue;
+            }
             match p.level {
                 Level::Info => paint_dotted(painter, r, color),
                 _ => paint_squiggle(painter, r, color),
@@ -105,11 +113,15 @@ pub fn paint_marks(painter: &Painter, problems: &[Problem], off: Vec2, theme: &T
 /// The worst level of the problems in each block, by block span.
 pub fn block_levels(problems: &[Problem]) -> Vec<(Span, Level)> {
     let mut out: Vec<(Span, Level)> = vec![];
+    let mut at: std::collections::HashMap<Span, usize> = std::collections::HashMap::new();
     for p in problems {
         let Some(b) = p.block else { continue };
-        match out.iter_mut().find(|(s, _)| *s == b) {
-            Some((_, l)) => *l = (*l).min(p.level),
-            None => out.push((b, p.level)),
+        match at.get(&b) {
+            Some(&i) => out[i].1 = out[i].1.min(p.level),
+            None => {
+                at.insert(b, out.len());
+                out.push((b, p.level));
+            }
         }
     }
     out
@@ -128,13 +140,19 @@ pub fn paint_margin(
     origin: Pos2,
     theme: &Theme,
 ) {
+    let clip = painter.clip_rect();
+    let by_span: std::collections::HashMap<Span, &crate::page::PlacedBlock> =
+        page.blocks.iter().rev().map(|b| (b.span, b)).collect();
     for (span, level) in block_levels(problems) {
         if level == Level::Info {
             continue;
         }
-        let Some(b) = page.blocks.iter().find(|b| b.span == span) else {
+        let Some(b) = by_span.get(&span) else {
             continue;
         };
+        if origin.y + b.top > clip.bottom() || origin.y + b.top + b.height < clip.top() {
+            continue;
+        }
         let x = margin_x(origin, painter.clip_rect().left());
         let r = Rect::from_min_max(
             Pos2::new(x - 1.5, origin.y + b.top + 1.0),

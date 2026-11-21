@@ -117,6 +117,32 @@ pub fn gather(docs: &mut [Doc]) -> Vec<FileProblems> {
     out
 }
 
+/// The counts of every file with problems, as [`gather`] would give them, without
+/// copying the problems (the explorer and the tabs ask every frame).
+pub fn file_counts(docs: &mut [Doc]) -> Vec<(PathBuf, Counts)> {
+    let mut out: Vec<(PathBuf, Counts)> = vec![];
+    let mut seen: HashSet<PathBuf> = HashSet::new();
+    for d in docs.iter_mut() {
+        let counts = d.problem_counts_now();
+        if let Some(p) = &d.path {
+            seen.insert(p.clone());
+            if counts != Counts::default() {
+                out.push((p.clone(), counts));
+            }
+        }
+    }
+    for d in docs.iter() {
+        let Some(bg) = d.background() else { continue };
+        for s in &bg.imports {
+            if s.problems.is_empty() || !seen.insert(s.path.clone()) {
+                continue;
+            }
+            out.push((s.path.clone(), Counts::of(&s.problems)));
+        }
+    }
+    out
+}
+
 /// The counts of a file by path, from a gathered list (for tree and tab badges).
 pub fn counts_for(list: &[FileProblems], path: &Path) -> Counts {
     list.iter()

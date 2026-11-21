@@ -211,3 +211,107 @@ fn a_keystroke_in_a_rejected_deep_nest_stays_quick() {
     assert!(took < Duration::from_millis(limit), "{took:?}");
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// About 190 KB of random maths-like characters, as a fuzzer would write them: a
+/// thousand blocks, most with errors.
+fn junk_maths(len: usize) -> String {
+    let alphabet: Vec<&str> = "$@{}()[]^_&|#*>-=?!:\n abcx0123"
+        .split("")
+        .filter(|s| !s.is_empty())
+        .chain([
+            r"\frac",
+            r"\int",
+            r"\sum",
+            r"\begin{cases}",
+            r"\end{cases}",
+            "$$",
+            "[[",
+            "]]",
+        ])
+        .map(|s| if s == "@" { "\\" } else { s })
+        .collect();
+    let mut seed: u64 = 1;
+    let mut out = String::new();
+    for _ in 0..len {
+        seed = seed
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        out.push_str(alphabet[(seed >> 33) as usize % alphabet.len()]);
+    }
+    out
+}
+
+#[test]
+fn a_keystroke_in_a_long_file_of_junk_maths_stays_quick() {
+    // 190 KB of junk with 7000 problems: a keystroke took 0.6-0.9 s, re-laying out
+    // every paragraph with a link, placing and classifying every problem again and
+    // scanning the whole text for links several times per frame.
+    let d = scratch("junk");
+    let path = d.join("junk.mpp");
+    std::fs::write(&path, junk_maths(100_000)).expect("write");
+    let mut app = IdeApp::empty();
+    app.open_file(&path, false).expect("open");
+    let mut h = harness(app);
+    h.run_steps(2);
+    h.state_mut().settle();
+    h.run_steps(2);
+    if let Some(doc) = h.state_mut().doc_mut() {
+        let mid = doc.editor.text().len() / 2;
+        doc.editor.move_caret(mid, false);
+    }
+    h.run_steps(2);
+    let mut times = Vec::new();
+    for _ in 0..3 {
+        h.event(egui::Event::Text("1".to_string()));
+        let start = Instant::now();
+        h.run_steps(1);
+        h.state_mut().settle();
+        h.run_steps(1);
+        times.push(start.elapsed());
+    }
+    times.sort();
+    if !cfg!(debug_assertions) {
+        assert!(times[1] < Duration::from_millis(300), "{times:?}");
+    }
+    let _ = std::fs::remove_dir_all(&d);
+}
+
+#[test]
+fn problems_placed_from_the_cache_match_a_fresh_placement() {
+    let src = junk_maths(20_000);
+    let mut doc = mpp_ide::Doc::with_text(&src, None);
+    let (width, size, mode) = (900.0, 18.0, mpp_ide::theme::Mode::Light);
+    doc.settle();
+    let _ = doc.page(width, size, mode);
+    doc.editor.move_caret(src.len() / 3, false);
+    doc.editor.insert_text("x + ");
+    doc.settle();
+    let edited = doc.editor.text().to_string();
+    let reused = doc.page(width, size, mode);
+    // The same text placed on a thread whose caches are empty.
+    let fresh = std::thread::spawn(move || {
+        let mut d = mpp_ide::Doc::with_text(&edited, None);
+        d.settle();
+        let p = d.page(width, size, mode);
+        p.problems
+            .iter()
+            .map(|p| (p.span, p.message.clone(), p.rects.clone(), p.block))
+            .collect::<Vec<_>>()
+    })
+    .join()
+    .expect("thread");
+    let reused: Vec<_> = reused
+        .problems
+        .iter()
+        .map(|p| (p.span, p.message.clone(), p.rects.clone(), p.block))
+        .collect();
+    assert!(reused.len() > 100, "{}", reused.len());
+    assert_eq!(reused.len(), fresh.len());
+    for (a, b) in reused.iter().zip(&fresh) {
+        assert_eq!((a.0, &a.1, a.3), (b.0, &b.1, b.3));
+        assert_eq!(a.2.len(), b.2.len(), "{a:?} {b:?}");
+        for (r, s) in a.2.iter().zip(&b.2) {
+            assert!((r.min - s.min).length() < 0.01 && (r.max - s.max).length() < 0.01);
+        }
+    }
+}

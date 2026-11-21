@@ -159,6 +159,7 @@ impl IdeApp {
         self.ws.autosave.hold_lock(&dir);
         // Copies of windows that are still running are theirs, not a crash's.
         let own = self.ws.autosave.owner.clone();
+        super::sweep_stale_locks(&dir, &own);
         let orphans: Vec<Recovered> = super::load_all(&dir)
             .into_iter()
             .filter(|r| r.owner != own && !super::owner_alive(&dir, &r.owner))

@@ -185,11 +185,16 @@ fn place_block(
 fn prose_key(input: &PageInput<'_>, b: &Block, x0: f32, w: f32) -> Option<String> {
     fn plain(items: &[Inline]) -> bool {
         items.iter().all(|i| match &i.kind {
+            // Links and escapes are laid out from their own text alone.
             InlineKind::Text(_)
             | InlineKind::SoftBreak
             | InlineKind::Code(_)
-            | InlineKind::Math(_) => true,
-            InlineKind::Emphasis(inner) | InlineKind::Strong(inner) => plain(inner),
+            | InlineKind::Math(_)
+            | InlineKind::WikiLink { .. }
+            | InlineKind::Escape(_) => true,
+            InlineKind::Emphasis(inner)
+            | InlineKind::Strong(inner)
+            | InlineKind::Link { text: inner, .. } => plain(inner),
             _ => false,
         })
     }
@@ -1960,6 +1965,9 @@ fn collect_math_ranges(src: &str, blocks: &[Block], out: &mut Vec<Span>) {
             BlockKind::DisplayMath(m) => out.push(m.raw),
             BlockKind::Theorem(t) => collect_math_ranges(src, &t.body, out),
             BlockKind::Verbatim(_) | BlockKind::Rule | BlockKind::Directive(_) => {}
+            // A paragraph already holds its inlines: no need to read them again.
+            BlockKind::Paragraph(content) => inline_math_ranges(content, out),
+            BlockKind::Let(l) => inline_math_ranges(&l.content, out),
             _ => {
                 for inl in scan_inlines(src, b.span) {
                     if let InlineKind::Math(m) = inl.kind {
@@ -1967,6 +1975,18 @@ fn collect_math_ranges(src: &str, blocks: &[Block], out: &mut Vec<Span>) {
                     }
                 }
             }
+        }
+    }
+}
+
+fn inline_math_ranges(items: &[Inline], out: &mut Vec<Span>) {
+    for i in items {
+        match &i.kind {
+            InlineKind::Math(m) => out.push(m.raw),
+            InlineKind::Emphasis(inner)
+            | InlineKind::Strong(inner)
+            | InlineKind::Link { text: inner, .. } => inline_math_ranges(inner, out),
+            _ => {}
         }
     }
 }

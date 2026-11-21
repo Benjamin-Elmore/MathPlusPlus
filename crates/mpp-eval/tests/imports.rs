@@ -608,3 +608,42 @@ fn an_error_under_a_diamond_of_imports_is_reported_once() {
     let full = full_messages(&ev);
     assert!(full.len() < 200, "{} copies", full.len());
 }
+
+/// Writes a chain f0 → f1 → … → f{len}, where each file defines v_i := v_{i+1} + 1.
+fn import_chain(dir: &Path, len: usize) {
+    write(
+        dir,
+        &format!("f{len}.mpp"),
+        &format!("$$ v_{{{len}}} := 0 $$\n"),
+    );
+    for i in 0..len {
+        let n = i + 1;
+        write(
+            dir,
+            &format!("f{i}.mpp"),
+            &format!("![[f{n}.mpp]]\n\n$$ v_{{{i}}} := v_{{{n}}} + 1 $$\n"),
+        );
+    }
+}
+
+#[test]
+fn long_import_chains_work_and_a_chain_past_the_limit_says_so_once() {
+    let dir = TempDir::new().expect("temp dir");
+    import_chain(dir.path(), 300);
+    write(dir.path(), "top.mpp", "![[f0.mpp]]\n\n$$ v_0 = ? $$\n");
+    let start = std::time::Instant::now();
+    let (_, ev) = run_file(&dir.path().join("top.mpp"));
+    let took = start.elapsed();
+    no_errors(&ev);
+    assert_eq!(exact(answers(&ev)[0]), "300");
+    assert!(took < std::time::Duration::from_secs(60), "{took:?}");
+
+    let dir = TempDir::new().expect("temp dir");
+    import_chain(dir.path(), 1002);
+    write(dir.path(), "top.mpp", "![[f0.mpp]]\n\n$$ v_0 = ? $$\n");
+    let (_, ev) = run_file(&dir.path().join("top.mpp"));
+    let errs = errors(&ev);
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    assert!(errs[0].contains("more than 1000 files deep"), "{errs:?}");
+    assert!(errs[0].len() < 200, "{errs:?}");
+}

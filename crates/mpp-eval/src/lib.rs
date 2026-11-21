@@ -58,7 +58,8 @@ pub use calc::{calc_line, CalcError};
 pub use check::Verdict;
 pub use error::{internal_marker, EvalError, Located};
 pub use files::{
-    EmbeddedSources, FileImporter, FsSource, LayeredSource, Location, SourceProvider, Stamp,
+    read_text, EmbeddedSources, FileImporter, FsSource, LayeredSource, Location, SourceProvider,
+    Stamp,
 };
 pub use graph::DepGraph;
 pub use holders::{evaluate_holder, Collected, Ctx, HolderEval, Holders, Shown};

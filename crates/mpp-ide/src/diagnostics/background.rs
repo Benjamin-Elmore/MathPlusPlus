@@ -136,7 +136,7 @@ impl FileCache {
         if st.len > MAX_BYTES {
             return None;
         }
-        let text = std::fs::read_to_string(path).ok()?;
+        let text = mpp_eval::read_text(path).ok()?;
         let mut session = Session::new().with_importer(Arc::new(FsImporter::default()));
         session.set_base_dir(path.parent().map(Path::to_path_buf));
         let ev: &Evaluated = session.run_str(&text);
@@ -168,7 +168,7 @@ impl FileCache {
         if st.len > MAX_BYTES {
             return None;
         }
-        let text = std::fs::read_to_string(path).ok()?;
+        let text = mpp_eval::read_text(path).ok()?;
         let names = Arc::new(mpp_eval::defined_names(&text));
         self.names.insert(path.to_path_buf(), (st, names.clone()));
         Some(names)

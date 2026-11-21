@@ -23,6 +23,66 @@ pub const MAX_ORDER: usize = 32;
 /// Largest size (in nodes) of one exact term; symbolic terms past this are refused.
 const MAX_TERM_SIZE: usize = 20_000;
 
+/// Terms kept after the newest one computed (besides the `order` the rule needs).
+const KEEP: usize = 64;
+/// A resume point is kept every this many terms, so an earlier term is recomputed
+/// from the nearest one instead of from the start.
+const CHECKPOINT: usize = 1024;
+
+/// The computed terms of a recurrence: a window of the newest ones and, every
+/// [`CHECKPOINT`] terms, the `order` terms needed to resume from there. Keeping every
+/// term made a doubling sequence's 100 000th term hold about 690 MB.
+#[derive(Clone, Default)]
+struct TermCache {
+    /// Index of `window[0]`.
+    first: usize,
+    window: Vec<Expr>,
+    /// `(p, terms p − order … p − 1)`, in increasing `p`.
+    checkpoints: Vec<(usize, Vec<Expr>)>,
+}
+
+impl TermCache {
+    fn end(&self) -> usize {
+        self.first + self.window.len()
+    }
+
+    fn get(&self, idx: usize) -> Option<&Expr> {
+        idx.checked_sub(self.first).and_then(|i| self.window.get(i))
+    }
+
+    /// Moves the window back to the nearest resume point at or before `idx`.
+    fn rewind(&mut self, idx: usize, order: usize) {
+        match self.checkpoints.iter().rev().find(|(p, _)| *p <= idx) {
+            Some((p, terms)) => {
+                self.first = p - order;
+                self.window = terms.clone();
+            }
+            None => {
+                self.first = 0;
+                self.window.clear();
+            }
+        }
+    }
+
+    fn push(&mut self, value: Expr, order: usize) {
+        self.window.push(value);
+        let end = self.end();
+        if end.is_multiple_of(CHECKPOINT)
+            && end >= order
+            && self.checkpoints.last().is_none_or(|(p, _)| *p < end)
+        {
+            let terms = self.window[self.window.len() - order..].to_vec();
+            self.checkpoints.push((end, terms));
+        }
+        let keep = KEEP + order;
+        if self.window.len() >= 2 * keep {
+            let cut = self.window.len() - keep;
+            self.window.drain(..cut);
+            self.first += cut;
+        }
+    }
+}
+
 fn placeholder(j: usize) -> String {
     format!("\u{1}{j}")
 }
@@ -100,7 +160,7 @@ pub struct Recurrence {
     rule: Expr,
     template: Expr,
     order: usize,
-    cache: Mutex<Vec<Expr>>,
+    cache: Mutex<TermCache>,
 }
 
 impl Clone for Recurrence {
@@ -220,7 +280,7 @@ impl Recurrence {
             rule,
             template,
             order,
-            cache: Mutex::new(Vec::new()),
+            cache: Mutex::new(TermCache::default()),
         })
     }
 
@@ -272,14 +332,20 @@ impl Recurrence {
         }
         let idx = usize::try_from(idx).map_err(|_| MathError::TooLarge(format!("term {n}")))?;
         let mut cache = self.cache.lock().unwrap_or_else(|p| p.into_inner());
-        while cache.len() <= idx {
-            let m = cache.len();
+        if let Some(v) = cache.get(idx) {
+            return Ok(v.clone());
+        }
+        if idx < cache.first {
+            cache.rewind(idx, self.order);
+        }
+        while cache.end() <= idx {
+            let m = cache.end();
             let value = if let Some(v) = self.initial.get(m) {
                 v.clone()
             } else {
                 let at = self.start + m as i64;
                 let mut pairs: Vec<(String, Expr)> = (1..=self.order)
-                    .map(|j| (placeholder(j), cache[m - j].clone()))
+                    .map(|j| (placeholder(j), cache.window[cache.window.len() - j].clone()))
                     .collect();
                 pairs.push((self.index.clone(), Expr::int(at)));
                 let refs: Vec<(&str, Expr)> =
@@ -299,9 +365,12 @@ impl Recurrence {
                 }
                 v
             };
-            cache.push(value);
+            cache.push(value, self.order);
         }
-        Ok(cache[idx].clone())
+        cache
+            .get(idx)
+            .cloned()
+            .ok_or_else(|| MathError::TooLarge(format!("term {n}")))
     }
 
     /// The terms `name(start) … name(start + count − 1)`.
@@ -575,6 +644,29 @@ mod tests {
         assert_eq!(fib.terms(6), Ok(vec![i(0), i(1), i(1), i(2), i(3), i(5)]));
         assert!(fib.nth(-1).is_err());
         assert!(fib.nth(MAX_TERMS + 5).is_err());
+    }
+
+    #[test]
+    fn only_a_window_of_terms_is_kept_and_earlier_terms_still_come_back() {
+        let fib = fibonacci();
+        let far = fib.nth(20_000).unwrap_or_else(|e| panic!("{e}"));
+        {
+            let cache = fib.cache.lock().unwrap_or_else(|p| p.into_inner());
+            assert!(
+                cache.window.len() < 2 * (KEEP + 2),
+                "{}",
+                cache.window.len()
+            );
+            assert_eq!(cache.checkpoints.len(), 20_000 / CHECKPOINT);
+        }
+        // Earlier terms are recomputed from the nearest resume point, exactly.
+        assert_eq!(fib.nth(50), Ok(i(12_586_269_025)));
+        assert_eq!(fib.nth(20_000), Ok(far.clone()));
+        let fresh = fibonacci();
+        for k in [5_000, 3_000, 10_241, 1_024, 1_023, 1] {
+            assert_eq!(fib.nth(k), fresh.nth(k), "term {k}");
+        }
+        assert_eq!(fib.terms(6), Ok(vec![i(0), i(1), i(1), i(2), i(3), i(5)]));
     }
 
     #[test]

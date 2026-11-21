@@ -26,7 +26,7 @@ use crate::session::Session;
 use crate::value::Binding;
 
 /// Imports nested deeper than this are refused.
-const MAX_DEPTH: usize = 64;
+const MAX_DEPTH: usize = 1000;
 
 /// A file whose modification time is closer than this to the moment it was read
 /// might still change without its time changing, so its content is compared.
@@ -47,6 +47,16 @@ pub struct Location {
     pub stamp: Stamp,
     /// The folder the file's own imports resolve against.
     pub dir: Option<PathBuf>,
+}
+
+/// Reads a text file. Bytes that are not valid UTF-8 become U+FFFD instead of
+/// refusing the whole file; the evaluator reports where they are.
+pub fn read_text(path: impl AsRef<Path>) -> std::io::Result<String> {
+    let bytes = std::fs::read(path)?;
+    Ok(match String::from_utf8(bytes) {
+        Ok(text) => text,
+        Err(e) => String::from_utf8_lossy(e.as_bytes()).into_owned(),
+    })
 }
 
 /// Finds and reads the text of imported files.
@@ -117,7 +127,7 @@ impl SourceProvider for FsSource {
     }
 
     fn read(&self, key: &Path) -> Result<String, String> {
-        std::fs::read_to_string(key).map_err(|e| format!("cannot read {}: {e}", key.display()))
+        read_text(key).map_err(|e| format!("cannot read {}: {e}", key.display()))
     }
 
     fn stamp(&self, key: &Path) -> Option<Stamp> {
@@ -431,6 +441,10 @@ impl FileImporter {
             );
         }
         let mut files = vec![loc.key.clone()];
+        // A set beside the list: a long import chain lists every file below, and a
+        // linear search per file made loading the chain take cubic time.
+        let mut listed: HashSet<&Path> = HashSet::new();
+        listed.insert(&loc.key);
         let mut uncacheable = false;
         for block in &ev.blocks {
             for import in &block.imports {
@@ -438,7 +452,7 @@ impl FileImporter {
                     push(d.clone(), &mut diagnostics);
                 }
                 for f in &import.files {
-                    if !files.contains(f) {
+                    if listed.insert(f) {
                         files.push(f.clone());
                     }
                 }

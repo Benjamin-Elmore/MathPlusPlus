@@ -264,3 +264,99 @@ fn a_product_too_long_to_compute_is_called_a_product() {
     let errs = errors(&ev);
     assert!(errs.iter().any(|e| e.contains("this product")), "{errs:?}");
 }
+
+#[test]
+fn user_functions_recurse_thousands_of_levels_with_a_clear_limit_past_that() {
+    let def =
+        r"$$ f(n) := \begin{cases} 0 & n \le 0 \\ f(n-1) + 1 & \text{otherwise} \end{cases} $$";
+    let ev = timed(
+        &format!("{def}\n\n$$ f(9000) = ? $$\n"),
+        Duration::from_secs(60),
+    );
+    assert_eq!(answer_of(&ev), "9000");
+    let ev = run(&format!("{def}\n\n$$ f(20000) = ? $$\n"));
+    let errs = errors(&ev);
+    assert!(
+        errs.iter()
+            .any(|e| e.contains("more than 10000 nested calls")),
+        "{errs:?}"
+    );
+}
+
+#[test]
+fn queries_on_a_data_file_that_did_not_load_say_so_instead_of_echoing() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let doc = r"Data: $D$ from [[missing.csv]].
+
+$$ \bar{h} = ? $$
+
+$$ \operatorname{median}(m) = ? $$
+
+$$ \operatorname{var}(m) = ? $$
+
+$$ p(u) := \operatorname{linreg}(h, m) $$
+
+$$ \frac{d}{dx} x^2 = ? $$
+";
+    let ev = session_in(dir.path()).run_str(doc).clone();
+    let errs = errors(&ev);
+    assert_eq!(errs.len(), 5, "{errs:?}");
+    assert!(errs[0].contains("missing.csv"), "{errs:?}");
+    for e in &errs[1..] {
+        assert!(
+            e.contains("no data, because missing.csv did not load"),
+            "{errs:?}"
+        );
+    }
+    // Maths that does not use the data is answered as usual.
+    let last = ev.queries().last().expect("query").1;
+    assert_eq!(last.plain.as_deref(), Some("2*x"));
+    // Once the file is there, the same queries are answered.
+    std::fs::write(dir.path().join("missing.csv"), "h, m\n1, 2\n3, 5\n").expect("write");
+    let ev = session_in(dir.path()).run_str(doc).clone();
+    assert!(errors(&ev).is_empty(), "{:?}", errors(&ev));
+}
+
+#[test]
+fn a_bad_byte_is_flagged_and_the_rest_of_the_file_still_runs() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let mut bytes = b"$$ x := 3 $$\n\nSome prose with a Latin-1 degree sign: 20".to_vec();
+    bytes.push(0xB0);
+    bytes.extend_from_slice(b"C.\n\n$$ x + 1 = ? $$\n");
+    let path = dir.path().join("doc.mpp");
+    std::fs::write(&path, &bytes).expect("write");
+    let mut s = Session::new().with_importer(Arc::new(mpp_eval::FileImporter::new()));
+    let ev = s
+        .run_file(&path)
+        .expect("a bad byte no longer refuses the file")
+        .clone();
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.plain.as_deref(), Some("4"));
+    let warnings: Vec<_> = ev
+        .all_diagnostics()
+        .into_iter()
+        .filter(|d| d.message.contains("not valid UTF-8"))
+        .collect();
+    assert_eq!(warnings.len(), 1, "{:?}", ev.all_diagnostics());
+    let at = warnings[0].span.start;
+    assert_eq!(&ev.source()[at..warnings[0].span.end], "\u{FFFD}");
+    assert!(ev.source()[..at].ends_with("sign: 20"));
+
+    // An imported file with a bad byte loads too, next to a data file.
+    let mut lib = b"$$ y := 2 $$\n\n% caf".to_vec();
+    lib.push(0xE9);
+    lib.push(b'\n');
+    std::fs::write(dir.path().join("lib.mpp"), &lib).expect("write");
+    let mut csv = b"t (s), v\n".to_vec();
+    csv.extend_from_slice(b"1, 2\n2, 4\n");
+    std::fs::write(dir.path().join("d.csv"), &csv).expect("write");
+    let main = dir.path().join("main.mpp");
+    std::fs::write(
+        &main,
+        "![[lib.mpp]]\n\nData: $D$ from [[d.csv]].\n\n$$ y + \\bar{v} = ? $$\n",
+    )
+    .expect("write");
+    let ev = s.run_file(&main).expect("run").clone();
+    let (_, line) = ev.queries().next().expect("a query");
+    assert_eq!(line.plain.as_deref(), Some("5"));
+}

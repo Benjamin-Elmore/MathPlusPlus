@@ -790,7 +790,7 @@ pub fn section_header(ui: &mut Ui, title: &str, open: bool, t: &Theme) -> Respon
 
 /// True when any import in the file at `path` points at a missing file.
 pub fn file_has_broken_import(path: &Path) -> bool {
-    let Ok(text) = std::fs::read_to_string(path) else {
+    let Ok(text) = mpp_eval::read_text(path) else {
         return false;
     };
     has_broken_import(&text, path.parent().unwrap_or(Path::new(".")))
