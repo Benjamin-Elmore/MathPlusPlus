@@ -46,6 +46,8 @@ pub struct Session {
     called: BTreeSet<String>,
     /// Names differentiated in an equation somewhere in the document.
     ode_unknowns: BTreeSet<String>,
+    /// The document has a proof, so its displayed statements are the proof checker's.
+    has_proofs: bool,
     number_format: mpp_core::display::NumberFormat,
     evaluated: Evaluated,
     /// "Show steps": every `= ?` query records its working, as if written `= ?!`.
@@ -84,6 +86,7 @@ impl Session {
             sequences: BTreeSet::new(),
             called: BTreeSet::new(),
             ode_unknowns: BTreeSet::new(),
+            has_proofs: false,
             number_format: mpp_core::display::NumberFormat::default(),
             evaluated: Evaluated::empty(),
             show_steps: false,
@@ -280,7 +283,11 @@ impl Session {
         let lines = LineIndex::new(src);
         let sequences = sequence_names(&doc);
         let (called, ode_unknowns) = called_names(&doc);
-        if sequences != self.sequences || called != self.called || ode_unknowns != self.ode_unknowns
+        let has_proofs = has_proofs(&doc);
+        if sequences != self.sequences
+            || called != self.called
+            || ode_unknowns != self.ode_unknowns
+            || has_proofs != self.has_proofs
         {
             // Whether `a_1` is an initial term, and whether a differential equation
             // defines its unknown, depend on the whole document.
@@ -288,6 +295,7 @@ impl Session {
             self.sequences = sequences;
             self.called = called;
             self.ode_unknowns = ode_unknowns;
+            self.has_proofs = has_proofs;
         }
         let inputs = Inputs {
             sequences: &self.sequences,
@@ -303,6 +311,7 @@ impl Session {
             lines: &lines,
             show_steps: self.show_steps,
             auto: &self.auto,
+            has_proofs: self.has_proofs,
         };
 
         let pass = if own_stack {
@@ -698,6 +707,17 @@ fn for_each_math(block: &Block, f: &mut impl FnMut(&MathAst)) {
         }
         _ => {}
     }
+}
+
+/// True when the document has a proof (a `**Proof.**` block).
+fn has_proofs(doc: &mpp_syntax::document::Document) -> bool {
+    let mut found = false;
+    doc.walk(&mut |b| {
+        if let mpp_syntax::document::BlockKind::Theorem(t) = &b.kind {
+            found |= t.kind == mpp_syntax::document::TheoremKind::Proof;
+        }
+    });
+    found
 }
 
 #[cfg(test)]

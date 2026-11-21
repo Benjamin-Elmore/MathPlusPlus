@@ -240,6 +240,7 @@ impl Parser {
                 String::new()
             }
             "quad" | "qquad" => " ".into(),
+            "pmod" => format!("(mod {})", self.operand()),
             "mathrm" | "operatorname" | "text" | "textrm" | "mathit" | "mathsf" | "mathtt"
             | "textit" | "boldsymbol" | "bm" | "mathbf" | "textbf" => self.operand(),
             "mathbb" => font(Font::Blackboard, &self.operand()),

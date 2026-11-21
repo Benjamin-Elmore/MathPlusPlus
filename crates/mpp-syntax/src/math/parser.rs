@@ -10,6 +10,8 @@ mod calculus;
 mod expr;
 mod statement;
 
+pub use statement::split_pmod;
+
 use crate::lexer::{lex, Delim, Tok, Token};
 use crate::math::ast::{Clause, MathAst, Node, NodeKind};
 use crate::span::{Diagnostic, Span};

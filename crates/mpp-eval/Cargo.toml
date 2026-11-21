@@ -13,7 +13,10 @@ watch = ["dep:notify"]
 [dependencies]
 mpp-core = { path = "../mpp-core" }
 mpp-syntax = { path = "../mpp-syntax" }
+num-bigint = "0.4"
 num-complex = "0.4"
+num-integer = "0.1"
+num-traits = "0.2"
 notify = { version = "8", optional = true }
 
 [dev-dependencies]

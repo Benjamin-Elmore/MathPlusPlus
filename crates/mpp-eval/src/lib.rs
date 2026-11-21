@@ -22,6 +22,7 @@ pub mod calc;
 pub mod calculus;
 pub mod check;
 pub mod check_domain;
+pub mod congruence;
 pub mod data;
 mod differential;
 pub mod dispatch;

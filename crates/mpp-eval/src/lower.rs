@@ -1528,6 +1528,16 @@ impl<'a> Lowerer<'a> {
         let mut prev = self.lower(first)?;
         let mut parts = Vec::new();
         for (op, node) in rest {
+            // `a \equiv b \pmod n`: a congruence, not `b · mod(n)`.
+            if *op == SynRel::Equiv {
+                if let Some((side, modulus)) = mpp_syntax::math::split_pmod(node) {
+                    let next = self.lower(&side)?;
+                    let n = self.lower(&modulus)?;
+                    parts.push(crate::congruence::relation(prev, next.clone(), n));
+                    prev = next;
+                    continue;
+                }
+            }
             let next = self.lower(node)?;
             parts.push(relation(*op, prev, next.clone()));
             prev = next;

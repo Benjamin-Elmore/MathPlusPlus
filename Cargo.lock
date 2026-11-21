@@ -2288,7 +2288,10 @@ dependencies = [
  "mpp-core",
  "mpp-syntax",
  "notify",
+ "num-bigint",
  "num-complex",
+ "num-integer",
+ "num-traits",
  "proptest",
  "tempfile",
 ]

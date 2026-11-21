@@ -6,4 +6,6 @@ pub mod sexpr;
 pub mod visit;
 
 pub use ast::*;
-pub use parser::{parse_clause, parse_expr, parse_interval, parse_math, parse_name_list};
+pub use parser::{
+    parse_clause, parse_expr, parse_interval, parse_math, parse_name_list, split_pmod,
+};

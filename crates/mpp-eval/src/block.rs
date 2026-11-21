@@ -60,6 +60,9 @@ pub(crate) struct Inputs<'a> {
     pub show_steps: bool,
     /// Auto-evaluation settings and cache.
     pub auto: &'a crate::auto::AutoEval,
+    /// The document has a proof: a displayed statement the evaluator cannot read is
+    /// left to the proof checker instead of being reported.
+    pub has_proofs: bool,
 }
 
 /// Bindings a block observed before it ran, by name.
@@ -98,6 +101,18 @@ pub(crate) fn run_block(block: &Block, env: &mut Env, inputs: &Inputs<'_>) -> Ou
     };
     run.block(block);
     run.finish()
+}
+
+/// Errors that only say the evaluator cannot compute this notation (as opposed to a
+/// mistake in it), which a statement in a document with proofs does not report.
+fn statement_only(e: &EvalError) -> bool {
+    matches!(
+        e,
+        EvalError::Unsupported(_)
+            | EvalError::Invalid(_)
+            | EvalError::NotAFunction(_)
+            | EvalError::Math(MathError::UnknownFunction(_) | MathError::Unsupported(_))
+    )
 }
 
 /// Where a maths span sits.
@@ -1341,6 +1356,15 @@ impl Run<'_, '_> {
                 .value
                 .and_then(|v| run.finish_logged(v, None))
         };
+        // `a \overset{?}{\equiv} b \pmod n`: exact integer arithmetic.
+        if let Some((a, b, n)) = crate::congruence::as_congruence(&l_in, &r_in) {
+            match (side(self, &a), side(self, &b), side(self, &n)) {
+                (Ok(a), Ok(b), Ok(n)) => lr.verdict = Some(crate::congruence::check(&a, &b, &n)),
+                (Err(err), _, _) => self.error(lhs.span, err),
+                (_, Err(err), _) | (_, _, Err(err)) => self.error(rhs.span, err),
+            }
+            return self.push(lr);
+        }
         let l = side(self, &l_in);
         let r = side(self, &r_in);
         match (l, r) {
@@ -1408,6 +1432,9 @@ impl Run<'_, '_> {
             Err(l) if matches!(l.error, EvalError::EmptyBox(_)) => {
                 lr.hint = Some(l.error.to_string());
             }
+            // A statement in a document with proofs belongs to the proof checker:
+            // notation the evaluator cannot compute is not an error there.
+            Err(l) if display && self.inputs.has_proofs && statement_only(&l.error) => {}
             // Prose maths is only recorded; only display maths reports problems.
             Err(l) if display => self.located(l),
             Err(_) => {}

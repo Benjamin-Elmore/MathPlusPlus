@@ -586,7 +586,7 @@ fn rebind_params(head: &DefHead, body: &mut Node) {
 /// Splits a trailing `\pmod{n}` off `b \pmod{n}` (`a^p + 1 \pmod p` is read as
 /// `a^p + (1 \pmod p)`, so the modulus is taken off the rightmost term): the side without
 /// it and the modulus.
-fn split_pmod(node: &Node) -> Option<(Node, Node)> {
+pub fn split_pmod(node: &Node) -> Option<(Node, Node)> {
     let NodeKind::Binary { op, lhs, rhs } = &node.kind else {
         return None;
     };
