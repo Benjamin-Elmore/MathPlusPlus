@@ -113,6 +113,9 @@ pub(crate) struct Parser<'a> {
     ctx: Ctx,
     /// The line just read stopped where another statement starts on the same line.
     continues: bool,
+    /// The domain of `… \text{ for all } t \ge 0`, read inside a statement; it becomes
+    /// a condition of the line.
+    quantified: Vec<crate::math::ast::Clause>,
 }
 
 impl<'a> Parser<'a> {
@@ -128,6 +131,7 @@ impl<'a> Parser<'a> {
             depth: 0,
             too_deep_reported: false,
             continues: false,
+            quantified: Vec::new(),
             too_long_reported: false,
             ctx: Ctx::default(),
         }

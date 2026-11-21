@@ -542,6 +542,8 @@ impl Parser<'_> {
             // `v \operatorname{in} \mathrm{km/h}`: the conversion ends the product.
             Tok::OperatorName(n) if n == "in" => false,
             Tok::Text(t) if t.trim() == "in" => false,
+            // `P \text{ for all } t \ge 0`: the quantifier ends the statement.
+            Tok::Text(t) if is_for_all(t) => false,
             t => starts_operand(t),
         }
     }
@@ -875,4 +877,11 @@ pub(super) fn name_node(node: &Node) -> Node {
         Some(name) => Node::new(NodeKind::Name(name), node.span),
         None => node.clone(),
     }
+}
+
+/// `\text{ for all }` (also "for every", "for each"): a quantifier over the condition
+/// that follows.
+pub(super) fn is_for_all(text: &str) -> bool {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    matches!(words.as_slice(), ["for", "all" | "every" | "each"])
 }

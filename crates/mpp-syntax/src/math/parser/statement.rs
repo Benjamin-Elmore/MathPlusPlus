@@ -143,7 +143,7 @@ impl Parser<'_> {
             };
         }
         let mut statement = self.parse_statement();
-        let mut clauses = Vec::new();
+        let mut clauses = std::mem::take(&mut self.quantified);
         loop {
             if self.at_line_end() {
                 break;
@@ -267,6 +267,24 @@ impl Parser<'_> {
             return Statement::Range(range);
         }
         let lhs = self.parse_line_relation();
+        // `\frac{dE}{dt} \le 0 \text{ for all } t \ge 0 \overset{?}{=} \text{true}`: the
+        // domain after the quantifier is a condition of the line.
+        if self.at(|t| matches!(t, Tok::Text(text) if expr::is_for_all(text))) {
+            let quantifier = self.cur_span();
+            self.bump();
+            if self.at_line_end() || self.at(|t| matches!(t, Tok::CheckEq | Tok::Comma)) {
+                self.error(
+                    quantifier,
+                    "expected the values the statement holds for, such as `t \\ge 0`",
+                    &["a condition such as `t \\ge 0`", "`t \\in [0, 1]`"],
+                );
+            } else if let Some(range) = self.try_range() {
+                self.quantified.push(Clause::Range(range));
+            } else {
+                let domain = self.parse_line_relation();
+                self.quantified.push(Clause::Condition(domain));
+            }
+        }
         match self.peek() {
             Some(Tok::Assign) => {
                 self.bump();

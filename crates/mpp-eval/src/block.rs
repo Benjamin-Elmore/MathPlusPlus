@@ -1272,6 +1272,23 @@ impl Run<'_, '_> {
         match (l, r) {
             (Ok(l), Ok(r)) => {
                 let mut verdict = check(&l, &r);
+                // `… \text{ for all } t \ge 0` (or `…, t \ge 0`): unless proved outright,
+                // the statement is tried over the values the conditions allow.
+                if verdict != crate::check::Verdict::Proved && !s.conditions.is_empty() {
+                    let domain: Option<Vec<Expr>> = s
+                        .conditions
+                        .iter()
+                        .map(|c| {
+                            let e = self.lower(c, s.names).ok()?;
+                            side(self, &e).ok()
+                        })
+                        .collect();
+                    if let Some(v) =
+                        domain.and_then(|d| crate::check_domain::check_on_domain(&l, &r, &d))
+                    {
+                        verdict = v;
+                    }
+                }
                 // `\int f \, dx \overset{?}{=} F`: antiderivatives agree up to a constant.
                 if verdict.passed() != Some(true) {
                     let mut vars = crate::check::indefinite_variables(&l_in);
