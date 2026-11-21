@@ -1,6 +1,6 @@
 # Math++ IDE usability: run state
 
-## Queue "MathPlusPlusQueue-2: IDE usability" (Ben, 2026-11-21): WAITING for Ben's go
+## Queue "MathPlusPlusQueue-2: IDE usability" (Ben, 2026-11-21): RUNNING (Ben said go on 2026-11-21)
 
 **Goal (Ben, 2026-11-21):** make the IDE easy for people writing maths. **Mathematicians and coders alike** should be able to use it without a serious learning curve. The language and engine are good; this queue is about the **editor**: typing, the cursor, the side column, auto-answers, and above all **a clear outline of what is maths and what is English**.
 

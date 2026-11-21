@@ -72,18 +72,21 @@ pub fn build_page(input: &PageInput<'_>) -> Page {
     let mut prev_bottom = y;
     for b in &input.doc.blocks {
         let before = page.blocks.len();
+        let stops_before = page.stops.len();
         let top = y;
         place_block(input, &cx, b, 0.0, col, &mut y, gap, &mut page);
         if page.blocks.len() > before {
             // Stops for the blank space between blocks (newlines you can move over).
             let first_top = page.blocks[before].top;
             let start = prev_end.map(|e| e + 1).unwrap_or(0);
+            let line_end = prev_end.and_then(|e| last_stop_upto(&page.stops[..stops_before], e));
             gap_stops(
                 input.src,
                 start,
                 b.span.start,
                 (prev_bottom + first_top) / 2.0,
                 input.size,
+                line_end,
                 &mut page.stops,
             );
             prev_end = Some(b.span.end);
@@ -94,14 +97,18 @@ pub fn build_page(input: &PageInput<'_>) -> Page {
     }
     let end_y = (prev_bottom + gap * 0.5).max(input.size);
     match prev_end {
-        Some(e) => gap_stops(
-            input.src,
-            e + 1,
-            input.src.len() + 1,
-            end_y,
-            input.size,
-            &mut page.stops,
-        ),
+        Some(e) => {
+            let line_end = last_stop_upto(&page.stops, e);
+            gap_stops(
+                input.src,
+                e + 1,
+                input.src.len() + 1,
+                end_y,
+                input.size,
+                line_end,
+                &mut page.stops,
+            );
+        }
         None => page.stops.push(CaretStop {
             x: 0.0,
             top: input.size * 0.4,
@@ -123,11 +130,54 @@ pub fn build_page(input: &PageInput<'_>) -> Page {
     page
 }
 
+/// The stop furthest along a block's text, at or before `end` (where the line
+/// the block ends on finishes on screen).
+fn last_stop_upto(stops: &[CaretStop], end: usize) -> Option<CaretStop> {
+    stops
+        .iter()
+        .filter(|s| s.offset <= end)
+        .max_by(|a, b| {
+            a.offset
+                .cmp(&b.offset)
+                .then(
+                    a.top
+                        .partial_cmp(&b.top)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+                .then(a.x.partial_cmp(&b.x).unwrap_or(std::cmp::Ordering::Equal))
+        })
+        .copied()
+}
+
 /// Stops for the offsets in `start..end` that lie in whitespace between blocks.
-fn gap_stops(src: &str, start: usize, end: usize, y: f32, size: f32, out: &mut Vec<CaretStop>) {
+/// Spaces still on the line a block ends on (typed after its last word) stay on
+/// that line, after the last character, so the caret never drops to the next
+/// line while someone types a space; whitespace after a line break sits in the
+/// gap below.
+fn gap_stops(
+    src: &str,
+    start: usize,
+    end: usize,
+    y: f32,
+    size: f32,
+    line_end: Option<CaretStop>,
+    out: &mut Vec<CaretStop>,
+) {
     let end = end.min(src.len() + 1);
     for o in start..end {
         if o <= src.len() && src.is_char_boundary(o) {
+            if let Some(last) = line_end.filter(|l| l.offset <= o) {
+                let between = &src[last.offset..o];
+                if !between.contains('\n') {
+                    let n = between.chars().count() as f32;
+                    out.push(CaretStop {
+                        x: last.x + n * size * 0.28,
+                        offset: o,
+                        ..last
+                    });
+                    continue;
+                }
+            }
             out.push(CaretStop {
                 x: 0.0,
                 top: y - size * 0.4,
@@ -2502,6 +2552,36 @@ mod tests {
         let a = src.find('a').expect("a");
         assert!(page.in_math(a));
         assert!(!page.in_math(0));
+    }
+
+    #[test]
+    fn a_space_typed_at_the_end_of_a_line_keeps_the_caret_on_that_line() {
+        // Ben's video: after typing "#This is " (the space before the next word)
+        // the caret was drawn at the start of the line below.
+        for src in [
+            "# This is ",
+            "This is ",
+            "x := 5 ",
+            "# This is  ",
+            "Hello
+
+This is ",
+        ] {
+            let page = page_for(src);
+            let last = src.trim_end().len();
+            let word = page.caret_stop(last).expect("stop after the last letter");
+            let end = page.caret_stop(src.len()).expect("stop after the space");
+            assert!(
+                (end.top - word.top).abs() < 1.0,
+                "{src:?}: the caret after the space is on another line ({} vs {})",
+                end.top,
+                word.top
+            );
+            assert!(
+                end.x > word.x,
+                "{src:?}: the caret after the space moved left"
+            );
+        }
     }
 
     #[test]

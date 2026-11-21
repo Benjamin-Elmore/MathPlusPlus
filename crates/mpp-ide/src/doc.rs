@@ -385,10 +385,14 @@ impl Doc {
     /// Picks up finished evaluations and, once typing has paused, asks for a new
     /// one. Returns how long to wait before calling again, if work is pending.
     pub fn pump(&mut self) -> Option<Duration> {
+        // Anything new that arrived is drawn in the very next frame.
+        let mut arrived = false;
         if let Some(done) = self.proof_worker.poll() {
             self.took_proof(done);
+            arrived = true;
         }
         if let Some(done) = self.worker.poll() {
+            arrived = true;
             self.eval_text = done.text;
             drop_later(self.eval.replace(done.eval));
             self.background = Some(done.background);
@@ -415,6 +419,9 @@ impl Doc {
             } else {
                 return Some(wait - since);
             }
+        }
+        if arrived {
+            return Some(Duration::ZERO);
         }
         if self.worker.busy() || self.pending || self.proof_worker.busy() {
             return Some(Duration::from_millis(30));
@@ -586,6 +593,15 @@ impl Doc {
         // The page is laid out again for the new evaluation (its key has changed),
         // reusing the layout when the evaluation shows the same on it.
         self.spare = None;
+    }
+
+    /// True when the last page drawn shows the newest evaluation, and that
+    /// evaluation is of the text on screen (what a person sees is up to date).
+    pub fn page_is_current(&self) -> bool {
+        self.eval_fresh()
+            && self.cache.as_ref().is_some_and(|c| {
+                c.key.eval_id == self.eval_id && c.key.revision == self.editor.revision()
+            })
     }
 
     /// True when the evaluation is of exactly the text on screen.
