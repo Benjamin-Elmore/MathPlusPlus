@@ -10,7 +10,7 @@ use super::ast::*;
 use super::figure::parse_figure;
 use super::inline::parse_inlines;
 use super::list::{build_lists, marker, Flat};
-use super::sentence::parse_sentence;
+use super::sentence::{find_sentence, helper_lookalike, parse_sentence};
 use super::table::{parse_table, rule_aligns};
 use crate::math::parse_math;
 use crate::span::{Diagnostic, Span};
@@ -181,10 +181,63 @@ fn split_trailing_displays(src: &str, lines: Vec<Line>) -> Vec<Line> {
                 });
                 display = display_marks(&text[at..]).len() % 2 == 1;
             }
-            None => out.push(line),
+            None => split_sentences(src, line, &mut out),
         }
     }
     out
+}
+
+/// Gives a sentence form that shares its line with other text a line of its
+/// own (`1. Solve $…$ for $x$.`, `Roots. Solve $…$ for $x$. Then …`), so it is
+/// read as a block and evaluated wherever it is written. Headings, tables,
+/// quotes, footnotes and figures are left alone.
+fn split_sentences(src: &str, line: Line, out: &mut Vec<Line>) {
+    let text = src.get(line.start..line.end).unwrap_or("");
+    let t = text.trim_start();
+    if t.is_empty()
+        || t.starts_with(['#', '|', '>'])
+        || t.starts_with("[^")
+        || t.starts_with("Figure:")
+    {
+        out.push(line);
+        return;
+    }
+    let listed = marker(text, line.start);
+    let content = listed
+        .map_or(line.start + (text.len() - t.len()), |m| m.content)
+        .min(line.end);
+    let mut from = content;
+    let mut start = line.start;
+    while let Some(found) = find_sentence(src, Span::new(from, line.end)) {
+        if listed.is_none() && found.start == content && found.end >= line.end {
+            break;
+        }
+        if src
+            .get(start..found.start)
+            .is_some_and(|s| !s.trim().is_empty())
+        {
+            out.push(Line {
+                start,
+                end: found.start,
+            });
+        }
+        out.push(Line {
+            start: found.start,
+            end: found.end,
+        });
+        start = found.end;
+        from = found.end;
+    }
+    if start == line.start
+        || src
+            .get(start..line.end)
+            .is_some_and(|s| !s.trim().is_empty())
+    {
+        out.push(Line {
+            start,
+            end: line.end,
+        });
+    }
 }
 
 /// State shared by every block of one document.
@@ -734,6 +787,9 @@ fn list(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block>) -> us
         }
         k += 1;
     }
+    for item in &flat {
+        warn_lookalike(ctx, Span::new(item.marker.content.min(item.end), item.end));
+    }
     for (list, span) in build_lists(ctx.src, &flat, &mut ctx.diags) {
         out.push(block(BlockKind::List(list), span));
     }
@@ -786,8 +842,27 @@ fn paragraph(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block>) 
         return k;
     }
     let inlines = parse_inlines(ctx.src, range, &mut ctx.diags);
+    warn_lookalike(ctx, range);
     out.push(block(BlockKind::Paragraph(inlines), range));
     k
+}
+
+/// Warns about a sentence that reads like a sentence form but is not one, so
+/// a question written as a sentence never passes silently.
+fn warn_lookalike(ctx: &mut Ctx<'_>, range: Span) {
+    if let Some(span) = helper_lookalike(ctx.src, range) {
+        ctx.diags.push(
+            Diagnostic::warning(
+                span,
+                "this reads like a `Solve`, `Analyse` or `Find the …` sentence, but Math++ does not recognise it, so nothing is worked out",
+            )
+            .expecting([
+                "`Solve $…$ for $x$.`",
+                "`Find the domain of $f$.` (or the range, the critical points, the asymptotes …)",
+                "`Analyse $f$ on $[a, b]$.`",
+            ]),
+        );
+    }
 }
 
 /// True when the line is a complete `Using`, helper, `Analyse` or `Solve` sentence.

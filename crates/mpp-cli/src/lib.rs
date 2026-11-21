@@ -152,6 +152,13 @@ fn answer_line(ev: &Evaluated, line: &LineResult, src: &str) -> RunLine {
         Some(q) => to_unicode(&src[..q]),
         None => to_unicode(src),
     };
+    // A sentence (`Solve $…$ for $x$.`) asks no `?`: a colon parts it from the answer.
+    if matches!(line.kind, LineKind::Helper | LineKind::Query { .. })
+        && !src.contains('?')
+        && !asked.trim_end().ends_with(':')
+    {
+        asked = format!("{}:", asked.trim_end());
+    }
     if numeric_fallback {
         if let Some(eq) = asked.trim_end().strip_suffix('=') {
             asked = format!("{} ≈", eq.trim_end());

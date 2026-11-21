@@ -303,3 +303,116 @@ fn let_sentence(src: &str, range: Span, diags: &mut Vec<Diagnostic>) -> Option<B
     let content = parse_inlines(src, range, diags);
     Some(BlockKind::Let(Let { content }))
 }
+
+/// Words that open a sentence form other than `Let`, lower case.
+const OPENERS: &[&str] = &[
+    "solve",
+    "find",
+    "compute",
+    "determine",
+    "analyse",
+    "analyze",
+    "using",
+    "assume",
+    "data",
+];
+
+/// Offsets in `text` where a sentence may start (0 and the first non-space
+/// after each `.`, `!`, `?` or `:` that is outside `$…$` and code spans and is
+/// followed by a space), and where one may end (just past such a `.`, and the
+/// end of the text).
+fn sentence_bounds(text: &str) -> (Vec<usize>, Vec<usize>) {
+    let b = text.as_bytes();
+    let mut starts = vec![0];
+    let mut ends = Vec::new();
+    let mut math = false;
+    let mut code = false;
+    let mut k = 0;
+    while k < b.len() {
+        match b[k] {
+            b'\\' if !code => {
+                k += 2;
+                continue;
+            }
+            b'`' => code = !code,
+            b'$' if !code => math = !math,
+            c @ (b'.' | b'!' | b'?' | b':') if !math && !code => {
+                let next = b.get(k + 1);
+                if next.is_none_or(|n| n.is_ascii_whitespace()) {
+                    if c == b'.' {
+                        ends.push(k + 1);
+                    }
+                    let rest = &text[k + 1..];
+                    let gap = rest.len() - rest.trim_start().len();
+                    if k + 1 + gap < b.len() {
+                        starts.push(k + 1 + gap);
+                    }
+                }
+            }
+            _ => {}
+        }
+        k += 1;
+    }
+    ends.push(b.len());
+    ends.dedup();
+    (starts, ends)
+}
+
+/// True when `text` opens with one of the sentence-form verbs.
+fn opens_sentence(text: &str) -> bool {
+    let word: String = text
+        .chars()
+        .take_while(char::is_ascii_alphabetic)
+        .collect::<String>()
+        .to_ascii_lowercase();
+    OPENERS.contains(&word.as_str())
+}
+
+/// The first complete sentence form (not `Let`) in `src[range]` that starts
+/// at a sentence boundary: `Roots. Solve $…$ for $x$.` gives the `Solve …`
+/// part. Used to give such a sentence a line of its own inside a list item or
+/// a paragraph.
+pub(crate) fn find_sentence(src: &str, range: Span) -> Option<Span> {
+    let text = src.get(range.start..range.end)?;
+    let (starts, ends) = sentence_bounds(text);
+    for &s in &starts {
+        if !opens_sentence(&text[s..]) {
+            continue;
+        }
+        for &e in ends.iter().filter(|&&e| e > s) {
+            let span = Span::new(range.start + s, range.start + e);
+            let mut scratch = Vec::new();
+            match parse_sentence(src, span, &mut scratch) {
+                None | Some(BlockKind::Let(_)) => {}
+                Some(_) => return Some(span),
+            }
+        }
+    }
+    None
+}
+
+/// A sentence in `src[range]` that reads like a `Solve`, `Analyse` or helper
+/// sentence (`Solve $…$`, `Find the domain of $…$`) but is not one Math++
+/// recognises, so it would be passed over as prose: its span.
+pub(crate) fn helper_lookalike(src: &str, range: Span) -> Option<Span> {
+    let text = src.get(range.start..range.end)?;
+    let (starts, _) = sentence_bounds(text);
+    starts.iter().enumerate().find_map(|(n, &s)| {
+        // The sentence runs to where the next one starts (or the end).
+        let stop = starts.get(n + 1).copied().unwrap_or(text.len());
+        let sentence = text[s..stop].trim_end();
+        // `Solve $…$ with … :` introduces the display that does the work.
+        if sentence.ends_with(':') {
+            return None;
+        }
+        let mut c = Cursor::new(src, Span::new(range.start + s, range.start + stop));
+        let looks = if c.word("solve") || c.word("analyse") || c.word("analyze") {
+            c.math().is_some()
+        } else if c.word("find") || c.word("compute") || c.word("determine") {
+            HELPERS.iter().any(|(phrase, _)| c.word(phrase)) && c.word("of") && c.math().is_some()
+        } else {
+            false
+        };
+        looks.then(|| Span::new(range.start + s, range.start + s + sentence.len()))
+    })
+}
