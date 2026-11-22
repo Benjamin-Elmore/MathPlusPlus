@@ -227,7 +227,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                     .is_some_and(|r| r.intersects(ui.clip_rect()));
             let shift0 = pin_shift(doc, &pc0, pinned, scrolled);
             let floor = ui.data(|d| d.get_temp::<f32>(floor_id)).unwrap_or(0.0);
-            let floor = if scrolled + 0.5 < floor { 0.0 } else { floor };
+            let floor = if scrolled + 1.5 < floor { 0.0 } else { floor };
             let height = pc0
                 .page
                 .height
@@ -327,6 +327,12 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             let pc = doc.page(avail_w, cx.size, cx.mode);
             let shift = pin_shift(doc, &pc, pinned, scrolled);
             origin = base - Vec2::new(0.0, shift);
+            if shift > 0.0 {
+                // Room for the scroll the pin asks for, in this very frame: the
+                // scroll area checks the next offset against this frame's size,
+                // and an offset past it springs back, moving every line.
+                ui.expand_to_include_y(resp.rect.top() + scrolled + shift + 1.0 + avail_h);
+            }
             paint_page(ui, &painter, doc, &pc, origin, cx, &theme, focused);
             figures_pass(ui, doc, &pc, origin, cx, resp.id, &mut events);
             spinners(ui, &painter, &pc, origin, &theme);
@@ -410,7 +416,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 ui.memory_mut(|m| m.set_focus_lock_filter(resp.id, filter));
             }
             if shift != 0.0 {
-                ui.data_mut(|d| d.insert_temp(floor_id, scrolled + shift));
+                ui.data_mut(|d| d.insert_temp(floor_id, scrolled + shift + 1.0));
             } else if floor == 0.0 {
                 ui.data_mut(|d| d.remove::<f32>(floor_id));
             }
