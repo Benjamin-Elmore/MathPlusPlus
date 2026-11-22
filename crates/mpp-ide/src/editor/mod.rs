@@ -197,8 +197,8 @@ pub struct Editor {
     left: Option<(u64, usize)>,
     /// A one-time hint from the last edit, with the revision it belongs to.
     hint: Option<(String, u64)>,
-    /// The heading hint was shown already.
-    hinted_heading: bool,
+    /// Which one-time hints were shown already (shared with the settings).
+    pub hints: crate::hints::HintBook,
     /// The revision right after `/` made a fraction (so `//` can take it back).
     auto_frac: Option<u64>,
     /// Closing brackets shown but not written (see [`brackets`]).

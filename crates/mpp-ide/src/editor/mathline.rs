@@ -11,6 +11,7 @@
 use std::ops::Range;
 
 use super::{EditKind, Editor};
+use crate::hints::Hint;
 
 /// An empty maths line, with the caret going between the two spaces.
 const EMPTY_LINE: &str = "$$  $$";
@@ -20,10 +21,6 @@ const EMPTY_LINE: &str = "$$  $$";
 pub struct MathsState {
     /// Auto-detect is switched off (it is on by default).
     pub auto_off: bool,
-    /// The auto-detect hint was shown already.
-    pub hinted_auto: bool,
-    /// The hint for `$`, `=` or `:=` on an empty line was shown already.
-    pub hinted_start: bool,
     /// Lines auto-detect has already turned into maths, or that were turned
     /// back into prose: never turned into maths again by themselves.
     pub kept: Vec<String>,
@@ -280,10 +277,6 @@ impl Editor {
         self.revision += 1;
     }
 
-    fn set_hint(&mut self, text: &str) {
-        self.hint = Some((text.to_string(), self.revision));
-    }
-
     /// Makes the line at `at` a maths line. False when it already is one or is
     /// not a line maths can be made from (a heading, a list item…).
     pub fn make_maths(&mut self, at: usize) -> bool {
@@ -432,7 +425,7 @@ impl Editor {
     /// Called after a character was typed in prose: `$`, `=` or `:=` typed on
     /// an empty line turns it into an empty maths line (an undo step of its own:
     /// the first Ctrl+Z gives back what was typed). True when it did.
-    pub fn maths_after_char(&mut self, state: &mut MathsState, ch: char) -> bool {
+    pub fn maths_after_char(&mut self, _state: &mut MathsState, ch: char) -> bool {
         if ch != '$' && ch != '=' {
             return false;
         }
@@ -447,10 +440,10 @@ impl Editor {
         }
         let shown = typed.to_string();
         self.maths_step(ls..le, EMPTY_LINE, Some(ls + 3));
-        if !state.hinted_start {
-            state.hinted_start = true;
-            self.set_hint(&format!("Maths line. Ctrl+Z gives back the {shown}"));
-        }
+        self.fire_hint(
+            Hint::StartMaths,
+            &format!("Maths line. Ctrl+Z gives back the {shown}"),
+        );
         true
     }
 
@@ -498,10 +491,10 @@ impl Editor {
         if !self.make_maths(ls) {
             return false;
         }
-        if !state.hinted_auto {
-            state.hinted_auto = true;
-            self.set_hint("Turned into maths. Ctrl+Z keeps it as text.");
-        }
+        self.fire_hint(
+            Hint::AutoMaths,
+            "Turned into maths. Ctrl+Z keeps it as text.",
+        );
         true
     }
 

@@ -19,6 +19,7 @@ pub mod explorer;
 pub mod export;
 pub mod figure;
 pub mod files;
+pub mod hints;
 pub mod history;
 pub mod insert;
 pub mod layout;

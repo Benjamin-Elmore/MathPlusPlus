@@ -209,5 +209,6 @@ impl IdeApp {
             self.open_tutorial(Some(ctx));
             ui.close();
         }
+        self.hints_menu(ui);
     }
 }

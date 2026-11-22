@@ -282,7 +282,7 @@ fn the_tutorial_opens_on_first_launch_and_from_help() {
     let data = temp("tutorial");
     let mut app = IdeApp::empty();
     app.start_up(&data, None);
-    assert_eq!(app.doc().expect("lesson").title(), "01 Typing maths");
+    assert_eq!(app.doc().expect("lesson").title(), "1 Prose and maths");
     let root = app.project_root().map(Path::to_path_buf).expect("project");
     assert!(root.ends_with("tutorial"), "{root:?}");
     app.persist_settings();
@@ -294,7 +294,7 @@ fn the_tutorial_opens_on_first_launch_and_from_help() {
     assert!(!mpp_ide::settings::Settings::is_first_launch(&data));
     // Help -> Tutorial brings it back at any time.
     second.open_tutorial(None);
-    assert_eq!(second.doc().expect("lesson").title(), "01 Typing maths");
+    assert_eq!(second.doc().expect("lesson").title(), "1 Prose and maths");
     let _ = std::fs::remove_dir_all(&data);
 }
 

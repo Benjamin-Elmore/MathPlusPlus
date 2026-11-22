@@ -3,6 +3,7 @@
 //! (a blank line after Enter, the space after `#`) and makes each conversion an
 //! undo step of its own, so the first Ctrl+Z gives back what was typed.
 
+use crate::hints::Hint;
 use std::ops::Range;
 
 use super::{EditKind, Editor};
@@ -79,6 +80,16 @@ impl Editor {
         self.anchor = None;
         self.fixup();
         self.revision += 1;
+    }
+
+    /// Shows `text` as a hint under the caret, once per install (see
+    /// [`crate::hints`]); later firings stay quiet.
+    pub(super) fn fire_hint(&mut self, which: Hint, text: &str) {
+        if self.hints.is_seen(which) {
+            return;
+        }
+        self.hints.mark(which);
+        self.hint = Some((text.to_string(), self.revision));
     }
 
     /// The hint to show now, if the last edit made one (it goes with the next edit).
@@ -178,6 +189,22 @@ impl Editor {
     /// Called just after a character was typed in prose: `#` then a letter at the
     /// start of a line becomes a heading (the editor writes the space).
     pub fn after_type(&mut self, ch: char) {
+        if ch.is_ascii_digit() {
+            let at = self.caret - 1;
+            let (ls, _) = line_bounds(&self.text, at);
+            let t = self.text[ls..at].trim_start_matches([' ', '\t']);
+            if t.len() > 1
+                && t.ends_with('.')
+                && t[..t.len() - 1].bytes().all(|b| b.is_ascii_digit())
+                && !in_fence(&self.text, at)
+            {
+                self.fire_hint(
+                    Hint::NumberNotList,
+                    "A number stays a number. For a list, type 1. and a space.",
+                );
+            }
+            return;
+        }
         if !ch.is_alphabetic() {
             return;
         }
@@ -193,13 +220,10 @@ impl Editor {
             return;
         }
         self.convert(at..at, " ");
-        if !self.hinted_heading {
-            self.hinted_heading = true;
-            self.hint = Some((
-                format!("Heading {hashes}. Ctrl+Z keeps the # as plain text."),
-                self.revision,
-            ));
-        }
+        self.fire_hint(
+            Hint::Heading,
+            &format!("Heading {hashes}. Ctrl+Z keeps the # as plain text."),
+        );
     }
 
     /// Ctrl+1/2/3 (up to 6): makes the caret's line a heading of `level`; level 0

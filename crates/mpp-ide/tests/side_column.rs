@@ -399,7 +399,7 @@ fn click_label(h: &mut Harness<'static, IdeApp>, label: &str) {
 fn marker(view: SideView) -> Option<&'static str> {
     match view {
         SideView::Explorer => Some("OPEN FILES"),
-        SideView::Tutorial => Some("01 Typing maths"),
+        SideView::Tutorial => Some("1 Prose and maths"),
         SideView::Variables => Some("x slider"),
         _ => None,
     }
@@ -433,10 +433,10 @@ fn a_lesson_opens_from_the_tutorial_panel() {
     frames(&mut h);
     click_icon(&mut h, SideView::Tutorial);
     assert_shows(&h, Some(SideView::Tutorial), "Tutorial");
-    click_label(&mut h, "02 Greek letters");
+    click_label(&mut h, "2 Typing maths");
     assert_eq!(
         h.state().doc().expect("doc").title(),
-        "02 Greek letters",
+        "2 Typing maths",
         "the lesson is the file on screen"
     );
     // The project folder stays as it was.
