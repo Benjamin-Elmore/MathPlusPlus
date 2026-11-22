@@ -263,3 +263,35 @@ fn esc_closes_the_cheat_sheet_and_typing_goes_on() {
     type_text(&mut h, " More");
     assert_eq!(text_of(&h), "Some words. More");
 }
+
+/// S14: Heading and List are in the Insert menu (Ctrl+Space).
+#[test]
+fn heading_and_list_are_in_the_insert_menu() {
+    use egui::Event;
+    use mpp_ide::insert::menu;
+    for (query, id, typed, want) in [
+        ("heading", "text.heading", "Results", "# Results"),
+        ("list", "text.list", "first", "- first"),
+    ] {
+        let mut h = fresh();
+        press(&mut h, Modifiers::COMMAND, Key::Space);
+        h.run_steps(2);
+        for c in query.chars() {
+            h.event(Event::Text(c.to_string()));
+            h.step();
+        }
+        let recent = h.state().insert.settings.recent.clone();
+        let items = menu::flat(&menu::sections(query, &recent));
+        let at = items
+            .iter()
+            .position(|i| i.id == id)
+            .unwrap_or_else(|| panic!("{id} is not in the Insert menu"));
+        for _ in 0..at {
+            key(&mut h, Key::ArrowDown);
+        }
+        enter(&mut h);
+        h.run_steps(2);
+        type_text(&mut h, typed);
+        assert_eq!(text_of(&h).trim_end(), want, "{query}");
+    }
+}

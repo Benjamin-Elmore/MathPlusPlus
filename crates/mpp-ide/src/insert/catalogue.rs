@@ -1781,7 +1781,23 @@ fn build_catalogue() -> Vec<Template> {
         ),
     ]);
     // ----- Text and Document: notes and the paper features -----
-    let text_items: [(&str, Group, &str, &str, &str, &'static str); 12] = [
+    let text_items: [(&str, Group, &str, &str, &str, &'static str); 14] = [
+        (
+            "text.heading",
+            Group::Text,
+            "Heading",
+            r"\text{H}",
+            "heading title section header #",
+            "# ",
+        ),
+        (
+            "text.list",
+            Group::Text,
+            "List",
+            r"\bullet",
+            "list bullet item items dash numbered -",
+            "- ",
+        ),
         (
             "text.comment",
             Group::Text,
