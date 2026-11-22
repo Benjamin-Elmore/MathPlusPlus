@@ -23,7 +23,7 @@ pub mod rich;
 pub mod suggest;
 pub mod ui;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ops::Range;
 use std::path::PathBuf;
 
@@ -972,7 +972,24 @@ pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
         out.retain(|p| !(q.start <= p.span.start && p.span.end <= q.end));
     }
     out.sort_by_key(|p| (p.span.start, p.level, p.span.end));
+    drop_vague(&mut out, inp.src);
     out
+}
+
+/// "This query got no answer." says nothing a more specific problem on the
+/// same line does not say better (a typo hint, P-F2): it is dropped then.
+fn drop_vague(out: &mut Vec<Problem>, src: &str) {
+    let line = |at: usize| {
+        src.get(..at.min(src.len()))
+            .map(|s| s.matches('\n').count())
+    };
+    let vague = |p: &Problem| p.message.to_lowercase().contains("got no answer");
+    let specific: HashSet<Option<usize>> = out
+        .iter()
+        .filter(|p| !vague(p) && p.level != Level::Info)
+        .map(|p| line(p.span.start))
+        .collect();
+    out.retain(|p| !(vague(p) && specific.contains(&line(p.span.start))));
 }
 
 /// Prose lines that were meant as a question (P7, P8): a defined name on its own or
