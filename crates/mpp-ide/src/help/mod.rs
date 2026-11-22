@@ -13,8 +13,8 @@ use crate::editor::forms::{self, Form};
 use crate::paint::{c32, paint_display_list};
 use crate::typeset;
 
-/// The search box's id (F1 puts the caret in it).
-fn filter_id() -> Id {
+/// The search box's id (F1 puts the caret in it; Esc in it closes the sheet).
+pub(crate) fn filter_id() -> Id {
     Id::NULL.with("cheat-sheet-filter")
 }
 
@@ -47,6 +47,48 @@ pub struct Section {
     pub title: &'static str,
     pub tips: &'static [Tip],
 }
+
+/// Whether the search box had the keyboard in the last frame (Esc in it
+/// closes the sheet).
+pub(crate) fn had_focus_id() -> Id {
+    filter_id().with("had-focus")
+}
+
+/// What to type with no LaTeX and no code: the first section of the sheet, in
+/// plain words (E18, S12, P12).
+pub const START_HERE: Section = Section {
+    title: "Start here (no LaTeX or code needed)",
+    tips: &[
+        tip("= on an empty line", "Starts a line of maths", None, None),
+        tip(
+            "a/b",
+            "A fraction: type the top, then /, then the bottom",
+            Some(r"\frac{a}{b}"),
+            None,
+        ),
+        tip("x^2", "A power: x squared", Some("x^{2}"), None),
+        tip("sqrt(x)", "A square root", Some(r"\sqrt{x}"), None),
+        tip(
+            "pi, theta, alpha",
+            "Greek letters: type their names",
+            Some(r"\pi,\ \theta,\ \alpha"),
+            None,
+        ),
+        tip(
+            "x := 5",
+            "Gives x a value (x is 5 from now on)",
+            Some("x := 5"),
+            None,
+        ),
+        tip(
+            "2 + 3 =",
+            "An = at the end shows the answer",
+            Some("2 + 3 = 5"),
+            None,
+        ),
+        tip("Esc", "Back out of the maths into words", None, None),
+    ],
+};
 
 /// The fixed sections, after the table of forms.
 pub const SECTIONS: &[Section] = &[
@@ -221,15 +263,19 @@ impl IdeApp {
     pub(crate) fn cheat_sheet_tile(&mut self, ui: &mut Ui, theme: &Theme) {
         let text_id = filter_id().with("text");
         let mut filter: String = ui.data(|d| d.get_temp(text_id)).unwrap_or_default();
-        ui.horizontal(|ui| {
+        let search = ui.horizontal(|ui| {
             ui.add_space(10.0);
             ui.add(
                 egui::TextEdit::singleline(&mut filter)
                     .id(filter_id())
                     .hint_text("Search the cheat sheet")
                     .desired_width(ui.available_width() - 14.0),
-            );
+            )
         });
+        // egui drops the focus on Esc before anyone sees the key, so the next
+        // frame's Esc check reads where the focus was in this one.
+        let focused = search.inner.has_focus();
+        ui.data_mut(|d| d.insert_temp(had_focus_id(), focused));
         ui.data_mut(|d| d.insert_temp(text_id, filter.clone()));
         let needle = filter;
         let size = (self.size * 0.8).clamp(12.0, 20.0);
@@ -239,16 +285,39 @@ impl IdeApp {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 ui.add_space(4.0);
+                let mut shown = 0;
+                for s in [&START_HERE] {
+                    let tips: Vec<&Tip> =
+                        s.tips.iter().filter(|t| tip_matches(t, &needle)).collect();
+                    if tips.is_empty() {
+                        continue;
+                    }
+                    shown += tips.len();
+                    ui.label(
+                        RichText::new(s.title.to_uppercase())
+                            .size(12.5)
+                            .color(c32(theme.muted)),
+                    );
+                    for t in tips {
+                        ui.label(RichText::new(t.becomes).size(12.5).color(c32(theme.muted)));
+                        let label = format!("{}: {}", t.becomes, t.typed);
+                        cell(ui, theme, size, label, t.typed, t.picture);
+                    }
+                    ui.add_space(8.0);
+                }
                 ui.columns(2, |cols| {
                     for (col, title) in cols
                         .iter_mut()
                         .zip(["If you know LaTeX", "If you write code"])
                     {
-                        col.label(RichText::new(title).strong().color(c32(theme.text)));
+                        // Left-aligned, not justified: a justified column
+                        // spread the letters of a wrapped title apart (E18).
+                        col.with_layout(egui::Layout::top_down(egui::Align::Min), |c| {
+                            c.label(RichText::new(title).strong().color(c32(theme.text)));
+                        });
                     }
                 });
                 ui.add_space(2.0);
-                let mut shown = 0;
                 for f in forms::table().iter().filter(|f| form_matches(f, &needle)) {
                     shown += 1;
                     ui.label(RichText::new(f.name).size(12.5).color(c32(theme.muted)));

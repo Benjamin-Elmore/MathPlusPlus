@@ -59,6 +59,19 @@ impl IdeApp {
                     i.consume_shortcut(&CHEAT_SHEET),
                 )
             });
+        // Esc in the cheat sheet's search box closes the sheet and gives the
+        // keyboard back to the page (E18, S12, P12).
+        let in_sheet = ctx
+            .data(|d| d.get_temp::<bool>(crate::help::had_focus_id()))
+            .unwrap_or(false)
+            && self.ws.side_visible
+            && self.ws.side_view == crate::settings::SideView::Help;
+        if in_sheet && ctx.input_mut(|i| i.consume_key(Modifiers::NONE, Key::Escape)) {
+            self.hide_side();
+            if let Some(doc) = self.doc_mut() {
+                doc.take_focus = true;
+            }
+        }
         // Ctrl+Shift+Tab is consumed before Ctrl+Tab (a shortcut without Shift
         // also matches when Shift is held).
         if side {

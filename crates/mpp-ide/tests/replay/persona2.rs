@@ -240,3 +240,26 @@ fn a_code_style_line_is_built_up_when_it_becomes_maths() {
     );
     assert!(!text.contains("**"), "{text:?}");
 }
+
+/// E18, S12 and P12: F1 opens the cheat sheet with a plain-words "Start here"
+/// part first; Esc in it closes the sheet, and typing goes to the page again.
+#[test]
+fn esc_closes_the_cheat_sheet_and_typing_goes_on() {
+    use egui_kittest::kittest::Queryable;
+    let mut h = super::runner::harness(super::runner::app_with("Some words."));
+    h.run_steps(3);
+    press(&mut h, Modifiers::NONE, Key::F1);
+    h.run_steps(3);
+    assert!(h.state().ws.side_visible, "F1 shows the cheat sheet");
+    assert!(
+        h.query_all_by_label_contains("type the top, then /, then the bottom")
+            .next()
+            .is_some(),
+        "the sheet starts with plain words"
+    );
+    press(&mut h, Modifiers::NONE, Key::Escape);
+    h.run_steps(3);
+    assert!(!h.state().ws.side_visible, "Esc closed the cheat sheet");
+    type_text(&mut h, " More");
+    assert_eq!(text_of(&h), "Some words. More");
+}
