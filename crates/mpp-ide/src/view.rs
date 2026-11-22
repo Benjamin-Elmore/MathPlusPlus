@@ -1696,6 +1696,8 @@ fn key_pressed(
             }
             if doc.editor.selection().is_some() {
                 doc.editor.delete(caret, false);
+            } else if !fwd && in_math && doc.editor.backspace_maths() {
+                // One character, as in any text editor (E1).
             } else if in_math {
                 let Some(t) = page.offset_step(caret, fwd) else {
                     return false;

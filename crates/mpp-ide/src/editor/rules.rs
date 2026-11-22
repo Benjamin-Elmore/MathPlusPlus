@@ -140,6 +140,56 @@ impl Editor {
         self.insert_text(&insert);
     }
 
+    /// Backspace in maths takes one character, as in any text editor (E1): a
+    /// digit of `20`, not the whole number. What is drawn as one symbol goes
+    /// whole (a command such as `\pi`, an operator such as `:=`), and spaces go
+    /// with the character before them so every press shows. Just after a
+    /// structure's closing braces (`\frac{\pi}{6}`) the last character inside
+    /// goes. False where the page decides instead: just after an opening brace,
+    /// a script mark or the maths' own `$$`.
+    pub fn backspace_maths(&mut self) -> bool {
+        if self.selection().is_some() {
+            return false;
+        }
+        let head = &self.text[..self.caret];
+        let mut end = head.trim_end_matches(' ').len();
+        let closers = head[..end].len() - head[..end].trim_end_matches('}').len();
+        if closers > 0 {
+            // Inside the structure: only its last character, never a space.
+            end -= closers;
+            if head[..end].ends_with([' ', '{']) {
+                return false;
+            }
+        }
+        let body = &head[..end];
+        let Some(last) = body.chars().next_back() else {
+            return false;
+        };
+        if matches!(last, '{' | '}' | '$' | '\n' | '\\' | '^' | '_' | '&') {
+            return false;
+        }
+        let mut start = end - last.len_utf8();
+        if last.is_ascii_alphabetic() {
+            let name = body.len()
+                - body
+                    .trim_end_matches(|c: char| c.is_ascii_alphabetic())
+                    .len();
+            let before = &body[..end - name];
+            let slashes = before.len() - before.trim_end_matches('\\').len();
+            if slashes % 2 == 1 {
+                start = end - name - 1;
+            }
+        }
+        for op in [":=", "<=", ">=", "!=", "->", "=="] {
+            if body.ends_with(op) {
+                start = end - op.len();
+            }
+        }
+        let to = if closers > 0 { end } else { self.caret };
+        self.delete_range(start..to);
+        true
+    }
+
     /// Backspace at the start of a block in prose: joins it to the block before
     /// (removing the blank line Enter wrote) in one step. False when not applicable.
     pub fn backspace_block(&mut self, in_math: bool) -> bool {

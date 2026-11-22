@@ -210,3 +210,49 @@ fn the_first_undo_gives_back_the_slash() {
         );
     }
 }
+
+/// Clicks where the caret stop for `offset` is drawn.
+fn click_offset(h: &mut H, offset: usize) {
+    let st = h.state();
+    let doc = st.doc().expect("doc");
+    let stop = doc
+        .page_cache()
+        .expect("page")
+        .page
+        .caret_stop_on(offset, mpp_ide::page::Side::Before)
+        .expect("a stop");
+    let at = st.diag.origin + egui::vec2(stop.x, (stop.top + stop.bottom) / 2.0);
+    super::runner::click_at(h, at);
+}
+
+/// E1: a click after `20` in `v = 20`, then Backspace twice, takes one
+/// character each time; `v = ` stays.
+#[test]
+fn backspace_in_maths_takes_one_character() {
+    let src = "$$ v = 20 $$\n\n$$ w = v $$\n\n";
+    let mut h = super::runner::harness(super::runner::app_with(src));
+    h.run_steps(3);
+    click_offset(&mut h, 9);
+    assert_eq!(Seen::of(&h).caret, 9, "the click put the caret after 20");
+    press(&mut h, Modifiers::NONE, Key::Backspace);
+    assert_eq!(text_of(&h), "$$ v = 2 $$\n\n$$ w = v $$\n\n");
+    press(&mut h, Modifiers::NONE, Key::Backspace);
+    assert_eq!(text_of(&h), "$$ v =  $$\n\n$$ w = v $$\n\n");
+    type_text(&mut h, "25");
+    assert_eq!(text_of(&h), "$$ v = 25 $$\n\n$$ w = v $$\n\n");
+}
+
+/// E16: Backspace after a fraction takes the last character of its
+/// denominator, not the whole `/6`.
+#[test]
+fn backspace_after_a_fraction_takes_one_character() {
+    let src = concat!(r"$$ θ = \frac{\pi}{6} $$", "\n\n");
+    let mut h = super::runner::harness(super::runner::app_with(src));
+    h.run_steps(3);
+    let end = src.find(" $$\n").expect("end");
+    click_offset(&mut h, end);
+    press(&mut h, Modifiers::NONE, Key::Backspace);
+    assert_eq!(text_of(&h), concat!(r"$$ θ = \frac{\pi}{} $$", "\n\n"));
+    type_text(&mut h, "4");
+    assert_eq!(text_of(&h), concat!(r"$$ θ = \frac{\pi}{4} $$", "\n\n"));
+}
