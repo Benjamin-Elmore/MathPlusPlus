@@ -314,3 +314,12 @@ fn the_empty_box_hint_is_in_plain_words() {
     assert_eq!(mpp_ide::insert::plain_label(""), "in the empty boxes");
     assert_eq!(mpp_ide::insert::plain_label("numerator"), "the top");
 }
+
+/// T15: the first `:=` typed says what it means.
+#[test]
+fn the_first_colon_equals_says_what_it_means() {
+    let mut h = fresh();
+    type_text(&mut h, "=");
+    type_text(&mut h, "x :=");
+    assert_eq!(hint(&h).as_deref(), Some(mpp_ide::hints::DEFINES));
+}

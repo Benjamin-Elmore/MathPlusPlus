@@ -286,6 +286,10 @@ impl Editor {
                 "Converted. Ctrl+Z gives back exactly what you typed.",
             );
         }
+        if ch == '=' && self.text[..self.caret].ends_with(":=") {
+            // What `:=` means, the first time it is typed (T15).
+            self.fire_hint(crate::hints::Hint::Defines, crate::hints::DEFINES);
+        }
     }
 
     /// The innermost template at `caret` and the box holding it.

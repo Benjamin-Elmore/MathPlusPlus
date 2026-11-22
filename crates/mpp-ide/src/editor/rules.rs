@@ -287,6 +287,10 @@ impl Editor {
     /// start of a line becomes a heading (the editor writes the space).
     pub fn after_type(&mut self, ch: char) {
         if ch == '=' {
+            if self.text[..self.caret].ends_with(":=") {
+                self.fire_hint(Hint::Defines, crate::hints::DEFINES);
+                return;
+            }
             self.tail_hint();
             return;
         }

@@ -25,16 +25,22 @@ pub enum Hint {
     NumberNotList,
     /// A sentence ends with maths and `=`: Ctrl+M makes just that maths.
     InlineMaths,
+    /// `:=` was typed: what it means.
+    Defines,
 }
 
+/// What the `:=` hint says (T15).
+pub const DEFINES: &str = "≔ means \"is defined as\": x := 5 gives x the value 5.";
+
 impl Hint {
-    pub const ALL: [Hint; 6] = [
+    pub const ALL: [Hint; 7] = [
         Hint::Heading,
         Hint::StartMaths,
         Hint::AutoMaths,
         Hint::Conversion,
         Hint::NumberNotList,
         Hint::InlineMaths,
+        Hint::Defines,
     ];
 
     /// The name stored in the settings.
@@ -46,6 +52,7 @@ impl Hint {
             Hint::Conversion => "conversion",
             Hint::NumberNotList => "number-not-list",
             Hint::InlineMaths => "inline-maths",
+            Hint::Defines => "defines",
         }
     }
 
@@ -58,6 +65,7 @@ impl Hint {
             Hint::Conversion => "Typing converted",
             Hint::NumberNotList => "Number kept as a number",
             Hint::InlineMaths => "Maths in a sentence",
+            Hint::Defines => "What := means",
         }
     }
 
@@ -77,6 +85,7 @@ impl Hint {
             Hint::NumberNotList => {
                 "A number like 1.3 is never a list. For a list, type 1. and then a space."
             }
+            Hint::Defines => DEFINES,
             Hint::InlineMaths => {
                 "A sentence ending in maths and = (half of v is v/2 =) can get an answer: Ctrl+M makes just that part maths. Select words and press Ctrl+M or Alt+= to make them maths."
             }
