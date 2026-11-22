@@ -1020,3 +1020,20 @@ fn rf4_no_focusable_node_is_unnamed() {
         key(&mut h, Modifiers::NONE, Key::Tab);
     }
 }
+
+#[test]
+fn tn6_where_am_i_is_shown_on_screen_too() {
+    let mut h = app_with("Words.\n\n$$ x^2 $$\n", 2);
+    wait(&mut h);
+    assert!(h.state().access.toast().is_none());
+    key(&mut h, Modifiers::COMMAND | Modifiers::ALT, Key::W);
+    h.step();
+    let said = polite(&h);
+    assert!(said.contains("Untitled-1, line 1"), "{said:?}");
+    assert_eq!(h.state().access.toast(), Some(said.as_str()));
+    h.run_steps(2);
+    let drawn = h
+        .query_all(by().predicate(|n| n.role() == Role::Label))
+        .any(|n| n.accesskit_node().value().is_some_and(|v| v == said));
+    assert!(drawn, "the words are drawn on screen");
+}
