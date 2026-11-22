@@ -392,6 +392,20 @@ impl Editor {
         (line_end && (c == end || inside)).then_some(end)
     }
 
+    /// Backspace just after a maths line's closing `$$`, where the caret is
+    /// drawn at the end of the box: it goes into the box and takes the last
+    /// character there (S2), never the `$$` itself. False elsewhere.
+    pub fn backspace_into_maths(&mut self) -> bool {
+        let caret = self.caret;
+        if !self.text[..caret].ends_with("$$") || self.maths_end() != Some(caret) {
+            return false;
+        }
+        let inner = self.text[..caret - 2].trim_end_matches(' ').len();
+        self.move_caret(inner, false);
+        self.backspace_maths();
+        true
+    }
+
     /// Leaves the maths block the caret is at the end of, onto the empty line
     /// below it, written when there is none (one undo step). False when the
     /// caret is not at the end of a maths block.

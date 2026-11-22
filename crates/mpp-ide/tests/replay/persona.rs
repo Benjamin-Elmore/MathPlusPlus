@@ -296,3 +296,26 @@ fn the_caret_is_drawn_where_the_next_character_goes_in_a_definition() {
         "the caret was drawn at x={drawn} but the 3 went at x={three}"
     );
 }
+
+/// S2: Backspace only deletes just before the caret. From the empty line under
+/// a maths box it joins the lines, then goes into the box; the prose above is
+/// never touched.
+#[test]
+fn backspace_under_a_box_never_reaches_earlier_lines() {
+    let src = "A ball at speed v and angle theta.\n\n$$ x = 12 $$\n\n";
+    let mut h = super::runner::harness(super::runner::app_with(src));
+    h.run_steps(3);
+    for _ in 0..3 {
+        press(&mut h, Modifiers::NONE, Key::Backspace);
+        assert!(
+            text_of(&h).starts_with("A ball at speed v and angle theta.\n\n$$ x = 1"),
+            "Backspace reached text before the caret: {:?}",
+            text_of(&h)
+        );
+    }
+    assert_eq!(
+        text_of(&h),
+        "A ball at speed v and angle theta.\n\n$$ x = 1 $$"
+    );
+    caret_on_its_line(&h);
+}

@@ -1678,6 +1678,12 @@ fn key_pressed(
         }
         Key::Backspace | Key::Delete => {
             let fwd = key == Key::Delete;
+            if !fwd && doc.editor.selection().is_none() && doc.editor.backspace_into_maths() {
+                doc.touched();
+                *cx.completion = None;
+                doc.want_x = None;
+                return true;
+            }
             if !fwd && !in_math && doc.editor.backspace_block(false) {
                 doc.touched();
                 *cx.completion = None;
@@ -1709,10 +1715,30 @@ fn key_pressed(
                 } else {
                     page.char_before(caret)
                 };
-                let Some(c) = c else {
-                    return false;
+                // The nearest drawn character may be lines away (nothing drawn
+                // on this line yet): then only what is right next to the caret
+                // goes, never text on an earlier or later line (S2).
+                let text = doc.editor.text();
+                let near = c.filter(|c| {
+                    let between = if fwd {
+                        text.get(caret..c.start)
+                    } else {
+                        text.get(c.end..caret)
+                    };
+                    between.is_some_and(|b| !b.contains('\n'))
+                });
+                let range = match near {
+                    Some(c) => c.start..c.end,
+                    None if fwd => match text[caret..].chars().next() {
+                        Some(ch) => caret..caret + ch.len_utf8(),
+                        None => return false,
+                    },
+                    None => match text[..caret].chars().next_back() {
+                        Some(ch) => caret - ch.len_utf8()..caret,
+                        None => return false,
+                    },
                 };
-                doc.editor.delete_range(c.start..c.end);
+                doc.editor.delete_range(range);
             }
             doc.touched();
             *cx.completion = None;
