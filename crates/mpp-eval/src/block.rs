@@ -831,7 +831,22 @@ impl Run<'_, '_> {
         let noeval = line.noeval || place == Place::Display { noeval: true };
         if place != Place::Prose {
             self.ambiguous_unit_letters(line, &where_names);
-            self.letter_run_warnings(line, &where_names);
+            if self.letter_run_warnings(line, &where_names) {
+                // An unknown function has no value: the line gets its error and no
+                // answer (never one made up from the letters).
+                if let Statement::Query { mode, steps, .. } = &line.statement {
+                    let mut lr = LineResult::new(
+                        line.span,
+                        LineKind::Query {
+                            mode: *mode,
+                            steps: *steps,
+                        },
+                    );
+                    lr.open = self.ends_open(line.span);
+                    self.push(lr);
+                }
+                return;
+            }
         }
         let scope = Scope {
             names: &where_names,
@@ -875,7 +890,7 @@ impl Run<'_, '_> {
     /// Letters side by side that spell no defined name (`velocity`, `sinn(2)`) are
     /// read as a product, which is rarely what was typed: a warning says so and
     /// names the function when one is close.
-    fn letter_run_warnings(&mut self, line: &Line, where_names: &[String]) {
+    fn letter_run_warnings(&mut self, line: &Line, where_names: &[String]) -> bool {
         let mut bound: Vec<String> = where_names.to_vec();
         if let Statement::Definition {
             head: DefHead::Function { params, .. },
@@ -889,9 +904,24 @@ impl Run<'_, '_> {
                 |w: &str| bound.iter().any(|b| b == w) || self.view().get(w, false).is_some();
             crate::letter_runs::hits(line, &known)
         };
+        let mut called = false;
         for hit in found {
-            self.warn(hit.span, crate::letter_runs::message(&hit));
+            // `integrate(x^2, x, 0, 3)`: a word called like a function is never
+            // read as a product of letters; it is an error with the form to write.
+            if hit.called && hit.function.is_none() {
+                called = true;
+                self.result.diagnostics.push(Diagnostic::error(
+                    hit.span,
+                    crate::letter_runs::unknown_function_message(&hit),
+                ));
+            } else {
+                // `sinn(2)`: a typo of a function keeps its warning (with the quick
+                // fix), and the line still gets no answer made from the letters.
+                called |= hit.called;
+                self.warn(hit.span, crate::letter_runs::message(&hit));
+            }
         }
+        called
     }
 
     /// `20 t`, `5 m`, `9 g`: a number, a plain space and one letter that is a unit
@@ -1602,6 +1632,45 @@ impl Run<'_, '_> {
             if written.contains(&format!("{{{name}}}")) {
                 self.warn(expr.span, unknown_call_message(&name));
                 unknown_operator |= has_operator_holder(&value, &name);
+            }
+        }
+        // `w + 1 = ?` with `w` defined nowhere: nothing could be worked out, so the
+        // answer would only repeat the question. No answer; a warning names what
+        // is missing.
+        // `w + 1 = ?` with `w` defined nowhere, in a document that defines numbers
+        // (a calculation, not algebra): the answer would only repeat the question,
+        // so a warning names what is missing (the editor shows it in the slot).
+        let squeeze = |t: &str| -> String {
+            t.chars()
+                .filter(|c| !c.is_whitespace() && *c != '*')
+                .collect()
+        };
+        let calculation = self.env.iter().any(|(n, b)| {
+            matches!(&**b, Binding::Variable { value, .. } if value.free_symbols().is_empty())
+                && !crate::result::is_internal_name(n)
+        });
+        if mode == QueryMode::Exact
+            && calculation
+            && !contains_holder(&value)
+            && squeeze(&value.to_string()) == squeeze(written)
+        {
+            let missing: Vec<String> = value
+                .free_symbols()
+                .iter()
+                .map(|n| n.to_string())
+                .filter(|n| {
+                    self.view().get(n, false).is_none() && !crate::result::is_internal_name(n)
+                })
+                .collect();
+            if !missing.is_empty() {
+                let (names, verb) = match missing.as_slice() {
+                    [one] => (format!("`{one}`"), "is not"),
+                    more => (more.join(", "), "are not"),
+                };
+                self.warn(
+                    expr.span,
+                    format!("{names} {verb} defined, so this cannot be worked out"),
+                );
             }
         }
         // A scripted operator Math++ does not know has no answer to show: its

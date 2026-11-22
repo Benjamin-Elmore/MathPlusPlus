@@ -954,6 +954,7 @@ pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
     if let (Some(ev), true) = (inp.eval, inp.eval_fresh) {
         out.extend(checks(inp.doc, ev));
     }
+    out.extend(prose_hints(inp.src, inp.doc, &known));
     if let Some(bg) = inp.background {
         out.extend(import_problems(inp.doc, bg));
     }
@@ -963,6 +964,67 @@ pub fn gather(inp: &Inputs<'_>) -> Vec<Problem> {
     }
     out.sort_by_key(|p| (p.span.start, p.level, p.span.end));
     out
+}
+
+/// Prose lines that were meant as a question (P7, P8): a defined name on its own or
+/// `print(R)` (type `R =` to see its value), and SymPy or Python forms of an
+/// integral or a sum (the form written here). Notes, never errors.
+pub(crate) fn prose_hints(src: &str, doc: &Document, known: &[String]) -> Vec<Problem> {
+    let mut out = vec![];
+    doc.walk(&mut |b| {
+        if !matches!(b.kind, BlockKind::Paragraph(_)) {
+            return;
+        }
+        let Some(text) = src.get(b.span.start..b.span.end) else {
+            return;
+        };
+        let mut at = b.span.start;
+        for line in text.split('\n') {
+            let span = Span::new(at, at + line.len());
+            at += line.len() + 1;
+            if let Some(hint) = prose_hint(line.trim(), known) {
+                out.push(Problem::new(span, Level::Info, Kind::Other, hint));
+            }
+        }
+    });
+    out
+}
+
+/// The hint for one prose line, if it reads as a question in another tool's form.
+fn prose_hint(line: &str, known: &[String]) -> Option<Rich> {
+    let name = line
+        .strip_prefix("print(")
+        .and_then(|r| r.strip_suffix(')'))
+        .or_else(|| line.strip_prefix("print "))
+        .unwrap_or(line)
+        .trim();
+    if !name.is_empty()
+        && name.chars().all(|c| c.is_alphanumeric() || c == '_')
+        && known.iter().any(|k| k == name)
+    {
+        return Some(
+            Rich::text("To see the value of ")
+                .m(name.to_string())
+                .t(", type ")
+                .m(format!("{name} ="))
+                .t(" on a line of its own."),
+        );
+    }
+    if line.contains("integrate(") {
+        return Some(
+            Rich::text("Integrals are written int(f, x, a, b) here: ")
+                .m("int(x^2, x, 0, 3) =".to_string())
+                .t(" (SymPy's integrate(f, (x, a, b)))."),
+        );
+    }
+    if line.contains("sum(") && line.contains(" for ") && line.contains(" in ") {
+        return Some(
+            Rich::text("Sums are written sum(f, n, a, b) here, with b included: ")
+                .m("sum(1/n^2, n, 1, 10) =".to_string())
+                .t(" (Python's range(1, 11) stops before 11)."),
+        );
+    }
+    None
 }
 
 /// A fingerprint of what classifying a diagnostic reads besides the diagnostic and

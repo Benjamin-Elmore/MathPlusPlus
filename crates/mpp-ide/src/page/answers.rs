@@ -198,17 +198,33 @@ fn preview_of(v: &Answered) -> Option<(String, String)> {
 
 /// The first error inside `span`, short and whole.
 fn error_in(br: &BlockResult, span: Span) -> Option<Content> {
-    let d = br.diagnostics.iter().find(|d| {
-        d.severity == Severity::Error && span.start <= d.span.start && d.span.end <= span.end
-    })?;
-    let full = mpp_core::note::plain(&d.message);
+    // An error first; with none, a warning (`w isn't defined, so there is no value`)
+    // explains why there is no answer.
+    let inside = |d: &&mpp_syntax::Diagnostic| span.start <= d.span.start && d.span.end <= span.end;
+    let d = br
+        .diagnostics
+        .iter()
+        .filter(inside)
+        .find(|d| d.severity == Severity::Error)
+        .or_else(|| {
+            br.diagnostics
+                .iter()
+                .filter(inside)
+                .find(|d| d.severity == Severity::Warning)
+        })?;
+    Some(error_content(d))
+}
+
+/// A diagnostic as slot content: a short form for the slot and the whole message.
+fn error_content(d: &mpp_syntax::Diagnostic) -> Content {
+    let full = mpp_core::note::plain(&d.message).replace('`', "");
     let first = full.lines().next().unwrap_or("").trim();
     let short = if first.chars().count() > 44 {
         format!("{}…", first.chars().take(43).collect::<String>().trim_end())
     } else {
         first.to_string()
     };
-    Some(Content::Error { short, full })
+    Content::Error { short, full }
 }
 
 /// What the hover over a check says about checks against numbers.
@@ -243,12 +259,22 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
             .filter(|v| span.start <= v.span.start && v.span.end <= span.end)
             .collect();
         let content = if open {
-            vals.iter()
-                .rev()
-                .find(|v| matches!(v.kind, LineKind::Query { .. }))
-                .and_then(|v| answer_of(v, input, line.span))
-                .map(|(latex, copy)| Content::Answer { latex, copy })
-                .or_else(|| error_in(run.br, span))
+            // A name defined nowhere: say so, never echo the question as its answer.
+            let missing = run.br.diagnostics.iter().find(|d| {
+                span.start <= d.span.start
+                    && d.span.end <= span.end
+                    && d.message.contains("defined, so this cannot be worked out")
+            });
+            missing
+                .map(error_content)
+                .or_else(|| {
+                    vals.iter()
+                        .rev()
+                        .find(|v| matches!(v.kind, LineKind::Query { .. }))
+                        .and_then(|v| answer_of(v, input, line.span))
+                        .map(|(latex, copy)| Content::Answer { latex, copy })
+                        .or_else(|| error_in(run.br, span))
+                })
                 .unwrap_or(Content::Empty)
         } else if let Some(v) = vals.iter().find(|v| v.implicit) {
             Content::Defined {

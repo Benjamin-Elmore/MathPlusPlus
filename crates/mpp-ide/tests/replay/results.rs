@@ -174,6 +174,59 @@ fn round_and_digits() {
     assert_eq!(last_slot(&h).0, "35.31");
 }
 
+/// P2, E7: an unknown function is an error in the answer slot with the form to
+/// write, never a product of its letters with g put in.
+#[test]
+fn an_unknown_function_is_an_error_not_an_answer() {
+    let mut h = typed_after(DEFS, &[Type("integrate(x**2, x, 0, 3) ="), Pause]);
+    let s = Seen::of(&h);
+    let last = s.visible.last().expect("a line");
+    assert!(
+        last.starts_with("integrate("),
+        "the name is upright: {last}"
+    );
+    assert!(
+        !last.contains("9.81"),
+        "an answer made up from the letters: {last}"
+    );
+    let (copy, _) = last_slot(&h);
+    assert!(copy.contains("integrate is not a known function"), "{copy}");
+    assert!(copy.contains("int(f, x, a, b)"), "{copy}");
+    let p = problems(&mut h);
+    assert!(
+        p.iter().any(|m| m.contains("is not a known function")),
+        "{p:?}"
+    );
+    let h = typed_after(DEFS, &[Type("foo(3) ="), Pause]);
+    assert!(last_slot(&h).0.contains("foo is not a known function"));
+}
+
+/// R8: a name defined nowhere gives no answer but a warning, in the slot and in
+/// Problems.
+#[test]
+fn an_undefined_name_is_said_not_echoed() {
+    let mut h = typed_after(DEFS, &[Type("w + 1 = ?"), Pause]);
+    let (copy, _) = last_slot(&h);
+    assert!(copy.contains("w is not defined"), "{copy}");
+    let p = problems(&mut h);
+    assert!(p.iter().any(|m| m.contains("is not defined")), "{p:?}");
+}
+
+/// P7, P8: prose that was meant as a question gets a hint with the form to type.
+#[test]
+fn coder_idioms_in_prose_get_a_hint() {
+    for (line, want) in [
+        ("R", "type R ="),
+        ("print(R)", "type R ="),
+        ("integrate(x**2, (x, 0, 3))", "int(f, x, a, b)"),
+        ("sum(1/n**2 for n in range(1, 11))", "sum(f, n, a, b)"),
+    ] {
+        let mut h = typed_after(DEFS, &[Type(line), Pause]);
+        let p = problems(&mut h);
+        assert!(p.iter().any(|m| m.contains(want)), "{line}: {p:?}");
+    }
+}
+
 /// E9 (Design rule 5): an answer with units arriving moves no line.
 #[test]
 fn a_unit_answer_moves_nothing() {
