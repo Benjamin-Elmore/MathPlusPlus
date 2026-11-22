@@ -203,6 +203,9 @@ pub struct Editor {
     auto_frac: Option<u64>,
     /// Closing brackets shown but not written (see [`brackets`]).
     ghosts: Vec<brackets::Ghost>,
+    /// Where a typed `$` just stepped over a maths line's closing `$$`, and the
+    /// revision then: a second `$` typed straight after is the rest of a `$$`.
+    closed_at: Option<(usize, u64)>,
 }
 
 impl Editor {

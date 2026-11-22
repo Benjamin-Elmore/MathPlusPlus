@@ -378,6 +378,10 @@ impl Editor {
             return false;
         }
         let caret = self.caret;
+        // The second `$` of a `$$` typed by hand, after the first closed the line.
+        if ch == '$' && self.closed_at.take() == Some((caret, self.revision)) {
+            return true;
+        }
         let (ls, le) = line_bounds(&self.text, caret);
         let line = &self.text[ls..le];
         let lead = line.len() - line.trim_start().len();
@@ -415,8 +419,12 @@ impl Editor {
             if drop > 0 {
                 self.replace_inline(caret - drop..caret, "");
             }
-            let to = self.caret + gap + 1;
+            // A closing `$` steps over the whole closing `$$`: the maths is left.
+            let to = self.caret + gap + if first { 2 } else { 1 };
             self.move_caret(to, false);
+            if first {
+                self.closed_at = Some((self.caret, self.revision));
+            }
             return true;
         }
         false
