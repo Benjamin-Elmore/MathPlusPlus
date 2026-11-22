@@ -351,6 +351,9 @@ pub struct Session {
     /// The user typed the box's `{` (LaTeX in full): only `}` leaves it, not an
     /// operator or a Space.
     pub braced: bool,
+    /// A fraction made by a typed `/` (linear typing, design rule 7): its
+    /// denominator ends on Space, an operator, a comma or `)`.
+    pub linear: bool,
 }
 
 impl Session {
@@ -385,6 +388,7 @@ impl Session {
             primary: None,
             walked: false,
             braced: false,
+            linear: false,
         };
         for (i, b) in snippet.boxes.iter().enumerate() {
             if let Some(k) = &b.mirror {

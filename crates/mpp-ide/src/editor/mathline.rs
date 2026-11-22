@@ -457,6 +457,14 @@ impl Editor {
         }
         let rest = &self.text[caret..close + 2];
         let closing = rest.trim_start();
+        // Only the closing braces of the boxes the caret is in before the
+        // closing `$$` (`\frac{\pi}{6|} $$`): `$` leaves them all, and the maths (R2).
+        let boxed = rest.trim_start_matches([' ', '}']) == "$$" && rest.contains('}');
+        if boxed && caret > open + 2 {
+            self.move_caret(close + 2, false);
+            self.closed_at = Some((self.caret, self.revision));
+            return true;
+        }
         let first = closing == "$$" && caret > open + 2;
         let second = closing == "$" && caret == close + 1;
         if first || second {

@@ -165,3 +165,27 @@ fn a_typed_brace_closes_the_users_own_group() {
     type_text(&mut h, r"$x^{2} + \frac{a}{b} + 1");
     assert_eq!(text_of(&h), r"$$ x^{2} + \frac{a}{b} + 1 $$");
 }
+
+/// R2, R4 and S5: a fraction made from `/` (linear typing, rule 7) ends its
+/// denominator on Space, an operator, a comma, `)` or the closing `$`, with the
+/// usual precedence. A `\frac{…}{…}` typed in full keeps what is typed inside.
+#[test]
+fn a_slash_fraction_ends_like_written_maths() {
+    for (typed, file) in [
+        (r"$$ \theta := \pi/6 $$", r"$$ θ := \frac{\pi}{6} $$"),
+        (r"$\theta := \pi/6$", r"$$ θ := \frac{\pi}{6} $$"),
+        (r"$\theta := \pi/6", r"$$ θ := \frac{\pi}{6} $$"),
+        ("$q := 1/2 + 3", r"$$ q := \frac{1}{2} + 3 $$"),
+        ("$a = 1/2-3", r"$$ a = \frac{1}{2}-3 $$"),
+        (
+            "$sum(1/n^2, n, 1, 10) =",
+            r"$$ \sum_{n=1}^{10} \frac{1}{n^{2}} = $$",
+        ),
+        ("$1/(2+3) = ", r"$$ \frac{1}{(2+3)} =  $$"),
+        (r"$\frac{1}{2+3}", r"$$ \frac{1}{2+3} $$"),
+    ] {
+        let mut h = fresh();
+        type_text(&mut h, typed);
+        assert_eq!(text_of(&h), file, "typed {typed:?}");
+    }
+}

@@ -7,13 +7,55 @@
 //! - `+ − = < > ,` or Space typed at the end of an exponent or subscript leave
 //!   it (`x^2+` gives x²+); `^` at the end of a subscript starts the exponent.
 //! - A slip such as `x^^2` is refused, with a hint.
+//! - The denominator of a fraction made by a typed `/` ends the same way (and
+//!   on `)`), when it closes every bracket it opens: `1/2 + 3` is ½ + 3.
 //! - Enter in a box starts the new maths line after the structure.
 //! - Esc leaves the box, then the maths (`view.rs`, `escape`).
 
 use super::convert::{has_operand, open_of, SUB, SUP};
 use super::Editor;
 
+/// True when every bracket opened in `s` is closed in it.
+fn balanced(s: &str) -> bool {
+    let mut depth = [0i32; 3];
+    for c in s.chars() {
+        match c {
+            '(' => depth[0] += 1,
+            ')' => depth[0] -= 1,
+            '[' => depth[1] += 1,
+            ']' => depth[1] -= 1,
+            '{' => depth[2] += 1,
+            '}' => depth[2] -= 1,
+            _ => {}
+        }
+    }
+    depth == [0; 3]
+}
+
 impl Editor {
+    /// True when the box holding `caret` (if any) closes every bracket it opens.
+    fn box_balanced(&self, caret: usize) -> bool {
+        self.box_here(caret).is_none_or(|(id, i)| {
+            let r = self.session(id).expect("session").boxes[i].range.clone();
+            balanced(self.text.get(r).unwrap_or(""))
+        })
+    }
+
+    /// Where `+ − = < > , )` or Space leave the denominator of a fraction made
+    /// by a typed `/` (R4, S5): at its end, when it holds something and closes
+    /// every bracket it opens, so `1/2 + 3` is ½ + 3 and `1/(2+3)` keeps its
+    /// brackets. A `\frac{…}{…}` typed in full keeps what is typed inside.
+    pub(super) fn linear_exit(&self, caret: usize) -> Option<(Option<u64>, usize)> {
+        let (id, i) = self.box_here(caret)?;
+        let s = self.session(id)?;
+        let b = &s.boxes[i];
+        let last = i + 1 == s.boxes.len();
+        if !s.linear || !last || b.range.is_empty() || caret != b.range.end {
+            return None;
+        }
+        balanced(&self.text[b.range.clone()]).then_some((Some(id), s.range.end))
+    }
+
     /// Where `+ − = < > ,` or Space leave an exponent or subscript the caret is at
     /// the end of (just after its `}`), if it is.
     fn script_exit(&self, caret: usize) -> Option<(Option<u64>, usize)> {
@@ -71,8 +113,16 @@ impl Editor {
                     self.refuse(ch)
                 }
             }
-            '+' | '-' | '−' | '=' | '<' | '>' | ',' | ' ' => {
-                if let Some((id, to)) = self.script_exit(caret) {
+            '+' | '-' | '−' | '=' | '<' | '>' | ',' | ' ' | ')' => {
+                // `)` leaves a script only when it closes nothing inside it.
+                let script = self
+                    .script_exit(caret)
+                    .filter(|_| ch != ')' || self.box_balanced(caret));
+                if let Some((id, to)) = script {
+                    self.leave_to(id, to);
+                }
+                // Then out of the denominator of a `/` fraction (`1/n^2,`).
+                if let Some((id, to)) = self.linear_exit(self.caret) {
                     self.leave_to(id, to);
                 }
                 true
