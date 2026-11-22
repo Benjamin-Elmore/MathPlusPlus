@@ -6,6 +6,7 @@
 //! become inline maths; graphs become a `Figure:` line.
 
 pub mod catalogue;
+pub mod commands;
 pub mod menu;
 
 use std::ops::Range;
@@ -45,6 +46,8 @@ impl Default for InsertSettings {
 pub struct InsertUi {
     pub menu: menu::MenuState,
     pub settings: InsertSettings,
+    /// The command list at `\` and `/`.
+    pub commands: commands::CommandState,
 }
 
 /// How many recent items the menu keeps.
@@ -108,24 +111,52 @@ fn line_at(text: &str, offset: usize) -> Range<usize> {
     start..end
 }
 
+/// The newlines in the blanks that end `s` (`None` when `s` is only blanks).
+fn newlines_before(s: &str) -> Option<usize> {
+    let kept = s.trim_end_matches(char::is_whitespace);
+    if kept.is_empty() {
+        return None;
+    }
+    Some(s[kept.len()..].matches('\n').count())
+}
+
+/// The newlines in the blanks that start `s` (`None` when `s` is only blanks).
+fn newlines_after(s: &str) -> Option<usize> {
+    let rest = s.trim_start_matches(char::is_whitespace);
+    if rest.is_empty() {
+        return None;
+    }
+    Some(s[..s.len() - rest.len()].matches('\n').count())
+}
+
 /// Where a display template goes when the caret is in prose: the range to
-/// replace and the text around the template.
+/// replace and the text around the template. The block is set off from what is
+/// next to it by one blank line, and no more: an empty line is replaced, a line's
+/// tail is replaced, a line with words after the caret is split.
 fn display_place(text: &str, caret: usize) -> (Range<usize>, String, String) {
     let line = line_at(text, caret);
     let content = &text[line.clone()];
-    if content.trim().is_empty() {
-        return (line, "$$ ".into(), " $$".into());
-    }
-    let before = &text[line.start..caret];
-    let after = &text[caret..line.end];
-    if after.trim().is_empty() {
-        let tail = if line.end < text.len() { "" } else { "\n" };
-        return (caret..line.end, "\n\n$$ ".into(), format!(" $${tail}"));
-    }
-    if before.trim().is_empty() {
-        return (line.start..line.start, "$$ ".into(), " $$\n\n".into());
-    }
-    (caret..caret, "\n\n$$ ".into(), " $$\n\n".into())
+    let blank = content.trim().is_empty();
+    let range = if blank {
+        line
+    } else if text[caret..line.end].trim().is_empty() {
+        caret..line.end
+    } else {
+        caret..caret
+    };
+    // A blank line between the maths and the text next to it.
+    let gap = |have: usize| 2usize.saturating_sub(have);
+    let lead = newlines_before(&text[..range.start]).map_or(0, gap);
+    let tail = match newlines_after(&text[range.end..]) {
+        // The end of the file: one newline closes the block's line.
+        None => usize::from(!blank && !text[range.end..].contains('\n')),
+        Some(n) => gap(n),
+    };
+    (
+        range,
+        format!("{}$$ ", "\n".repeat(lead)),
+        format!(" $${}", "\n".repeat(tail)),
+    )
 }
 
 /// Where a `Figure:` line goes: on an empty line, or after the caret's block.
@@ -599,6 +630,26 @@ mod tests {
             let start = operand_before(text, text.len());
             assert_eq!(&text[start..], operand, "{text}");
         }
+    }
+
+    #[test]
+    fn a_display_is_set_off_by_one_blank_line_and_no_more() {
+        // An empty line between two paragraphs: replaced, nothing added.
+        let t = "A\n\n\n\nB";
+        let (r, b, a) = display_place(t, 3);
+        assert_eq!((r, b.as_str(), a.as_str()), (3..3, "$$ ", " $$"));
+        // The only blank line between two paragraphs: it is replaced, and a
+        // newline each side keeps a blank line round the block.
+        let t = "A\n\nB";
+        let (_, b, a) = display_place(t, 2);
+        assert_eq!((b.as_str(), a.as_str()), ("\n$$ ", " $$\n"));
+        let t = "A\n\nB";
+        let (r, b, a) = display_place(t, 1);
+        assert_eq!((r, b.as_str(), a.as_str()), (1..1, "\n\n$$ ", " $$"));
+        // Words after the caret: the paragraph is split with one blank line each side.
+        let t = "ab cd";
+        let (_, b, a) = display_place(t, 2);
+        assert_eq!((b.as_str(), a.as_str()), ("\n\n$$ ", " $$\n\n"));
     }
 
     #[test]

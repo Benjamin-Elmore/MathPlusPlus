@@ -281,6 +281,17 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 }
             } else {
                 moved = handle_pointer(ui, &resp, doc, &pc0, origin, &mut events);
+                if resp.double_clicked() || resp.triple_clicked() {
+                    if let Some(p) = resp.interact_pointer_pos() {
+                        let at = p - origin.to_vec2();
+                        moved |= crate::editor::select::multi_click(
+                            &mut doc.editor,
+                            &pc0.page,
+                            at,
+                            resp.triple_clicked(),
+                        );
+                    }
+                }
                 if moved {
                     cx.diag.peek = None;
                 }
@@ -356,6 +367,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 peek_card(ui, doc, &pc, origin, &theme, cx);
                 fix_menu(ui, doc, cx, &mut events, resp.id);
                 completion_popup(ui, doc, &pc, origin, cx, &theme, caret_rect);
+                command_list(ui, doc, &pc, cx, caret_rect);
                 if focused || cx.insert.menu.open {
                     template_toolbar(ui, doc, &pc, origin, cx, resp.id);
                 }
@@ -442,6 +454,7 @@ fn key_filter(doc: &Doc, pc: &PageCache, cx: &ViewCtx<'_>, menu: bool) -> EventF
         || cx.completion.is_some()
         || cx.diag.peek.is_some()
         || cx.insert.menu.open
+        || cx.insert.commands.open
         || cx.diag.menu_open();
     EventFilter {
         tab: popup || in_template || !empty_slots(&pc.page, caret).is_empty(),
@@ -989,6 +1002,23 @@ fn insert_menu(
     }
 }
 
+/// The command list at `\` and `/` (U22), under the caret.
+fn command_list(ui: &Ui, doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, caret: Option<Rect>) {
+    cx.insert
+        .commands
+        .refresh(doc.editor.text(), doc.editor.caret());
+    let Some(cr) = caret else {
+        return;
+    };
+    let at = Pos2::new(cr.left(), cr.bottom() + 2.0);
+    if let Some(i) = insert::commands::popup(ui.ctx(), &cx.insert.commands, at, cx.mode) {
+        cx.insert.commands.selected = i;
+        if insert::commands::accept(&mut doc.editor, &pc.page, cx.insert) {
+            doc.touched();
+        }
+    }
+}
+
 /// The controls of the template the caret is in (mode, rows, infinity buttons).
 fn template_toolbar(
     ui: &Ui,
@@ -1084,6 +1114,9 @@ fn paint_page(
                 painter.rect_filled(r, 0.0, sel_color);
             }
         }
+    }
+    if focused {
+        crate::editor::brackets::paint(painter, page, origin, &doc.editor, cx.size, cx.mode);
     }
     let clip = painter.clip_rect();
     for b in &page.blocks {
@@ -1238,6 +1271,10 @@ fn handle_pointer(
 fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     let in_math = pc.page.in_math(doc.editor.caret());
     for ch in text.chars().filter(|c| !c.is_control()) {
+        if in_math && doc.editor.bracket_before(ch) {
+            // Brackets (editor/brackets.rs): wrap a selection, fill a ghost closer.
+            continue;
+        }
         if in_math {
             // Both ways of typing, converted as you type (editor/convert.rs).
             let typing = crate::editor::convert::TypingCx {
@@ -1248,6 +1285,7 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
                 shortcuts: cx.insert.settings.shortcuts,
             };
             doc.editor.type_maths(ch, &typing);
+            doc.editor.bracket_after(ch);
             continue;
         }
         doc.editor.before_type(ch);
@@ -1259,6 +1297,13 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     doc.caret_side = crate::page::Side::Before;
     cx.diag.peek = None;
     update_completion(doc, in_math, cx);
+    let caret = doc.editor.caret();
+    cx.insert
+        .commands
+        .typed(doc.editor.text(), caret, in_math, text.chars().next_back());
+    if cx.insert.commands.open {
+        *cx.completion = None;
+    }
 }
 
 fn update_completion(doc: &Doc, in_math: bool, cx: &mut ViewCtx<'_>) {
@@ -1385,7 +1430,7 @@ fn handle_keys(
                     moved = true;
                     continue;
                 }
-                if cx.completion.is_none() {
+                if cx.completion.is_none() && !cx.insert.commands.open {
                     if let Some(dir) = edge_release(doc, pc, key, modifiers) {
                         ui.memory_mut(|m| m.move_focus(dir));
                         continue;
@@ -1415,6 +1460,20 @@ fn key_pressed(
     let caret = doc.editor.caret();
     let in_math = page.in_math(caret);
     let shift = mods.shift;
+    if !mods.command && !mods.alt {
+        use crate::insert::commands::{accept, KeyOutcome};
+        match cx.insert.commands.key(key, shift) {
+            KeyOutcome::Accept => {
+                if accept(&mut doc.editor, page, cx.insert) {
+                    doc.touched();
+                    doc.want_x = None;
+                }
+                return true;
+            }
+            KeyOutcome::Handled => return false,
+            KeyOutcome::Ignored => {}
+        }
+    }
     if mods.command {
         match key {
             Key::Period => {
@@ -1537,6 +1596,11 @@ fn key_pressed(
                 doc.want_x = None;
                 return true;
             }
+            if !fwd && in_math && doc.editor.backspace_pair() {
+                doc.touched();
+                *cx.completion = None;
+                return true;
+            }
             if !fwd && in_math && doc.editor.backspace_in_template() {
                 doc.touched();
                 *cx.completion = None;
@@ -1573,10 +1637,20 @@ fn key_pressed(
                 doc.editor
                     .move_caret(if fwd { sel.end } else { sel.start }, false);
                 doc.caret_side = if fwd { Side::Before } else { Side::After };
+            } else if shift
+                && in_math
+                && crate::editor::select::shift_arrow(&mut doc.editor, page, fwd)
+            {
+                doc.caret_side = if fwd { Side::Before } else { Side::After };
             } else if let Some((t, side)) = page.step_on(caret, doc.caret_side, fwd) {
                 doc.editor.move_caret(t, shift);
                 doc.caret_side = side;
             }
+            true
+        }
+        Key::ArrowUp if mods.alt && shift && in_math => {
+            crate::editor::select::grow_selection(&mut doc.editor, page);
+            doc.want_x = None;
             true
         }
         Key::ArrowUp | Key::ArrowDown => {
