@@ -1100,6 +1100,7 @@ fn paint_page(
     let off = origin.to_vec2();
     let caret = focused.then(|| doc.editor.caret());
     crate::page::mode::paint_maths(painter, page, origin, &cx.mode.palette(), cx.size, caret);
+    crate::access::annotate(ui, page, doc.editor.text(), origin);
     if let Some(span) = doc.highlight {
         if let Some(r) = page.rect_of_span(span) {
             let c = c32(cx.mode.palette().highlight);

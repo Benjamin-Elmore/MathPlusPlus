@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod access;
 mod app;
 pub mod autosave;
 pub mod copy;

@@ -129,7 +129,7 @@ impl Palette {
     /// 4.5:1 (WCAG AA for normal text).
     pub fn text_pairs(&self) -> Vec<(&'static str, Color, Color)> {
         let t = &self.theme;
-        vec![
+        let mut v = vec![
             ("text on page", t.text, t.background),
             ("text on panel", t.text, self.panel),
             ("text on code block", t.text, t.code_background),
@@ -177,7 +177,26 @@ impl Palette {
             ("error in a maths box", t.error, self.maths_tint),
             ("warning in a maths box", t.warning, self.maths_tint),
             ("maths marker on page", self.maths_marker, t.background),
-        ]
+            (
+                "maths marker on its tint",
+                self.maths_marker,
+                self.maths_tint,
+            ),
+        ];
+        // The answer slot sits inside the maths box (U16, U17).
+        let ac = super::answers::answer_colors(t);
+        for (name, c) in [
+            ("answer", ac.answer),
+            ("defined value", ac.preview),
+            ("check holds", ac.holds),
+            ("check fails", ac.fails),
+            ("answer error", ac.error),
+            ("defined mark", ac.mark),
+        ] {
+            v.push((name, c, self.maths_tint));
+            v.push((name, c, t.background));
+        }
+        v
     }
 
     /// Pairs of lines and strokes against what they sit on; each must reach
