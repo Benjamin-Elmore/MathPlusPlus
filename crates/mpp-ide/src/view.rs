@@ -347,6 +347,8 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                     )
                 });
             if cx.active {
+                // Where this frame drew the page (the text may have moved it).
+                cx.diag.origin = origin;
                 doc.caret_screen = caret_rect;
                 let (caret, side) = (doc.editor.caret(), doc.caret_side);
                 doc.pin = crate::page::Pin::new(&pc.page, doc.editor.text(), caret, side);

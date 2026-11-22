@@ -1,44 +1,16 @@
-//! Replay tests: the IDE driven the way a person uses it, through the real frame
-//! loop. A frame only happens when the app asked for one (or on input), exactly
-//! like the desktop event loop, so a missing repaint shows up as a failure.
+//! The first replay tests (phase A): the IDE driven the way a person uses it,
+//! through the real frame loop. A frame only happens when the app asked for one
+//! (or on input), exactly like the desktop event loop, so a missing repaint
+//! shows up as a failure.
 
 use std::time::{Duration, Instant};
 
-use egui::{Event, Key, Modifiers, Vec2};
+use egui::{Event, Key, Modifiers};
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
-use mpp_ide::{theme, IdeApp};
+use mpp_ide::IdeApp;
 
-const SIZE: Vec2 = Vec2::new(1180.0, 820.0);
-
-fn harness(app: IdeApp) -> Harness<'static, IdeApp> {
-    Harness::builder()
-        .with_size(SIZE)
-        .with_max_steps(30)
-        .with_context_setup(theme::install_fonts)
-        .build_ui_state(|ui, app: &mut IdeApp| app.ui(ui), app)
-}
-
-/// One key or piece of text, then the frame the input causes.
-fn type_text(h: &mut Harness<'static, IdeApp>, s: &str) {
-    for c in s.chars() {
-        h.event(Event::Text(c.to_string()));
-        h.step();
-    }
-}
-
-/// The person stops typing. Frames run only while the app asks for them (as the
-/// real event loop does), for at most `limit`.
-fn idle(h: &mut Harness<'static, IdeApp>, limit: Duration) {
-    let start = Instant::now();
-    while start.elapsed() < limit {
-        if !h.ctx.has_requested_repaint() {
-            return;
-        }
-        std::thread::sleep(Duration::from_millis(10));
-        h.step();
-    }
-}
+use super::runner::{app_with, caret_at, click_at, fresh, harness, idle, text_of, type_text};
 
 fn current(h: &Harness<'static, IdeApp>) -> bool {
     h.state().doc().is_some_and(|d| d.page_is_current())
@@ -65,15 +37,6 @@ fn an_answer_appears_without_another_key_press() {
         current(&h),
         "the answer was worked out but the page was never drawn again to show it"
     );
-}
-
-/// Where the caret was drawn in the last frame (its middle, in screen pixels).
-fn caret_at(h: &Harness<'static, IdeApp>) -> egui::Pos2 {
-    h.state()
-        .doc()
-        .and_then(|d| d.caret_screen)
-        .expect("the caret is drawn")
-        .center()
 }
 
 /// A person typing: one key per frame, and after each word a pause in which
@@ -106,16 +69,6 @@ fn type_with_pauses(
     frames
 }
 
-fn app_with(text: &str) -> IdeApp {
-    let mut app = IdeApp::empty();
-    app.new_file();
-    let doc = app.doc_mut().expect("doc");
-    doc.editor.set_text(text);
-    doc.editor.move_caret(text.len(), false);
-    doc.scroll_to = Some(mpp_syntax::Span::new(text.len(), text.len()));
-    app
-}
-
 #[test]
 fn the_caret_stays_on_its_line_while_typing_with_pauses() {
     // The video: a heading, a definition, then a new line typed into with a
@@ -145,8 +98,7 @@ fn the_caret_stays_on_its_line_while_typing_with_pauses() {
         },
     );
     assert!(frames > 20, "only {frames} frames ran");
-    let text = h.state().doc().expect("doc").editor.text().to_string();
-    assert_eq!(text, format!("{start}$$ E = 2x + 5 = ? $$"));
+    assert_eq!(text_of(&h), format!("{start}$$ E = 2x + 5 = ? $$"));
 }
 
 #[test]
@@ -209,10 +161,6 @@ fn press(h: &mut Harness<'static, IdeApp>, key: egui::Key) {
     h.step();
 }
 
-fn text_of(h: &Harness<'static, IdeApp>) -> String {
-    h.state().doc().expect("doc").editor.text().to_string()
-}
-
 #[test]
 fn left_from_the_start_of_a_line_goes_to_the_end_of_the_line_above() {
     // The video at 38 s: Left from the start of `E = 2x +5` went to an
@@ -267,21 +215,6 @@ fn up_and_down_keep_the_column_and_home_and_end_go_to_the_line_ends() {
         last.starts_with("<A third") && last.ends_with("prose>"),
         "{t}"
     );
-}
-
-/// A click (press and release) at a screen point (the page's own clicks).
-fn click_at(h: &mut Harness<'static, IdeApp>, pos: egui::Pos2) {
-    h.event(Event::PointerMoved(pos));
-    for pressed in [true, false] {
-        h.event(Event::PointerButton {
-            pos,
-            button: egui::PointerButton::Primary,
-            pressed,
-            modifiers: egui::Modifiers::NONE,
-        });
-        h.step();
-    }
-    h.step();
 }
 
 /// True when typing a letter changes the document (the page has the keyboard).
@@ -420,18 +353,6 @@ fn ctrl(h: &mut Harness<'static, IdeApp>, k: Key) {
     key(h, Modifiers::COMMAND, k);
 }
 
-fn text(h: &Harness<'static, IdeApp>) -> String {
-    h.state().doc().expect("doc").editor.text().to_string()
-}
-
-fn fresh() -> Harness<'static, IdeApp> {
-    let mut app = IdeApp::empty();
-    app.new_file();
-    let mut h = harness(app);
-    h.run_steps(2);
-    h
-}
-
 /// Blocks of the parsed file, by kind name, as the real parser sees the text.
 fn lists_in(src: &str) -> usize {
     let doc = mpp_syntax::document::parse_document(src);
@@ -447,7 +368,7 @@ fn enter_ends_the_block_and_the_file_says_so() {
     type_text(&mut h, "first");
     plain(&mut h, Key::Enter);
     type_text(&mut h, "second");
-    assert_eq!(text(&h), "first\n\nsecond");
+    assert_eq!(text_of(&h), "first\n\nsecond");
 }
 
 #[test]
@@ -456,7 +377,7 @@ fn shift_enter_is_a_soft_break() {
     type_text(&mut h, "first");
     key(&mut h, Modifiers::SHIFT, Key::Enter);
     type_text(&mut h, "second");
-    assert_eq!(text(&h), "first\nsecond");
+    assert_eq!(text_of(&h), "first\nsecond");
 }
 
 #[test]
@@ -465,7 +386,7 @@ fn enter_is_one_undo_step() {
     type_text(&mut h, "first");
     plain(&mut h, Key::Enter);
     ctrl(&mut h, Key::Z);
-    assert_eq!(text(&h), "first");
+    assert_eq!(text_of(&h), "first");
 }
 
 #[test]
@@ -478,9 +399,9 @@ fn backspace_at_the_start_of_a_block_joins_it_in_one_step() {
         plain(&mut h, Key::ArrowLeft);
     }
     plain(&mut h, Key::Backspace);
-    assert_eq!(text(&h), "firstsecond");
+    assert_eq!(text_of(&h), "firstsecond");
     ctrl(&mut h, Key::Z);
-    assert_eq!(text(&h), "first\n\nsecond");
+    assert_eq!(text_of(&h), "first\n\nsecond");
 }
 
 #[test]
@@ -489,7 +410,7 @@ fn enter_inside_display_maths_makes_a_new_row() {
     type_text(&mut h, "$$x := 1");
     plain(&mut h, Key::Enter);
     type_text(&mut h, "y := 2$$");
-    let t = text(&h);
+    let t = text_of(&h);
     // `$` on the empty line opened the maths line (U12): the editor wrote the
     // spaces and the closing `$$`, which the typed `$$` stepped over.
     assert_eq!(t, "$$ x := 1 \\\\\ny := 2 $$", "one block, a second row");
@@ -500,22 +421,22 @@ fn enter_inside_display_maths_makes_a_new_row() {
 fn a_list_marker_with_a_space_becomes_a_list_and_undo_gives_it_back() {
     let mut h = fresh();
     type_text(&mut h, "1.");
-    assert_eq!(lists_in(&text(&h)), 0, "1. alone is only text");
+    assert_eq!(lists_in(&text_of(&h)), 0, "1. alone is only text");
     type_text(&mut h, " ");
-    assert_eq!(lists_in(&text(&h)), 1);
+    assert_eq!(lists_in(&text_of(&h)), 1);
     ctrl(&mut h, Key::Z);
-    assert_eq!(text(&h), "1.");
-    assert_eq!(lists_in(&text(&h)), 0);
+    assert_eq!(text_of(&h), "1.");
+    assert_eq!(lists_in(&text_of(&h)), 0);
 }
 
 #[test]
 fn bullets_work_the_same_way() {
     let mut h = fresh();
     type_text(&mut h, "- ");
-    assert_eq!(lists_in(&text(&h)), 1);
+    assert_eq!(lists_in(&text_of(&h)), 1);
     ctrl(&mut h, Key::Z);
-    assert_eq!(text(&h), "-");
-    assert_eq!(lists_in(&text(&h)), 0);
+    assert_eq!(text_of(&h), "-");
+    assert_eq!(lists_in(&text_of(&h)), 0);
 }
 
 #[test]
@@ -523,8 +444,8 @@ fn numbers_never_become_lists() {
     for s in ["1.3", "1.", "2.5x", "1.321321312 + 5 =", "-3", "*x"] {
         let mut h = fresh();
         type_text(&mut h, s);
-        assert_eq!(text(&h), s);
-        assert_eq!(lists_in(&text(&h)), 0, "{s} is not a list");
+        assert_eq!(text_of(&h), s);
+        assert_eq!(lists_in(&text_of(&h)), 0, "{s} is not a list");
     }
 }
 
@@ -532,15 +453,15 @@ fn numbers_never_become_lists() {
 fn a_maths_line_never_becomes_a_list() {
     let mut h = fresh();
     type_text(&mut h, "$$1. 2 - 3 * 4$$");
-    assert_eq!(lists_in(&text(&h)), 0);
+    assert_eq!(lists_in(&text_of(&h)), 0);
 }
 
 #[test]
 fn hash_then_a_letter_makes_a_heading_with_a_hint() {
     let mut h = fresh();
     type_text(&mut h, "#This is a test");
-    assert_eq!(text(&h), "# This is a test");
-    let doc = mpp_syntax::document::parse_document(&text(&h));
+    assert_eq!(text_of(&h), "# This is a test");
+    let doc = mpp_syntax::document::parse_document(&text_of(&h));
     assert!(matches!(
         doc.blocks[0].kind,
         mpp_syntax::document::BlockKind::Heading { .. }
@@ -551,7 +472,7 @@ fn hash_then_a_letter_makes_a_heading_with_a_hint() {
 fn the_first_undo_after_the_heading_conversion_keeps_a_plain_hash() {
     let mut h = fresh();
     type_text(&mut h, "#T");
-    assert_eq!(text(&h), "# T");
+    assert_eq!(text_of(&h), "# T");
     let hint = h
         .state()
         .doc()
@@ -564,7 +485,7 @@ fn the_first_undo_after_the_heading_conversion_keeps_a_plain_hash() {
         "a hint shows once"
     );
     ctrl(&mut h, Key::Z);
-    assert_eq!(text(&h), "#T", "exactly what was typed");
+    assert_eq!(text_of(&h), "#T", "exactly what was typed");
 }
 
 #[test]
@@ -572,10 +493,10 @@ fn a_hash_without_a_letter_or_not_at_the_line_start_is_left_alone() {
     let mut h = fresh();
     type_text(&mut h, "# ");
     type_text(&mut h, "a #b 1#2");
-    assert_eq!(text(&h), "# a #b 1#2");
+    assert_eq!(text_of(&h), "# a #b 1#2");
     let mut h = fresh();
     type_text(&mut h, "x #y");
-    assert_eq!(text(&h), "x #y");
+    assert_eq!(text_of(&h), "x #y");
 }
 
 #[test]
@@ -583,13 +504,13 @@ fn ctrl_digits_set_the_heading_level() {
     let mut h = fresh();
     type_text(&mut h, "Title");
     ctrl(&mut h, Key::Num2);
-    assert_eq!(text(&h), "## Title");
+    assert_eq!(text_of(&h), "## Title");
     ctrl(&mut h, Key::Num1);
-    assert_eq!(text(&h), "# Title");
+    assert_eq!(text_of(&h), "# Title");
     ctrl(&mut h, Key::Num3);
-    assert_eq!(text(&h), "### Title");
+    assert_eq!(text_of(&h), "### Title");
     ctrl(&mut h, Key::Num0);
-    assert_eq!(text(&h), "Title");
+    assert_eq!(text_of(&h), "Title");
     ctrl(&mut h, Key::Z);
-    assert_eq!(text(&h), "### Title");
+    assert_eq!(text_of(&h), "### Title");
 }

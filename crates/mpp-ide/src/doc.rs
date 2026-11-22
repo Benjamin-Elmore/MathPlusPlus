@@ -61,6 +61,13 @@ pub struct PageCache {
     pub proof: crate::proof::ProofView,
 }
 
+impl PageCache {
+    /// The editor revision this page was laid out from.
+    pub fn revision(&self) -> u64 {
+        self.key.revision
+    }
+}
+
 /// Modification time and size of a file (`None` when it cannot be read).
 type FileStamp = Option<(Option<std::time::SystemTime>, u64)>;
 

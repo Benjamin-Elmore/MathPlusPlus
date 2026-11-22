@@ -5,3 +5,6 @@ target/
 *.wixobj
 *.wixpdb
 /dist/
+crates/mpp-ide/tests/snapshots/*.diff.png
+crates/mpp-ide/tests/snapshots/*.old.png
+crates/mpp-ide/tests/snapshots/*.new.png
