@@ -215,7 +215,9 @@ fn r8_a_warning_the_page_marks_is_spoken() {
 
 #[test]
 fn r6_answers_errors_and_the_mode_are_announced_but_not_typing() {
-    let src = "Words.\n\n$$ a := 3 $$\n\n$$ 3 \\mathrm{m} + 2 \\mathrm{m} = ? $$\n\n$$ x $$\n";
+    // Every name is defined: an undefined one would be answered "x is not
+    // defined" (R8), not with a value.
+    let src = "Words.\n\n$$ a := 3 $$\n\n$$ x := 4 $$\n\n$$ 3 \\mathrm{m} + 2 \\mathrm{m} = ? $$\n\n$$ x $$\n";
     let mut h = app_with(src, 2);
     wait(&mut h);
     // Two live regions exist.
@@ -228,7 +230,7 @@ fn r6_answers_errors_and_the_mode_are_announced_but_not_typing() {
         .next()
         .is_some());
     // Into maths: the mode is announced.
-    let x = src.find("$$ x").unwrap() + 3;
+    let x = src.rfind("$$ x").unwrap() + 3;
     h.state_mut().doc_mut().unwrap().editor.move_caret(x, false);
     key(&mut h, Modifiers::NONE, Key::ArrowRight);
     h.step();
@@ -590,4 +592,278 @@ fn r19_one_spoken_style_for_fractions_in_the_tree() {
         assert!(all.iter().any(|l| l == want), "{want:?} in {all:?}");
     }
     assert!(!all.iter().any(|l| l.contains("the fraction")), "{all:?}");
+}
+
+// ---- Fix loop 2 -----------------------------------------------------------
+
+/// Types `s` and checks it landed in the file (the editor had the keyboard).
+fn types_into_file(h: &mut H, s: &str) -> bool {
+    type_text(h, s);
+    h.state().doc().unwrap().editor.text().contains(s)
+}
+
+#[test]
+fn rn1_esc_on_a_prose_line_keeps_the_keyboard_in_the_editor() {
+    let mut h = app_with("Hello there.\n", 6);
+    assert!(in_editor(&h));
+    key(&mut h, Modifiers::NONE, Key::Escape);
+    h.step();
+    assert!(
+        in_editor(&h),
+        "Esc in prose: focus {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    key(&mut h, Modifiers::NONE, Key::Escape);
+    h.step();
+    assert!(in_editor(&h), "Esc again");
+    // F10, then Esc: still the editor.
+    key(&mut h, Modifiers::NONE, Key::F10);
+    h.step();
+    key(&mut h, Modifiers::NONE, Key::Escape);
+    h.step();
+    assert!(
+        in_editor(&h),
+        "Esc after F10: focus {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    assert!(types_into_file(&mut h, "K"));
+}
+
+#[test]
+fn rn2_up_on_the_first_line_and_down_on_the_last_stay_in_the_editor() {
+    let mut h = app_with("First line.\n\nLast line.", 3);
+    for _ in 0..4 {
+        key(&mut h, Modifiers::NONE, Key::ArrowUp);
+    }
+    h.step();
+    assert!(
+        in_editor(&h),
+        "Up at the top: {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    assert_eq!(h.state().doc().unwrap().editor.caret(), 0);
+    key(&mut h, Modifiers::COMMAND, Key::End);
+    for _ in 0..3 {
+        key(&mut h, Modifiers::NONE, Key::ArrowDown);
+    }
+    h.step();
+    assert!(
+        in_editor(&h),
+        "Down at the bottom: {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    assert!(types_into_file(&mut h, "D"));
+}
+
+#[test]
+fn r19_inline_maths_says_its_answer_and_the_line_reads_spoken_maths() {
+    let src = "$$ v := 20 $$\n\nHalf of $v$ is $v/2 =$ metres per second.\n\nThe angle $\\theta$ is small.\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    let all = labels(&h);
+    assert!(
+        all.iter().any(|l| l == "v over 2 equals 10"),
+        "inline answer: {all:?}"
+    );
+    let at = src.find("Half").unwrap() + 2;
+    h.state_mut()
+        .doc_mut()
+        .unwrap()
+        .editor
+        .move_caret(at, false);
+    h.run_steps(2);
+    let f = focused(&h).expect("focused");
+    assert_eq!(
+        f.value,
+        "Half of v is v over 2 equals 10 metres per second."
+    );
+    let at = src.find("The angle").unwrap() + 2;
+    h.state_mut()
+        .doc_mut()
+        .unwrap()
+        .editor
+        .move_caret(at, false);
+    h.run_steps(2);
+    let f = focused(&h).expect("focused");
+    assert_eq!(f.value, "The angle theta is small.");
+}
+
+#[test]
+fn r12_problems_items_are_named_buttons_and_enter_jumps_back_to_the_editor() {
+    let src = "Words.\n\n$$ v := 20 $$\n\n$$ w + 1 = ? $$\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    let items: Vec<(Role, String)> = h
+        .query_all(by().predicate(|n| {
+            n.label()
+                .is_some_and(|l| l.starts_with("Error, line") || l.starts_with("Warning, line"))
+        }))
+        .map(|n| {
+            let a = n.accesskit_node();
+            (a.role(), a.label().unwrap_or_default())
+        })
+        .collect();
+    assert!(
+        items
+            .iter()
+            .any(|(r, l)| *r == Role::Button && l.starts_with("Warning, line 5: w is not defined")),
+        "problem items: {items:?}"
+    );
+    // No unnamed focusable rows left in the panel.
+    let f = focused(&h).expect("something in Problems has the keyboard");
+    assert!(
+        !f.label.is_empty() || !f.value.is_empty(),
+        "the focused row is named: {:?}",
+        f.role
+    );
+    // Where am I says the panel and the row.
+    key(&mut h, Modifiers::COMMAND | Modifiers::ALT, Key::W);
+    h.step();
+    assert!(polite(&h).starts_with("Problems"), "{:?}", polite(&h));
+    // Tab to the error row, then Enter: the caret goes there and the editor
+    // has the keyboard again.
+    for _ in 0..6 {
+        if focused(&h).is_some_and(|f| f.label.starts_with("Warning, line 5")) {
+            break;
+        }
+        key(&mut h, Modifiers::NONE, Key::Tab);
+        h.step();
+    }
+    assert!(
+        focused(&h).is_some_and(|f| f.label.starts_with("Warning, line 5")),
+        "Tab reaches the error: {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    h.run_steps(3);
+    assert!(in_editor(&h), "Enter gives the keyboard back to the editor");
+    let d = h.state().doc().unwrap();
+    let line = d.editor.text()[..d.editor.caret()].matches('\n').count() + 1;
+    assert_eq!(line, 5, "the caret is on the problem's line");
+    assert!(polite(&h).contains("line 5"), "{:?}", polite(&h));
+}
+
+#[test]
+fn p7_p8_coder_hints_are_in_problems_and_said_once() {
+    let mut h = app_with("$$ R := 35 $$\n\n", 15);
+    wait(&mut h);
+    type_text(&mut h, "print(R)");
+    wait(&mut h);
+    h.run_steps(3);
+    // Not while the line is still being typed.
+    assert!(!polite(&h).contains("Hint: To see"), "{:?}", polite(&h));
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    wait(&mut h);
+    h.run_steps(3);
+    let said = polite(&h);
+    assert!(
+        said.contains("Hint: To see the value of R, type R = on a line of its own"),
+        "the hint is said: {said:?}"
+    );
+    // The status bar counts it, and the Problems panel lists it.
+    let all = labels(&h);
+    assert!(
+        all.iter().any(|l| l == "No problems, 1 hint"),
+        "status: {all:?}"
+    );
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(
+        labels(&h)
+            .iter()
+            .any(|l| l.starts_with("Hint, line 3: To see the value of R")),
+        "{:?}",
+        labels(&h)
+    );
+    // Said once: the next run says what is new, not the hint again.
+    key(&mut h, Modifiers::NONE, Key::Escape);
+    h.run_steps(2);
+    key(&mut h, Modifiers::COMMAND, Key::Home);
+    for _ in 0..4 {
+        key(&mut h, Modifiers::NONE, Key::ArrowRight);
+    }
+    type_text(&mut h, "0");
+    wait(&mut h);
+    h.run_steps(3);
+    assert!(!polite(&h).contains("Hint: To see"), "{:?}", polite(&h));
+}
+
+#[test]
+fn rn3_rn4_answers_are_spoken_whole_once_and_not_as_code() {
+    let src = "$$ g := 9.81 $$\n\n$$ v := 20 $$\n\n$$ R := 35.31194307 $$\n\n$$ w + 1 = ? $$\n\n$$ R = 40 $$\n\n$$ \\theta := \\pi/6 $$\n\n$$ q := \\frac{v^2 \\sin(2\\theta)}{g} $$\n\n$$ \\frac{1}{2} + \\frac{1}{3} = ? $$\n\n$$ q + R + g + v $$\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    let all = labels(&h);
+    let find = |start: &str| {
+        all.iter()
+            .find(|l| l.starts_with(start))
+            .cloned()
+            .unwrap_or_else(|| panic!("no label starts with {start:?}: {all:?}"))
+    };
+    // R-N3: not cut off, and the same thing is said once.
+    assert!(
+        !all.iter().any(|l| l.contains('\u{2026}')),
+        "cut off: {all:?}"
+    );
+    let w = find("w plus 1 equals");
+    assert_eq!(w.matches("not defined").count(), 1, "{w:?}");
+    let check = find("R equals 40");
+    assert_eq!(check.matches("right side 40").count(), 1, "{check:?}");
+    assert!(!check.contains(".,") && !check.contains(".."), "{check:?}");
+    // R-N4: exact answers in words, with the decimal after them.
+    let q = find("q is defined as");
+    assert!(!q.contains('*') && !q.contains("sqrt("), "code: {q:?}");
+    assert!(q.contains("square root of 3"), "{q:?}");
+    assert!(q.contains("about 35.31"), "{q:?}");
+    let sum = find("1 over 2 plus 1 over 3 equals");
+    assert!(sum.contains("equals 5 over 6"), "{sum:?}");
+}
+
+#[test]
+fn r14_the_path_is_current_while_typing_a_latex_command() {
+    let mut h = app_with("", 0);
+    let mut lagged = Vec::new();
+    for c in "$$ s := \\frac{1}{n} $$".chars() {
+        h.event(Event::Text(c.to_string()));
+        h.step();
+        let desc = |h: &H| {
+            h.query_all(by().predicate(|n| n.is_focused()))
+                .next()
+                .and_then(|n| n.accesskit_node().description())
+                .unwrap_or_default()
+        };
+        let now = (status_place(&h), desc(&h));
+        h.run_steps(3);
+        let settled = (status_place(&h), desc(&h));
+        // A bare `\frac` with no braces yet is a command being typed, not a
+        // fraction the caret is in.
+        if h.state()
+            .doc()
+            .unwrap()
+            .editor
+            .text()
+            .ends_with(r"\frac $$")
+        {
+            assert_eq!(now.0, "Maths", r"after \frac");
+        }
+        if now != settled {
+            lagged.push((c, now, settled));
+        }
+    }
+    assert!(lagged.is_empty(), "the path lagged: {lagged:?}");
+}
+
+#[test]
+fn r17_the_marker_button_sits_in_the_page_beside_its_maths() {
+    let h = app_with("Words.\n\n$$ x^2 $$\n", 0);
+    let root = h.kittest_state().root();
+    let top: Vec<String> = root.children().filter_map(|c| c.label()).collect();
+    assert!(
+        !top.iter().any(|l| l == mpp_ide::access::MARKER_LABEL),
+        "the marker hangs off the window root: {top:?}"
+    );
+    let m = h.get_by_label(mpp_ide::access::MARKER_LABEL);
+    assert_eq!(m.accesskit_node().role(), Role::Button);
 }

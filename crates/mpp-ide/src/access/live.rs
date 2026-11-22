@@ -82,6 +82,8 @@ struct Seen {
 pub struct AccessState {
     /// The regions of the last frame, in screen coordinates.
     regions: Vec<(Region, Rect)>,
+    /// The panels of the last frame by name (Problems, Explorer), on screen.
+    panes: Vec<(&'static str, Rect)>,
     /// A panel to give the keyboard to once it is drawn, and frames tried.
     land: Option<(Pane, u8)>,
     /// The keyboard moved focus last (not the pointer): the ring shows.
@@ -89,6 +91,11 @@ pub struct AccessState {
     polite: Live,
     assertive: Live,
     seen: Option<Seen>,
+    /// The hints said already (a coder's form on a prose line, P7/P8), by
+    /// file: each is said once.
+    hinted: std::collections::HashSet<(u64, String)>,
+    /// Words to say with the next announcement (after a jump), and frames waited.
+    pending: Option<(String, u8)>,
     /// The status bar's path label and the words it drew.
     pub(crate) status_place: Option<(Id, String)>,
     /// Where the status bar is.
@@ -121,6 +128,24 @@ pub fn as_button(ui: &egui::Ui, r: &egui::Response, does: &str) {
     });
 }
 
+/// Where the frame notes what painted rows (Problems items) say, by id.
+const LABELS: &str = "mpp-access-labels";
+
+/// Notes what the row `id` says, for "where am I" when it has the keyboard.
+pub fn note_label(ctx: &Context, id: Id, said: &str) {
+    ctx.data_mut(|d| {
+        d.get_temp_mut_or_default::<std::collections::HashMap<Id, String>>(Id::unique(LABELS))
+            .insert(id, said.to_string());
+    });
+}
+
+fn label_of(ctx: &Context, id: Id) -> Option<String> {
+    ctx.data(|d| {
+        d.get_temp::<std::collections::HashMap<Id, String>>(Id::unique(LABELS))
+            .and_then(|m| m.get(&id).cloned())
+    })
+}
+
 /// A file tab's name for a screen reader: "Untitled-1, unsaved, 4 errors".
 pub fn tab_name(title: &str, view: u32, dirty: bool, errors: usize) -> String {
     let mut s = title.to_string();
@@ -136,6 +161,22 @@ pub fn tab_name(title: &str, view: u32, dirty: bool, errors: usize) -> String {
         n => s.push_str(&format!(", {n} errors")),
     }
     s
+}
+
+/// A hint in words a screen reader says whole (R-N5): a symbol at its end
+/// ("Ctrl+Z gives back the $") is named, which a screen reader would skip.
+pub fn spoken_hint(h: &str) -> String {
+    let h = h.trim_end();
+    for (sym, name) in [
+        (" :=", " colon equals you typed"),
+        (" $", " dollar sign you typed"),
+        (" =", " equals sign you typed"),
+    ] {
+        if let Some(head) = h.strip_suffix(sym) {
+            return format!("{head}{name}.");
+        }
+    }
+    h.to_string()
 }
 
 /// The status bar's path in words a screen reader says well.
@@ -196,7 +237,7 @@ impl IdeApp {
     }
 
     /// Gives the editor (the active file's page) the keyboard.
-    fn focus_editor(&mut self, ctx: &Context) {
+    pub(crate) fn focus_editor(&mut self, ctx: &Context) {
         if let Some(id) = self.doc().map(|d| d.id) {
             ctx.memory_mut(|m| {
                 if let Some(f) = m.focused() {
@@ -279,6 +320,53 @@ impl IdeApp {
         ))
     }
 
+    /// Where the keyboard is when it is not in the editor: the panel and what
+    /// the focused row says ("Problems: Error, line 3: w is not defined.").
+    fn where_focus(&self, ctx: &Context) -> Option<String> {
+        let f = ctx.memory(egui::Memory::focused)?;
+        if is_editor(ctx, f) {
+            return None;
+        }
+        let at = ctx.viewport(|v| v.prev_pass.widgets.get(f).map(|w| w.interact_rect.center()));
+        let pane = at.and_then(|c| {
+            self.access
+                .panes
+                .iter()
+                .find(|(_, r)| r.contains(c))
+                .map(|(n, _)| *n)
+        });
+        let pane = pane.or_else(|| match self.region_of(ctx, f) {
+            Some(Region::Status) => Some("Status bar"),
+            Some(Region::Side) => Some("Side panel"),
+            Some(Region::Bottom) => Some("Bottom panel"),
+            _ => None,
+        });
+        match (pane, label_of(ctx, f)) {
+            (Some(p), Some(l)) => Some(format!("{p}: {l}")),
+            (Some(p), None) => Some(p.to_string()),
+            (None, Some(l)) => Some(l),
+            (None, None) => None,
+        }
+    }
+
+    /// After a jump from the Problems panel: the editor takes the keyboard
+    /// again and says the line it is on (R12).
+    pub(crate) fn back_to_editor_at(&mut self, ctx: &Context) {
+        // The Enter (or Space) that chose the row is not typed into the page.
+        ctx.input_mut(|i| {
+            i.consume_key(Modifiers::NONE, Key::Enter);
+            i.consume_key(Modifiers::NONE, Key::Space);
+        });
+        self.focus_editor(ctx);
+        let line = self.doc().map(|d| {
+            let t = d.editor.text();
+            t[..d.editor.caret().min(t.len())].matches('\n').count() + 1
+        });
+        if let Some(n) = line {
+            self.access.pending = Some((format!("Editor, line {n}"), 0));
+        }
+    }
+
     /// Start of a frame, before any other key is seen: Ctrl+Alt+W, F6, Esc in
     /// a panel, and ∑ markers clicked by a screen reader.
     pub(crate) fn access_keys(&mut self, ctx: &Context) {
@@ -311,7 +399,14 @@ impl IdeApp {
             )
         });
         if where_key {
-            if let Some(w) = self.where_am_i() {
+            let w = match self.where_focus(ctx) {
+                Some(f) => Some(match self.where_am_i() {
+                    Some(w) => format!("{f}. Editor: {w}"),
+                    None => f,
+                }),
+                None => self.where_am_i(),
+            };
+            if let Some(w) = w {
                 self.access.polite.say(&w);
             }
         }
@@ -341,6 +436,7 @@ impl IdeApp {
     /// The regions of the window as this frame drew them.
     fn measure_regions(&mut self) {
         let mut regions = Vec::new();
+        let mut panes = Vec::new();
         if let Some(tree) = &self.ws.tiles.tree {
             for id in tree.active_tiles() {
                 let Some(egui_tiles::Tile::Pane(p)) = tree.tiles.get(id) else {
@@ -349,6 +445,7 @@ impl IdeApp {
                 let Some(r) = tree.tiles.rect(id) else {
                     continue;
                 };
+                panes.push((p.name(), r));
                 let kind = match p {
                     Pane::Equation { .. } => Region::Editor,
                     p if p.is_side() => Region::Side,
@@ -361,6 +458,7 @@ impl IdeApp {
             regions.push((Region::Status, r));
         }
         self.access.regions = regions;
+        self.access.panes = panes;
     }
 
     /// A panel opened by its shortcut takes the keyboard once it is drawn.
@@ -418,7 +516,7 @@ impl IdeApp {
                 polite.push(format!("In {}", mode.to_lowercase()));
             }
             if let (Some(h), true) = (&hint, hint != s.hint) {
-                polite.push(format!("Hint: {h}"));
+                polite.push(format!("Hint: {}", spoken_hint(h)));
             }
             // The answers of a file just opened are not news: only what a
             // later run changes is said.
@@ -430,6 +528,37 @@ impl IdeApp {
                         polite.push(l.clone());
                     }
                 }
+            }
+        }
+        // A hint the page marks on a prose line (P7, P8: `print(R)`), which a
+        // screen reader cannot hover: said once, when the page has settled.
+        // Those of a file just opened are only noted.
+        if fresh && !evaluating {
+            let settled = same.as_ref().is_some_and(|s| s.settled);
+            for p in pc.problems.iter().filter(|p| {
+                p.level == crate::diagnostics::Level::Info
+                    && matches!(p.kind, crate::diagnostics::Kind::Other)
+            }) {
+                // Not while the line is being typed (`R` on its way to
+                // `Range`): once the caret has left it.
+                let caret = d.editor.caret();
+                if p.span.start <= caret && caret <= p.span.end {
+                    continue;
+                }
+                let m = p.rich.plain();
+                let m = m.trim().trim_end_matches('.').to_string();
+                if self.access.hinted.insert((d.id, m.clone())) && settled {
+                    polite.push(format!("Hint: {m}"));
+                }
+            }
+        }
+        // Words held back (a jump's line) go first, with what the page says
+        // once it has settled, or alone after a few frames.
+        if let Some((p, n)) = self.access.pending.take() {
+            if !polite.is_empty() || n >= 3 {
+                polite.insert(0, p);
+            } else {
+                self.access.pending = Some((p, n + 1));
             }
         }
         polite.truncate(4);
@@ -556,6 +685,19 @@ mod tests {
         l.say("Maths");
         assert_ne!(first, l.text);
         assert_eq!(l.text.trim_end_matches('\u{a0}'), "Maths");
+    }
+
+    #[test]
+    fn a_hint_ending_in_a_symbol_names_it() {
+        assert_eq!(
+            spoken_hint("Maths line. Ctrl+Z gives back the $"),
+            "Maths line. Ctrl+Z gives back the dollar sign you typed."
+        );
+        assert_eq!(
+            spoken_hint("Maths line. Ctrl+Z gives back the :="),
+            "Maths line. Ctrl+Z gives back the colon equals you typed."
+        );
+        assert_eq!(spoken_hint("Plain words."), "Plain words.");
     }
 
     #[test]

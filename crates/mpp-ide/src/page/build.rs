@@ -1676,10 +1676,18 @@ fn layout_display(
     // An empty box already gets the editor's own "fill in" note beside the
     // equation (with the template's name for the box): one note, not two.
     let has_slot = dl.hits.iter().any(|h| h.kind == HitKind::Slot);
+    // A comment written on the line (`# should be 35.3`, kept as `%`) stays on
+    // the page, dimmed beside the formula like these notes (P-N4).
+    let comments = if input.show.hide_comments {
+        Vec::new()
+    } else {
+        line_comments(text)
+    };
     let hints: Vec<&String> = extras
         .hints
         .iter()
         .filter(|h| !(has_slot && h.starts_with("fill in")))
+        .chain(comments.iter())
         .collect();
     if !hints.is_empty() {
         let tex = format!(
@@ -1726,6 +1734,37 @@ fn layout_display(
         y += layout_steps(input, *line, tree, x0, y, w, c);
     }
     y
+}
+
+/// The `% comments` written on the lines of a maths block's text, in words
+/// safe inside `\text{…}`. `%noeval` is a marker, not a comment, and `\%` is
+/// a percent sign.
+pub(crate) fn line_comments(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let b = line.as_bytes();
+        let at = (0..b.len()).find(|&i| b[i] == b'%' && (i == 0 || b[i - 1] != b'\\'));
+        let Some(at) = at else { continue };
+        let rest = &line[at + 1..];
+        if rest.starts_with("noeval") {
+            continue;
+        }
+        let words: String = rest
+            .chars()
+            .map(|c| {
+                if c.is_alphanumeric() || " .,;:!?'()+-=<>/*".contains(c) {
+                    c
+                } else {
+                    ' '
+                }
+            })
+            .collect();
+        let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !words.is_empty() {
+            out.push(words);
+        }
+    }
+    out
 }
 
 /// A note under an equation (why it has no answer) as typeset words and maths,
@@ -2590,6 +2629,21 @@ mod tests {
             prose_latex("power rule on u^2 with u = x + 1"),
             r"\text{power rule on } u^{2} \text{ with } u = x + 1"
         );
+    }
+
+    /// A `# comment` a coder typed on a maths line (stored as `%`) stays on
+    /// the page, dimmed beside the formula (P-N4); `%noeval` is not a comment.
+    #[test]
+    fn a_comment_on_a_maths_line_is_drawn_dimmed() {
+        let page = page_for("$$ R == 35.3  % should be about 35.3 $$\n");
+        let b = page
+            .blocks
+            .iter()
+            .find(|b| b.tag == BlockTag::Math)
+            .expect("maths block");
+        assert!(b.dl.text().contains("shouldbeabout35.3"), "{}", b.dl.text());
+        assert_eq!(line_comments("x + 1 %noeval"), Vec::<String>::new());
+        assert_eq!(line_comments(r"50\% + x % half"), vec!["half".to_string()]);
     }
 
     /// The Insert menu's proof puts the caret between the heading and the ∎; it

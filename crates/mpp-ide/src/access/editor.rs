@@ -75,7 +75,50 @@ pub fn value(doc: &Doc, pc: &PageCache) -> String {
         }
     }
     let r = line_range(text, caret);
-    text[r].trim_end_matches('\r').to_string()
+    spoken_line(doc, pc, r)
+}
+
+/// A prose line as it is read: each inline formula in it (with its `$`s) is
+/// replaced by its spoken form and what the page shows after it (R19).
+fn spoken_line(doc: &Doc, pc: &PageCache, r: std::ops::Range<usize>) -> String {
+    let text = doc.editor.text();
+    let mut spans: Vec<mpp_syntax::Span> = pc
+        .page
+        .math_ranges
+        .iter()
+        .filter(|s| r.start <= s.start && s.end <= r.end && s.start < s.end)
+        .copied()
+        .collect();
+    spans.sort_by_key(|s| s.start);
+    let mut out = String::new();
+    let mut at = r.start;
+    for span in spans {
+        if span.start < at {
+            continue;
+        }
+        // The delimiters round the maths, when the span leaves them out.
+        let (mut lo, mut hi) = (span.start, span.end);
+        if let Some(open) = ["$$", "\\(", "$"]
+            .iter()
+            .find(|o| lo >= at + o.len() && text[..lo].ends_with(**o))
+        {
+            lo -= open.len();
+        }
+        if let Some(close) = ["$$", "\\)", "$"]
+            .iter()
+            .find(|c| text[hi..r.end].starts_with(**c))
+        {
+            hi += close.len();
+        }
+        let Some(said) = super::answers::inline_label(doc, pc, span) else {
+            continue;
+        };
+        out.push_str(&text[at..lo]);
+        out.push_str(&said);
+        at = hi;
+    }
+    out.push_str(&text[at..r.end]);
+    out.trim_end_matches('\r').to_string()
 }
 
 /// Fills in the page's node: role, name, value, the caret's line and the caret.

@@ -25,6 +25,8 @@ pub struct Item {
     /// The maths the problem is about, typeset beside the message (a name, a
     /// bracket). Never a line or column number.
     pub excerpt: Option<String>,
+    /// The line it is on (from 1), when the file's text is at hand.
+    pub line: Option<usize>,
 }
 
 impl Item {
@@ -39,6 +41,33 @@ impl Item {
             level: p.level,
             message: p.rich.clone(),
             excerpt,
+            line: None,
+        }
+    }
+
+    /// The entry for a problem of a file whose text is `text`, with its line.
+    pub fn in_text(p: &Problem, text: &str) -> Item {
+        let mut i = Item::of(p);
+        let at = p.span.start.min(text.len());
+        i.line = text
+            .get(..at)
+            .map(|before| before.matches('\n').count() + 1);
+        i
+    }
+
+    /// What a screen reader says for the entry: "Error, line 3: w is not
+    /// defined." (R12).
+    pub fn spoken(&self) -> String {
+        let level = match self.level {
+            Level::Error => "Error",
+            Level::Warning => "Warning",
+            Level::Info => "Hint",
+        };
+        let message = self.message.plain();
+        let message = message.trim();
+        match self.line {
+            Some(n) => format!("{level}, line {n}: {message}"),
+            None => format!("{level}: {message}"),
         }
     }
 }
@@ -88,6 +117,7 @@ pub fn gather(docs: &mut [Doc]) -> Vec<FileProblems> {
     let mut seen: HashSet<PathBuf> = HashSet::new();
     for (i, d) in docs.iter_mut().enumerate() {
         let problems = d.problems();
+        let text = d.editor.text();
         if let Some(p) = &d.path {
             seen.insert(p.clone());
         }
@@ -96,7 +126,7 @@ pub fn gather(docs: &mut [Doc]) -> Vec<FileProblems> {
                 title: d.title(),
                 path: d.path.clone(),
                 source: Source::Open(i),
-                items: problems.iter().map(Item::of).collect(),
+                items: problems.iter().map(|p| Item::in_text(p, text)).collect(),
             });
         }
     }
@@ -187,14 +217,14 @@ impl ProblemsView {
         let muted = c32(theme.muted);
         ui.horizontal(|ui| {
             let t = Rich::default().i("Problems".to_string());
-            rich::show(ui, &t, size, ink, *theme);
+            words(ui, &t, size, ink, *theme);
             ui.add_space(8.0);
             let c = total(list);
-            rich::show(ui, &Rich::text(c.summary()), size * 0.85, muted, *theme);
+            words(ui, &Rich::text(c.summary()), size * 0.85, muted, *theme);
         });
         ui.separator();
         if list.is_empty() {
-            rich::show(
+            words(
                 ui,
                 &Rich::text("No problems in the open files."),
                 size * 0.9,
@@ -216,8 +246,8 @@ impl ProblemsView {
                     let folded = self.folded.contains(&key);
                     let head = ui.horizontal(|ui| {
                         let arrow = if folded { "\u{25b8}" } else { "\u{25be}" };
-                        rich::show(ui, &Rich::text(arrow), size * 0.8, muted, *theme);
-                        rich::show(
+                        words(ui, &Rich::text(arrow), size * 0.8, muted, *theme);
+                        words(
                             ui,
                             &Rich::default().i(f.title.clone()),
                             size * 0.95,
@@ -232,6 +262,21 @@ impl ProblemsView {
                         ui.scope_id().with(("fold", &key)),
                         Sense::click(),
                     );
+                    let c = f.counts();
+                    let n = c.errors + c.warnings + c.infos;
+                    let head_said = format!(
+                        "{}, {}, {}",
+                        f.title,
+                        if n == 1 {
+                            "1 item".to_string()
+                        } else {
+                            format!("{n} items")
+                        },
+                        if folded { "folded" } else { "open" }
+                    );
+                    hr.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::Role::Button, true, head_said.clone())
+                    });
                     if hr.clicked() {
                         if folded {
                             self.folded.remove(&key);
@@ -256,14 +301,23 @@ impl ProblemsView {
                             );
                             ui.add_space(4.0);
                             if let Some(x) = &item.excerpt {
-                                crate::typeset::show(ui, x, size, *theme);
+                                tex(ui, x, size, *theme);
                                 ui.add_space(8.0);
                             }
-                            rich::show(ui, &item.message, size * 0.9, ink, *theme);
+                            words(ui, &item.message, size * 0.9, ink, *theme);
                         });
                         let r = row.response.rect;
                         let hit =
                             ui.interact(r, ui.scope_id().with(("row", &key, i)), Sense::click());
+                        // A button a screen reader names; Enter goes there (R12).
+                        let said = item.spoken();
+                        hit.widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::Role::Button, true, said.clone())
+                        });
+                        ui.ctx().accesskit_node_builder(hit.id, |n| {
+                            n.set_description("Enter goes to it in the editor");
+                        });
+                        crate::access::live::note_label(ui.ctx(), hit.id, &said);
                         if hit.hovered() {
                             ui.painter().rect_stroke(
                                 r.expand(1.0),
@@ -293,6 +347,26 @@ impl ProblemsView {
     }
 }
 
+/// A message drawn as words, not as a widget: the keyboard and a screen
+/// reader stop on the row (which names it), not on each piece of it (R12).
+fn words(ui: &mut Ui, r: &Rich, size: f32, color: Color32, theme: Theme) {
+    let max = ui.available_width().max(80.0);
+    let s = rich::measure(r, size, theme, max);
+    let (resp, painter) = ui.allocate_painter(s.max(Vec2::splat(1.0)), Sense::hover());
+    rich::paint(&painter, r, resp.rect.min, size, color, theme, max);
+}
+
+/// Typeset maths drawn the same way (see [`words`]).
+fn tex(ui: &mut Ui, latex: &str, size: f32, theme: Theme) {
+    let dl = crate::typeset::layout(latex, size, theme);
+    let (resp, painter) = ui.allocate_painter(
+        Vec2::new(dl.width.max(1.0), dl.total_height().max(size)),
+        Sense::hover(),
+    );
+    let dy = ((resp.rect.height() - dl.total_height()) / 2.0).max(0.0);
+    crate::paint::paint_display_list(&painter, &dl, resp.rect.min + Vec2::new(0.0, dy));
+}
+
 /// Small coloured counts ("2 ✕ 1 !") beside a file name.
 pub fn badge(ui: &mut Ui, c: Counts, theme: &Theme, size: f32) {
     for (n, level) in [
@@ -306,7 +380,7 @@ pub fn badge(ui: &mut Ui, c: Counts, theme: &Theme, size: f32) {
         let (r, painter) = ui.allocate_painter(Vec2::splat(size), Sense::hover());
         paint_level_icon(&painter, r.rect.center(), size * 0.36, level, theme);
         let color: Color32 = c32(level.color(theme));
-        rich::show(ui, &Rich::text(n.to_string()), size, color, *theme);
+        words(ui, &Rich::text(n.to_string()), size, color, *theme);
         ui.add_space(4.0);
     }
 }
@@ -322,6 +396,7 @@ mod tests {
             level,
             message: Rich::text("x"),
             excerpt: None,
+            line: None,
         };
         let list = vec![
             FileProblems {

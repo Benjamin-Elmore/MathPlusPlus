@@ -153,6 +153,16 @@ impl IdeApp {
             self.redo();
             ui.close();
         }
+        // Ctrl+/ by name (P15): a note (comment) the page does not work out.
+        if ui
+            .add(egui::Button::new("Make a note (comment out)").shortcut_text("Ctrl+/"))
+            .clicked()
+        {
+            if let Some(d) = self.doc_mut() {
+                crate::view::toggle_comment(d);
+            }
+            ui.close();
+        }
         let theme = self.mode.theme();
         let entries = self.history_entries();
         let mut restore = None;
