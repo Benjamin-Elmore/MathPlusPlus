@@ -497,7 +497,7 @@ fn key_filter(doc: &Doc, pc: &PageCache, cx: &ViewCtx<'_>, menu: bool) -> EventF
         tab: popup || in_template || !empty_slots(&pc.page, caret).is_empty(),
         horizontal_arrows: true,
         vertical_arrows: true,
-        escape: popup || in_template || pc.page.in_math(caret),
+        escape: popup || in_template || pc.page.in_math(caret) || doc.editor.at_maths_end(),
     }
 }
 
@@ -528,6 +528,10 @@ fn edge_release(
 ) -> Option<egui::FocusDirection> {
     use egui::FocusDirection as F;
     if mods.any() || doc.editor.selection().is_some() {
+        return None;
+    }
+    if key == Key::ArrowRight && doc.editor.at_maths_end() {
+        // Right at the end of a maths line goes onto the line under it.
         return None;
     }
     let page = &pc.page;
@@ -562,10 +566,15 @@ fn escape(doc: &mut Doc, page: &crate::page::Page, cx: &mut ViewCtx<'_>) -> bool
     // Out of a template, typing after it stays out of its last box (the `x`
     // of an integral's `dx`); otherwise out of the maths.
     if !doc.editor.leave_template() {
-        let Some(t) = leave_maths(doc.editor.text(), page, caret) else {
-            return false;
-        };
-        doc.editor.move_caret(t, false);
+        match leave_maths(doc.editor.text(), page, caret) {
+            Some(t) => doc.editor.move_caret(t, false),
+            None if doc.editor.at_maths_end() => {}
+            None => return false,
+        }
+        // Out of a maths line: onto a prose line under it (U28, S1).
+        if doc.editor.line_below_maths() {
+            doc.touched();
+        }
     }
     doc.caret_side = Side::Before;
     doc.want_x = None;
@@ -1716,6 +1725,10 @@ fn key_pressed(
                 doc.editor
                     .move_caret(if fwd { sel.end } else { sel.start }, false);
                 doc.caret_side = if fwd { Side::Before } else { Side::After };
+            } else if fwd && !shift && doc.editor.line_below_maths() {
+                // Right at the end of a maths line leaves it (design rule 4).
+                doc.touched();
+                doc.caret_side = Side::Before;
             } else if shift
                 && in_math
                 && crate::editor::select::shift_arrow(&mut doc.editor, page, fwd)

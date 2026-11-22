@@ -161,7 +161,8 @@ fn escape_leaves_the_box_then_the_maths() {
     assert_eq!(text(&h), "$$ x^{2}+ $$\n\nnow");
     press(&mut h, Modifiers::NONE, Key::Escape);
     type_text(&mut h, "!");
-    assert!(text(&h).contains("$$!"), "{}", text(&h));
+    // Out of the maths onto a prose line of its own under it (U28, S1).
+    assert_eq!(text(&h), "$$ x^{2}+ $$\n\n!\n\nnow");
 }
 
 #[test]

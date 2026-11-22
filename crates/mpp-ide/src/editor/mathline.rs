@@ -369,18 +369,70 @@ impl Editor {
         }
     }
 
+    /// True when the caret is at the end of a closed maths block: just after its
+    /// closing `$$` at the end of the line, or after the last thing typed in it
+    /// (only spaces before the closing `$$`). The caret is drawn at the end of
+    /// the box in both places.
+    pub fn at_maths_end(&self) -> bool {
+        self.maths_end().is_some()
+    }
+
+    /// The offset just after the closing `$$` of the block the caret is at the
+    /// end of (see [`Editor::at_maths_end`]).
+    fn maths_end(&self) -> Option<usize> {
+        if self.selection().is_some() {
+            return None;
+        }
+        let c = self.caret;
+        let (open, close) = display_around(&self.text, c.saturating_sub(1))
+            .filter(|&(o, cl)| cl != usize::MAX && o < cl)?;
+        let end = close + 2;
+        let line_end = end == self.text.len() || self.text[end..].starts_with('\n');
+        let inside = c > open + 1 && c <= close && self.text[c..close].trim().is_empty();
+        (line_end && (c == end || inside)).then_some(end)
+    }
+
+    /// Leaves the maths block the caret is at the end of, onto the empty line
+    /// below it, written when there is none (one undo step). False when the
+    /// caret is not at the end of a maths block.
+    pub fn line_below_maths(&mut self) -> bool {
+        let Some(end) = self.maths_end() else {
+            return false;
+        };
+        let rest = &self.text[end..];
+        let empty_below = rest == "\n\n" || rest.starts_with("\n\n\n");
+        if empty_below {
+            self.move_caret(end + 2, false);
+        } else {
+            self.maths_step(end..end, "\n\n", Some(end + 2));
+            self.last_kind = None;
+        }
+        true
+    }
+
     /// Called before a character is typed. Inside a maths line, the closing
     /// `$$` that the editor wrote is stepped over when the person types it, and
     /// a `$` or space typed straight into an empty maths line is taken as part of
-    /// opening it (someone typing `$$ ` by hand). True when the character is used up.
+    /// opening it (someone typing `$$ ` by hand). A character typed just after
+    /// the closing `$$` starts a new prose line under the block. True when the
+    /// character is used up.
     pub fn maths_before_char(&mut self, ch: char) -> bool {
-        if (ch != '$' && ch != ' ') || self.selection().is_some() {
+        if self.selection().is_some() {
             return false;
         }
         let caret = self.caret;
         // The second `$` of a `$$` typed by hand, after the first closed the line.
         if ch == '$' && self.closed_at.take() == Some((caret, self.revision)) {
             return true;
+        }
+        // Typing just after a maths line's closing `$$` goes on a new prose line
+        // under it (a space there only starts the line).
+        if self.text[..caret].ends_with("$$") && self.maths_end() == Some(caret) {
+            self.line_below_maths();
+            return ch == ' ';
+        }
+        if ch != '$' && ch != ' ' {
+            return false;
         }
         let (ls, le) = line_bounds(&self.text, caret);
         let line = &self.text[ls..le];
