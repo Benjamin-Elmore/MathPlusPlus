@@ -1099,6 +1099,11 @@ fn paint_page(
         let at = Pos2::new(origin.x, top);
         paint_display_list(painter, &b.dl, at);
     }
+    // In maths, the part holding the caret is boxed, its structure more faintly (U14).
+    if let Some(c) = caret.filter(|&c| page.in_math(c)) {
+        let pal = cx.mode.palette();
+        crate::page::caret_path::paint_focus(painter, page, &pc.doc, c, origin, &pal);
+    }
     // Problems: underlines under the typeset element, a bar in the margin,
     // the import summaries and the bulb of the caret's problem.
     dui::paint_marks(painter, &pc.problems, off, theme);

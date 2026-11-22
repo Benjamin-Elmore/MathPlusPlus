@@ -286,3 +286,54 @@ fn the_status_bar_shows_prose_or_maths_and_the_path_to_the_caret() {
         "$$ Some words. $$\n\n$$ y := \\frac{1}{x + 2} $$"
     );
 }
+
+#[test]
+fn the_part_holding_the_caret_is_boxed() {
+    let _one = RENDER
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let src = "$$ y := \\frac{1}{x + 2} $$";
+    let den = src.find("x + 2").expect("x") + 1;
+    for (choice, name) in [
+        (ThemeChoice::Light, "focus_box_light"),
+        (ThemeChoice::Dark, "focus_box_dark"),
+    ] {
+        let mut app = app_with(src, den);
+        app.set_theme_choice(choice);
+        let mut h = harness(app);
+        let img = crop_band(&mut h);
+        // The focus colour is on screen (and it is not the selection's).
+        let pal = h.state().mode.palette();
+        let focus = theme::c32(pal.focus_box);
+        assert_ne!(focus, theme::c32(pal.selection));
+        let near = |p: &image::Rgba<u8>| {
+            let d = |a: u8, b: u8| (i32::from(a) - i32::from(b)).abs();
+            d(p.0[0], focus.r()) + d(p.0[1], focus.g()) + d(p.0[2], focus.b()) < 40
+        };
+        assert!(
+            img.pixels().filter(|p| near(p)).count() > 20,
+            "{name}: no focus box"
+        );
+        let opts = SnapshotOptions::new().threshold(2.0).max_failed_pixels(60);
+        egui_kittest::try_image_snapshot_options(&img, name, &opts)
+            .unwrap_or_else(|e| panic!("{name}: {e}"));
+    }
+}
+
+#[test]
+fn empty_parts_show_what_goes_in_them() {
+    let src = "$$ \\frac{}{} $$";
+    let mut h = harness(app_with(src, 9));
+    h.run_steps(3);
+    let doc = h.state().doc().expect("doc");
+    let pc = doc.page_cache().expect("page");
+    let labels: Vec<String> = pc
+        .page
+        .blocks
+        .iter()
+        .flat_map(|b| b.dl.hits.iter())
+        .filter_map(|h| h.label.clone())
+        .collect();
+    assert!(labels.iter().any(|l| l == "numerator"), "{labels:?}");
+    assert!(labels.iter().any(|l| l == "denominator"), "{labels:?}");
+}
