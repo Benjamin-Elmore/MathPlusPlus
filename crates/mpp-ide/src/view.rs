@@ -333,7 +333,22 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
 
             // The text may have changed: draw the up-to-date page.
             let pc = doc.page(avail_w, cx.size, cx.mode);
-            let shift = pin_shift(doc, &pc, pinned, scrolled);
+            let mut shift = pin_shift(doc, &pc, pinned, scrolled);
+            if moved && pinned && doc.scroll_to.is_none() {
+                // A caret moved past the bottom of the view (Enter on the last
+                // line) is scrolled to in this very frame, not the next one,
+                // so the page does not jump a frame later (E9, design rule 5).
+                let stop = pc.page.caret_stop_on(doc.editor.caret(), doc.caret_side);
+                if let Some(s) = stop {
+                    let bottom = base.y - shift + s.bottom + 28.0;
+                    let over = bottom - ui.clip_rect().bottom();
+                    // Only the step of a new line or two; a longer jump
+                    // (a click far away, a page key) scrolls as it always did.
+                    if over > 0.5 && over < (s.bottom - s.top) * 3.0 + 28.0 {
+                        shift += over;
+                    }
+                }
+            }
             origin = base - Vec2::new(0.0, shift);
             if shift > 0.0 {
                 // Room for the scroll the pin asks for, in this very frame: the
@@ -1264,6 +1279,12 @@ fn paint_page(
             continue;
         }
         let span = b.span.start..b.span.end;
+        // One hint at a time (T12): the one-time hint of the last edit, under
+        // the caret, wins over the fill-in hint of the caret's own equation.
+        let caret = doc.editor.caret();
+        if doc.editor.hint().is_some() && span.start <= caret && caret <= span.end {
+            continue;
+        }
         let Some(hint) = insert::fill_in_hint(&doc.editor, page, &span) else {
             continue;
         };
@@ -1310,7 +1331,10 @@ fn paint_page(
     }
     // The one-time hint of the last edit, under the caret.
     if let (Some(h), Some(s)) = (doc.editor.hint(), page.caret_stop(doc.editor.caret())) {
-        let at = Pos2::new(origin.x + s.x + 12.0, origin.y + s.bottom + 6.0);
+        // Inside the page: never past the right edge of the box (T12).
+        let w = crate::page::text_width(mpp_render::FontId::TextItalic, h) * cx.size * 0.8;
+        let x = (s.x + 12.0).min(page.width - w).max(0.0);
+        let at = Pos2::new(origin.x + x, origin.y + s.bottom + 6.0);
         crate::paint::paint_text(
             painter,
             h,
@@ -1415,6 +1439,10 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
         if doc.editor.maths_before_char(ch) {
             continue;
         }
+        // `\]` alone on a row closes display maths (T-N1).
+        if in_math && ch == ']' && doc.editor.bracket_close_row() {
+            continue;
+        }
         if in_math && doc.editor.bracket_before(ch) {
             // Brackets (editor/brackets.rs): wrap a selection, fill a ghost closer.
             continue;
@@ -1429,6 +1457,9 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
                 shortcuts: cx.insert.settings.shortcuts,
             };
             doc.editor.type_maths(ch, &typing);
+            if ch == '}' {
+                doc.editor.into_empty_command();
+            }
             doc.editor.bracket_after(ch);
             doc.editor.settle_inline();
             continue;

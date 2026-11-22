@@ -123,3 +123,22 @@ fn clicking_a_row_inserts_it_at_the_caret() {
         "the row was inserted, got {text:?}"
     );
 }
+
+/// T-N7, S-N7: the sheet's text keeps off the panel's left edge, and the
+/// column headings stay on one line.
+#[test]
+fn the_sheet_has_a_left_margin_and_one_line_headings() {
+    let mut h = fresh();
+    f1(&mut h);
+    let panel = h.get_by_label("Cheat sheet panel").rect();
+    let latex = h.get_by_label("If you know LaTeX").rect();
+    let code = h.get_by_label("If you write code").rect();
+    assert!(
+        latex.left() >= panel.left() + 8.0,
+        "the heading starts at {} by the panel's edge at {}",
+        latex.left(),
+        panel.left()
+    );
+    assert!(latex.height() < 24.0, "the heading wrapped: {latex:?}");
+    assert!(code.height() < 24.0, "the heading wrapped: {code:?}");
+}

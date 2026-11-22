@@ -595,6 +595,71 @@ impl Editor {
         Some(false)
     }
 
+    /// After a `}` typed in maths: when it finished a command whose boxes are
+    /// all still empty (`\frac{}{}`, typed by someone used to LaTeX), the caret
+    /// goes into its first box, where the next character is meant to go (T12).
+    /// True when it moved.
+    pub fn into_empty_command(&mut self) -> bool {
+        let c = self.caret;
+        if self.selection().is_some() || self.text[c..].starts_with('{') {
+            return false;
+        }
+        let head = &self.text[..c];
+        let mut rest = head;
+        let mut groups = 0;
+        while let Some(r) = rest.strip_suffix("{}") {
+            rest = r;
+            groups += 1;
+        }
+        if groups == 0 {
+            return false;
+        }
+        let name = rest.len()
+            - rest
+                .trim_end_matches(|ch: char| ch.is_ascii_alphabetic())
+                .len();
+        let before = &rest[..rest.len() - name];
+        let slashes = before.len() - before.trim_end_matches('\\').len();
+        if name == 0 || slashes.is_multiple_of(2) {
+            return false;
+        }
+        self.move_caret(rest.len() + 1, false);
+        true
+    }
+
+    /// `]` typed in maths just after a `\` that is alone on a row of a display
+    /// block (T-N1): `\]` closes the maths, as a typed `$$` does. The row goes
+    /// (with the row break before it) and the caret goes just after the
+    /// block's closing `$$`, so Enter starts a prose line. True when it did.
+    pub fn bracket_close_row(&mut self) -> bool {
+        let c = self.caret;
+        if self.selection().is_some() || !self.text[..c].ends_with('\\') {
+            return false;
+        }
+        let Some((open, close)) = display_around(&self.text, c).filter(|&(_, cl)| cl != usize::MAX)
+        else {
+            return false;
+        };
+        let (ls, _) = line_bounds(&self.text, c);
+        if ls <= open || c > close || self.text[ls..c].trim() != "\\" {
+            return false;
+        }
+        if !self.text[c..close].trim().is_empty() {
+            return false;
+        }
+        // The row break that ends the row before: ` \\` and the newline.
+        let head = self.text[..ls].trim_end();
+        let Some(prev) = head.strip_suffix("\\\\") else {
+            return false;
+        };
+        let keep = prev.trim_end().len();
+        if keep <= open + 2 {
+            return false;
+        }
+        self.maths_step(keep..close, " ", Some(keep + 3));
+        true
+    }
+
     /// True when the caret is at the end of a closed maths block: just after its
     /// closing `$$` at the end of the line, or after the last thing typed in it
     /// (only spaces before the closing `$$`). The caret is drawn at the end of

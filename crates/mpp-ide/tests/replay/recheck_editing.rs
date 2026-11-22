@@ -230,3 +230,94 @@ fn alt_equals_inline_maths_is_left_by_enter_right_and_esc() {
         assert!(s.text.ends_with("$ ok"), "{leave:?}: {:?}", s.text);
     }
 }
+
+/// T-N1: display maths opened with a typed `\[` on its own line is closed by
+/// a typed `\]` on its own line, as `$$` closes it; the next line is prose.
+#[test]
+fn a_typed_closing_bracket_on_its_own_line_closes_display_maths() {
+    let mut h = super::runner::fresh();
+    t(&mut h, r"\[");
+    k(&mut h, Key::Enter);
+    show(&h, "opened");
+    t(&mut h, "z = 4");
+    k(&mut h, Key::Enter);
+    show(&h, "row");
+    t(&mut h, r"\");
+    show(&h, "slash");
+    t(&mut h, "]");
+    show(&h, "closed");
+    k(&mut h, Key::Enter);
+    t(&mut h, "Words after.");
+    show(&h, "words");
+    assert!(!in_math(&h), "the words are prose");
+    let s = Seen::of(&h);
+    assert_eq!(s.text, "$$ z = 4 $$\n\nWords after.");
+}
+
+/// T12: `\frac{}{}` typed in full puts the caret in its first empty box, and
+/// the 1 typed next goes there; the empty boxes are not marked as errors
+/// while the caret is still on the line.
+#[test]
+fn a_typed_empty_fraction_puts_the_caret_in_its_top() {
+    let mut h = super::runner::fresh();
+    for c in ["$", "\\", "f", "r", "a", "c", "{", "}", "{", "}"] {
+        t(&mut h, c);
+        show(&h, c);
+    }
+    pause(&mut h);
+    let st = status(&h);
+    assert!(st.contains("numerator"), "{st}");
+    let doc = h.state().doc().expect("doc");
+    let problems = doc.page_cache().expect("page").problems.len();
+    assert_eq!(problems, 0, "no squiggles while the caret is on the line");
+    t(&mut h, "1");
+    show(&h, "1");
+    assert!(
+        Seen::of(&h).text.contains("{1}{}"),
+        "{:?}",
+        Seen::of(&h).text
+    );
+}
+
+const SHEET: &str = "Projectile range\n\nA ball is thrown at speed v and angle theta.\n\n$$ g = 9.81 $$\n\n$$ v = 20 $$\n\n$$ theta = pi/6 $$\n\n$$ R = v^2*sin(2*theta)/g $$\n\n$$ R = $$\n\n$$ v/2 = $$\n\n$$ int(x^2, x, 0, 3) = $$\n\n$$ sum(1/n^2, n, 1, 10) = $$\n\n";
+
+/// E9: at the bottom of a long page, nothing on screen moves while the
+/// answers come in (design rule 5).
+#[test]
+fn nothing_moves_during_a_pause_at_the_bottom_of_a_long_page() {
+    let mut h = super::runner::harness(super::runner::app_with(SHEET));
+    pause(&mut h);
+    super::runner::press(&mut h, Modifiers::COMMAND, Key::End);
+    for line in [
+        "sum(1/n^2, n, 1, 10) ~= ?",
+        "round(R, 1) =",
+        "R approx 35.3",
+        "abs(R - 35.3) < 0.1",
+        "R = 36",
+        "roundd(R) =",
+        "w =",
+        "R",
+        "g = 9.81",
+    ] {
+        t(&mut h, line);
+        if line != "g = 9.81" {
+            k(&mut h, Key::Enter);
+        }
+    }
+    let mut last: Option<(String, Vec<(mpp_syntax::Span, f32)>)> = None;
+    let mut moved = vec![];
+    // From the Enter on: the frame after it must not scroll either.
+    run(&mut h, &[Step::Key(Key::Enter), Step::Pause], |_, _, s| {
+        if let Some((text, tops)) = &last {
+            if *text == s.text {
+                for ((sp, a), (_, b)) in tops.iter().zip(&s.tops) {
+                    if (a - b).abs() > 0.5 {
+                        moved.push(format!("{sp:?} {a} -> {b}"));
+                    }
+                }
+            }
+        }
+        last = Some((s.text.clone(), s.tops.clone()));
+    });
+    assert!(moved.is_empty(), "lines moved during the pause: {moved:#?}");
+}

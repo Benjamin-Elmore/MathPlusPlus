@@ -285,81 +285,15 @@ impl IdeApp {
             .id_salt("cheat-sheet")
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.add_space(4.0);
-                let mut shown = 0;
-                for s in [&START_HERE] {
-                    let tips: Vec<&Tip> =
-                        s.tips.iter().filter(|t| tip_matches(t, &needle)).collect();
-                    if tips.is_empty() {
-                        continue;
-                    }
-                    shown += tips.len();
-                    ui.label(
-                        RichText::new(s.title.to_uppercase())
-                            .size(12.5)
-                            .color(c32(theme.muted)),
-                    );
-                    for t in tips {
-                        ui.label(RichText::new(t.becomes).size(12.5).color(c32(theme.muted)));
-                        let label = format!("{}: {}", t.becomes, t.typed);
-                        cell(ui, theme, size, label, t.typed, t.picture);
-                    }
-                    ui.add_space(8.0);
-                }
-                ui.columns(2, |cols| {
-                    for (col, title) in cols
-                        .iter_mut()
-                        .zip(["If you know LaTeX", "If you write code"])
-                    {
-                        // Left-aligned, not justified: a justified column
-                        // spread the letters of a wrapped title apart (E18).
-                        col.with_layout(egui::Layout::top_down(egui::Align::Min), |c| {
-                            c.label(RichText::new(title).strong().color(c32(theme.text)));
-                        });
-                    }
-                });
-                ui.add_space(2.0);
-                for f in forms::table().iter().filter(|f| form_matches(f, &needle)) {
-                    shown += 1;
-                    ui.label(RichText::new(f.name).size(12.5).color(c32(theme.muted)));
-                    ui.columns(2, |cols| {
-                        let latex = format!("{}: type {} (LaTeX)", f.name, f.latex);
-                        if cell(&mut cols[0], theme, size, latex, f.latex, Some(f.picture)) {
-                            click = Some(f.writes);
-                        }
-                        let code = format!("{}: type {} (code)", f.name, f.code);
-                        if cell(&mut cols[1], theme, size, code, f.code, Some(f.picture)) {
-                            click = Some(f.writes);
-                        }
-                    });
-                }
-                for s in SECTIONS {
-                    let tips: Vec<&Tip> =
-                        s.tips.iter().filter(|t| tip_matches(t, &needle)).collect();
-                    if tips.is_empty() {
-                        continue;
-                    }
-                    shown += tips.len();
-                    ui.add_space(8.0);
-                    ui.label(
-                        RichText::new(s.title.to_uppercase())
-                            .size(12.5)
-                            .color(c32(theme.muted)),
-                    );
-                    for t in tips {
-                        ui.label(RichText::new(t.becomes).size(12.5).color(c32(theme.muted)));
-                        let label = format!("{}: {}", t.becomes, t.typed);
-                        if cell(ui, theme, size, label, t.typed, t.picture) {
-                            if let Some(text) = t.insert {
-                                click = Some(text);
-                            }
-                        }
-                    }
-                }
-                if shown == 0 {
-                    ui.add_space(8.0);
-                    ui.label("Nothing matches. Try a word like fraction, root or sum.");
-                }
+                // The text keeps off the panel's left edge (T-N7, S-N7).
+                egui::Frame::new()
+                    .inner_margin(egui::Margin {
+                        left: 10,
+                        right: 6,
+                        top: 0,
+                        bottom: 0,
+                    })
+                    .show(ui, |ui| sheet_body(ui, theme, size, &needle, &mut click));
             });
         if let Some(text) = click {
             if let Some(doc) = self.doc_mut() {
@@ -367,5 +301,98 @@ impl IdeApp {
             }
             ui.ctx().request_repaint();
         }
+    }
+}
+
+/// The cheat sheet's sections, filtered by `needle`; a click on a cell puts
+/// what it writes in `click`.
+fn sheet_body(
+    ui: &mut Ui,
+    theme: &Theme,
+    size: f32,
+    needle: &str,
+    click: &mut Option<&'static str>,
+) {
+    ui.add_space(4.0);
+    let mut shown = 0;
+    for s in [&START_HERE] {
+        let tips: Vec<&Tip> = s.tips.iter().filter(|t| tip_matches(t, needle)).collect();
+        if tips.is_empty() {
+            continue;
+        }
+        shown += tips.len();
+        ui.label(
+            RichText::new(s.title.to_uppercase())
+                .size(12.5)
+                .color(c32(theme.muted)),
+        );
+        for t in tips {
+            ui.label(RichText::new(t.becomes).size(12.5).color(c32(theme.muted)));
+            let label = format!("{}: {}", t.becomes, t.typed);
+            cell(ui, theme, size, label, t.typed, t.picture);
+        }
+        ui.add_space(8.0);
+    }
+    ui.columns(2, |cols| {
+        for (col, title) in cols
+            .iter_mut()
+            .zip(["If you know LaTeX", "If you write code"])
+        {
+            // Left-aligned, not justified: a justified column
+            // spread the letters of a wrapped title apart (E18).
+            col.with_layout(egui::Layout::top_down(egui::Align::Min), |c| {
+                // On one line, at the size of the rest of the sheet (T-N7).
+                c.add(
+                    egui::Label::new(
+                        RichText::new(title)
+                            .size(12.5)
+                            .strong()
+                            .color(c32(theme.text)),
+                    )
+                    .wrap_mode(egui::TextWrapMode::Extend),
+                );
+            });
+        }
+    });
+    ui.add_space(2.0);
+    for f in forms::table().iter().filter(|f| form_matches(f, needle)) {
+        shown += 1;
+        ui.label(RichText::new(f.name).size(12.5).color(c32(theme.muted)));
+        ui.columns(2, |cols| {
+            let latex = format!("{}: type {} (LaTeX)", f.name, f.latex);
+            if cell(&mut cols[0], theme, size, latex, f.latex, Some(f.picture)) {
+                *click = Some(f.writes);
+            }
+            let code = format!("{}: type {} (code)", f.name, f.code);
+            if cell(&mut cols[1], theme, size, code, f.code, Some(f.picture)) {
+                *click = Some(f.writes);
+            }
+        });
+    }
+    for s in SECTIONS {
+        let tips: Vec<&Tip> = s.tips.iter().filter(|t| tip_matches(t, needle)).collect();
+        if tips.is_empty() {
+            continue;
+        }
+        shown += tips.len();
+        ui.add_space(8.0);
+        ui.label(
+            RichText::new(s.title.to_uppercase())
+                .size(12.5)
+                .color(c32(theme.muted)),
+        );
+        for t in tips {
+            ui.label(RichText::new(t.becomes).size(12.5).color(c32(theme.muted)));
+            let label = format!("{}: {}", t.becomes, t.typed);
+            if cell(ui, theme, size, label, t.typed, t.picture) {
+                if let Some(text) = t.insert {
+                    *click = Some(text);
+                }
+            }
+        }
+    }
+    if shown == 0 {
+        ui.add_space(8.0);
+        ui.label("Nothing matches. Try a word like fraction, root or sum.");
     }
 }
