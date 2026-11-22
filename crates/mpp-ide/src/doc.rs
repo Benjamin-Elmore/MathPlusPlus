@@ -130,6 +130,8 @@ pub struct Doc {
     pub pin: Option<crate::page::Pin>,
     /// Where the caret was drawn last frame, in screen coordinates.
     pub caret_screen: Option<egui::Rect>,
+    /// The height of the page's view on screen (PageUp and PageDown move by it).
+    pub view_height: f32,
     /// Maths lines: auto-detect, its hints and the lines kept as prose.
     pub maths: crate::editor::mathline::MathsState,
     /// Integral bounds above and below the sign (default) or at its side.
@@ -274,6 +276,7 @@ impl Doc {
             caret_side: crate::page::Side::Before,
             pin: None,
             caret_screen: None,
+            view_height: 0.0,
             maths: Default::default(),
             integral_limits: IntegralLimits::AboveBelow,
             last_layout: (800.0, crate::layout::BODY_SIZE, Mode::Light),

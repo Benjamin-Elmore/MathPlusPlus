@@ -11,6 +11,7 @@ pub(crate) mod blank;
 pub(crate) mod build;
 pub mod caret_path;
 mod flow;
+mod lines;
 mod mathcache;
 pub mod mode;
 pub mod paper;

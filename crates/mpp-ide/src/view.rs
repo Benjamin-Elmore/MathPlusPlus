@@ -217,6 +217,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
         .show(ui, |ui| {
             let avail_w = ui.available_width();
             let avail_h = ui.available_height();
+            doc.view_height = ui.clip_rect().height();
             let pc0 = doc.page(avail_w, cx.size, cx.mode);
             // The caret's line stays where it was drawn when the page grows or
             // shrinks above it (an answer arriving): the view scrolls instead.
@@ -558,7 +559,8 @@ fn edge_release(
     }
     let page = &pc.page;
     let (caret, side) = (doc.editor.caret(), doc.caret_side);
-    let (lo, hi) = page.line_extent_on(caret, side).unwrap_or((caret, caret));
+    let text = doc.editor.text();
+    let (lo, hi) = page.line_ends(text, caret, side).unwrap_or((caret, caret));
     match key {
         Key::ArrowLeft => page
             .step_on(caret, side, false)
@@ -568,12 +570,12 @@ fn edge_release(
             .step_on(caret, side, true)
             .is_none()
             .then_some(F::Right),
-        Key::ArrowUp => {
-            (page.vertical_on(caret, side, true, None).is_none() && caret == lo).then_some(F::Up)
-        }
-        Key::ArrowDown => {
-            (page.vertical_on(caret, side, false, None).is_none() && caret == hi).then_some(F::Down)
-        }
+        Key::ArrowUp => (page.line_vertical(text, caret, side, true, None).is_none()
+            && caret == lo)
+            .then_some(F::Up),
+        Key::ArrowDown => (page.line_vertical(text, caret, side, false, None).is_none()
+            && caret == hi)
+            .then_some(F::Down),
         _ => None,
     }
 }
@@ -1828,18 +1830,43 @@ fn key_pressed(
             if doc.want_x.is_none() {
                 doc.want_x = page.caret_stop_on(caret, doc.caret_side).map(|s| s.x);
             }
-            if let Some((t, side)) = page.vertical_on(caret, doc.caret_side, up, doc.want_x) {
+            // Line by line, never box by box inside a line (E15, R15).
+            let text = doc.editor.text();
+            if let Some((t, side)) = page.line_vertical(text, caret, doc.caret_side, up, doc.want_x)
+            {
                 doc.editor.move_caret(t, shift);
                 doc.caret_side = side;
-            } else if let Some((lo, hi)) = page.line_extent_on(caret, doc.caret_side) {
+            } else if let Some((lo, hi)) = page.line_ends(text, caret, doc.caret_side) {
                 // No line above (below): to the start (end) of this one.
                 doc.editor.move_caret(if up { lo } else { hi }, shift);
                 doc.caret_side = if up { Side::After } else { Side::Before };
             }
             true
         }
+        Key::PageUp | Key::PageDown => {
+            let up = key == Key::PageUp;
+            if doc.want_x.is_none() {
+                doc.want_x = page.caret_stop_on(caret, doc.caret_side).map(|s| s.x);
+            }
+            let text = doc.editor.text();
+            let screen = (doc.view_height - cx.size * 3.0).max(cx.size * 4.0);
+            let to = page.page_vertical(text, caret, doc.caret_side, up, screen, doc.want_x);
+            if let Some((t, side)) = to.or_else(|| {
+                let (lo, hi) = page.offset_extent()?;
+                Some(if up {
+                    (lo, Side::After)
+                } else {
+                    (hi, Side::Before)
+                })
+            }) {
+                doc.editor.move_caret(t, shift);
+                doc.caret_side = side;
+                doc.scroll_to = Some(mpp_syntax::Span::new(t, t));
+            }
+            true
+        }
         Key::Home | Key::End => {
-            if let Some((lo, hi)) = page.line_extent_on(caret, doc.caret_side) {
+            if let Some((lo, hi)) = page.line_ends(doc.editor.text(), caret, doc.caret_side) {
                 let home = key == Key::Home;
                 doc.editor.move_caret(if home { lo } else { hi }, shift);
                 doc.caret_side = if home { Side::After } else { Side::Before };
