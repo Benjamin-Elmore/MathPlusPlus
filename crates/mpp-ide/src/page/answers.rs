@@ -65,6 +65,9 @@ pub struct Slot {
     pub content: Content,
     /// From an earlier run of other text: shown dimmed.
     pub stale: bool,
+    /// The end of the line in the run's text, for an answer: the slot is hit like a
+    /// result in the formula (hover card, right-click formats).
+    pub result: Option<Span>,
 }
 
 /// True when a line's text ends in a lone `=` (`1.32 + 5 =`), asking for its answer
@@ -77,8 +80,18 @@ pub fn ends_open(text: &str) -> bool {
 /// True when `line` of a display block has its answer drawn in the slot: a trailing
 /// `=`, and also `= ?` and `≈ ?` (not `= ?!`, whose working is drawn under it). The
 /// answer never goes in the formula, so it arriving never changes the line's height.
+/// (An answer that is an equation or a table still goes in the formula: see [`rich`].)
 pub fn is_slot_line(line: &Line, src: &str) -> bool {
     matches!(line.statement, Statement::Query { steps: false, .. }) || is_open_line(line, src)
+}
+
+/// True when an answer is drawn in the formula even on a slot line: an equation
+/// (`L(x) = 25x − 54`, after an arrow) or a table under the line.
+fn rich(v: &Answered) -> bool {
+    matches!(
+        v.value,
+        Some(mpp_eval::Value::Relation(_) | mpp_eval::Value::Table(_))
+    )
 }
 
 /// True when `line` asks for its answer with a trailing `=`.
@@ -245,6 +258,7 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
                     open,
                     content: Content::Empty,
                     stale: false,
+                    result: None,
                 });
             }
             continue;
@@ -258,13 +272,16 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
             .iter()
             .filter(|v| span.start <= v.span.start && v.span.end <= span.end)
             .collect();
-        let content = if open {
-            // A name defined nowhere: say so, never echo the question as its answer.
-            let missing = run.br.diagnostics.iter().find(|d| {
-                span.start <= d.span.start
-                    && d.span.end <= span.end
-                    && d.message.contains("defined, so this cannot be worked out")
-            });
+        let open = open && !vals.iter().any(|v| rich(v));
+        // A name defined nowhere: say so, never echo the question as its answer.
+        let missing = run.br.diagnostics.iter().find(|d| {
+            span.start <= d.span.start
+                && d.span.end <= span.end
+                && d.message.contains("defined, so this cannot be worked out")
+        });
+        let content = if let (Some(d), false) = (missing, open) {
+            error_content(d)
+        } else if open {
             missing
                 .map(error_content)
                 .or_else(|| {
@@ -301,11 +318,13 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
         } else {
             continue;
         };
+        let result = matches!(content, Content::Answer { .. }).then(|| Span::point(span.end));
         out.push(Slot {
             line: i,
             open,
             content,
             stale: run.stale,
+            result,
         });
     }
     out
@@ -421,6 +440,9 @@ struct Chip {
     /// What a click copies, and what hovering shows (LaTeX lines).
     copy: Option<String>,
     tip: Option<String>,
+    /// Hit like a result in the formula: the end of its line, and how far left of
+    /// the chip the hit reaches (over the gap after the `=`).
+    result: Option<(Span, f32)>,
 }
 
 impl Chip {
@@ -432,6 +454,7 @@ impl Chip {
             items: dl.items,
             copy: None,
             tip: None,
+            result: None,
         }
     }
 
@@ -480,6 +503,7 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
         Content::Answer { latex, copy } => {
             let mut c = Chip::from(fitted(latex, size, ink(ac.answer), theme, room));
             c.copy = Some(copy.clone());
+            c.result = slot.result.map(|r| (r, size * 0.35));
             c.tip = Some(format!("{latex}\n{hint}"));
             c
         }
@@ -563,6 +587,7 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
                 depth: words.depth,
                 copy: Some(full.clone()),
                 tip: Some(prose_latex(full)),
+                result: None,
             }
         }
     };
@@ -585,6 +610,22 @@ fn put(chip: Chip, x: f32, baseline: f32, c: &mut Canvas) {
                 target: LinkTarget::Answer(chip.copy.unwrap_or_default()),
                 tip: chip.tip,
             },
+        });
+    }
+    if let Some((span, left)) = chip.result {
+        c.hits.push(mpp_render::HitBox {
+            rect: mpp_render::Rect {
+                x: x - left,
+                y: top,
+                w: chip.width.max(4.0) + left,
+                h: (chip.height + chip.depth).max(4.0),
+            },
+            baseline,
+            span,
+            path: mpp_render::NodePath(vec![]),
+            kind: HitKind::Result,
+            level: 50,
+            label: None,
         });
     }
 }
@@ -717,6 +758,7 @@ pub(crate) fn inline_chips(input: &PageInput<'_>, b: &Block, c: &mut Canvas) {
             open: true,
             content,
             stale,
+            result: None,
         };
         let room = inline_room(size) - size * 0.3;
         if let Some(ch) = chip(&slot, size * 0.95, input.theme, room) {
