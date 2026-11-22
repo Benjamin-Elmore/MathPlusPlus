@@ -806,9 +806,9 @@ impl Editor {
         };
         let cur = s.box_at(caret).and_then(|i| s.tab_pos(i));
         let start = s.primary.and_then(|i| s.tab_pos(i));
-        // Boxes before the starting one that still need filling (an integral's
-        // bounds; a sum's index and limits come with defaults).
-        let lead_open = |p: usize| s.tab[..p].iter().any(|&i| s.boxes[i].range.is_empty());
+        // Boxes before the starting one still to visit: empty or holding their
+        // default (an integral's bounds; a sum's index and limits, S6).
+        let lead_open = |p: usize| s.tab[..p].iter().any(|&i| s.boxes[i].untouched(&self.text));
         // Only boxes still to fill are stops: empty, or holding their default.
         let open = |p: &usize| s.boxes[s.tab[*p]].untouched(&self.text);
         let n = s.tab.len();

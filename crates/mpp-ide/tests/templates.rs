@@ -1463,13 +1463,15 @@ fn integrals_tab_from_the_integrand_through_the_slot_table_order() {
     let mut ed = Editor::new("");
     let sid = insert_into(&mut ed, "int.def", None);
     assert_eq!(walk(&mut ed, sid, false, 2), ["upper", "lower"]);
-    // A sum's index and limits have defaults: Tab from the term leaves.
+    // A sum's index and limits hold defaults, but Tab from the term still
+    // visits them (U28, S6), then leaves.
     let mut ed = Editor::new("");
     let sid = insert_into(&mut ed, "sum", None);
     ed.insert_text("n");
+    assert_eq!(walk(&mut ed, sid, true, 3), ["index", "start", "end"]);
     ed.tab(true);
     let end = ed.session(sid).expect("session").range.end;
-    assert_eq!(ed.caret(), end, "sum: Tab from the term leaves");
+    assert_eq!(ed.caret(), end, "sum: then Tab leaves");
 }
 
 #[test]

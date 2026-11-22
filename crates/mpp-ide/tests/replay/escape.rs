@@ -205,7 +205,6 @@ fn every_template_has_a_way_out_with_every_exit_key() {
 }
 
 #[test]
-#[ignore = "U27: Right stops before the closing bracket of the volume helper: its last box (the `auto` text) has a hit box reaching the bracket, so the end of the template is drawn at the same place and Right skips it; Tab, Esc and Enter do leave"]
 fn right_leaves_the_helper_templates() {
     let mut stuck = vec![];
     for t in templates()
@@ -243,7 +242,7 @@ fn tab_to_script(t: &Template, pos: usize, mods: Modifiers) -> Option<H> {
 }
 
 #[test]
-#[ignore = "U27: the operator/Space exit only applies to a typed `^`/`_`; a template's own exponent or index box (the order of d^n/dx^n, a power's exponent) keeps `+` inside it, which may be wanted (n+1): design question"]
+#[ignore = "U27, kept by design in U28 (2c): the operator/Space exit only applies to a typed `^`/`_`; a template's own exponent or index box (the order of d^n/dx^n, a power's exponent) keeps `+` inside it, as in n+1"]
 fn an_operator_or_a_space_leaves_every_script_box() {
     // Every box of a template that is an exponent or an index of something:
     // a digit typed in it, then the key; the key goes after the box.
@@ -299,4 +298,39 @@ fn an_operator_or_a_space_leaves_every_script_box() {
         }
     }
     assert!(seen > 0, "no template has a script box");
+}
+
+/// The label of the box holding the caret (the selection's start, when a
+/// default is selected), if it is in one.
+fn box_label(h: &H) -> Option<String> {
+    let ed = &h.state().doc().expect("doc").editor;
+    let at = ed.selection().map_or(ed.caret(), |r| r.start);
+    let s = ed.session_at(at)?;
+    s.box_at(at).map(|b| s.boxes[b].label.clone())
+}
+
+/// S6 (U28): Tab visits every box of the sum, its index and both limits too,
+/// and then leaves it.
+#[test]
+fn tab_visits_the_bounds_of_a_sum() {
+    let t = templates()
+        .into_iter()
+        .find(|t| t.name.eq_ignore_ascii_case("sum"))
+        .expect("the sum template");
+    let mut h = with(t);
+    let mut seen = vec![box_label(&h).expect("in a box")];
+    for _ in 0..6 {
+        press(&mut h, Modifiers::NONE, Key::Tab);
+        match box_label(&h) {
+            Some(l) => seen.push(l),
+            None => break,
+        }
+    }
+    for want in ["index", "start", "end", "term"] {
+        assert!(
+            seen.iter().any(|l| l == want),
+            "Tab never visited {want}: {seen:?}"
+        );
+    }
+    assert!(!in_template(&h), "Tab left the sum: {seen:?}");
 }

@@ -151,7 +151,7 @@ impl Editor {
         }
         let caret = self.caret;
         let Some((id, i)) = self.box_here(caret) else {
-            return false;
+            return forward && self.past_last_box(caret);
         };
         if self.left == Some((id, caret)) {
             return false;
@@ -174,6 +174,28 @@ impl Editor {
             return true;
         }
         false
+    }
+
+    /// Right after the last box of a template (just past its closing brace, the
+    /// `\text{auto}` of the volume helper, where the end of the template is
+    /// drawn at the same place): out of the template. True when it left.
+    fn past_last_box(&mut self, caret: usize) -> bool {
+        let Some(s) = self.session_at(caret) else {
+            return false;
+        };
+        let (id, end) = (s.id, s.range.end);
+        let after_all = s
+            .boxes
+            .iter()
+            .all(|b| b.mirror_of.is_some() || b.range.end < caret);
+        if !after_all || caret >= end || self.left == Some((id, caret)) {
+            return false;
+        }
+        self.finalize(id);
+        let end = self.session(id).map_or(end, |s| s.range.end);
+        self.move_caret(end, false);
+        self.left = Some((id, end));
+        true
     }
 
     /// Before Enter in maths: out of every template around the caret, so the new
