@@ -330,7 +330,22 @@ impl Editor {
                 true
             }
             '}' if r.end == caret && bytes.get(caret) == Some(&b'}') => {
+                // An exponent or index the editor braced for a typed `^2`: the
+                // user never typed its `{`, so their `}` closes it and then the
+                // group they did open (T4, R3).
+                let s = self.session(id).expect("session");
+                let auto = (s.template == SUP || s.template == SUB) && !s.braced;
                 self.next_box_or_out(id, i);
+                if auto && self.caret != caret {
+                    let caret = self.caret;
+                    let closes = self.box_here(caret).is_some_and(|(id, i)| {
+                        self.session(id).expect("session").boxes[i].range.end == caret
+                            && self.text.as_bytes().get(caret) == Some(&b'}')
+                    });
+                    if closes {
+                        return self.brace_before('}');
+                    }
+                }
                 false
             }
             _ => true,

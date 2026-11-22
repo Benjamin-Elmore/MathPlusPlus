@@ -5,7 +5,7 @@
 use egui::{Key, Modifiers};
 use mpp_syntax::document::{parse_document, BlockKind};
 
-use super::runner::{fresh, press, text_of, type_text, Seen, H};
+use super::runner::{fresh, press, text_of, type_text, Seen, Step, H};
 
 fn enter(h: &mut H) {
     press(h, Modifiers::NONE, Key::Enter);
@@ -140,4 +140,28 @@ fn right_at_the_end_of_maths_leaves_it() {
         assert!(shows(&h, "and words"));
         caret_on_its_line(&h);
     }
+}
+
+/// Types `s` and pauses until the answers are on screen.
+fn answered(h: &mut H, s: &'static str) -> Vec<String> {
+    super::runner::run(h, &[Step::Type(s), Step::Pause], |_, _, _| {});
+    Seen::of(h).answers
+}
+
+/// T4 and R3: the `^2` exponent the editor braced closes on the user's `}`
+/// together with the group the user opened, so no stray `}` is left and the
+/// sum has an answer.
+#[test]
+fn a_typed_brace_closes_the_users_own_group() {
+    let mut h = fresh();
+    type_text(&mut h, r"$\frac{1}{n^2} + 1");
+    assert_eq!(text_of(&h), r"$$ \frac{1}{n^{2}} + 1 $$");
+    let mut h = fresh();
+    let answers = answered(&mut h, r"$\sum_{n=1}^{10} \frac{1}{n^2} =$");
+    assert_eq!(text_of(&h), r"$$ \sum_{n=1}^{10} \frac{1}{n^{2}} = $$");
+    assert!(!answers.is_empty(), "the sum has an answer");
+    // Braces the user typed in full still close one at a time.
+    let mut h = fresh();
+    type_text(&mut h, r"$x^{2} + \frac{a}{b} + 1");
+    assert_eq!(text_of(&h), r"$$ x^{2} + \frac{a}{b} + 1 $$");
 }
