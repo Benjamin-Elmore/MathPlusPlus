@@ -8,8 +8,10 @@
 
 pub(crate) mod blank;
 pub(crate) mod build;
+pub mod caret_path;
 mod flow;
 mod mathcache;
+pub mod mode;
 pub mod paper;
 pub mod pin;
 
@@ -190,6 +192,9 @@ pub struct Page {
     /// The whitespace between top-level blocks (from the end of one block to the
     /// start of the next, or to the end of the file).
     pub between: Vec<Span>,
+    /// The box of every inline `$…$` maths in prose (its tinted chip), in page
+    /// coordinates.
+    pub chips: Vec<Rect>,
 }
 
 /// Drawing primitives and boxes being collected for one block.
@@ -206,6 +211,8 @@ pub struct Canvas {
     pub spinners: Vec<Pos2>,
     /// Links (block-local).
     pub links: Vec<PageLink>,
+    /// Boxes of inline maths (block-local).
+    pub chips: Vec<Rect>,
 }
 
 impl Canvas {

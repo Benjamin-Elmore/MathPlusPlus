@@ -557,6 +557,9 @@ impl IdeApp {
         let mut show_problems = false;
         let mut cycle_theme = false;
         let theme_label = self.theme_choice.label();
+        // Prose or Maths, and the path to the caret inside maths (U13).
+        let place = self.doc().map(crate::page::caret_path::status_text);
+        let mut flip_line = false;
         egui::Panel::bottom("status")
             .frame(
                 egui::Frame::NONE
@@ -648,11 +651,26 @@ impl IdeApp {
                             cycle_theme = true;
                         }
                         ui.label(theme_label);
+                        if let Some(place) = &place {
+                            ui.separator();
+                            flip_line = ui
+                                .add(egui::Label::new(place.as_str()).sense(Sense::click()))
+                                .on_hover_text("Ctrl+M switches this line between prose and maths")
+                                .clicked();
+                        }
                     });
                 });
             });
         if show_problems {
             self.open_pane(crate::layout::Pane::Problems);
+        }
+        if flip_line {
+            if let Some(d) = self.doc_mut() {
+                let at = d.editor.caret();
+                if d.editor.flip_maths(&mut d.maths, at) {
+                    d.touched();
+                }
+            }
         }
         if cycle_theme {
             self.set_theme_choice(self.theme_choice.next());

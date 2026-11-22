@@ -71,8 +71,14 @@ impl<'a> Engine<'a> {
     }
 
     /// Size multiplier of a style.
+    /// Scripts never get smaller than [`MIN_SCRIPT_PX`] pixels.
     pub fn scale(&self, st: Style) -> f32 {
-        st.scale(&self.c)
+        let s = st.scale(&self.c);
+        if s < 1.0 {
+            s.max((MIN_SCRIPT_PX / self.opts.sanitized_size()).min(1.0))
+        } else {
+            s
+        }
     }
 
     /// One mu (1/18 em) in a style.
@@ -914,6 +920,9 @@ impl<'a> Engine<'a> {
         }
     }
 }
+
+/// Smallest script (exponent, index, limit), in pixels at any zoom.
+pub(crate) const MIN_SCRIPT_PX: f32 = 9.0;
 
 /// Smallest slot label, in pixels at any zoom.
 const SLOT_LABEL_MIN_PX: f32 = 10.0;

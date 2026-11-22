@@ -123,6 +123,8 @@ pub struct Doc {
     pub pin: Option<crate::page::Pin>,
     /// Where the caret was drawn last frame, in screen coordinates.
     pub caret_screen: Option<egui::Rect>,
+    /// Maths lines: auto-detect, its hints and the lines kept as prose.
+    pub maths: crate::editor::mathline::MathsState,
     /// Integral bounds above and below the sign (default) or at its side.
     pub integral_limits: IntegralLimits,
     /// The width, size and mode of the last page laid out (problem lists of
@@ -265,6 +267,7 @@ impl Doc {
             caret_side: crate::page::Side::Before,
             pin: None,
             caret_screen: None,
+            maths: Default::default(),
             integral_limits: IntegralLimits::AboveBelow,
             last_layout: (800.0, crate::layout::BODY_SIZE, Mode::Light),
             show: ShowState::default(),
