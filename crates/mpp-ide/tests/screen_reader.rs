@@ -867,3 +867,53 @@ fn r17_the_marker_button_sits_in_the_page_beside_its_maths() {
     let m = h.get_by_label(mpp_ide::access::MARKER_LABEL);
     assert_eq!(m.accesskit_node().role(), Role::Button);
 }
+
+// ---- Fix loop 3 (R-F1 … R14) ----------------------------------------------
+
+#[test]
+fn rf1_the_problems_shortcut_goes_back_to_an_open_panel_before_it_closes_it() {
+    let src = "First line.\n\n$$ v := 20 $$\n\n$$ w + v = ? $$\n\n$$ v = 40 $$\n\nLast line.";
+    let mut h = app_with(src, src.len());
+    wait(&mut h);
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(!in_editor(&h), "Problems has the keyboard");
+    for _ in 0..6 {
+        if focused(&h).is_some_and(|f| f.label.starts_with("Warning, line 5")) {
+            break;
+        }
+        key(&mut h, Modifiers::NONE, Key::Tab);
+    }
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    h.run_steps(3);
+    assert!(in_editor(&h), "the jump gives the keyboard to the editor");
+    let before = h.state().doc().unwrap().editor.text().to_string();
+
+    // The panel is still open; the shortcut takes the keyboard back to it.
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(h.state().problems.open, "the panel stays open");
+    assert!(!in_editor(&h), "Problems has the keyboard again");
+    let said = polite(&h);
+    assert!(said.starts_with("Problems panel, "), "{said:?}");
+    assert!(said.contains("item"), "{said:?}");
+    // Keys meant for the panel do not edit the file.
+    key(&mut h, Modifiers::NONE, Key::Tab);
+    key(&mut h, Modifiers::NONE, Key::Tab);
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    h.run_steps(3);
+    assert_eq!(h.state().doc().unwrap().editor.text(), before);
+
+    // From inside the panel, the shortcut closes it and says so.
+    if in_editor(&h) {
+        // The Enter above chose a problem; go back to the panel first.
+        key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+        h.run_steps(3);
+        assert!(!in_editor(&h));
+    }
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(!h.state().problems.open, "the panel closes from inside it");
+    assert!(in_editor(&h), "the editor has the keyboard");
+    assert_eq!(polite(&h), "Problems closed, editor");
+}

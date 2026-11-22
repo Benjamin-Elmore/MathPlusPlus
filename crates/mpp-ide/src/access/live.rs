@@ -214,6 +214,35 @@ impl IdeApp {
         self.access.land = Some((pane, 0));
     }
 
+    /// True when the keyboard is in the panel named `name` ("Problems").
+    pub(crate) fn focus_in_pane(&self, ctx: &Context, name: &str) -> bool {
+        let Some(f) = ctx.memory(egui::Memory::focused) else {
+            return false;
+        };
+        if is_editor(ctx, f) {
+            return false;
+        }
+        let at = ctx.viewport(|v| {
+            v.prev_pass
+                .widgets
+                .get(f)
+                .or_else(|| v.this_pass.widgets.get(f))
+                .map(|w| w.interact_rect.center())
+        });
+        at.is_some_and(|c| {
+            self.access
+                .panes
+                .iter()
+                .any(|(n, r)| *n == name && r.contains(c))
+        })
+    }
+
+    /// Says `words` in the polite live region now.
+    pub(crate) fn say_politely(&mut self, words: &str) {
+        self.access.pending = None;
+        self.access.polite.say(words);
+    }
+
     /// The region holding the widget `id` (by where it was last frame).
     fn region_of(&self, ctx: &Context, id: Id) -> Option<Region> {
         if is_editor(ctx, id) {
