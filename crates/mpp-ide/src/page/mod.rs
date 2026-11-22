@@ -6,6 +6,7 @@
 //! list of caret stops mapping screen positions to source offsets. Prose stops sit
 //! between visible characters, so hidden markup (`#`, `*`, `$$`) is never a stop.
 
+pub mod answers;
 pub(crate) mod blank;
 pub(crate) mod build;
 pub mod caret_path;
@@ -138,6 +139,9 @@ pub enum LinkTarget {
     Jump(Span),
     /// Fold or unfold a note.
     Fold(BlockId),
+    /// An answer in its slot: a click copies this text, Ctrl+click inserts it at the
+    /// caret (see [`answers::click`]).
+    Answer(String),
 }
 
 /// A clickable part of the page, with what hovering it shows.

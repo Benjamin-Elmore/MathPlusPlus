@@ -275,3 +275,143 @@ fn keep_result_writes_ordinary_maths() {
     assert!(errs.is_empty(), "{edited}: {errs:?}");
     assert!(ev.blocks.iter().all(|b| b.values.iter().all(|l| !l.auto)));
 }
+
+/// The only query (or check) line of `src`, with its answer as `mpp run` prints it.
+fn query(src: &str) -> (mpp_eval::LineResult, String) {
+    let ev = run(src);
+    let lines: Vec<_> = ev.queries().map(|(_, l)| l.clone()).collect();
+    assert_eq!(lines.len(), 1, "{src}: {lines:?}");
+    let answer = lines[0].plain_answer().unwrap_or_default();
+    (lines[0].clone(), answer)
+}
+
+#[test]
+fn a_line_ending_in_equals_asks_for_its_answer() {
+    // Ben's video: no `?` needed.
+    let (line, answer) = query("$$ 1.321321312 + 5 = $$");
+    assert!(line.open, "{line:?}");
+    assert_eq!(answer, "= 6.321321312");
+    let (line, answer) = query("$$ x := 5 $$\n\n$$ 2x + 5 = $$");
+    assert!(line.open);
+    assert_eq!(answer, "= 15");
+    // `= ?`, `≈ ?` and `= ?!` keep their meaning, and are not "open".
+    let (line, answer) = query("$$ 1 + 2 = ? $$");
+    assert!(!line.open);
+    assert_eq!(answer, "= 3");
+    let (line, answer) = query(r"$$ \sqrt{2} \approx ? $$");
+    assert!(!line.open);
+    assert_eq!(answer, "≈ 1.414213562");
+    let (line, _) = query(r"$$ \frac{d}{dx} x^2 = ?! $$");
+    assert!(line.steps.is_some() && !line.open);
+    // Inline maths in a sentence asks the same way.
+    let (line, answer) = query("The sum $2 + 3 =$ is small.");
+    assert!(line.open);
+    assert_eq!(answer, "= 5");
+    // A definition ending in `=` shows the value it defined.
+    let src = "$$ a := 3 $$\n\n$$ b := a^2 + 1 = $$";
+    let ev = run(src);
+    let asked: Vec<String> = ev.queries().filter_map(|(_, l)| l.plain_answer()).collect();
+    assert_eq!(asked, ["= 10"]);
+    // A name with no value is an error in the slot, not a crash.
+    let ev = run("$$ q + 1 = $$\n\n$$ 2 \\cdot w = $$");
+    assert!(ev.errors().is_empty(), "{:?}", ev.errors());
+    // Nothing in an old file means something else now: no error appears.
+    let ev = run(r"$$ \int_0^1 x \, dx = ? $$");
+    assert!(ev.errors().is_empty());
+}
+
+#[test]
+fn a_definition_from_other_names_shows_its_value_but_a_plain_number_does_not() {
+    let ev = run(
+        "$$ x := 5 $$\n\n$$ E := 2x + 5 $$\n\n$$ g := 9.81 $$\n\n$$ h := -2 $$\n\n$$ k := 1/2 $$",
+    );
+    let defs: Vec<(String, bool, Option<String>)> = ev
+        .blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .filter_map(|l| match &l.kind {
+            LineKind::Definition { name, .. } => {
+                Some((name.clone(), l.shows_value, l.plain.clone()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        defs,
+        [
+            ("x".into(), false, Some("5".into())),
+            ("E".into(), true, Some("15".into())),
+            ("g".into(), false, Some("9.81".into())),
+            ("h".into(), false, Some("-2".into())),
+            ("k".into(), false, Some("1/2".into())),
+        ]
+    );
+    // A value with a free name is not a number: nothing to show.
+    let ev = run("$$ F := m a $$");
+    assert!(ev.blocks[0].values.iter().all(|l| !l.shows_value));
+}
+
+/// Each line's kind, implicit flag and verdict, for the definitions/checks tests.
+fn kinds(src: &str) -> Vec<String> {
+    let ev = run(src);
+    ev.blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .map(|l| {
+            let kind = match &l.kind {
+                LineKind::Definition { name, .. } => format!("define {name}"),
+                LineKind::Check => format!(
+                    "check {}",
+                    l.verdict
+                        .as_ref()
+                        .and_then(mpp_eval::Verdict::passed)
+                        .map_or("?", |p| if p { "✓" } else { "✗" })
+                ),
+                other => format!("{other:?}"),
+            };
+            if l.implicit {
+                format!("{kind} (implicit)")
+            } else {
+                kind
+            }
+        })
+        .collect()
+}
+
+#[test]
+fn x_equals_5_defines_a_new_name_and_checks_a_known_one() {
+    assert_eq!(
+        kinds("$$ x = 5 $$\n\n$$ x = 5 $$\n\n$$ x = 6 $$\n\n$$ x == 5 $$\n\n$$ x := 7 $$"),
+        [
+            "define x (implicit)",
+            "check ✓",
+            "check ✗",
+            "check ✓",
+            "define x",
+        ]
+    );
+    // A name worked out from defined ones is defined too, and used below.
+    let src = "$$ x := 5 $$\n\n$$ E = 2x + 5 $$\n\n$$ E + 1 = $$";
+    assert_eq!(
+        kinds(src),
+        [
+            "define x",
+            "define E (implicit)",
+            "Query { mode: Exact, steps: false }"
+        ]
+    );
+    let (_, answer) = query(src);
+    assert_eq!(answer, "= 16");
+    // Old meanings stay: an equation with unknowns on the right, a where-clause line,
+    // and an ODE unknown are not definitions.
+    assert_eq!(kinds(r"$$ y = x^2 + 1 $$"), ["Relation"]);
+    assert_eq!(kinds(r"$$ A = \pi r^2, \quad r = 3 $$"), ["Relation"]);
+    assert!(!kinds(r"$$ y' = 2y, \quad y(0) = 1 $$")
+        .iter()
+        .any(|k| k.contains("implicit")));
+    // Inline maths in a sentence never defines.
+    assert_eq!(kinds("The value $v = 3$ is given."), ["Relation"]);
+    // The names count as definitions (the status bar counts these).
+    let ev = run("$$ x := 5 $$\n\n$$ y = 2 $$");
+    assert_eq!(ev.user_names(), ["x", "y"]);
+}

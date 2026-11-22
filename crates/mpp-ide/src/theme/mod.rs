@@ -1,12 +1,14 @@
 //! Colours and fonts. Every colour comes from the [`Palette`] table and every
 //! piece of text is set in Latin Modern.
 
+mod answers;
 mod fonts;
 mod moon;
 mod palette;
 
 use egui::Context;
 
+pub use answers::{answer_colors, AnswerColors};
 pub use fonts::{install_fonts, sans, sans_family};
 pub use moon::moon_button;
 pub use palette::{c32, contrast, luminance, Mode, Palette, CLEAR};

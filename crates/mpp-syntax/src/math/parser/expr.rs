@@ -41,7 +41,7 @@ impl Parser<'_> {
             let op = *op;
             let query = matches!(op, RelOp::Eq | RelOp::Approx)
                 && matches!(self.peek_n(1), Some(Tok::Question));
-            if query {
+            if query || self.open_query_ahead() {
                 break;
             }
             self.bump();

@@ -171,6 +171,8 @@ pub fn follow_link(doc: &mut Doc, target: &crate::page::LinkTarget) {
             doc.want_x = None;
         }
         crate::page::LinkTarget::Fold(id) => doc.show_mut().toggle_fold(*id),
+        // Answers need the clipboard and the modifiers: see `answers::click`.
+        crate::page::LinkTarget::Answer(_) => {}
     }
 }
 
@@ -273,7 +275,12 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 let key = egui::Id::unique("mpp-link-frame");
                 if ui.data(|d| d.get_temp::<u64>(key)) != Some(frame) {
                     ui.data_mut(|d| d.insert_temp(key, frame));
-                    follow_link(doc, &target);
+                    if let crate::page::LinkTarget::Answer(text) = &target {
+                        let insert = ui.input(|i| i.modifiers.command);
+                        crate::page::answers::click(ui.ctx(), doc, text, insert);
+                    } else {
+                        follow_link(doc, &target);
+                    }
                 }
                 moved = true;
             } else if bulb_clicked {
@@ -1810,6 +1817,12 @@ fn hover_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, c
                     ui.weak(format!(
                         "from {}",
                         crate::explorer::display_name(std::path::Path::new(f))
+                    ));
+                } else {
+                    ui.add_space(2.0);
+                    ui.weak(crate::page::answers::defined_where(
+                        doc.editor.text(),
+                        d.span,
                     ));
                 }
             });
