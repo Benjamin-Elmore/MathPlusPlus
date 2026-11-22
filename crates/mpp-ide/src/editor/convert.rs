@@ -194,11 +194,14 @@ fn unit_before_slash(text: &str, slash: usize) -> bool {
     }
     let head = &before[..start];
     let gap = head.trim_end_matches([' ', '~']).trim_end_matches(r"\,");
+    // `v in km/h`, `v ∈ km/h`, `v to km/h`: the unit of a conversion (E11).
+    let converts = [" in", " to", "∈", "→"].iter().any(|w| gap.ends_with(w));
     gap.len() < head.len()
-        && gap
-            .chars()
-            .next_back()
-            .is_some_and(|c| c.is_ascii_digit() || c == '.')
+        && (converts
+            || gap
+                .chars()
+                .next_back()
+                .is_some_and(|c| c.is_ascii_digit() || c == '.'))
 }
 
 /// True when `at` is in a `%` comment on its line or inside the braces of a
@@ -745,6 +748,9 @@ mod tests {
             ("v = 20/s", r"v = \frac{20}{s}"),
             ("a = 2 x/y", r"a = 2 \frac{x}{y}"),
             ("a = m/s", r"a = \frac{m}{s}"),
+            // The unit of a conversion (E11).
+            ("v in km/h =", "v ∈ km/h ="),
+            ("v to km/h =", "v → km/h ="),
         ] {
             assert_eq!(typed_in_maths(src), want, "{src}");
         }

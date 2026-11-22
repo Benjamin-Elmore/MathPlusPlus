@@ -11,6 +11,7 @@ mod persona;
 mod persona2;
 mod recheck_editing;
 mod recheck_maths;
+mod recheck_units;
 mod results;
 mod runner;
 mod side;

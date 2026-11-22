@@ -22,8 +22,25 @@ pub struct MathsState {
     /// Auto-detect is switched off (it is on by default).
     pub auto_off: bool,
     /// Lines auto-detect has already turned into maths, or that were turned
-    /// back into prose: never turned into maths again by themselves.
-    pub kept: Vec<String>,
+    /// back into prose, with where each started: never turned into maths again
+    /// by themselves. The same text typed again on another line (`R =` asked a
+    /// second time further down, E-F3) is a new line and is turned.
+    pub kept: Vec<(String, usize)>,
+}
+
+impl MathsState {
+    /// True when the line `line` starting at `ls` was already turned (or kept
+    /// as prose) once.
+    pub fn is_kept(&self, line: &str, ls: usize) -> bool {
+        self.kept.iter().any(|(k, at)| k == line && *at == ls)
+    }
+
+    /// Remembers the line `line` starting at `ls` (see [`MathsState::kept`]).
+    pub fn keep(&mut self, line: String, ls: usize) {
+        if !self.is_kept(&line, ls) {
+            self.kept.push((line, ls));
+        }
+    }
 }
 
 /// Where the caret was before a frame's input: auto-detect looks at that line
@@ -201,32 +218,52 @@ pub fn reads_as_maths(line: &str, known: &[String]) -> bool {
     if t.is_empty() || t.contains('$') || t.contains('`') || t.contains("[[") {
         return false;
     }
-    let mut ordinary = 0;
+    // Each word, whether it follows a `\`, and the last other character before it.
+    let mut words: Vec<(String, bool, char)> = Vec::new();
     let mut word = String::new();
-    let mut command = false;
     let mut prev = ' ';
-    let flush = |word: &mut String, command: bool, ordinary: &mut usize| {
-        if word.chars().count() >= 2
-            && !command
-            && !FUNCTIONS.contains(&word.as_str())
-            && !known.iter().any(|k| k == word)
-        {
-            *ordinary += 1;
-        }
-        word.clear();
-    };
+    let mut before = ' ';
     for c in t.chars() {
         if c.is_alphabetic() {
             if word.is_empty() {
-                command = prev == '\\';
+                words.push((String::new(), prev == '\\', before));
             }
             word.push(c);
-        } else {
-            flush(&mut word, command, &mut ordinary);
+        } else if !word.is_empty() {
+            if let Some(last) = words.last_mut() {
+                last.0 = std::mem::take(&mut word);
+            }
+        }
+        if !c.is_whitespace() {
+            before = c;
         }
         prev = c;
     }
-    flush(&mut word, command, &mut ordinary);
+    if let Some(last) = words.last_mut().filter(|_| !word.is_empty()) {
+        last.0 = word;
+    }
+    let unit = |w: &str| mpp_syntax::units::is_unit_name(w);
+    let mut ordinary = 0;
+    for (i, (w, command, before)) in words.iter().enumerate() {
+        let after_word = |k: usize| i >= k && matches!(words[i - k].0.as_str(), "in" | "to");
+        // Units after a number, in a unit (`km/h`) or after `in`/`to` (E11):
+        // `R = 3530 cm`, `v in km/h =`.
+        let is_unit = unit(w)
+            && (before.is_ascii_digit() || matches!(before, '/' | '·' | '*') || after_word(1));
+        // `in` or `to` before a unit converts.
+        let converts = matches!(w.as_str(), "in" | "to")
+            && i > 0
+            && words.get(i + 1).is_some_and(|(n, ..)| unit(n));
+        if w.chars().count() >= 2
+            && !command
+            && !is_unit
+            && !converts
+            && !FUNCTIONS.contains(&w.as_str())
+            && !known.iter().any(|k| k == w)
+        {
+            ordinary += 1;
+        }
+    }
     if ordinary >= 2 {
         return false;
     }
@@ -501,10 +538,7 @@ impl Editor {
             c
         });
         if !rows.is_empty() {
-            let first = rows[0].clone();
-            if !state.kept.contains(&first) {
-                state.kept.push(first);
-            }
+            state.keep(rows[0].clone(), open);
         }
         self.maths_step(open..end, &new, caret);
         true
@@ -847,7 +881,7 @@ impl Editor {
             return false;
         }
         let line = self.text[ls..le].trim().to_string();
-        if state.kept.contains(&line) {
+        if state.is_kept(&line, ls) {
             return false;
         }
         // One line of its own (not part of a longer paragraph).
@@ -860,7 +894,7 @@ impl Editor {
         if !reads_as_maths(&line, &known) {
             return false;
         }
-        state.kept.push(line);
+        state.keep(line, ls);
         if !self.make_maths(ls) {
             return false;
         }
@@ -921,7 +955,7 @@ impl Editor {
             (squeezed.ends_with('=') && !squeezed.ends_with("==") && !squeezed.ends_with(":="))
                 || squeezed.ends_with("=?")
                 || squeezed.ends_with("≈?");
-        if !asks || state.kept.iter().any(|k| k == line) {
+        if !asks || state.is_kept(line, ls) {
             return None;
         }
         if !line_blank_before(&self.text, ls) || !line_blank_after(&self.text, le) {
@@ -943,7 +977,7 @@ impl Editor {
         let Some((ls, le)) = self.asking_line(state) else {
             return false;
         };
-        state.kept.push(self.text[ls..le].trim().to_string());
+        state.keep(self.text[ls..le].trim().to_string(), ls);
         if !self.make_maths(ls) {
             return false;
         }
@@ -1101,6 +1135,11 @@ mod tests {
             "speed * 2",
             "a + b = ?",
             "\\frac{1}{2} + 3",
+            // Units after a number, and conversions (E11).
+            "R = 3530 cm",
+            "v = 7200 cm/s",
+            "v in km/h =",
+            "v to km/h =",
         ] {
             assert!(reads_as_maths(yes, &known), "{yes}");
         }
@@ -1114,6 +1153,8 @@ mod tests {
             "costs $5 = cheap",
             "e.g.",
             "I think so",
+            "Values in mm",
+            "the speed in km/h is high",
         ] {
             assert!(!reads_as_maths(no, &known), "{no}");
         }
@@ -1137,6 +1178,26 @@ mod tests {
         let was = e.line_mark();
         e.move_caret(e.text().len(), false);
         assert!(!e.maths_after_frame(&mut st, was, false));
+    }
+
+    /// E-F3: the same text asked again on a new line (here under a `%digits`
+    /// line) is a new line: auto-detect turns it too.
+    #[test]
+    fn the_same_line_typed_again_lower_down_is_turned_too() {
+        let mut st = MathsState::default();
+        let mut e = ed("R =", 3);
+        let was = e.line_mark();
+        e.enter(false, false);
+        assert!(e.maths_after_frame(&mut st, was, true));
+        e.insert_text("%digits 4");
+        let was = e.line_mark();
+        e.enter(false, false);
+        assert!(!e.maths_after_frame(&mut st, was, true));
+        e.insert_text("R =");
+        let was = e.line_mark();
+        e.enter(false, false);
+        assert!(e.maths_after_frame(&mut st, was, true), "{:?}", e.text());
+        assert_eq!(e.text(), "$$ R = $$\n\n%digits 4\n\n$$ R = $$\n\n");
     }
 
     #[test]

@@ -120,8 +120,15 @@ fn conversions() {
     );
     let src = r"$$ 5\,\mathrm{m} \operatorname{in} \mathrm{s} = ? $$";
     assert_eq!(failure(src).0, "can't convert m to s");
-    // `x in S` is still set membership.
+    // E11: `to`, `->` and the `∈`/`→` that typing `in`/`to` in maths makes,
+    // before a unit, convert too.
+    for word in ["in", "∈", "to", "->", "→"] {
+        let src = format!("$$ v = 20 m/s $$\n\n$$ v {word} km/h = $$");
+        assert_eq!(answer(&src), "72 km/h", "{word}");
+    }
+    // `x in S` is still set membership, and `x -> 0` an arrow.
     assert_eq!(answer(r"$$ 3 \in \{1, 2, 3\} = ? $$"), "true");
+    assert_eq!(answer(r"$$ \lim_{x -> 0} \frac{\sin x}{x} = ? $$"), "1");
     let approx = run(r"$$ 100\,\mathrm{km/h} \operatorname{in} \mathrm{m/s} \approx ? $$");
     let line = approx.queries().next().and_then(|(_, l)| l.approx.clone());
     assert_eq!(line.as_deref(), Some("27.77777778 m/s"));

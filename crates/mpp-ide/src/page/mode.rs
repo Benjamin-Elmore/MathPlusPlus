@@ -273,7 +273,7 @@ pub fn maths_cue(doc: &crate::doc::Doc) -> bool {
     }
     let (ls, le) = line_bounds(text, caret);
     let line = text[ls..le].trim();
-    !doc.maths.kept.iter().any(|k| k == line) && reads_as_maths(line, &defined_names(text))
+    !doc.maths.is_kept(line, ls) && reads_as_maths(line, &defined_names(text))
 }
 
 /// Paints [`MATHS_CUE`] after the caret's line while [`maths_cue`] holds.

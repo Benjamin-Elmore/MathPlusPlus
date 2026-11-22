@@ -380,7 +380,8 @@ impl Parser<'_> {
         let Some(tok) = self.toks.get(self.pos).filter(|_| self.pos < self.stop) else {
             return false;
         };
-        if !matches!(tok.kind, Tok::Rel(RelOp::In)) || self.text(tok.span) != "in" {
+        if !matches!(tok.kind, Tok::Rel(RelOp::In)) || !matches!(self.text(tok.span), "in" | "∈")
+        {
             return false;
         }
         tok.span
@@ -391,8 +392,8 @@ impl Parser<'_> {
             .is_some_and(|f| !f.plain || crate::units::is_compound(&f.text))
     }
 
-    /// `expr \operatorname{in} unit`, `expr in unit` or `expr \text{ in } unit`: a
-    /// conversion. A bare `in` that is not followed by a unit stays the relation `∈`.
+    /// `expr \operatorname{in} unit`, `expr in unit`, `expr to unit` or
+    /// `expr \text{ in } unit`: a conversion. A bare `in` that is not followed by a unit stays the relation `∈`.
     pub(super) fn maybe_convert(&mut self, expr: Node) -> Node {
         let Some(tok) = self.toks.get(self.pos).filter(|_| self.pos < self.stop) else {
             return expr;
@@ -401,7 +402,11 @@ impl Parser<'_> {
         let explicit = match &tok.kind {
             Tok::OperatorName(n) if n == "in" => true,
             Tok::Text(t) if t.trim() == "in" => true,
-            Tok::Rel(RelOp::In) if self.text(tok_span) == "in" => false,
+            // `v ∈ km/h` is what typing `v in km/h` in a maths line makes.
+            Tok::Rel(RelOp::In) if matches!(self.text(tok_span), "in" | "∈") => false,
+            // `v to km/h`, `v -> km/h` (a calculator's way): the same as a bare
+            // `in`. `x -> 0` has no unit after it and stays an arrow.
+            Tok::Rel(RelOp::To) if matches!(self.text(tok_span), "to" | "->" | "→") => false,
             _ => return expr,
         };
         let Some(text) = tok_span
