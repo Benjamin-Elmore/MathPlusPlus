@@ -498,6 +498,56 @@ impl Editor {
         true
     }
 
+    /// The caret's line, when it is a prose line of its own that ends in `=`
+    /// (or `= ?`, `≈ ?`) and reads as maths: what auto-detect would turn into
+    /// maths once the caret leaves it. `(start, end)` of the line.
+    fn asking_line(&self, state: &MathsState) -> Option<(usize, usize)> {
+        if state.auto_off || self.selection().is_some() {
+            return None;
+        }
+        let (ls, le) = line_bounds(&self.text, self.caret);
+        if line_kind(&self.text, ls) != LineKind::Prose {
+            return None;
+        }
+        let line = self.text[ls..le].trim();
+        let squeezed: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+        let asks =
+            (squeezed.ends_with('=') && !squeezed.ends_with("==") && !squeezed.ends_with(":="))
+                || squeezed.ends_with("=?")
+                || squeezed.ends_with("≈?");
+        if !asks || state.kept.iter().any(|k| k == line) {
+            return None;
+        }
+        if !line_blank_before(&self.text, ls) || !line_blank_after(&self.text, le) {
+            return None;
+        }
+        reads_as_maths(line, &defined_names(&self.text)).then_some((ls, le))
+    }
+
+    /// True when the caret's line would be turned into maths after a rest (see
+    /// [`Editor::maths_after_rest`]).
+    pub fn rest_candidate(&self, state: &MathsState) -> bool {
+        self.asking_line(state).is_some()
+    }
+
+    /// The caret has rested on a prose line ending in `=` that reads as maths:
+    /// the line is finished, so it becomes a maths line now (the caret stays at
+    /// the same place in it). One undo step, like [`Editor::maths_after_frame`].
+    pub fn maths_after_rest(&mut self, state: &mut MathsState) -> bool {
+        let Some((ls, le)) = self.asking_line(state) else {
+            return false;
+        };
+        state.kept.push(self.text[ls..le].trim().to_string());
+        if !self.make_maths(ls) {
+            return false;
+        }
+        self.fire_hint(
+            Hint::AutoMaths,
+            "Turned into maths. Ctrl+Z keeps it as text.",
+        );
+        true
+    }
+
     /// Where the caret is now, for [`Editor::maths_after_frame`].
     pub fn line_mark(&self) -> LineMark {
         LineMark {

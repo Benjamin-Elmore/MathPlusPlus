@@ -170,6 +170,57 @@ pub fn auto_detect(ui: &egui::Ui, doc: &mut crate::doc::Doc, was: LineMark) -> b
     done
 }
 
+/// How long the caret rests on a line ending in `=` before the line counts as
+/// finished (Design rule 6: answers within about a second of the last key).
+pub const REST: std::time::Duration = std::time::Duration::from_millis(1000);
+
+/// Where the caret rests, for [`rest_detect`]: the text's revision and the
+/// caret's offset when they last changed, and since when.
+#[derive(Debug, Clone, Copy)]
+pub struct Rest {
+    pub revision: u64,
+    pub caret: usize,
+    pub since: std::time::Instant,
+    /// The caret's line asks for its answer and is waiting for the rest to end.
+    pub pending: bool,
+}
+
+/// After a frame: a prose line ending in `=` (or `= ?`) that would auto-detect
+/// as maths counts as finished once the caret has rested on it for [`REST`]
+/// (no Enter needed): it becomes maths and is worked out. Until then the app
+/// asks for a frame when the rest ends. True when the line became maths.
+pub fn rest_detect(ui: &egui::Ui, doc: &mut crate::doc::Doc) -> bool {
+    let now = std::time::Instant::now();
+    let (revision, caret) = (doc.editor.revision(), doc.editor.caret());
+    let rest = match doc.rest {
+        Some(r) if r.revision == revision && r.caret == caret => r,
+        _ => Rest {
+            revision,
+            caret,
+            since: now,
+            pending: false,
+        },
+    };
+    let asks = doc.editor.rest_candidate(&doc.maths);
+    let waited = now.duration_since(rest.since);
+    doc.rest = Some(Rest {
+        pending: asks && waited < REST,
+        ..rest
+    });
+    if !asks {
+        return false;
+    }
+    if waited < REST {
+        ui.ctx().request_repaint_after(REST - waited);
+        return false;
+    }
+    let done = doc.editor.maths_after_rest(&mut doc.maths);
+    if done {
+        doc.touched();
+    }
+    done
+}
+
 /// The hint on the empty line of an empty file.
 pub const EMPTY_HINT: &str = "Type text, or start with = or $ for maths";
 

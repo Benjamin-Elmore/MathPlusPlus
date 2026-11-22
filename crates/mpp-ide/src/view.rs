@@ -308,7 +308,10 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 moved |= handle_keys(ui, doc, &pc0, cx, &mut events);
             }
             // Auto-detect: the line the caret just left may read as maths (U12).
-            if focused && crate::page::mode::auto_detect(ui, doc, mark) {
+            if focused
+                && (crate::page::mode::auto_detect(ui, doc, mark)
+                    || crate::page::mode::rest_detect(ui, doc))
+            {
                 moved = true;
             }
             if cx.active && !focused {

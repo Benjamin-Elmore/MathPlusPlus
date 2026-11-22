@@ -257,7 +257,10 @@ pub fn run(h: &mut H, steps: &[Step], mut check: impl FnMut(&Step, FrameKind, &S
                 let mut last: Option<String> = None;
                 loop {
                     std::thread::sleep(Duration::from_millis(15));
-                    let done = h.state().doc().is_some_and(|d| d.page_is_current());
+                    let done = h
+                        .state()
+                        .doc()
+                        .is_some_and(|d| d.page_is_current() && !d.rest_pending());
                     let quiet = !h.ctx.has_requested_repaint() || same >= 5;
                     if (start.elapsed() >= debounce && done && quiet)
                         || start.elapsed() > PAUSE_LIMIT
@@ -340,8 +343,13 @@ impl Watch {
         // The caret is drawn on the line where the next character goes, below
         // every line that ends before it (at the end of the file, when the
         // person only ever types there).
+        // (A last line that became maths after a rest keeps the caret before
+        // its closing ` $$`.)
         if self.at_end {
-            assert_eq!(s.caret, s.text.len(), "the caret left the end after {at}");
+            assert!(
+                s.caret == s.text.len() || &s.text[s.caret..] == " $$",
+                "the caret left the end after {at}"
+            );
         }
         let caret_at = s
             .caret_at

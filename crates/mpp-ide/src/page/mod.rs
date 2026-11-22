@@ -232,12 +232,31 @@ impl Canvas {
             self.hits.push(h);
         }
         if with_stops {
-            for s in dl.caret_stops() {
+            let stops = dl.caret_stops();
+            for s in &stops {
                 self.stops.push(CaretStop {
                     x: s.x + dx,
                     top: s.top + dy,
                     bottom: s.bottom + dy,
                     offset: s.offset,
+                });
+            }
+            // The end of a line ending in `=` (`1 + 2 =`): the relation sign has
+            // no box of its own, so the stop after it is where its answer starts,
+            // less the space after the sign.
+            for h in dl.hits.iter().filter(|h| h.kind == HitKind::Result) {
+                if stops.iter().any(|s| s.offset >= h.span.start) {
+                    continue;
+                }
+                let Some(last) = stops.last() else {
+                    continue;
+                };
+                let x = (h.rect.x - dl.font_size * 5.0 / 18.0).max(last.x);
+                self.stops.push(CaretStop {
+                    x: x + dx,
+                    top: last.top + dy,
+                    bottom: last.bottom + dy,
+                    offset: h.span.start,
                 });
             }
         }
