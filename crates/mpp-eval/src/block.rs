@@ -355,6 +355,16 @@ fn unit_word(letter: &str) -> String {
     format!("{word} ({letter})")
 }
 
+/// A unit in words for a message (`metres`, `seconds`), or as written when it has
+/// no one-word name (`m/s`, `cm`).
+fn unit_words(text: &str) -> String {
+    let word = unit_word(text);
+    match word.strip_suffix(&format!(" ({text})")) {
+        Some(w) => w.to_string(),
+        None => text.to_string(),
+    }
+}
+
 /// The warning for a call nothing evaluated, with the spelling Math++ reads when the
 /// name is a common one from other systems.
 /// The answer to a relation between closed sides: `true ✓` or `false ✗`, with the
@@ -956,10 +966,43 @@ impl Run<'_, '_> {
             }
             mpp_syntax::math::visit::children(n, &mut |c| walk(c, out));
         }
+        // A check whose other side carries units (`R = 35.3 m`, R in metres): the
+        // unit is clearly what was meant, so nothing is said (E-F2).
+        let sides = match &line.statement {
+            Statement::Check { lhs, rhs } => Some((lhs, rhs)),
+            Statement::Relation(n) => match &n.kind {
+                NodeKind::Relation { first, rest } => match rest.as_slice() {
+                    [(SynRel::Eq | SynRel::Approx, rhs)] => Some((&**first, rhs)),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        };
+        let mut quiet: Vec<Span> = Vec::new();
+        if let Some((a, b)) = sides {
+            let has_units = |run: &Self, n: &Node| {
+                run.lower(n, &bound)
+                    .and_then(|e| run.resolve(&e, &Locals::new(), n.span))
+                    .is_ok_and(|v| crate::units_wire::contains_units(&v))
+            };
+            let quantity = |n: &Node| matches!(n.kind, NodeKind::Quantity { .. });
+            if quantity(b) && !quantity(a) && has_units(self, a) {
+                quiet.push(b.span);
+            }
+            if quantity(a) && !quantity(b) && has_units(self, b) {
+                quiet.push(a.span);
+            }
+        }
         let mut quantities = Vec::new();
         for r in roots {
             walk(r, &mut quantities);
         }
+        quantities.retain(|q| {
+            !quiet
+                .iter()
+                .any(|s| s.start <= q.span.start && q.span.end <= s.end)
+        });
         for q in quantities {
             let NodeKind::Quantity { value, unit } = &q.kind else {
                 continue;
@@ -1141,11 +1184,20 @@ impl Run<'_, '_> {
                 kind: def_kind,
             },
         );
+        // A closed quantity (`R = v² sin(2θ)/g` with v and g in units) shows its
+        // value as a plain number does (E-F4).
+        let closed_quantity = || {
+            crate::units_wire::contains_units(&shown)
+                && matches!(
+                    crate::units_wire::fold(&shown),
+                    Ok(crate::units_wire::Folded::Known { q, certain: true, .. })
+                        if q.value.is_constant() && approximate(&q.value).is_ok()
+                )
+        };
         lr.shows_value = !auto::is_literal(body)
-            && shown.is_constant()
             && !contains_holder(&shown)
             && shown.to_latex() != value.to_latex()
-            && approximate(&shown).is_ok();
+            && (shown.is_constant() && approximate(&shown).is_ok() || closed_quantity());
         lr.input = Some(value);
         lr.decimal_input = decimal_input;
         if self.present_units(&mut lr, &shown, QueryMode::Exact, body.span) {
@@ -2030,6 +2082,12 @@ impl Run<'_, '_> {
                         verdict = v;
                     }
                 }
+                // With units, the same rules for the number in the unit written (E-F1).
+                if verdict.passed() != Some(true) && !exact {
+                    if let Some(v) = self.unit_check(&l, &r, lhs, rhs, false) {
+                        verdict = v;
+                    }
+                }
                 lr.left = left_decimal(&l);
                 self.failed_check(line.span, &verdict);
                 lr.verdict = Some(verdict);
@@ -2222,6 +2280,105 @@ impl Run<'_, '_> {
         }
     }
 
+    /// A check where a side carries units (E-F1): `R = 35.3 m`, `R = 3530 cm`,
+    /// `R ≈ 35 m`. The value is converted to the unit written on the right, then the
+    /// rules for a written number apply to the number: a decimal passes when the
+    /// value rounds to it, a whole number with zeros at its end (`3530`) when it
+    /// rounds to its last nonzero digit, any other whole number only when equal; `≈`
+    /// (`approx`) rounds to the number, or agrees to 3 significant figures with an
+    /// expression. A unit on one side only, or of another kind, is a ✗ with the
+    /// reason in words. None when no side carries units or a value has free names.
+    fn unit_check(
+        &self,
+        l: &Expr,
+        r: &Expr,
+        lhs: &Node,
+        rhs: &Node,
+        approx: bool,
+    ) -> Option<crate::check::Verdict> {
+        use crate::check::{unit_tolerance, written_number, Verdict};
+        use crate::units_wire::{contains_units, fold, Folded};
+        if !contains_units(l) && !contains_units(r) {
+            return None;
+        }
+        let known = |e: &Expr| match fold(e) {
+            Ok(Folded::Known {
+                q, certain: true, ..
+            }) => Some(q),
+            _ => None,
+        };
+        let (ql, qr) = (known(l)?, known(r)?);
+        let text = |n: &Node| {
+            self.inputs
+                .source
+                .get(n.span.start..n.span.end)
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
+        let (name, written) = (text(lhs), text(rhs));
+        let number = match &rhs.kind {
+            NodeKind::Quantity { value, .. } => text(value),
+            _ => written.clone(),
+        };
+        let words = |u: &mpp_core::units::Unit| unit_words(&u.text());
+        if !ql.same_dimension(&qr) {
+            let why = match (ql.unit.is_one(), qr.unit.is_one()) {
+                (false, true) => format!("{name} is in {}; {written} has no unit", words(&ql.unit)),
+                (true, false) => format!("{name} has no unit; {written} is in {}", words(&qr.unit)),
+                _ => format!(
+                    "{name} is in {}; {written} is in {}",
+                    words(&ql.unit),
+                    words(&qr.unit)
+                ),
+            };
+            return Some(Verdict::Mismatch(why));
+        }
+        let converted = ql.convert_to(&qr.unit).ok()?;
+        let f = |e: &Expr| {
+            e.eval_f64(&mpp_core::eval::EmptyEnv)
+                .ok()
+                .filter(|v| v.is_finite())
+        };
+        let value = f(&converted.value)?;
+        let unit = qr.unit.text();
+        let shown = |v: &Expr| {
+            let d = left_decimal(v).unwrap_or_else(|| format!("{}", f(v).unwrap_or(f64::NAN)));
+            if qr.unit.is_one() {
+                d
+            } else {
+                format!("{d} {unit}")
+            }
+        };
+        let pass = match written_number(&number) {
+            // `R ≈ 3530 cm` is never stricter than `R = 3530 cm`.
+            Some((w, places)) if approx => {
+                (value - w).abs() <= unit_tolerance(w, places) * (1.0 + 1e-9) + 1e-12
+            }
+            Some((w, 0)) if unit_tolerance(w, 0) <= 0.5 => {
+                let exact = (&converted.value - &qr.value).simplify();
+                exact.is_zero() || (value - w).abs() <= 1e-12 * w.abs().max(1.0)
+            }
+            Some((w, places)) => {
+                (value - w).abs() <= unit_tolerance(w, places) * (1.0 + 1e-9) + 1e-12
+            }
+            None if approx => crate::check::agrees_roughly(value, f(&qr.value)?),
+            None => return None,
+        };
+        Some(if pass {
+            Verdict::Rounds {
+                value: shown(&converted.value),
+                written,
+            }
+        } else {
+            Verdict::Fails {
+                at: vec![],
+                lhs: shown(&converted.value),
+                rhs: written,
+            }
+        })
+    }
+
     /// `Verdict::Rounds` when the closed value `l` rounds to the number written as
     /// `rhs` (`35.3`), which must have at least `min_places` digits after its point.
     fn rounds_to_written(
@@ -2308,13 +2465,17 @@ impl Run<'_, '_> {
                     v.node(),
                     ExprNode::Bool(_) | ExprNode::Relation(..) | ExprNode::Logic(..)
                 )
-                && v.eval_f64(&mpp_core::eval::EmptyEnv)
-                    .is_ok_and(f64::is_finite);
+                && (v.eval_f64(&mpp_core::eval::EmptyEnv)
+                    .is_ok_and(f64::is_finite)
+                    // `R ≈ 35 m` (E-F1): a value with units is closed too.
+                    || op.is_none() && crate::units_wire::contains_units(&v));
             closed.then_some(v)
         };
         let (Some(l), Some(r)) = (side(self, first), side(self, rhs)) else {
             return false;
         };
+        let with_units = op.is_none()
+            && (crate::units_wire::contains_units(&l) || crate::units_wire::contains_units(&r));
         let mut lr = LineResult::new(line.span, LineKind::Check);
         lr.input = Some(match op {
             Some(op) => Expr::relation(op, l.clone(), r.clone()),
@@ -2325,6 +2486,12 @@ impl Run<'_, '_> {
                 &Expr::relation(op, l.clone(), r.clone()),
                 &Expr::new(ExprNode::Bool(true)),
             ),
+            None if with_units => match self.unit_check(&l, &r, first, rhs, true) {
+                Some(v) => v,
+                None => {
+                    return false;
+                }
+            },
             None => {
                 let fails = || crate::check::Verdict::Fails {
                     at: vec![],

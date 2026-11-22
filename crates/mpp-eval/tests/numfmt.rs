@@ -310,3 +310,19 @@ fn applying_a_format_never_changes_values() {
     assert_eq!(line.plain.as_deref(), Some("0.500"));
     assert_eq!(line.value.as_ref().unwrap().expr().to_string(), "1/2");
 }
+
+/// E8: under `%digits 4` a definition keeps its exact form unpadded
+/// (`20000√3/981`, never `20000√3.000/981`) and its decimal takes the digits.
+#[test]
+fn digits_leave_a_definitions_exact_form_alone() {
+    let ev =
+        run("%digits 4\n\n$$ g = 9.81 $$\n\n$$ v = 20 $$\n\n$$ R = v^{2} \\sin(\\pi/3)/g $$\n");
+    let r = ev
+        .blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .last()
+        .expect("R");
+    assert_eq!(r.latex.as_deref(), Some("\\frac{20000 \\sqrt{3}}{981}"));
+    assert_eq!(r.approx.as_deref(), Some("35.31"));
+}

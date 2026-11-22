@@ -37,6 +37,10 @@ pub enum Verdict {
     /// half a unit of its last written digit (35.31194307 rounds to 35.3). Also the
     /// pass of an approximate check (`R ≈ 35.3`).
     Rounds { value: String, written: String },
+    /// The two sides can never be equal, for the reason given in words: `R` in
+    /// metres checked against a number with no unit (`R is in metres; 35.3 has no
+    /// unit`).
+    Mismatch(String),
     /// Neither a proof nor a numeric check was possible.
     Unknown(String),
 }
@@ -49,7 +53,7 @@ impl Verdict {
             | Verdict::Holds { .. }
             | Verdict::Agrees { .. }
             | Verdict::Rounds { .. } => Some(true),
-            Verdict::Fails { .. } => Some(false),
+            Verdict::Fails { .. } | Verdict::Mismatch(_) => Some(false),
             Verdict::Unknown(_) => None,
         }
     }
@@ -85,17 +89,20 @@ impl Verdict {
             Verdict::Agrees { digits } => {
                 format!("≈ (checked numerically to {digits} digits, not proved)")
             }
-            // How close counts, in the numbers of the line (T-N5): `35` is ±0.5.
-            Verdict::Rounds { value, written } => match written_number(written) {
-                Some((_, places)) => {
-                    let half = 0.5 * 10f64.powi(-i32::try_from(places).unwrap_or(0));
-                    format!(
-                        "✓ ({value} rounds to {written}: within ±{half:.prec$})",
-                        prec = places + 1
-                    )
+            // How close counts, in the numbers of the line (T-N5): `35` is ±0.5,
+            // `35.3 m` ±0.05 m, `3530 cm` ±5 cm.
+            Verdict::Rounds { value, written } => match written_tolerance(written) {
+                Some((half, prec, unit)) => {
+                    let unit = if unit.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" {unit}")
+                    };
+                    format!("✓ ({value} rounds to {written}: within ±{half:.prec$}{unit})")
                 }
                 None => format!("✓ ({value} rounds to {written})"),
             },
+            Verdict::Mismatch(why) => format!("✗ because {why}"),
             Verdict::Unknown(why) => format!("? ({why})"),
         }
     }
@@ -119,6 +126,39 @@ pub fn written_number(text: &str) -> Option<(f64, usize)> {
         .ok()?;
     let neg = body.len() != t.len();
     Some((if neg { -value } else { value }, frac.len()))
+}
+
+/// How close a value must be to pass a check against `written` (a number, with or
+/// without a unit after it): half a unit of its last written digit, and the digits
+/// to show that with. A whole number with a unit and zeros at its end (`3530 cm`)
+/// is read to its last nonzero digit (±5 cm); see [`unit_tolerance`].
+pub fn written_tolerance(written: &str) -> Option<(f64, usize, &str)> {
+    let t = written.trim();
+    let (num, unit) = t.split_once(' ').unwrap_or((t, ""));
+    let (value, places) = written_number(num)?;
+    let unit = unit.trim();
+    if !unit.is_empty() && places == 0 {
+        let half = unit_tolerance(value, 0);
+        return Some((half, usize::from(half < 1.0), unit));
+    }
+    let half = 0.5 * 10f64.powi(-i32::try_from(places).unwrap_or(0));
+    Some((half, places + 1, unit))
+}
+
+/// Half a unit of the last significant digit of a number written with a unit:
+/// `35.3` ±0.05, `35` ±0.5, `3530` ±5 (the zeros at the end of a whole number
+/// only place the point).
+pub fn unit_tolerance(written: f64, places: usize) -> f64 {
+    if places > 0 || written == 0.0 || written.fract() != 0.0 {
+        return 0.5 * 10f64.powi(-i32::try_from(places).unwrap_or(0));
+    }
+    let mut zeros = 0;
+    let mut n = written.abs();
+    while n >= 10.0 && (n % 10.0) == 0.0 {
+        n /= 10.0;
+        zeros += 1;
+    }
+    0.5 * 10f64.powi(zeros)
 }
 
 /// True when `value` rounds to the number written with `places` digits after the
@@ -451,6 +491,7 @@ fn check_entries(lhs: &Expr, rhs: &Expr, a: &[Expr], b: &[Expr]) -> Verdict {
                     rhs,
                 }
             }
+            Verdict::Mismatch(why) => return Verdict::Mismatch(format!("entry {}: {why}", k + 1)),
             Verdict::Unknown(why) => return Verdict::Unknown(format!("entry {}: {why}", k + 1)),
         }
     }

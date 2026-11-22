@@ -130,6 +130,7 @@ fn verdict_latex(v: &mpp_eval::Verdict) -> String {
         mpp_eval::Verdict::Rounds { value, written } => {
             format!("\\text{{{value} rounds to {written}}}")
         }
+        mpp_eval::Verdict::Mismatch(why) => format!("\\times\\; \\text{{{why}}}"),
         mpp_eval::Verdict::Unknown(_) => "\\text{could not decide}".into(),
     }
 }

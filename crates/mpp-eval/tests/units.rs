@@ -357,3 +357,89 @@ $$ T := \operatorname{solve}_t (y(t) = 0, t > 0) \approx ? $$";
     let y = |t: f64| (20.0 + 98.1) * (1.0 - (-0.1 * t).exp()) / 0.1 - 98.1 * t;
     assert!(y(t).abs() < 1e-6 && t > 1.0, "{shown:?}");
 }
+
+/// The verdict of each check line of `src`, as `describe` words it.
+fn verdicts(src: &str) -> Vec<String> {
+    run(src)
+        .blocks
+        .iter()
+        .flat_map(|b| b.values.iter())
+        .filter_map(|l| l.verdict.as_ref().map(|v| v.describe()))
+        .collect()
+}
+
+const RANGE: &str =
+    "$$ g = 9.81 m/s^{2} $$\n\n$$ v = 20 m/s $$\n\n$$ R = v^{2} \\sin(2 \\pi/6)/g $$\n\n";
+
+/// E-F1: a check with units uses the rules of a written number, on the number in
+/// the unit written: R ≈ 35.312 m.
+#[test]
+fn checks_with_units_round_like_plain_numbers() {
+    for (line, mark) in [
+        ("R = 35.3 m", "✓"),
+        ("R = 35.31 m", "✓"),
+        ("R = 3530 cm", "✓"),
+        ("R = 0.0353 km", "✓"),
+        ("R approx 35 m", "✓"),
+        ("R ≈ 35.3 m", "✓"),
+        ("R ≈ 3530 cm", "✓"),
+        ("R = 35.4 m", "✗"),
+        ("R = 35 m", "✗"),
+        ("R = 3540 cm", "✗"),
+        ("R approx 36 m", "✗"),
+    ] {
+        let src = format!("{RANGE}$$ {line} $$\n");
+        let got = verdicts(&src);
+        assert_eq!(got.len(), 1, "{line}: {got:?}");
+        assert!(got[0].starts_with(mark), "{line}: {got:?}");
+    }
+    // The tolerance in the words of the line.
+    let got = verdicts(&format!("{RANGE}$$ R = 35.3 m $$\n"));
+    assert!(got[0].contains("±0.05 m"), "{got:?}");
+    let got = verdicts(&format!("{RANGE}$$ R = 3530 cm $$\n"));
+    assert!(got[0].contains("±5 cm"), "{got:?}");
+}
+
+/// E-F1: a unit on one side only, or of another kind, is a ✗ that says why.
+#[test]
+fn a_missing_or_wrong_unit_says_why() {
+    for (line, why) in [
+        ("R = 35.3", "R is in metres; 35.3 has no unit"),
+        ("R = 35.3 s", "R is in metres; 35.3 s is in seconds"),
+        ("R ≈ 35", "R is in metres; 35 has no unit"),
+    ] {
+        let got = verdicts(&format!("{RANGE}$$ {line} $$\n"));
+        assert_eq!(got.len(), 1, "{line}: {got:?}");
+        assert!(
+            got[0].starts_with('✗') && got[0].contains(why),
+            "{line}: {got:?}"
+        );
+    }
+    let got = verdicts("$$ x = 2 $$\n\n$$ x = 2 m $$\n");
+    assert!(
+        got[0].contains("x has no unit; 2 m is in metres"),
+        "{got:?}"
+    );
+}
+
+/// E-F2: `R = 35.3 m` with R in metres is clearly the unit: no "is read as" warning,
+/// so the check's own reason is what the line says.
+#[test]
+fn a_unit_in_a_check_of_a_quantity_is_not_questioned() {
+    for line in ["R = 35.3 m", "R ≈ 35 m", "R = 35.4 m"] {
+        let ev = run(&format!("{RANGE}$$ {line} $$\n"));
+        let read: Vec<String> = ev
+            .all_diagnostics()
+            .iter()
+            .map(|d| d.message.clone())
+            .filter(|m| m.contains("is read as"))
+            .collect();
+        assert!(read.is_empty(), "{line}: {read:?}");
+    }
+    // Still said where the letter could be a variable: nothing else has units.
+    let ev = run("$$ x = 2 $$\n\n$$ x = 2 m $$\n");
+    assert!(ev
+        .all_diagnostics()
+        .iter()
+        .any(|d| d.message.contains("is read as")));
+}

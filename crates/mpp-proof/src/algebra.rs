@@ -249,7 +249,7 @@ fn direct(claim: &Claim, defs: &[Def], k: &Knowledge) -> Attempt {
                 LineOut::Verdict(Verdict::Holds { points }) => {
                     Attempt::Holds(format!("agrees at {points} random points"))
                 }
-                LineOut::Verdict(v @ Verdict::Fails { .. }) => {
+                LineOut::Verdict(v @ (Verdict::Fails { .. } | Verdict::Mismatch(_))) => {
                     Attempt::Fails(v.describe().trim_start_matches("✗ ").to_string())
                 }
                 LineOut::Verdict(Verdict::Agrees { digits }) => {

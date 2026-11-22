@@ -306,6 +306,35 @@ fn present(lr: &LineResult, fmt: Option<&NumberFormat>) -> Option<Presented> {
                 return Some(exact);
             }
         }
+        // A definition's value (`R = v² sin(2θ)/g = 20000√3/981 ≈ 35.31`): the same,
+        // whatever the style, as the definition shows its exact form beside the
+        // decimal.
+        if mode.is_none()
+            && f.precision != Precision::Default
+            && f.complex == ComplexForm::Rectangular
+            && e.is_constant()
+            && !e.has_float()
+            && !contains_holder(&e)
+            && units_wire::present(&e).ok().flatten().is_none()
+            && e.as_number().is_none_or(Number::is_exact)
+        {
+            let mut plain = *f;
+            plain.precision = Precision::Default;
+            plain.style = Style::Exact;
+            let exact = with_format(&plain, || shown(lr, &e, mode, Some(&plain)));
+            if let Some(mut exact) = exact {
+                if lr.approx.is_some() {
+                    // The decimal as an answer to `R =` shows it under `f`.
+                    let mut decimal = *f;
+                    decimal.style = Style::Decimal;
+                    let digits = with_format(&decimal, || {
+                        shown(lr, &e, Some(QueryMode::Exact), Some(&decimal))
+                    });
+                    exact.approx = digits.and_then(|d| d.approx.or(d.text)).or(exact.approx);
+                }
+                return Some(exact);
+            }
+        }
     }
     run(&|| shown(lr, &e, mode, fmt))
 }
@@ -548,6 +577,12 @@ impl LineResult {
             self.text = text;
             self.latex = latex;
             if matches!(self.kind, LineKind::Query { .. }) {
+                self.approx = approx;
+            } else if matches!(self.kind, LineKind::Definition { .. })
+                && self.approx.is_some()
+                && approx.is_some()
+            {
+                // A definition's decimal takes the file's digits too (E8).
                 self.approx = approx;
             }
             self.plain = plain;

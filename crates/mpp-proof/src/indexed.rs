@@ -637,7 +637,7 @@ fn instances(claim: &FamilyClaim<'_>, k: &Knowledge) -> ClaimOutcome {
             );
             match cas::run_one(&inst.defs, line) {
                 LineOut::Verdict(Verdict::Proved) => symbolic.push(size),
-                LineOut::Verdict(v @ Verdict::Fails { .. }) => {
+                LineOut::Verdict(v @ (Verdict::Fails { .. } | Verdict::Mismatch(_))) => {
                     return wrong_or_unverified(
                         claim,
                         k,

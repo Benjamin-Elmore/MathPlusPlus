@@ -245,7 +245,7 @@ fn error_content(d: &mpp_syntax::Diagnostic) -> Content {
 }
 
 /// What the hover over a check says about checks against numbers.
-pub const CHECK_RULE: &str = "\\text{A check against a number passes when the value rounds to it as written: 35.31 passes R = 35.3 (within half a unit of the last digit). Write ≈ or approx for a looser check, to 3 significant figures.}";
+pub const CHECK_RULE: &str = "\\text{A check against a number passes when the value rounds to it as written: 35.31 passes R = 35.3 (within half a unit of the last digit). With a unit, the value is first converted to it: R = 3530 cm checks R in centimetres. Write ≈ or approx for a looser check, to 3 significant figures.}";
 
 /// The slots of a display maths block, line by line.
 pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot> {
