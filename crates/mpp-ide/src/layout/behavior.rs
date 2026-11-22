@@ -155,6 +155,7 @@ impl Behavior<Pane> for AppBehavior<'_> {
             Pane::Steps => self.app.steps_tile(ui, &theme),
             Pane::Library => self.app.library_tile(ui, &theme),
             Pane::Tutorial => self.app.tutorial_tile(ui, &theme),
+            Pane::CheatSheet => self.app.cheat_sheet_tile(ui, &theme),
         }
         if self.many_tiles && self.focused == Some(tile_id) {
             ui.painter().rect_stroke(

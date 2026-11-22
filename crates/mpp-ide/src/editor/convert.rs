@@ -251,7 +251,14 @@ impl Editor {
             }
         }
         self.insert_text(&ch.to_string());
+        let typed = self.revision;
         self.after_maths_char(ch, cx);
+        if self.revision != typed {
+            self.fire_hint(
+                crate::hints::Hint::Conversion,
+                "Converted. Ctrl+Z gives back exactly what you typed.",
+            );
+        }
     }
 
     /// The innermost template at `caret` and the box holding it.

@@ -6,6 +6,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod access;
 mod app;
 pub mod autosave;
 pub mod copy;
@@ -19,7 +20,10 @@ pub mod explorer;
 pub mod export;
 pub mod figure;
 pub mod files;
+pub mod help;
+pub mod hints;
 pub mod history;
+pub mod hover;
 pub mod insert;
 pub mod layout;
 pub mod library;

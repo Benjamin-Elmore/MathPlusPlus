@@ -130,6 +130,13 @@ impl Parser<'_> {
         self.peek().is_none_or(|t| matches!(t, Tok::NewLine))
     }
 
+    /// True at an `=` that ends the line (`1.32 + 5 =`): a question asked without
+    /// the `?`, read like `= ?`.
+    pub(super) fn open_query_ahead(&self) -> bool {
+        matches!(self.peek(), Some(Tok::Rel(RelOp::Eq)))
+            && self.peek_n(1).is_none_or(|t| matches!(t, Tok::NewLine))
+    }
+
     /// One statement line with its clauses, recovering at `,` or the line end.
     fn parse_line(&mut self) -> Line {
         let start = self.cur_span().start;
@@ -313,6 +320,14 @@ impl Parser<'_> {
                 let rhs = self.parse_body("the right side of the check");
                 self.congruence_check(lhs, rhs)
             }
+            Some(Tok::Rel(RelOp::Eq)) if self.open_query_ahead() => {
+                self.bump();
+                Statement::Query {
+                    expr: lhs,
+                    mode: QueryMode::Exact,
+                    steps: false,
+                }
+            }
             Some(Tok::Rel(op @ (RelOp::Eq | RelOp::Approx)))
                 if matches!(self.peek_n(1), Some(Tok::Question)) =>
             {
@@ -373,6 +388,10 @@ impl Parser<'_> {
 
     /// `≈ ?` or `= ?` after a definition: show the value just defined.
     fn definition_query(&mut self) -> Option<QueryMode> {
+        if self.open_query_ahead() {
+            self.bump();
+            return Some(QueryMode::Exact);
+        }
         let mode = match (self.peek(), self.peek_n(1)) {
             (Some(Tok::Rel(RelOp::Eq)), Some(Tok::Question)) => QueryMode::Exact,
             (Some(Tok::Rel(RelOp::Approx)), Some(Tok::Question)) => QueryMode::Approx,

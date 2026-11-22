@@ -171,6 +171,8 @@ pub fn follow_link(doc: &mut Doc, target: &crate::page::LinkTarget) {
             doc.want_x = None;
         }
         crate::page::LinkTarget::Fold(id) => doc.show_mut().toggle_fold(*id),
+        // Answers need the clipboard and the modifiers: see `answers::click`.
+        crate::page::LinkTarget::Answer(_) => {}
     }
 }
 
@@ -252,6 +254,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                         .is_some_and(|p| r.contains(p))
             });
             let mut moved = false;
+            let mark = doc.editor.line_mark();
             let step_click = ui
                 .input(|i| i.pointer.primary_pressed())
                 .then(|| resp.interact_pointer_pos().or_else(|| resp.hover_pos()))
@@ -272,7 +275,12 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 let key = egui::Id::unique("mpp-link-frame");
                 if ui.data(|d| d.get_temp::<u64>(key)) != Some(frame) {
                     ui.data_mut(|d| d.insert_temp(key, frame));
-                    follow_link(doc, &target);
+                    if let crate::page::LinkTarget::Answer(text) = &target {
+                        let insert = ui.input(|i| i.modifiers.command);
+                        crate::page::answers::click(ui.ctx(), doc, text, insert);
+                    } else {
+                        follow_link(doc, &target);
+                    }
                 }
                 moved = true;
             } else if bulb_clicked {
@@ -298,6 +306,10 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             }
             if focused && !cx.insert.menu.open && !cx.diag.menu_open() {
                 moved |= handle_keys(ui, doc, &pc0, cx, &mut events);
+            }
+            // Auto-detect: the line the caret just left may read as maths (U12).
+            if focused && crate::page::mode::auto_detect(ui, doc, mark) {
+                moved = true;
             }
             if cx.active && !focused {
                 f8_from_elsewhere(ui, doc, &pc0, cx, resp.id);
@@ -346,6 +358,20 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 }
             }
 
+            // The answer and error cards (U25): clickable, so they outlive the hover.
+            let shown_help = !cx.diag.menu_open()
+                && crate::hover::cards(
+                    ui,
+                    doc,
+                    &pc,
+                    origin,
+                    &theme,
+                    cx.mode,
+                    cx.size,
+                    cx.diag.peek,
+                    &mut events,
+                    resp.hovered(),
+                );
             if resp.hovered() {
                 let over_bulb = bulb_target(doc, &pc, origin)
                     .is_some_and(|(r, _)| resp.hover_pos().is_some_and(|p| r.contains(p)));
@@ -357,7 +383,10 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 } else {
                     CursorIcon::Text
                 });
-                if !cx.diag.menu_open() && !proof_mark_card(ui, &pc, origin, &theme, cx.size) {
+                if !cx.diag.menu_open()
+                    && !proof_mark_card(ui, &pc, origin, &theme, cx.size)
+                    && !shown_help
+                {
                     hover_card(ui, doc, &pc, origin, &theme, cx);
                     verdict_card(ui, doc, &pc, origin, &theme, cx.size);
                     link_card(ui, &pc, origin, &theme, cx.size);
@@ -983,6 +1012,11 @@ fn insert_menu(
             doc.touched();
             ui.memory_mut(|m| m.request_focus(page_id));
         }
+        insert::menu::Outcome::Insert { id, .. } if id == crate::page::mode::MATHS_LINE => {
+            make_maths(doc, doc.editor.caret());
+            cx.insert.settings.touch(&id);
+            ui.memory_mut(|m| m.request_focus(page_id));
+        }
         insert::menu::Outcome::Insert { id, knobs } => {
             if let Some(t) = insert::find(&id) {
                 let caret = doc.editor.caret();
@@ -1081,6 +1115,9 @@ fn paint_page(
     painter.rect_filled(painter.clip_rect(), 0.0, c32(theme.background));
     let page = &pc.page;
     let off = origin.to_vec2();
+    let caret = focused.then(|| doc.editor.caret());
+    crate::page::mode::paint_maths(painter, page, origin, &cx.mode.palette(), cx.size, caret);
+    crate::access::annotate(ui, page, doc.editor.text(), origin);
     if let Some(span) = doc.highlight {
         if let Some(r) = page.rect_of_span(span) {
             let c = c32(cx.mode.palette().highlight);
@@ -1126,6 +1163,11 @@ fn paint_page(
         }
         let at = Pos2::new(origin.x, top);
         paint_display_list(painter, &b.dl, at);
+    }
+    // In maths, the part holding the caret is boxed, its structure more faintly (U14).
+    if let Some(c) = caret.filter(|&c| page.in_math(c)) {
+        let pal = cx.mode.palette();
+        crate::page::caret_path::paint_focus(painter, page, &pc.doc, c, origin, &pal);
     }
     // Problems: underlines under the typeset element, a bar in the margin,
     // the import summaries and the bulb of the caret's problem.
@@ -1199,6 +1241,10 @@ fn paint_page(
             c32(theme.placeholder_label),
         );
     }
+    // An empty file says how to start (U12).
+    if focused {
+        crate::page::mode::paint_empty_hint(painter, doc, page, origin, theme, cx.size);
+    }
     // The one-time hint of the last edit, under the caret.
     if let (Some(h), Some(s)) = (doc.editor.hint(), page.caret_stop(doc.editor.caret())) {
         let at = Pos2::new(origin.x + s.x + 12.0, origin.y + s.bottom + 6.0);
@@ -1215,12 +1261,16 @@ fn paint_page(
     if focused {
         if let Some(s) = page.caret_stop_on(doc.editor.caret(), doc.caret_side) {
             let x = origin.x + s.x;
+            // In maths the caret takes the maths colour and is a little wider.
+            let maths = page.in_math(doc.editor.caret());
+            let color =
+                crate::page::mode::caret_color(page, doc.editor.caret(), &cx.mode.palette());
             painter.line_segment(
                 [
                     Pos2::new(x, origin.y + s.top),
                     Pos2::new(x, origin.y + s.bottom),
                 ],
-                Stroke::new(1.6, c32(theme.text)),
+                Stroke::new(if maths { 2.0 } else { 1.6 }, color),
             );
         }
     }
@@ -1245,6 +1295,16 @@ fn handle_pointer(
         return false;
     };
     let local = pos - origin.to_vec2();
+    if pressed && resp.hovered() && !shift {
+        // A click on a ∑ marker flips its line between maths and prose.
+        let size = pc.page.blocks.first().map_or(16.0, |b| b.dl.font_size);
+        if let Some(band) = crate::page::mode::marker_at(&pc.page, local, size) {
+            if doc.editor.flip_maths(&mut doc.maths, band.at) {
+                doc.touched();
+            }
+            return true;
+        }
+    }
     if pressed && resp.hovered() {
         if let Some((o, side)) = pc.page.side_at(local) {
             if command {
@@ -1271,6 +1331,10 @@ fn handle_pointer(
 fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
     let in_math = pc.page.in_math(doc.editor.caret());
     for ch in text.chars().filter(|c| !c.is_control()) {
+        // The closing `$$` of a maths line is stepped over (U12).
+        if doc.editor.maths_before_char(ch) {
+            continue;
+        }
         if in_math && doc.editor.bracket_before(ch) {
             // Brackets (editor/brackets.rs): wrap a selection, fill a ghost closer.
             continue;
@@ -1291,6 +1355,8 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
         doc.editor.before_type(ch);
         doc.editor.insert_text(&ch.to_string());
         doc.editor.after_type(ch);
+        // `$`, `=` or `:=` on an empty line starts a maths line (U12).
+        doc.editor.maths_after_char(&mut doc.maths, ch);
     }
     doc.touched();
     doc.want_x = None;
@@ -1460,6 +1526,10 @@ fn key_pressed(
     let caret = doc.editor.caret();
     let in_math = page.in_math(caret);
     let shift = mods.shift;
+    if mods.alt && !mods.command && key == Key::Equals {
+        // Alt+= (as in Word): this line becomes maths.
+        return make_maths(doc, caret);
+    }
     if !mods.command && !mods.alt {
         use crate::insert::commands::{accept, KeyOutcome};
         match cx.insert.commands.key(key, shift) {
@@ -1535,6 +1605,7 @@ fn key_pressed(
             }
             Key::Enter => return doc.keep_result_at(caret),
             Key::Slash => return toggle_comment(doc),
+            Key::M if !shift => return flip_maths(doc, caret),
             Key::Num0 | Key::Num1 | Key::Num2 | Key::Num3 => {
                 let level = match key {
                     Key::Num1 => 1,
@@ -1691,6 +1762,26 @@ fn key_pressed(
 }
 
 /// Tab outside a tracked template: the next (or previous) empty box on the page.
+/// Alt+= and Insert → Maths line: the caret's line becomes maths (one undo step).
+fn make_maths(doc: &mut Doc, caret: usize) -> bool {
+    let done = doc.editor.make_maths(caret);
+    if done {
+        doc.touched();
+        doc.want_x = None;
+    }
+    done
+}
+
+/// Ctrl+M: flips the caret's line between maths and prose (one undo step).
+fn flip_maths(doc: &mut Doc, caret: usize) -> bool {
+    let done = doc.editor.flip_maths(&mut doc.maths, caret);
+    if done {
+        doc.touched();
+        doc.want_x = None;
+    }
+    done
+}
+
 /// Ctrl+/: comments the current block (or the selected blocks) out, or takes
 /// the comment markers off a note.
 pub fn toggle_comment(doc: &mut Doc) -> bool {
@@ -1831,6 +1922,12 @@ fn hover_card(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, theme: &Theme, c
                     ui.weak(format!(
                         "from {}",
                         crate::explorer::display_name(std::path::Path::new(f))
+                    ));
+                } else {
+                    ui.add_space(2.0);
+                    ui.weak(crate::page::answers::defined_where(
+                        doc.editor.text(),
+                        d.span,
                     ));
                 }
             });

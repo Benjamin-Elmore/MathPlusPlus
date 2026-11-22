@@ -179,3 +179,16 @@ pub fn activity_tutorial(painter: &Painter, rect: Rect, color: Color32) {
     }
     painter.line_segment([mid_top, mid_bottom], st);
 }
+
+/// The cheat sheet's icon: a question mark in a ring.
+pub fn activity_help(painter: &Painter, rect: Rect, color: Color32) {
+    let r = rect.shrink(rect.width() * 0.26);
+    painter.circle_stroke(r.center(), r.width() / 2.0, Stroke::new(1.6, color));
+    painter.text(
+        r.center(),
+        egui::Align2::CENTER_CENTER,
+        "?",
+        egui::FontId::proportional(r.width() * 0.62),
+        color,
+    );
+}

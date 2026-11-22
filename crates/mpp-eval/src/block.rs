@@ -1088,6 +1088,11 @@ impl Run<'_, '_> {
                 kind: def_kind,
             },
         );
+        lr.shows_value = !auto::is_literal(body)
+            && shown.is_constant()
+            && !contains_holder(&shown)
+            && shown.to_latex() != value.to_latex()
+            && approximate(&shown).is_ok();
         lr.input = Some(value);
         lr.decimal_input = decimal_input;
         if self.present_units(&mut lr, &shown, QueryMode::Exact, body.span) {
@@ -1488,6 +1493,7 @@ impl Run<'_, '_> {
     ) {
         let mut lr = LineResult::new(line.span, LineKind::Query { mode, steps });
         lr.noeval = noeval;
+        lr.open = mode == QueryMode::Exact && self.ends_open(line.span);
         lr.decimal_input = mode == QueryMode::Exact && self.uses_decimal(expr);
         let input = match self.lower(expr, s.names) {
             Ok(e) => e,
@@ -2030,7 +2036,75 @@ impl Run<'_, '_> {
         }
     }
 
+    /// True when the line's text ends in a lone `=` (`1.32 + 5 =`, not `= ?`).
+    fn ends_open(&self, span: Span) -> bool {
+        self.inputs
+            .source
+            .get(span.start..span.end)
+            .map(str::trim_end)
+            .is_some_and(|t| t.ends_with('=') && !t.ends_with("=="))
+    }
+
+    /// `x = 5` on a maths line, as coders and calculators write it (U17): a
+    /// definition when `x` is not defined yet and the right side has a value, a
+    /// check (✓ or ✗) when `x` is already defined. True when the line was taken.
+    ///
+    /// A line with clauses (`A = \pi r^2, r = 3`) keeps its old meaning, and so does
+    /// a document with proofs (its statements belong to the proof checker).
+    fn implicit_definition(&mut self, line: &Line, node: &Node, s: &Scope) -> bool {
+        if !line.clauses.is_empty() || self.inputs.has_proofs {
+            return false;
+        }
+        let NodeKind::Relation { first, rest } = &node.kind else {
+            return false;
+        };
+        let [(SynRel::Eq, rhs)] = rest.as_slice() else {
+            return false;
+        };
+        let Some(key) = node_key(first) else {
+            return false;
+        };
+        if self.inputs.functions.contains(&key)
+            || self.inputs.ode_unknowns.contains(&key)
+            || self.inputs.sequences.contains(&key)
+            || self.inputs.called.contains(&key)
+        {
+            return false;
+        }
+        match self.view().get(&key, false) {
+            Some(b) if matches!(&*b, Binding::Variable { .. }) => {
+                self.check_line(line, first, rhs, s);
+                true
+            }
+            Some(_) => false,
+            None => {
+                let Ok(e) = self.lower(rhs, s.names) else {
+                    return false;
+                };
+                let closed = self.substituted(&e, s.locals).is_some_and(|v| {
+                    v.free_symbols().is_empty()
+                        && !matches!(
+                            v.node(),
+                            ExprNode::Bool(_) | ExprNode::Relation(..) | ExprNode::Logic(..)
+                        )
+                });
+                if !closed {
+                    return false;
+                }
+                let before = self.result.values.len();
+                self.define_variable(line, &key, first.span, DefKind::Assign, rhs, s);
+                if let Some(lr) = self.result.values.get_mut(before) {
+                    lr.implicit = true;
+                }
+                true
+            }
+        }
+    }
+
     fn relation(&mut self, line: &Line, node: &Node, s: &Scope, display: bool, noeval: bool) {
+        if display && !noeval && self.implicit_definition(line, node, s) {
+            return;
+        }
         let mut lr = LineResult::new(line.span, LineKind::Relation);
         lr.noeval = noeval;
         lr.auto_eval = display && !noeval;

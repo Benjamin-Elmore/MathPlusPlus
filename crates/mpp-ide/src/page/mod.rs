@@ -6,10 +6,13 @@
 //! list of caret stops mapping screen positions to source offsets. Prose stops sit
 //! between visible characters, so hidden markup (`#`, `*`, `$$`) is never a stop.
 
+pub mod answers;
 pub(crate) mod blank;
 pub(crate) mod build;
+pub mod caret_path;
 mod flow;
 mod mathcache;
+pub mod mode;
 pub mod paper;
 pub mod pin;
 
@@ -136,6 +139,9 @@ pub enum LinkTarget {
     Jump(Span),
     /// Fold or unfold a note.
     Fold(BlockId),
+    /// An answer in its slot: a click copies this text, Ctrl+click inserts it at the
+    /// caret (see [`answers::click`]).
+    Answer(String),
 }
 
 /// A clickable part of the page, with what hovering it shows.
@@ -190,6 +196,9 @@ pub struct Page {
     /// The whitespace between top-level blocks (from the end of one block to the
     /// start of the next, or to the end of the file).
     pub between: Vec<Span>,
+    /// The box of every inline `$…$` maths in prose (its tinted chip), in page
+    /// coordinates.
+    pub chips: Vec<Rect>,
 }
 
 /// Drawing primitives and boxes being collected for one block.
@@ -206,6 +215,8 @@ pub struct Canvas {
     pub spinners: Vec<Pos2>,
     /// Links (block-local).
     pub links: Vec<PageLink>,
+    /// Boxes of inline maths (block-local).
+    pub chips: Vec<Rect>,
 }
 
 impl Canvas {

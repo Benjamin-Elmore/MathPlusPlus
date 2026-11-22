@@ -571,6 +571,7 @@ impl IdeApp {
         }
         let theme = self.mode.theme();
         self.apply_eval_settings();
+        self.hints_in();
 
         egui::Panel::top("menu").show(ui, |ui| self.menu(ui));
         self.status_ui(ui);
@@ -592,6 +593,7 @@ impl IdeApp {
         }
         self.settle_preview();
         self.autosave_tick(&ctx);
+        self.hints_out();
         self.persist_settings();
         if !ctx.input(|i| i.pointer.any_down()) {
             self.persist_layout();

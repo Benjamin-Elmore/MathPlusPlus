@@ -29,17 +29,19 @@ pub enum SideView {
     Variables,
     Problems,
     Tutorial,
+    Help,
 }
 
 impl SideView {
     /// The views in activity-bar order.
-    pub const ALL: [SideView; 6] = [
+    pub const ALL: [SideView; 7] = [
         SideView::Explorer,
         SideView::Search,
         SideView::Outline,
         SideView::Variables,
         SideView::Problems,
         SideView::Tutorial,
+        SideView::Help,
     ];
 
     /// The name on the icon's tooltip and the panel's header.
@@ -51,6 +53,7 @@ impl SideView {
             SideView::Variables => "Definitions",
             SideView::Problems => "Problems",
             SideView::Tutorial => "Tutorial",
+            SideView::Help => "Cheat sheet",
         }
     }
 }
@@ -69,6 +72,8 @@ pub struct Settings {
     pub size: f32,
     pub autosave: AutosaveMode,
     pub tutorial_seen: bool,
+    /// The one-time hints already shown.
+    pub hints: crate::hints::HintBook,
     /// Light, dark or follow Windows (`ThemeChoice::to_stored`).
     pub theme: String,
     /// The Insert menu's settings and recently used items (`InsertSettings::to_stored`).
@@ -101,6 +106,7 @@ impl Default for Settings {
             size: crate::layout::BODY_SIZE,
             autosave: AutosaveMode::Delay,
             tutorial_seen: false,
+            hints: Default::default(),
             theme: crate::theme::ThemeChoice::default().to_stored().into(),
             insert: String::new(),
             copy_latex: false,

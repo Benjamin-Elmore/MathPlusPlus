@@ -130,11 +130,36 @@ impl Parser<'_> {
         None
     }
 
-    fn math(&mut self, i: usize, end: usize) -> Option<(InlineKind, usize)> {
-        if self.byte(i + 1) == Some(b'$') {
-            return None;
+    /// The money rule (as in Typora): a `$` followed by a space, or by nothing,
+    /// never opens maths, and a `$` straight before a digit opens it only when its
+    /// closing `$` hugs the maths (no space before it) and is not itself the
+    /// start of a price (no digit after it). So "costs $5" and "$5 or $10" stay
+    /// text, while `$0$` and `$1 + 1 = ?$` are still maths. `Err(())` when the
+    /// `$` is plain text; `Ok(None)` when it opens maths that never closes.
+    fn math_open(&self, i: usize, end: usize) -> Result<Option<usize>, ()> {
+        match self.byte(i + 1) {
+            Some(b'$') | None => return Err(()),
+            Some(b) if b.is_ascii_whitespace() => return Err(()),
+            _ => {}
         }
-        let Some(close) = self.math_close(i, end) else {
+        let digit = self.byte(i + 1).is_some_and(|b| b.is_ascii_digit());
+        let close = self.math_close(i, end);
+        if digit {
+            let Some(c) = close else { return Err(()) };
+            let hugs = self.char_before(c).is_some_and(|ch| !ch.is_whitespace());
+            let price = self.byte(c + 1).is_some_and(|b| b.is_ascii_digit());
+            if !hugs || price {
+                return Err(());
+            }
+        }
+        Ok(close)
+    }
+
+    fn math(&mut self, i: usize, end: usize) -> Option<(InlineKind, usize)> {
+        let Ok(close) = self.math_open(i, end) else {
+            return None;
+        };
+        let Some(close) = close else {
             self.diags.push(
                 Diagnostic::error(Span::new(i, i + 1), "this `$` is never closed")
                     .expecting(["a closing `$`"]),
@@ -163,7 +188,7 @@ impl Parser<'_> {
     fn skip_atomic(&self, i: usize, end: usize) -> Option<usize> {
         match self.byte(i)? {
             b'\\' => Some((i + 2).min(end)),
-            b'$' if self.byte(i + 1) != Some(b'$') => self.math_close(i, end).map(|c| c + 1),
+            b'$' if self.byte(i + 1) != Some(b'$') => self.math_open(i, end).ok()?.map(|c| c + 1),
             b'`' => self.src.get(i + 1..end)?.find('`').map(|c| i + 1 + c + 1),
             _ => None,
         }

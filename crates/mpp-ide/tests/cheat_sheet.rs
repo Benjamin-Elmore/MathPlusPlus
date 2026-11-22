@@ -1,0 +1,125 @@
+//! The cheat sheet (U23): F1 opens it, it is generated from the forms table,
+//! it is searchable and a click inserts a row at the caret. Driven through the
+//! real app (`ui()` runs `pump()`).
+
+use egui::{Event, Key, Modifiers, PointerButton, Pos2, Vec2};
+use egui_kittest::kittest::Queryable;
+use egui_kittest::Harness;
+use mpp_ide::editor::forms;
+use mpp_ide::settings::SideView;
+use mpp_ide::{theme, IdeApp};
+
+const SIZE: Vec2 = Vec2::new(1280.0, 4000.0);
+
+fn fresh() -> Harness<'static, IdeApp> {
+    let mut app = IdeApp::empty();
+    app.new_file();
+    let mut h = Harness::builder()
+        .with_size(SIZE)
+        .with_max_steps(30)
+        .with_context_setup(theme::install_fonts)
+        .build_ui_state(|ui, app: &mut IdeApp| app.ui(ui), app);
+    h.run_steps(2);
+    h
+}
+
+fn f1(h: &mut Harness<'static, IdeApp>) {
+    h.key_press(Key::F1);
+    h.step();
+    h.run_steps(3);
+}
+
+fn type_text(h: &mut Harness<'static, IdeApp>, s: &str) {
+    for c in s.chars() {
+        h.event(Event::Text(c.to_string()));
+        h.step();
+    }
+    h.run_steps(2);
+}
+
+fn click_at(h: &mut Harness<'static, IdeApp>, pos: Pos2) {
+    h.event(Event::PointerMoved(pos));
+    h.step();
+    for pressed in [true, false] {
+        h.event(Event::PointerButton {
+            pos,
+            button: PointerButton::Primary,
+            pressed,
+            modifiers: Modifiers::NONE,
+        });
+        h.step();
+    }
+    h.run_steps(2);
+}
+
+fn label_of(f: &forms::Form, code: bool) -> String {
+    if code {
+        format!("{}: type {} (code)", f.name, f.code)
+    } else {
+        format!("{}: type {} (LaTeX)", f.name, f.latex)
+    }
+}
+
+#[test]
+fn f1_opens_the_cheat_sheet() {
+    let mut h = fresh();
+    assert!(h.query_by_label("Cheat sheet panel").is_none());
+    f1(&mut h);
+    assert!(h.state().ws.side_visible);
+    assert_eq!(h.state().ws.side_view, SideView::Help);
+    assert!(h.query_by_label("Cheat sheet panel").is_some());
+    h.get_by_label("If you know LaTeX");
+    h.get_by_label("If you write code");
+}
+
+#[test]
+fn every_row_of_the_forms_table_is_on_the_sheet() {
+    let mut h = fresh();
+    f1(&mut h);
+    for f in forms::table() {
+        for code in [false, true] {
+            let l = label_of(f, code);
+            assert!(h.query_by_label(&l).is_some(), "missing row: {l}");
+        }
+    }
+    // The fixed sections are there too.
+    h.get_by_label("Defines a name: x := 5: :=");
+    h.get_by_label("Closes a popup, then leaves the box, then leaves maths: Esc");
+}
+
+#[test]
+fn searching_filters_the_sheet() {
+    let mut h = fresh();
+    f1(&mut h);
+    let frac = forms::table()
+        .iter()
+        .find(|f| f.id == "frac")
+        .expect("frac");
+    let sqrt = forms::table()
+        .iter()
+        .find(|f| f.id == "sqrt")
+        .expect("sqrt");
+    // F1 leaves the search box ready: typing goes there.
+    type_text(&mut h, "fraction");
+    assert!(h.query_by_label(&label_of(frac, true)).is_some());
+    assert!(h.query_by_label(&label_of(sqrt, true)).is_none());
+    assert_eq!(h.state().doc().expect("doc").editor.text(), "");
+}
+
+#[test]
+fn clicking_a_row_inserts_it_at_the_caret() {
+    let mut h = fresh();
+    f1(&mut h);
+    type_text(&mut h, "square root");
+    let sqrt = forms::table()
+        .iter()
+        .find(|f| f.id == "sqrt")
+        .expect("sqrt");
+    let pos = h.get_by_label(&label_of(sqrt, true)).rect().center();
+    click_at(&mut h, pos);
+    let text = h.state().doc().expect("doc").editor.text().to_string();
+    assert!(
+        text.contains(sqrt.writes),
+        "the row was inserted, got {text:?}"
+    );
+}

@@ -31,6 +31,7 @@ pub enum Pane {
     Steps,
     Library,
     Tutorial,
+    CheatSheet,
 }
 
 impl Pane {
@@ -52,6 +53,7 @@ impl Pane {
                 | Pane::Variables
                 | Pane::Problems
                 | Pane::Tutorial
+                | Pane::CheatSheet
         )
     }
 
@@ -64,6 +66,7 @@ impl Pane {
             Pane::Variables => Some(SideView::Variables),
             Pane::Problems => Some(SideView::Problems),
             Pane::Tutorial => Some(SideView::Tutorial),
+            Pane::CheatSheet => Some(SideView::Help),
             _ => None,
         }
     }
@@ -77,6 +80,7 @@ impl Pane {
             SideView::Variables => Pane::Variables,
             SideView::Problems => Pane::Problems,
             SideView::Tutorial => Pane::Tutorial,
+            SideView::Help => Pane::CheatSheet,
         }
     }
 
@@ -93,18 +97,20 @@ impl Pane {
             Pane::Steps => "Steps",
             Pane::Library => "Standard library",
             Pane::Tutorial => "Tutorial",
+            Pane::CheatSheet => "Cheat sheet",
         }
     }
 }
 
 /// The panels that can be opened and closed from the View menu.
-pub const MENU_PANES: [Pane; 8] = [
+pub const MENU_PANES: [Pane; 9] = [
     Pane::Explorer,
     Pane::Search,
     Pane::Outline,
     Pane::Variables,
     Pane::Problems,
     Pane::Tutorial,
+    Pane::CheatSheet,
     Pane::Steps,
     Pane::Library,
 ];

@@ -150,6 +150,10 @@ pub fn name_candidates(src: &str, offset: usize) -> Vec<String> {
             break;
         }
     }
+    // A number written before a name (`2x`) is not part of it.
+    while start < end && src[start..].starts_with(|c: char| c.is_ascii_digit()) {
+        start += 1;
+    }
     if start == end {
         return vec![];
     }
@@ -218,5 +222,7 @@ mod tests {
         let src = "x := alpha_1 + 2";
         assert_eq!(name_candidates(src, 8)[0], "alpha_1");
         assert!(name_candidates("  ", 1).is_empty());
+        // The `x` of `2x` is the name x.
+        assert_eq!(name_candidates("E := 2x + 5", 6)[0], "x");
     }
 }

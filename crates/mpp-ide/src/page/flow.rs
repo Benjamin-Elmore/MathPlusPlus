@@ -339,7 +339,10 @@ pub fn display_name(path: &str) -> String {
 }
 
 fn math_atom(cx: &Cx<'_>, ast: &MathAst, raw: Span, size: f32) -> Atom {
+    // Maths ending in `=` gets its answer chip in room kept after it (U16).
+    let open = super::answers::inline_open(ast, cx.src);
     let opts = LayoutOptions {
+        results: open.map(super::answers::placeholder).into_iter().collect(),
         theme: cx.theme,
         slot_labels: cx
             .slot_labels
@@ -349,15 +352,16 @@ fn math_atom(cx: &Cx<'_>, ast: &MathAst, raw: Span, size: f32) -> Atom {
             .collect(),
         ..LayoutOptions::inline(size)
     };
-    Atom::Math {
-        dl: super::mathcache::layout(
-            cx.src.get(raw.start..raw.end).unwrap_or(""),
-            raw,
-            ast,
-            &opts,
-        ),
-        span: raw,
+    let mut dl = super::mathcache::layout(
+        cx.src.get(raw.start..raw.end).unwrap_or(""),
+        raw,
+        ast,
+        &opts,
+    );
+    if open.is_some() {
+        dl.width += super::answers::inline_room(size);
     }
+    Atom::Math { dl, span: raw }
 }
 
 /// Lays `inlines` out in lines of at most `width` pixels starting at `(x0, y)`.
@@ -575,6 +579,10 @@ fn flow_atoms(
                     let dy = baseline - dl.baseline;
                     let before = canvas.stops.len();
                     canvas.merge(dl, x, dy, true);
+                    canvas.chips.push(egui::Rect::from_min_size(
+                        egui::pos2(x, dy),
+                        egui::vec2(dl.width, dl.total_height()),
+                    ));
                     if canvas.stops.len() == before {
                         canvas.stops.push(CaretStop {
                             x,

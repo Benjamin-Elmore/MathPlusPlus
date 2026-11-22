@@ -729,7 +729,7 @@ fn undefined(span: Span, name: &str, known: &[String], bg: Option<&Background>) 
             }
         }
     }
-    let mut rich = Rich::text("Undefined: ").m(name.to_string()).t(".");
+    let mut rich = Rich::default().m(name.to_string()).t(" isn't defined.");
     let mut options: Vec<Rich> = similar
         .iter()
         .take(2)
