@@ -516,6 +516,74 @@ impl Editor {
         }
     }
 
+    /// After `]` typed in prose: `\[ … \]` on the line becomes a maths line
+    /// `$$ … $$` (T5). Typed in the middle of a sentence, the maths gets a line
+    /// of its own, as display maths does. One undo step. True when it did.
+    pub fn bracket_display(&mut self) -> bool {
+        let c = self.caret;
+        if !self.text[..c].ends_with("\\]") || self.text[..c].ends_with("\\\\]") {
+            return false;
+        }
+        let (ls, le) = line_bounds(&self.text, c);
+        if in_fence(&self.text, ls) || display_marks(&self.text[..ls]).len() % 2 == 1 {
+            return false;
+        }
+        let Some(open) = self.text[ls..c - 2].rfind("\\[").map(|i| ls + i) else {
+            return false;
+        };
+        let content = self.text[open + 2..c - 2].trim().to_string();
+        if content.is_empty() || content.contains('$') {
+            return false;
+        }
+        let before = self.text[ls..open].trim_end().to_string();
+        let after = self.text[c..le].trim_start().to_string();
+        let maths = format!("$$ {content} $$");
+        let mut new = String::new();
+        if !before.is_empty() {
+            new.push_str(&before);
+            new.push_str("\n\n");
+        }
+        new.push_str(&maths);
+        let caret = ls + new.len();
+        if !after.is_empty() {
+            new.push_str("\n\n");
+            new.push_str(&after);
+        }
+        self.maths_step(ls..le, &new, Some(caret));
+        true
+    }
+
+    /// Enter at the end of a prose line that opens `\[` with no `\]` (T5): the
+    /// line becomes a maths line. A lone `\[` becomes an empty maths line with
+    /// the caret in it, and the Enter is used up (`Some(true)`); `\[ x = 1`
+    /// becomes `$$ x = 1 $$` and Enter goes on to start a new line
+    /// (`Some(false)`). None when the line does not open `\[`.
+    pub fn bracket_enter(&mut self) -> Option<bool> {
+        if self.selection().is_some() {
+            return None;
+        }
+        let (ls, le) = line_bounds(&self.text, self.caret);
+        let line = self.text[ls..le].trim();
+        if self.caret != le
+            || !line.starts_with("\\[")
+            || line.contains("\\]")
+            || line.contains('$')
+            || in_fence(&self.text, ls)
+            || display_marks(&self.text[..ls]).len() % 2 == 1
+        {
+            return None;
+        }
+        let content = line[2..].trim().to_string();
+        if content.is_empty() {
+            self.maths_step(ls..le, EMPTY_LINE, Some(ls + 3));
+            return Some(true);
+        }
+        let maths = format!("$$ {content} $$");
+        let end = ls + maths.len();
+        self.maths_step(ls..le, &maths, Some(end));
+        Some(false)
+    }
+
     /// True when the caret is at the end of a closed maths block: just after its
     /// closing `$$` at the end of the line, or after the last thing typed in it
     /// (only spaces before the closing `$$`). The caret is drawn at the end of

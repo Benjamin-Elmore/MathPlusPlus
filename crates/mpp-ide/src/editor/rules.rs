@@ -109,6 +109,17 @@ impl Editor {
     /// new row in display maths, the next item in a list; `soft` (Shift+Enter) is
     /// a plain line break inside the block. One undo step.
     pub fn enter(&mut self, in_math: bool, soft: bool) {
+        // `\[` typed at the start of a line opens a maths line (T5).
+        if !in_math && !soft {
+            match self.bracket_enter() {
+                Some(true) => return,
+                Some(false) => {
+                    self.insert_text("\n\n");
+                    return;
+                }
+                None => {}
+            }
+        }
         // The new line goes after the structure being typed in, not in its box.
         let left = in_math && !soft && self.selection().is_none() && self.leave_templates();
         let at = self.selection().map_or(self.caret, |r| r.start);
@@ -293,6 +304,10 @@ impl Editor {
                     "A number stays a number. For a list, type 1. and a space.",
                 );
             }
+            return;
+        }
+        if ch == ']' {
+            self.bracket_display();
             return;
         }
         if !ch.is_alphabetic() {

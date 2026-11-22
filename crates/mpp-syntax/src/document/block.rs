@@ -140,11 +140,18 @@ fn split_trailing_displays(src: &str, lines: Vec<Line>) -> Vec<Line> {
     let mut out = Vec::with_capacity(lines.len());
     let mut fence = false;
     let mut display = false;
+    let mut bracket = false;
     for line in lines {
         let text = src.get(line.start..line.end).unwrap_or("");
         let t = text.trim_start();
         if fence {
             fence = !t.starts_with("```");
+            out.push(line);
+            continue;
+        }
+        if bracket {
+            // A blank line or the closing `\]` ends the display.
+            bracket = !(t.trim().is_empty() || t.contains("\\]"));
             out.push(line);
             continue;
         }
@@ -165,6 +172,11 @@ fn split_trailing_displays(src: &str, lines: Vec<Line>) -> Vec<Line> {
         }
         if t.starts_with("$$") {
             display = display_marks(text).len() % 2 == 1;
+            out.push(line);
+            continue;
+        }
+        if t.starts_with("\\[") {
+            bracket = !t.contains("\\]");
             out.push(line);
             continue;
         }
@@ -410,7 +422,7 @@ fn block_at_line(
         ));
         return i + 1;
     }
-    if t.starts_with("$$") {
+    if t.starts_with("$$") || bracket_display_at(ctx.src, ts) {
         return display_math(ctx, lines, i, out);
     }
     if t.starts_with("Figure:") {
@@ -598,9 +610,10 @@ fn trim_range(ctx: &Ctx<'_>, span: Span) -> Span {
 /// True when `lines[k]` ends the paragraph that started above it.
 fn interrupts(ctx: &Ctx<'_>, lines: &[Line], k: usize) -> bool {
     let line = lines[k];
-    let (t, _) = trimmed(ctx, line);
+    let (t, ts) = trimmed(ctx, line);
     if t.starts_with("```")
         || t.starts_with("$$")
+        || bracket_display_at(ctx.src, ts)
         || t.starts_with('%')
         || t.starts_with('>')
         || t.starts_with("Figure:")
@@ -881,6 +894,23 @@ fn starts_sentence(ctx: &Ctx<'_>, line: Line) -> bool {
 
 // ---- display maths ---------------------------------------------------------
 
+/// True when a `\[` at `at` opens display maths: it is closed by a `\]` before
+/// the next blank line. An unclosed `\[` is plain text (someone still typing it).
+fn bracket_display_at(src: &str, at: usize) -> bool {
+    let Some(rest) = src.get(at..).and_then(|r| r.strip_prefix("\\[")) else {
+        return false;
+    };
+    for (n, line) in rest.split('\n').enumerate() {
+        if line.contains("\\]") {
+            return true;
+        }
+        if n > 0 && line.trim().is_empty() {
+            return false;
+        }
+    }
+    false
+}
+
 /// True when the line that starts at `p` holds only whitespace.
 fn blank_line_at(src: &str, p: usize, limit: usize) -> bool {
     let rest = src.get(p..limit).unwrap_or("");
@@ -893,13 +923,20 @@ fn display_math(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block
     let open = trimmed(ctx, lines[i]).1;
     let limit = lines[lines.len() - 1].end;
     let content_start = open + 2;
+    // `\[ … \]` is display maths too (pasted LaTeX); the editor writes `$$`.
+    let bracket = src[open..].starts_with("\\[");
 
     let mut k = content_start;
     let mut close = None;
     let mut stop = limit;
     while k < limit {
         match bytes.get(k) {
+            Some(b'\\') if bracket && bytes.get(k + 1) == Some(&b']') => {
+                close = Some(k);
+                break;
+            }
             Some(b'\\') if bytes.get(k + 1) != Some(&b'\n') => k += 2,
+            Some(b'$') if bracket => k += 1,
             Some(b'$') if bytes.get(k + 1) == Some(&b'$') && k + 1 < limit => {
                 close = Some(k);
                 break;
@@ -929,10 +966,13 @@ fn display_math(ctx: &mut Ctx<'_>, lines: &[Line], i: usize, out: &mut Vec<Block
     let raw = Span::new(content_start, content_end);
     let closed = close.is_some();
     if !closed {
-        ctx.diags.push(
+        ctx.diags.push(if bracket {
+            Diagnostic::error(Span::new(open, open + 2), "this `\\[` is never closed")
+                .expecting(["a closing `\\]`"])
+        } else {
             Diagnostic::error(Span::new(open, open + 2), "this `$$` is never closed")
-                .expecting(["a closing `$$`"]),
-        );
+                .expecting(["a closing `$$`"])
+        });
     }
 
     // `(n)` after the closing `$$`, then perhaps a `% note` on the same line.

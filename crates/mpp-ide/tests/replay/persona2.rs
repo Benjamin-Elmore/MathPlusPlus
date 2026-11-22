@@ -184,3 +184,32 @@ fn alt_equals_in_a_sentence_starts_inline_maths_and_esc_leaves_it() {
     );
     assert_eq!(text.matches('$').count(), 2, "{text:?}");
 }
+
+/// T5: `\[ … \]` typed by a LaTeX user is display maths: the editor writes it
+/// as a maths line on the closing `\]`, or on Enter after `\[`.
+#[test]
+fn bracket_display_maths_becomes_a_maths_line() {
+    let mut h = fresh();
+    type_text(&mut h, r"\[ x = 1 + 2 \]");
+    assert_eq!(text_of(&h), "$$ x = 1 + 2 $$");
+    assert_eq!(Seen::of(&h).caret, text_of(&h).len());
+    assert_eq!(Seen::of(&h).maths, 1, "a maths line on the page");
+    // `\[` alone, then Enter: an empty maths line with the caret in it.
+    let mut h = fresh();
+    type_text(&mut h, r"\[");
+    enter(&mut h);
+    assert_eq!(text_of(&h), "$$  $$");
+    assert!(in_math(&h));
+    type_text(&mut h, "y = 3");
+    assert_eq!(text_of(&h), "$$ y = 3 $$");
+    // `\[` and maths, then Enter: the maths line, and a new line under it.
+    let mut h = fresh();
+    type_text(&mut h, r"\[ v = 20");
+    enter(&mut h);
+    assert_eq!(text_of(&h), "$$ v = 20 $$\n\n");
+    assert!(!in_math(&h));
+    // In the middle of a sentence: the maths gets a line of its own.
+    let mut h = fresh();
+    type_text(&mut h, r"So \[ a + b \] and more");
+    assert_eq!(text_of(&h), "So\n\n$$ a + b $$\n\nand more");
+}

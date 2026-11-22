@@ -547,3 +547,31 @@ fn money_never_starts_maths() {
     let doc = parse_document("Take $x + 1 and stop.\n");
     assert!(doc.errors().any(|d| d.message.contains("never closed")));
 }
+
+/// The display blocks of `src`, with the source of each one's maths.
+fn displays(src: &str) -> Vec<String> {
+    let doc = parse_document(src);
+    doc.blocks
+        .iter()
+        .filter_map(|b| match &b.kind {
+            BlockKind::DisplayMath(d) => Some(src[d.raw.start..d.raw.end].trim().to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn bracket_display_maths_is_read_like_dollars() {
+    // Pasted LaTeX: `\[ … \]` on one line, or over several, is display maths.
+    assert_eq!(displays("\\[ x = 1 + 2 \\]\n"), vec!["x = 1 + 2"]);
+    assert_eq!(
+        displays("Some words.\n\n\\[\nE = m c^2\n\\]\n\nMore words.\n"),
+        vec!["E = m c^2"]
+    );
+    assert_eq!(displays("Text.\n\\[ y = 3 \\]\n"), vec!["y = 3"]);
+    let doc = parse_document("\\[ x = 1 + 2 \\]\n");
+    assert!(doc.diagnostics.is_empty(), "{}", dump(&doc));
+    // An unclosed `\[` (still being typed) is text.
+    assert!(displays("\\[ x = 1\n").is_empty());
+    assert!(displays("\\[ x = 1\n\nNext \\] here\n").is_empty());
+}
