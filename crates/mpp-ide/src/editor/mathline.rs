@@ -517,6 +517,10 @@ impl Editor {
             return true;
         }
         match line_kind(&self.text, at) {
+            // A line the page shows as prose although a `$$` before it is
+            // unclosed (a blank line ends display maths): never unwrap a box
+            // the caret is not on (E-N1).
+            LineKind::Maths(open, _) if self.text[open..at].contains("\n\n") => false,
             LineKind::Maths(..) => self.make_prose(state, at),
             LineKind::Empty | LineKind::Prose => self.make_maths(at),
             LineKind::Other => false,
@@ -589,6 +593,71 @@ impl Editor {
         let end = ls + maths.len();
         self.maths_step(ls..le, &maths, Some(end));
         Some(false)
+    }
+
+    /// After a `}` typed in maths: when it finished a command whose boxes are
+    /// all still empty (`\frac{}{}`, typed by someone used to LaTeX), the caret
+    /// goes into its first box, where the next character is meant to go (T12).
+    /// True when it moved.
+    pub fn into_empty_command(&mut self) -> bool {
+        let c = self.caret;
+        if self.selection().is_some() || self.text[c..].starts_with('{') {
+            return false;
+        }
+        let head = &self.text[..c];
+        let mut rest = head;
+        let mut groups = 0;
+        while let Some(r) = rest.strip_suffix("{}") {
+            rest = r;
+            groups += 1;
+        }
+        if groups == 0 {
+            return false;
+        }
+        let name = rest.len()
+            - rest
+                .trim_end_matches(|ch: char| ch.is_ascii_alphabetic())
+                .len();
+        let before = &rest[..rest.len() - name];
+        let slashes = before.len() - before.trim_end_matches('\\').len();
+        if name == 0 || slashes.is_multiple_of(2) {
+            return false;
+        }
+        self.move_caret(rest.len() + 1, false);
+        true
+    }
+
+    /// `]` typed in maths just after a `\` that is alone on a row of a display
+    /// block (T-N1): `\]` closes the maths, as a typed `$$` does. The row goes
+    /// (with the row break before it) and the caret goes just after the
+    /// block's closing `$$`, so Enter starts a prose line. True when it did.
+    pub fn bracket_close_row(&mut self) -> bool {
+        let c = self.caret;
+        if self.selection().is_some() || !self.text[..c].ends_with('\\') {
+            return false;
+        }
+        let Some((open, close)) = display_around(&self.text, c).filter(|&(_, cl)| cl != usize::MAX)
+        else {
+            return false;
+        };
+        let (ls, _) = line_bounds(&self.text, c);
+        if ls <= open || c > close || self.text[ls..c].trim() != "\\" {
+            return false;
+        }
+        if !self.text[c..close].trim().is_empty() {
+            return false;
+        }
+        // The row break that ends the row before: ` \\` and the newline.
+        let head = self.text[..ls].trim_end();
+        let Some(prev) = head.strip_suffix("\\\\") else {
+            return false;
+        };
+        let keep = prev.trim_end().len();
+        if keep <= open + 2 {
+            return false;
+        }
+        self.maths_step(keep..close, " ", Some(keep + 3));
+        true
     }
 
     /// True when the caret is at the end of a closed maths block: just after its
@@ -883,7 +952,18 @@ impl Editor {
             Hint::AutoMaths,
             "Turned into maths. Ctrl+Z keeps it as text.",
         );
+        self.rested = Some(self.revision);
         true
+    }
+
+    /// Enter straight after a rest turned the caret's line into maths (nothing
+    /// typed since): the same as Enter on that line had there been no rest, a
+    /// new prose line under it (E-N1). True when it did.
+    pub fn enter_after_rest(&mut self) -> bool {
+        if self.rested.take() != Some(self.revision) || !self.at_maths_end() {
+            return false;
+        }
+        self.line_below_maths()
     }
 
     /// Where the caret is now, for [`Editor::maths_after_frame`].
@@ -964,6 +1044,14 @@ mod tests {
         let mut e = ed("$x$ + 1", 0);
         assert!(e.flip_maths(&mut MathsState::default(), 0));
         assert_eq!(e.text(), "$$ x + 1 $$");
+    }
+
+    #[test]
+    fn ctrl_m_on_a_sentence_never_unwraps_a_box_above_it() {
+        let src = "$$ a = 1 \\\\\n\nSome words $$";
+        let mut e = ed(src, 16);
+        assert!(!e.flip_maths(&mut MathsState::default(), 16));
+        assert_eq!(e.text(), src);
     }
 
     #[test]

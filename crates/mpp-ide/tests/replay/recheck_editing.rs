@@ -1,0 +1,323 @@
+//! Fix loop 2 of the persona panel (U28), editing: what the re-check found
+//! when the engineer, the student and the teacher typed again.
+
+use egui::{Key, Modifiers};
+
+use super::runner::{run, Seen, Step, H};
+
+fn t(h: &mut H, s: &'static str) {
+    run(h, &[Step::Type(s)], |_, _, _| {});
+}
+
+fn k(h: &mut H, key: Key) {
+    run(h, &[Step::Key(key)], |_, _, _| {});
+}
+
+fn pause(h: &mut H) {
+    run(h, &[Step::Pause], |_, _, _| {});
+}
+
+fn show(h: &H, what: &str) {
+    let s = Seen::of(h);
+    println!(
+        "{what}: {:?} caret {} drawn {:?} stop {:?}",
+        s.text, s.caret, s.caret_at, s.stop_at
+    );
+}
+
+fn in_math(h: &H) -> bool {
+    let doc = h.state().doc().expect("doc");
+    doc.page_cache()
+        .expect("page")
+        .page
+        .in_math(doc.editor.caret())
+}
+
+/// The caret is drawn where the next character goes.
+fn drawn_at_stop(h: &H, what: &str) {
+    let s = Seen::of(h);
+    let (a, b) = (s.caret_at.expect("drawn"), s.stop_at.expect("stop"));
+    assert!(
+        (a.x - b.x).abs() < 3.0 && (a.y - b.y).abs() < 3.0,
+        "{what}: the caret is drawn at {a:?} but the next character goes at {b:?} in {:?}",
+        s.text
+    );
+}
+
+fn defs(h: &mut H) {
+    t(h, "Projectile range");
+    k(h, Key::Enter);
+    t(h, "A ball is thrown at speed v and angle theta.");
+    k(h, Key::Enter);
+    super::runner::press(h, Modifiers::ALT, Key::Equals);
+    t(h, "g = 9.81");
+    k(h, Key::Enter);
+    t(h, "v = 20");
+    k(h, Key::Enter);
+    t(h, "theta = pi/6");
+    k(h, Key::Enter);
+}
+
+/// S-N1, S-N5: Esc out of a box onto the line under it, type, Backspace it all
+/// away and once more: the empty line goes and the caret ends at the end of
+/// the box, in maths (drawn there); the box's `$$` is never touched; what is
+/// typed then goes where the caret is drawn.
+#[test]
+fn backspace_on_the_empty_line_under_a_box_never_eats_its_closing() {
+    let mut h = super::runner::fresh();
+    defs(&mut h);
+    t(&mut h, "R = v^2 sin(2 theta) / g =");
+    pause(&mut h);
+    show(&h, "answered");
+    k(&mut h, Key::Escape);
+    show(&h, "esc");
+    t(&mut h, "Now the integral");
+    pause(&mut h);
+    for i in 0..16 {
+        k(&mut h, Key::Backspace);
+        show(&h, &format!("bs{i}"));
+    }
+    pause(&mut h);
+    show(&h, "bs16");
+    drawn_at_stop(&h, "after 16 Backspaces");
+    let box_text = {
+        let s = Seen::of(&h).text;
+        s[..s.rfind("$$").expect("closing") + 2].to_string()
+    };
+    k(&mut h, Key::Backspace);
+    show(&h, "bs17");
+    drawn_at_stop(&h, "after 17 Backspaces");
+    let s = Seen::of(&h);
+    assert!(
+        s.text.starts_with(&box_text),
+        "the box is untouched: {:?}",
+        s.text
+    );
+    assert_eq!(s.text.matches("$$").count() % 2, 0, "{:?}", s.text);
+    assert!(
+        s.text.ends_with("= $$"),
+        "the empty line went: {:?}",
+        s.text
+    );
+    assert!(in_math(&h), "the caret is in the maths, where it is drawn");
+    t(&mut h, "Check it:");
+    pause(&mut h);
+    show(&h, "typed");
+    drawn_at_stop(&h, "after typing");
+    let s = Seen::of(&h);
+    assert!(s.text.ends_with("=Check it: $$"), "{:?}", s.text);
+}
+
+/// E-N1: Enter after a pause-answer behaves as Enter after `v*3 =` with no
+/// pause: a new line, then prose. Ctrl+M on that sentence makes it maths,
+/// never unwraps the box above it.
+#[test]
+fn enter_after_a_pause_answer_starts_a_prose_line() {
+    let mut h = super::runner::fresh();
+    t(&mut h, "v = 20");
+    k(&mut h, Key::Enter);
+    t(&mut h, "v*3 =");
+    pause(&mut h);
+    show(&h, "paused");
+    k(&mut h, Key::Enter);
+    show(&h, "enter1");
+    k(&mut h, Key::Enter);
+    show(&h, "enter2");
+    t(&mut h, "The speed is fine");
+    show(&h, "typed");
+    assert!(!in_math(&h), "the sentence is prose");
+    let s = Seen::of(&h);
+    let (head, tail) = s.text.rsplit_once("$$").expect("a box");
+    assert_eq!(tail.trim_start(), "The speed is fine", "{:?}", s.text);
+    assert!(
+        head.ends_with("v·3 = "),
+        "the box keeps its answer: {:?}",
+        s.text
+    );
+    super::runner::press(&mut h, Modifiers::COMMAND, Key::M);
+    pause(&mut h);
+    show(&h, "ctrl+m");
+    let s = Seen::of(&h);
+    assert!(s.text.contains("$$ v = 20 $$"), "{:?}", s.text);
+    assert!(
+        s.answers.iter().any(|a| a.contains("60")),
+        "{:?}",
+        s.answers
+    );
+}
+
+fn status(h: &H) -> String {
+    mpp_ide::page::caret_path::status_text(h.state().doc().expect("doc"))
+}
+
+/// S-N3, S-N4, P-N1: Ctrl+M wraps the maths at the end of a sentence; the
+/// caret is drawn after it, in the sentence, as the status bar says. Esc (or
+/// End) then Enter starts a new line; nothing goes inside the `$…$`.
+#[test]
+fn after_ctrl_m_esc_or_end_then_enter_starts_a_new_line() {
+    for leave in [Some(Key::Escape), Some(Key::End), None] {
+        let mut h = super::runner::fresh();
+        t(&mut h, "v = 20");
+        k(&mut h, Key::Enter);
+        pause(&mut h);
+        t(&mut h, "Half again is v/2 =");
+        super::runner::press(&mut h, Modifiers::COMMAND, Key::M);
+        pause(&mut h);
+        show(&h, "ctrl+m");
+        println!("status {}", status(&h));
+        drawn_at_stop(&h, "after Ctrl+M");
+        assert_eq!(status(&h), "Prose");
+        if let Some(key) = leave {
+            k(&mut h, key);
+            show(&h, &format!("{key:?}"));
+        }
+        k(&mut h, Key::Enter);
+        t(&mut h, "#Second part");
+        show(&h, "heading");
+        let s = Seen::of(&h);
+        assert!(
+            s.text.ends_with("Half again is $v/2 =$\n\n# Second part"),
+            "{leave:?}: {:?}",
+            s.text
+        );
+    }
+}
+
+/// S-N2, E-N3, P-N2: inline maths made by Alt+= in a sentence. Enter closes
+/// it and starts a new prose line (as in Word); Right and Esc at its end
+/// leave it, and what is typed then goes after it in the sentence.
+#[test]
+fn alt_equals_inline_maths_is_left_by_enter_right_and_esc() {
+    for leave in [Key::Enter, Key::ArrowRight, Key::Escape, Key::End] {
+        let mut h = super::runner::fresh();
+        t(&mut h, "v = 20");
+        k(&mut h, Key::Enter);
+        pause(&mut h);
+        t(&mut h, "Third is ");
+        super::runner::press(&mut h, Modifiers::ALT, Key::Equals);
+        t(&mut h, "v/2 =");
+        pause(&mut h);
+        show(&h, "typed");
+        k(&mut h, leave);
+        show(&h, &format!("{leave:?}"));
+        drawn_at_stop(&h, "after leaving");
+        assert!(!in_math(&h), "{leave:?} left the maths");
+        t(&mut h, "next");
+        let s = Seen::of(&h);
+        show(&h, "next");
+        let tail = s.text.rsplit_once('$').expect("closing $").1;
+        if leave == Key::Enter {
+            assert_eq!(tail, "\n\nnext", "{:?}", s.text);
+        } else {
+            assert_eq!(tail.trim_start(), "next", "{leave:?}: {:?}", s.text);
+        }
+        // A later Alt+= leaves no stray braces.
+        k(&mut h, Key::Enter);
+        t(&mut h, "Fourth is ");
+        super::runner::press(&mut h, Modifiers::ALT, Key::Equals);
+        t(&mut h, "v/4 =");
+        k(&mut h, Key::ArrowRight);
+        t(&mut h, " ok");
+        let s = Seen::of(&h);
+        show(&h, "fourth");
+        let tail = &s.text[s.text.find("Fourth").expect("typed")..];
+        assert!(!tail.contains("${") && !tail.contains("{}"), "{:?}", s.text);
+        assert_eq!(
+            tail.matches('{').count(),
+            tail.matches('}').count(),
+            "{tail:?}"
+        );
+        assert!(s.text.ends_with("$ ok"), "{leave:?}: {:?}", s.text);
+    }
+}
+
+/// T-N1: display maths opened with a typed `\[` on its own line is closed by
+/// a typed `\]` on its own line, as `$$` closes it; the next line is prose.
+#[test]
+fn a_typed_closing_bracket_on_its_own_line_closes_display_maths() {
+    let mut h = super::runner::fresh();
+    t(&mut h, r"\[");
+    k(&mut h, Key::Enter);
+    show(&h, "opened");
+    t(&mut h, "z = 4");
+    k(&mut h, Key::Enter);
+    show(&h, "row");
+    t(&mut h, r"\");
+    show(&h, "slash");
+    t(&mut h, "]");
+    show(&h, "closed");
+    k(&mut h, Key::Enter);
+    t(&mut h, "Words after.");
+    show(&h, "words");
+    assert!(!in_math(&h), "the words are prose");
+    let s = Seen::of(&h);
+    assert_eq!(s.text, "$$ z = 4 $$\n\nWords after.");
+}
+
+/// T12: `\frac{}{}` typed in full puts the caret in its first empty box, and
+/// the 1 typed next goes there; the empty boxes are not marked as errors
+/// while the caret is still on the line.
+#[test]
+fn a_typed_empty_fraction_puts_the_caret_in_its_top() {
+    let mut h = super::runner::fresh();
+    for c in ["$", "\\", "f", "r", "a", "c", "{", "}", "{", "}"] {
+        t(&mut h, c);
+        show(&h, c);
+    }
+    pause(&mut h);
+    let st = status(&h);
+    assert!(st.contains("numerator"), "{st}");
+    let doc = h.state().doc().expect("doc");
+    let problems = doc.page_cache().expect("page").problems.len();
+    assert_eq!(problems, 0, "no squiggles while the caret is on the line");
+    t(&mut h, "1");
+    show(&h, "1");
+    assert!(
+        Seen::of(&h).text.contains("{1}{}"),
+        "{:?}",
+        Seen::of(&h).text
+    );
+}
+
+const SHEET: &str = "Projectile range\n\nA ball is thrown at speed v and angle theta.\n\n$$ g = 9.81 $$\n\n$$ v = 20 $$\n\n$$ theta = pi/6 $$\n\n$$ R = v^2*sin(2*theta)/g $$\n\n$$ R = $$\n\n$$ v/2 = $$\n\n$$ int(x^2, x, 0, 3) = $$\n\n$$ sum(1/n^2, n, 1, 10) = $$\n\n";
+
+/// E9: at the bottom of a long page, nothing on screen moves while the
+/// answers come in (design rule 5).
+#[test]
+fn nothing_moves_during_a_pause_at_the_bottom_of_a_long_page() {
+    let mut h = super::runner::harness(super::runner::app_with(SHEET));
+    pause(&mut h);
+    super::runner::press(&mut h, Modifiers::COMMAND, Key::End);
+    for line in [
+        "sum(1/n^2, n, 1, 10) ~= ?",
+        "round(R, 1) =",
+        "R approx 35.3",
+        "abs(R - 35.3) < 0.1",
+        "R = 36",
+        "roundd(R) =",
+        "w =",
+        "R",
+        "g = 9.81",
+    ] {
+        t(&mut h, line);
+        if line != "g = 9.81" {
+            k(&mut h, Key::Enter);
+        }
+    }
+    let mut last: Option<(String, Vec<(mpp_syntax::Span, f32)>)> = None;
+    let mut moved = vec![];
+    // From the Enter on: the frame after it must not scroll either.
+    run(&mut h, &[Step::Key(Key::Enter), Step::Pause], |_, _, s| {
+        if let Some((text, tops)) = &last {
+            if *text == s.text {
+                for ((sp, a), (_, b)) in tops.iter().zip(&s.tops) {
+                    if (a - b).abs() > 0.5 {
+                        moved.push(format!("{sp:?} {a} -> {b}"));
+                    }
+                }
+            }
+        }
+        last = Some((s.text.clone(), s.tops.clone()));
+    });
+    assert!(moved.is_empty(), "lines moved during the pause: {moved:#?}");
+}

@@ -352,8 +352,9 @@ fn the_status_path_says_where_the_next_character_goes() {
     let text = text_of(&h);
     let status = mpp_ide::page::caret_path::status_text(h.state().doc().expect("doc"));
     let inside = text[at..].trim_start().starts_with('}');
+    // (Since the re-check the caret goes back into the empty top.)
     assert_eq!(
-        status.contains("denominator"),
+        status.contains("numerator") || status.contains("denominator"),
         inside,
         "the status says {status:?} with the caret at {at} in {text:?}"
     );

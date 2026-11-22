@@ -9,6 +9,7 @@ mod basics;
 mod escape;
 mod persona;
 mod persona2;
+mod recheck_editing;
 mod recheck_maths;
 mod results;
 mod runner;

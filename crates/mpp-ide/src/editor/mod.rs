@@ -208,6 +208,10 @@ pub struct Editor {
     closed_at: Option<(usize, u64)>,
     /// The fraction a typed `/` just made, while its denominator is typed in.
     slash: Option<SlashStep>,
+    /// The revision right after a rest turned the caret's line into maths:
+    /// Enter straight after it starts a new line, as it would have without
+    /// the rest (E-N1).
+    rested: Option<u64>,
 }
 
 /// The undo step of a `/` conversion: the text before it (with the `/`) and
