@@ -319,3 +319,20 @@ fn backspace_under_a_box_never_reaches_earlier_lines() {
     );
     caret_on_its_line(&h);
 }
+
+/// S3: a click on the empty page under the last maths box puts the caret on a
+/// new line under it, not in the box's fraction.
+#[test]
+fn a_click_under_the_last_box_starts_a_new_line() {
+    let src = r"$$ θ := \frac{\pi}{6} $$";
+    let mut h = super::runner::harness(super::runner::app_with(src));
+    h.run_steps(3);
+    let s = Seen::of(&h);
+    let (_, top) = s.tops[0];
+    let x = s.caret_at.expect("caret").x - 20.0;
+    super::runner::click_at(&mut h, egui::pos2(x, top + 160.0));
+    assert!(!in_math(&h), "the click went into the maths");
+    keys_land(&mut h, "Next");
+    assert_eq!(text_of(&h), format!("{src}\n\nNext"));
+    caret_on_its_line(&h);
+}

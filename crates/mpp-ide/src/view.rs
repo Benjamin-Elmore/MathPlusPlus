@@ -1322,6 +1322,23 @@ fn handle_pointer(
             return true;
         }
     }
+    let below_all = pc
+        .page
+        .blocks
+        .last()
+        .is_some_and(|b| local.y > b.top + b.height);
+    if pressed && resp.hovered() && !shift && below_all {
+        // On the empty page under everything: the end of the file, on a new
+        // line under a maths box rather than in one of its boxes (S3).
+        let end = doc.editor.text().len();
+        doc.editor.move_caret(end, false);
+        if doc.editor.line_below_maths() {
+            doc.touched();
+        }
+        doc.caret_side = Side::Before;
+        doc.want_x = None;
+        return true;
+    }
     if pressed && resp.hovered() {
         if let Some((o, side)) = pc.page.side_at(local) {
             if command {
