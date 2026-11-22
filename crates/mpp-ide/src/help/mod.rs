@@ -228,7 +228,8 @@ impl IdeApp {
                     .id(filter_id())
                     .hint_text("Search the cheat sheet")
                     .desired_width(ui.available_width() - 14.0),
-            );
+            )
+            .accessible_name("Search the cheat sheet");
         });
         ui.data_mut(|d| d.insert_temp(text_id, filter.clone()));
         let needle = filter;
