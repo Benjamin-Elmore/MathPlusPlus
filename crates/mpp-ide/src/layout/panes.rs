@@ -328,6 +328,7 @@ impl IdeApp {
             self.note_place();
             self.jump_to(&j);
             self.note_place();
+            self.back_to_editor_at(ui.ctx());
         }
     }
 

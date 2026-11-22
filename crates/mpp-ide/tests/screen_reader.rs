@@ -685,3 +685,60 @@ fn r19_inline_maths_says_its_answer_and_the_line_reads_spoken_maths() {
     let f = focused(&h).expect("focused");
     assert_eq!(f.value, "The angle theta is small.");
 }
+
+#[test]
+fn r12_problems_items_are_named_buttons_and_enter_jumps_back_to_the_editor() {
+    let src = "Words.\n\n$$ v := 20 $$\n\n$$ w + 1 = ? $$\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    let items: Vec<(Role, String)> = h
+        .query_all(by().predicate(|n| {
+            n.label()
+                .is_some_and(|l| l.starts_with("Error, line") || l.starts_with("Warning, line"))
+        }))
+        .map(|n| {
+            let a = n.accesskit_node();
+            (a.role(), a.label().unwrap_or_default())
+        })
+        .collect();
+    assert!(
+        items
+            .iter()
+            .any(|(r, l)| *r == Role::Button && l.starts_with("Warning, line 5: w is not defined")),
+        "problem items: {items:?}"
+    );
+    // No unnamed focusable rows left in the panel.
+    let f = focused(&h).expect("something in Problems has the keyboard");
+    assert!(
+        !f.label.is_empty() || !f.value.is_empty(),
+        "the focused row is named: {:?}",
+        f.role
+    );
+    // Where am I says the panel and the row.
+    key(&mut h, Modifiers::COMMAND | Modifiers::ALT, Key::W);
+    h.step();
+    assert!(polite(&h).starts_with("Problems"), "{:?}", polite(&h));
+    // Tab to the error row, then Enter: the caret goes there and the editor
+    // has the keyboard again.
+    for _ in 0..6 {
+        if focused(&h).is_some_and(|f| f.label.starts_with("Warning, line 5")) {
+            break;
+        }
+        key(&mut h, Modifiers::NONE, Key::Tab);
+        h.step();
+    }
+    assert!(
+        focused(&h).is_some_and(|f| f.label.starts_with("Warning, line 5")),
+        "Tab reaches the error: {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    h.run_steps(3);
+    assert!(in_editor(&h), "Enter gives the keyboard back to the editor");
+    let d = h.state().doc().unwrap();
+    let line = d.editor.text()[..d.editor.caret()].matches('\n').count() + 1;
+    assert_eq!(line, 5, "the caret is on the problem's line");
+    assert!(polite(&h).contains("line 5"), "{:?}", polite(&h));
+}
