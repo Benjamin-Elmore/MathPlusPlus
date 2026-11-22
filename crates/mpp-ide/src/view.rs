@@ -527,8 +527,22 @@ fn key_filter(doc: &Doc, pc: &PageCache, cx: &ViewCtx<'_>, menu: bool) -> EventF
         tab: true,
         horizontal_arrows: true,
         vertical_arrows: true,
-        escape: popup || in_template || pc.page.in_math(caret) || doc.editor.at_maths_end(),
+        escape: popup
+            || in_template
+            || pc.page.in_math(caret)
+            || doc.editor.at_maths_end()
+            || just_after_inline(doc.editor.text(), &pc.page, caret),
     }
+}
+
+/// True when `caret` is just after the closing `$` of inline maths, where Esc
+/// has just left it (or Ctrl+M put the caret): Esc there stays on the page.
+fn just_after_inline(text: &str, page: &crate::page::Page, caret: usize) -> bool {
+    page.math_ranges.iter().any(|r| {
+        r.end < caret
+            && matches!(text.get(r.end..caret), Some("$") | Some("\\)"))
+            && page.block_at(caret).is_none_or(|b| b.tag != BlockTag::Math)
+    })
 }
 
 /// The empty boxes on the page other than the one at `caret`, in order.
@@ -1731,6 +1745,27 @@ fn key_pressed(
             if note_enter(doc) {
                 return true;
             }
+            if !shift && doc.editor.enter_after_rest() {
+                doc.touched();
+                doc.want_x = None;
+                return true;
+            }
+            // Enter in inline maths closes it and starts a new prose line, as
+            // in Word (S-N2, E-N3, P-N1).
+            if in_math
+                && !page
+                    .block_at(caret)
+                    .is_some_and(|b| b.tag == BlockTag::Math)
+            {
+                if let Some(t) = leave_maths(doc.editor.text(), page, caret) {
+                    doc.editor.leave_template();
+                    doc.editor.move_caret(t, false);
+                    doc.editor.enter(false, shift);
+                    doc.touched();
+                    doc.want_x = None;
+                    return true;
+                }
+            }
             doc.editor.enter(in_math, shift);
             doc.touched();
             true
@@ -1767,7 +1802,19 @@ fn key_pressed(
                 let Some(t) = page.offset_step(caret, fwd) else {
                     return false;
                 };
+                // Never a maths delimiter (S-N1): the box stays whole.
+                let text = doc.editor.text();
+                if text
+                    .get(t.min(caret)..t.max(caret))
+                    .is_none_or(|s| s.contains('$'))
+                {
+                    return false;
+                }
                 doc.editor.delete(t, true);
+            } else if let Some(r) = plain_space(doc.editor.text(), caret, fwd) {
+                // A space typed in a sentence goes by itself: it is not drawn as
+                // a character, so the one before it must not go instead.
+                doc.editor.delete_range(r);
             } else {
                 let c = if fwd {
                     page.char_after(caret)
@@ -1892,6 +1939,23 @@ fn key_pressed(
         }
         _ => false,
     }
+}
+
+/// The space right before (after, with `fwd`) the caret in prose, if there is one.
+fn plain_space(text: &str, caret: usize, fwd: bool) -> Option<std::ops::Range<usize>> {
+    let c = if fwd {
+        text[caret..].chars().next()
+    } else {
+        text[..caret].chars().next_back()
+    }?;
+    if c != ' ' && c != '\t' {
+        return None;
+    }
+    Some(if fwd {
+        caret..caret + 1
+    } else {
+        caret - 1..caret
+    })
 }
 
 /// Tab outside a tracked template: the next (or previous) empty box on the page.

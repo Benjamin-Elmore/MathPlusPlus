@@ -52,6 +52,9 @@ enum Atom {
     Math {
         dl: DisplayList,
         span: Span,
+        /// Just after the maths' closing `$`: the caret there is drawn after
+        /// the piece, in the sentence (S-N4).
+        after: Option<usize>,
     },
 }
 
@@ -361,7 +364,16 @@ fn math_atom(cx: &Cx<'_>, ast: &MathAst, raw: Span, size: f32) -> Atom {
     if open.is_some() {
         dl.width += super::answers::inline_room(size);
     }
-    Atom::Math { dl, span: raw }
+    let after = cx
+        .src
+        .get(raw.end..)
+        .and_then(|r| ["$", r"\)"].iter().find(|c| r.starts_with(**c)))
+        .map(|c| raw.end + c.len());
+    Atom::Math {
+        dl,
+        span: raw,
+        after,
+    }
 }
 
 /// Lays `inlines` out in lines of at most `width` pixels starting at `(x0, y)`.
@@ -575,7 +587,7 @@ fn flow_atoms(
                     }
                     x += adv;
                 }
-                Atom::Math { dl, span } => {
+                Atom::Math { dl, span, after } => {
                     let dy = baseline - dl.baseline;
                     let before = canvas.stops.len();
                     canvas.merge(dl, x, dy, true);
@@ -592,6 +604,14 @@ fn flow_atoms(
                         });
                     }
                     x += dl.width;
+                    if let Some(o) = *after {
+                        canvas.stops.push(CaretStop {
+                            x,
+                            top,
+                            bottom,
+                            offset: o,
+                        });
+                    }
                 }
             }
         }

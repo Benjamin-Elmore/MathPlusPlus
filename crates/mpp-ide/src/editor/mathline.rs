@@ -517,6 +517,10 @@ impl Editor {
             return true;
         }
         match line_kind(&self.text, at) {
+            // A line the page shows as prose although a `$$` before it is
+            // unclosed (a blank line ends display maths): never unwrap a box
+            // the caret is not on (E-N1).
+            LineKind::Maths(open, _) if self.text[open..at].contains("\n\n") => false,
             LineKind::Maths(..) => self.make_prose(state, at),
             LineKind::Empty | LineKind::Prose => self.make_maths(at),
             LineKind::Other => false,
@@ -883,7 +887,18 @@ impl Editor {
             Hint::AutoMaths,
             "Turned into maths. Ctrl+Z keeps it as text.",
         );
+        self.rested = Some(self.revision);
         true
+    }
+
+    /// Enter straight after a rest turned the caret's line into maths (nothing
+    /// typed since): the same as Enter on that line had there been no rest, a
+    /// new prose line under it (E-N1). True when it did.
+    pub fn enter_after_rest(&mut self) -> bool {
+        if self.rested.take() != Some(self.revision) || !self.at_maths_end() {
+            return false;
+        }
+        self.line_below_maths()
     }
 
     /// Where the caret is now, for [`Editor::maths_after_frame`].
@@ -964,6 +979,14 @@ mod tests {
         let mut e = ed("$x$ + 1", 0);
         assert!(e.flip_maths(&mut MathsState::default(), 0));
         assert_eq!(e.text(), "$$ x + 1 $$");
+    }
+
+    #[test]
+    fn ctrl_m_on_a_sentence_never_unwraps_a_box_above_it() {
+        let src = "$$ a = 1 \\\\\n\nSome words $$";
+        let mut e = ed(src, 16);
+        assert!(!e.flip_maths(&mut MathsState::default(), 16));
+        assert_eq!(e.text(), src);
     }
 
     #[test]

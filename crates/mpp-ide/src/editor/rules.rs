@@ -220,6 +220,21 @@ impl Editor {
             return false;
         }
         let head = self.text[..p].trim_end();
+        // An empty line under a maths box (S-N1): the line goes and the caret
+        // goes to the end of the box's last row, in the maths, where it is
+        // drawn. The box's `$$` is never touched.
+        let (_, le) = line_bounds(&self.text, self.caret);
+        if head.ends_with("$$") && head.len() == p && self.text[self.caret..le].trim().is_empty() {
+            let inner = self.text[..p - 2].trim_end_matches(' ').len();
+            let around = super::mathline::display_around(&self.text, p - 1)
+                .filter(|&(o, c)| c == p - 2 && o + 2 <= c);
+            if let Some((o, c)) = around {
+                let to = inner.max((o + 3).min(c));
+                self.delete_range(p..le);
+                self.move_caret(to, false);
+                return true;
+            }
+        }
         let keep = head.ends_with("$$") || head.ends_with("```");
         let from = if keep { p + 1 } else { p };
         if from >= self.caret {
