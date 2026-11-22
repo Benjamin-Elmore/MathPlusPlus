@@ -46,7 +46,7 @@ pub struct DisplayDirective {
 
 const KEYWORDS: &[&str] = &[
     "sf", "dp", "sci", "eng", "exact", "decimal", "plain", "mixed", "improper", "deg", "rad",
-    "polar", "rect", "block",
+    "polar", "rect", "block", "digits",
 ];
 
 /// Reads the text after a `%`. `None` when it is not a display directive (a
@@ -111,7 +111,8 @@ fn none(name: &str, args: &[&str], option: DisplayOption) -> Result<DisplayOptio
 
 fn read_option(name: &str, args: &[&str]) -> Result<DisplayOption, String> {
     match name {
-        "sf" => number(name, args, 1, 50).map(DisplayOption::Sf),
+        // `%digits 4` is `%sf 4`: the word people look for (significant figures).
+        "sf" | "digits" => number(name, args, 1, 50).map(DisplayOption::Sf),
         "dp" => number(name, args, 0, 50).map(DisplayOption::Dp),
         "sci" => optional_threshold(name, args).map(DisplayOption::Sci),
         "eng" => optional_threshold(name, args).map(DisplayOption::Eng),

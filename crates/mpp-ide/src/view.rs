@@ -127,6 +127,9 @@ fn verdict_latex(v: &mpp_eval::Verdict) -> String {
         mpp_eval::Verdict::Agrees { digits } => {
             format!("\\approx\\; \\text{{checked numerically to {digits} digits}}")
         }
+        mpp_eval::Verdict::Rounds { value, written } => {
+            format!("\\text{{{value} rounds to {written}}}")
+        }
         mpp_eval::Verdict::Unknown(_) => "\\text{could not decide}".into(),
     }
 }
@@ -310,7 +313,10 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 moved |= handle_keys(ui, doc, &pc0, cx, &mut events);
             }
             // Auto-detect: the line the caret just left may read as maths (U12).
-            if focused && crate::page::mode::auto_detect(ui, doc, mark) {
+            if focused
+                && (crate::page::mode::auto_detect(ui, doc, mark)
+                    || crate::page::mode::rest_detect(ui, doc))
+            {
                 moved = true;
             }
             if cx.active && !focused {
@@ -336,6 +342,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 ui.expand_to_include_y(resp.rect.top() + scrolled + shift + 1.0 + avail_h);
             }
             paint_page(ui, &painter, doc, &pc, origin, cx, &theme, focused);
+            crate::access::editor::editor_node(ui, &resp, doc, &pc);
             figures_pass(ui, doc, &pc, origin, cx, resp.id, &mut events);
             spinners(ui, &painter, &pc, origin, &theme);
 
@@ -1158,7 +1165,7 @@ fn paint_page(
     let off = origin.to_vec2();
     let caret = focused.then(|| doc.editor.caret());
     crate::page::mode::paint_maths(painter, page, origin, &cx.mode.palette(), cx.size, caret);
-    crate::access::annotate(ui, page, doc.editor.text(), origin);
+    crate::access::annotate(ui, doc, pc, origin, cx.size);
     if let Some(span) = doc.highlight {
         if let Some(r) = page.rect_of_span(span) {
             let c = c32(cx.mode.palette().highlight);

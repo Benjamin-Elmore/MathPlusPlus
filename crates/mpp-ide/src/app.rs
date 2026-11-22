@@ -63,6 +63,8 @@ pub struct IdeApp {
     pub proof: crate::proof::ProofUi,
     /// What the window showed at the end of the last frame (see `screen_state`).
     last_screen: Option<u64>,
+    /// Live regions, F6 regions and the focus ring (see [`crate::access::live`]).
+    pub access: crate::access::live::AccessState,
 }
 
 impl Default for IdeApp {
@@ -97,6 +99,7 @@ impl IdeApp {
             export: Default::default(),
             proof: Default::default(),
             last_screen: None,
+            access: Default::default(),
         }
     }
 
@@ -399,6 +402,9 @@ impl IdeApp {
         }
         if ctx.input_mut(|i| i.consume_shortcut(&PROBLEMS)) {
             self.toggle_problems();
+            if self.problems.open {
+                self.land_in(crate::layout::Pane::Problems);
+            }
         }
         if (zdelta - 1.0).abs() > 0.001 {
             self.size = (self.size * zdelta).clamp(MIN_SIZE, MAX_SIZE);
@@ -562,6 +568,7 @@ impl IdeApp {
     pub fn ui(&mut self, ui: &mut Ui) {
         let ctx = ui.ctx().clone();
         self.name_untitled();
+        self.access_keys(&ctx);
         self.shortcuts(&ctx);
         self.system_theme = ctx.system_theme();
         self.mode = self.theme_choice.resolve(self.system_theme);
@@ -588,6 +595,7 @@ impl IdeApp {
         }
         self.overlays(&ctx);
         self.proof_windows(&ctx);
+        self.access_after(&ctx);
         if self.ws.explorer.poll() {
             self.reload_changed();
         }

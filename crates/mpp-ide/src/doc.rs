@@ -134,6 +134,8 @@ pub struct Doc {
     pub view_height: f32,
     /// Maths lines: auto-detect, its hints and the lines kept as prose.
     pub maths: crate::editor::mathline::MathsState,
+    /// Where the caret rests (a line ending in `=` is finished after a rest).
+    pub rest: Option<crate::page::mode::Rest>,
     /// Integral bounds above and below the sign (default) or at its side.
     pub integral_limits: IntegralLimits,
     /// The width, size and mode of the last page laid out (problem lists of
@@ -278,6 +280,7 @@ impl Doc {
             caret_screen: None,
             view_height: 0.0,
             maths: Default::default(),
+            rest: None,
             integral_limits: IntegralLimits::AboveBelow,
             last_layout: (800.0, crate::layout::BODY_SIZE, Mode::Light),
             show: ShowState::default(),
@@ -647,6 +650,12 @@ impl Doc {
     /// True when the evaluation is of exactly the text on screen.
     pub fn eval_fresh(&self) -> bool {
         self.eval.is_some() && self.eval_text == self.editor.text()
+    }
+
+    /// True while the caret rests on a line ending in `=` that becomes maths
+    /// when the rest is long enough (see [`crate::page::mode::rest_detect`]).
+    pub fn rest_pending(&self) -> bool {
+        self.rest.is_some_and(|r| r.pending)
     }
 
     /// How long since the text was last touched.

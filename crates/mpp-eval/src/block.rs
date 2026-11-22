@@ -254,6 +254,26 @@ fn show_decimal(lr: &mut LineResult, decimal: &str) {
     }
 }
 
+/// The decimal of a value worked out with `round(…)` when it is a number of tenths,
+/// hundredths …: `353/10` reads as `35.3`.
+fn rounded_decimal(written: &str, value: &Expr) -> Option<String> {
+    if !written.contains("round") {
+        return None;
+    }
+    let q = value.as_number()?.as_rational()?.clone();
+    let mut den = q.denom().clone();
+    let mut places = 0;
+    let ten = num_bigint::BigInt::from(10);
+    while den > num_bigint::BigInt::from(1) {
+        if &den % &ten != num_bigint::BigInt::from(0) || places > 30 {
+            return None;
+        }
+        den /= &ten;
+        places += 1;
+    }
+    Some(mpp_core::number::rational_to_fixed(&q, places))
+}
+
 /// A remark that only reports how an answer was found and that it checked out
 /// (`method: separable`, `… substituting it back gives 0 exactly`): not a problem
 /// with the line, so `mpp check` does not list it as a warning.
@@ -811,7 +831,22 @@ impl Run<'_, '_> {
         let noeval = line.noeval || place == Place::Display { noeval: true };
         if place != Place::Prose {
             self.ambiguous_unit_letters(line, &where_names);
-            self.letter_run_warnings(line, &where_names);
+            if self.letter_run_warnings(line, &where_names) {
+                // An unknown function has no value: the line gets its error and no
+                // answer (never one made up from the letters).
+                if let Statement::Query { mode, steps, .. } = &line.statement {
+                    let mut lr = LineResult::new(
+                        line.span,
+                        LineKind::Query {
+                            mode: *mode,
+                            steps: *steps,
+                        },
+                    );
+                    lr.open = self.ends_open(line.span);
+                    self.push(lr);
+                }
+                return;
+            }
         }
         let scope = Scope {
             names: &where_names,
@@ -855,7 +890,7 @@ impl Run<'_, '_> {
     /// Letters side by side that spell no defined name (`velocity`, `sinn(2)`) are
     /// read as a product, which is rarely what was typed: a warning says so and
     /// names the function when one is close.
-    fn letter_run_warnings(&mut self, line: &Line, where_names: &[String]) {
+    fn letter_run_warnings(&mut self, line: &Line, where_names: &[String]) -> bool {
         let mut bound: Vec<String> = where_names.to_vec();
         if let Statement::Definition {
             head: DefHead::Function { params, .. },
@@ -869,9 +904,24 @@ impl Run<'_, '_> {
                 |w: &str| bound.iter().any(|b| b == w) || self.view().get(w, false).is_some();
             crate::letter_runs::hits(line, &known)
         };
+        let mut called = false;
         for hit in found {
-            self.warn(hit.span, crate::letter_runs::message(&hit));
+            // `integrate(x^2, x, 0, 3)`: a word called like a function is never
+            // read as a product of letters; it is an error with the form to write.
+            if hit.called && hit.function.is_none() {
+                called = true;
+                self.result.diagnostics.push(Diagnostic::error(
+                    hit.span,
+                    crate::letter_runs::unknown_function_message(&hit),
+                ));
+            } else {
+                // `sinn(2)`: a typo of a function keeps its warning (with the quick
+                // fix), and the line still gets no answer made from the letters.
+                called |= hit.called;
+                self.warn(hit.span, crate::letter_runs::message(&hit));
+            }
         }
+        called
     }
 
     /// `20 t`, `5 m`, `9 g`: a number, a plain space and one letter that is a unit
@@ -1584,6 +1634,45 @@ impl Run<'_, '_> {
                 unknown_operator |= has_operator_holder(&value, &name);
             }
         }
+        // `w + 1 = ?` with `w` defined nowhere: nothing could be worked out, so the
+        // answer would only repeat the question. No answer; a warning names what
+        // is missing.
+        // `w + 1 = ?` with `w` defined nowhere, in a document that defines numbers
+        // (a calculation, not algebra): the answer would only repeat the question,
+        // so a warning names what is missing (the editor shows it in the slot).
+        let squeeze = |t: &str| -> String {
+            t.chars()
+                .filter(|c| !c.is_whitespace() && *c != '*')
+                .collect()
+        };
+        let calculation = self.env.iter().any(|(n, b)| {
+            matches!(&**b, Binding::Variable { value, .. } if value.free_symbols().is_empty())
+                && !crate::result::is_internal_name(n)
+        });
+        if mode == QueryMode::Exact
+            && calculation
+            && !contains_holder(&value)
+            && squeeze(&value.to_string()) == squeeze(written)
+        {
+            let missing: Vec<String> = value
+                .free_symbols()
+                .iter()
+                .map(|n| n.to_string())
+                .filter(|n| {
+                    self.view().get(n, false).is_none() && !crate::result::is_internal_name(n)
+                })
+                .collect();
+            if !missing.is_empty() {
+                let (names, verb) = match missing.as_slice() {
+                    [one] => (format!("`{one}`"), "is not"),
+                    more => (more.join(", "), "are not"),
+                };
+                self.warn(
+                    expr.span,
+                    format!("{names} {verb} defined, so this cannot be worked out"),
+                );
+            }
+        }
         // A scripted operator Math++ does not know has no answer to show: its
         // letters would be read back as a product.
         if unknown_operator {
@@ -1644,6 +1733,12 @@ impl Run<'_, '_> {
             lr.set_value(Value::from_expr(value));
             lr.text = Some(text);
             lr.latex = Some(latex);
+            return self.push(lr);
+        }
+        // `round(R, 1) =`: the rounded number reads as a decimal (35.3, not 353/10).
+        if let (QueryMode::Exact, Some(d)) = (mode, rounded_decimal(written, &value)) {
+            lr.set_value(Value::from_expr(value));
+            show_decimal(&mut lr, &d);
             return self.push(lr);
         }
         match mode {
@@ -1911,6 +2006,21 @@ impl Run<'_, '_> {
                 if verdict == crate::check::Verdict::Proved {
                     lr.caveat = self.removable_points(lhs, rhs, &l, &r, s);
                 }
+                // A check against a written decimal (`R = 35.3`) passes when the value
+                // rounds to it: within half a unit of its last written digit.
+                // An explicit `\overset{?}{=}` is an exact check: every digit counts.
+                let exact = self
+                    .inputs
+                    .source
+                    .get(line.span.start..line.span.end)
+                    .is_some_and(|t| t.contains("overset"));
+                if verdict.passed() == Some(false) && !exact {
+                    if let Some(v) = self.rounds_to_written(&l, rhs, 1) {
+                        verdict = v;
+                    }
+                }
+                lr.left = left_decimal(&l);
+                self.failed_check(line.span, &verdict);
                 lr.verdict = Some(verdict);
             }
             (Err(err), _) => self.error(lhs.span, err),
@@ -2101,8 +2211,140 @@ impl Run<'_, '_> {
         }
     }
 
+    /// `Verdict::Rounds` when the closed value `l` rounds to the number written as
+    /// `rhs` (`35.3`), which must have at least `min_places` digits after its point.
+    fn rounds_to_written(
+        &self,
+        l: &Expr,
+        rhs: &Node,
+        min_places: usize,
+    ) -> Option<crate::check::Verdict> {
+        let text = self.inputs.source.get(rhs.span.start..rhs.span.end)?;
+        let (written, places) = crate::check::written_number(text)?;
+        if places < min_places || !l.free_symbols().is_empty() {
+            return None;
+        }
+        let value = l.eval_f64(&mpp_core::eval::EmptyEnv).ok()?;
+        crate::check::rounds_to(value, written, places).then(|| crate::check::Verdict::Rounds {
+            value: left_decimal(l).unwrap_or_else(|| value.to_string()),
+            written: text.trim().to_string(),
+        })
+    }
+
+    /// A closed comparison on a maths line, decided as a check (✓ or ✗):
+    /// `R ≈ 35.3` (`pprox`, `~=`), `abs(R - 35.3) < 0.1`, `R > 30`, `R ≠ 0`. An
+    /// approximate check against a written number passes when the value rounds to
+    /// it (half a unit of its last digit), against an expression when the two agree
+    /// to 3 significant figures. True when the line was taken.
+    fn comparison_check(&mut self, line: &Line, node: &Node, s: &Scope) -> bool {
+        if !line.clauses.is_empty() || self.inputs.has_proofs || !s.conditions.is_empty() {
+            return false;
+        }
+        let NodeKind::Relation { first, rest } = &node.kind else {
+            return false;
+        };
+        let [(op, rhs)] = rest.as_slice() else {
+            return false;
+        };
+        let op = match op {
+            SynRel::Approx => None,
+            SynRel::Lt => Some(mpp_core::RelOp::Lt),
+            SynRel::Le => Some(mpp_core::RelOp::Le),
+            SynRel::Gt => Some(mpp_core::RelOp::Gt),
+            SynRel::Ge => Some(mpp_core::RelOp::Ge),
+            SynRel::Ne => Some(mpp_core::RelOp::Ne),
+            _ => return false,
+        };
+        let side = |run: &mut Self, n: &Node| -> Option<Expr> {
+            let e = run.lower(n, s.names).ok()?;
+            let v = run
+                .resolve_full(&e, s.locals, &[], false, false)
+                .value
+                .and_then(|v| run.finish_logged(v, None))
+                .ok()?;
+            let closed = v.free_symbols().is_empty()
+                && !contains_holder(&v)
+                && !matches!(
+                    v.node(),
+                    ExprNode::Bool(_) | ExprNode::Relation(..) | ExprNode::Logic(..)
+                )
+                && v.eval_f64(&mpp_core::eval::EmptyEnv)
+                    .is_ok_and(f64::is_finite);
+            closed.then_some(v)
+        };
+        let (Some(l), Some(r)) = (side(self, first), side(self, rhs)) else {
+            return false;
+        };
+        let mut lr = LineResult::new(line.span, LineKind::Check);
+        lr.input = Some(match op {
+            Some(op) => Expr::relation(op, l.clone(), r.clone()),
+            None => Expr::equation(l.clone(), r.clone()),
+        });
+        let verdict = match op {
+            Some(op) => check(
+                &Expr::relation(op, l.clone(), r.clone()),
+                &Expr::new(ExprNode::Bool(true)),
+            ),
+            None => {
+                let fails = || crate::check::Verdict::Fails {
+                    at: vec![],
+                    lhs: left_decimal(&l).unwrap_or_default(),
+                    rhs: left_decimal(&r).unwrap_or_default(),
+                };
+                match self.rounds_to_written(&l, rhs, 0) {
+                    Some(v) => v,
+                    None if self
+                        .inputs
+                        .source
+                        .get(rhs.span.start..rhs.span.end)
+                        .and_then(crate::check::written_number)
+                        .is_some() =>
+                    {
+                        fails()
+                    }
+                    None => {
+                        let f =
+                            |e: &Expr| e.eval_f64(&mpp_core::eval::EmptyEnv).unwrap_or(f64::NAN);
+                        if crate::check::agrees_roughly(f(&l), f(&r)) {
+                            crate::check::Verdict::Rounds {
+                                value: left_decimal(&l).unwrap_or_default(),
+                                written: left_decimal(&r).unwrap_or_default(),
+                            }
+                        } else {
+                            fails()
+                        }
+                    }
+                }
+            }
+        };
+        lr.left = left_decimal(&l);
+        self.failed_check(line.span, &verdict);
+        lr.verdict = Some(verdict);
+        self.push(lr);
+        true
+    }
+
+    /// A check that does not hold is a problem of the file (a warning), so it is
+    /// listed with the others and not only marked ✗ on its line.
+    fn failed_check(&mut self, span: Span, verdict: &crate::check::Verdict) {
+        if verdict.passed() != Some(false) {
+            return;
+        }
+        let why = verdict.describe();
+        let why = why.trim_start_matches("✗ ");
+        let why = if why.contains("left side false") || why.contains("left side true") {
+            String::new()
+        } else {
+            format!(" {why}")
+        };
+        self.warn(span, format!("this check does not hold{why}"));
+    }
+
     fn relation(&mut self, line: &Line, node: &Node, s: &Scope, display: bool, noeval: bool) {
         if display && !noeval && self.implicit_definition(line, node, s) {
+            return;
+        }
+        if display && !noeval && self.comparison_check(line, node, s) {
             return;
         }
         let mut lr = LineResult::new(line.span, LineKind::Relation);
@@ -2503,4 +2745,12 @@ struct Scope<'s> {
     names: &'s [String],
     locals: &'s Locals,
     conditions: &'s [&'s Node],
+}
+
+/// A closed value as decimal text (10 significant digits), for a check's left side.
+fn left_decimal(e: &Expr) -> Option<String> {
+    if !e.free_symbols().is_empty() || contains_holder(e) {
+        return None;
+    }
+    approximate(e).ok()
 }

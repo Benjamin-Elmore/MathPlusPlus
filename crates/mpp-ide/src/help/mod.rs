@@ -271,6 +271,7 @@ impl IdeApp {
                     .hint_text("Search the cheat sheet")
                     .desired_width(ui.available_width() - 14.0),
             )
+            .accessible_name("Search the cheat sheet")
         });
         // egui drops the focus on Esc before anyone sees the key, so the next
         // frame's Esc check reads where the focus was in this one.

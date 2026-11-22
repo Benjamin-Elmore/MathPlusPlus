@@ -43,8 +43,14 @@ pub enum Content {
     Preview { latex: String, copy: String },
     /// `x = 5` read as a definition, with the value when it was worked out.
     Defined { value: Option<(String, String)> },
-    /// `x = 5` with `x` already defined: does it hold?
-    Check { holds: Option<bool>, why: String },
+    /// `x = 5` with `x` already defined, `R ≈ 35.3`, `R == 35.3`, `|R − 35.3| < 0.1`:
+    /// does it hold? `left` is the left side as written (LaTeX) and its value, shown
+    /// beside a ✗ (`✗ R = 35.31…`).
+    Check {
+        holds: Option<bool>,
+        why: String,
+        left: Option<(String, String)>,
+    },
     /// The line's error: a short form for the slot and the whole message.
     Error { short: String, full: String },
 }
@@ -59,6 +65,9 @@ pub struct Slot {
     pub content: Content,
     /// From an earlier run of other text: shown dimmed.
     pub stale: bool,
+    /// The end of the line in the run's text, for an answer: the slot is hit like a
+    /// result in the formula (hover card, right-click formats).
+    pub result: Option<Span>,
 }
 
 /// True when a line's text ends in a lone `=` (`1.32 + 5 =`), asking for its answer
@@ -66,6 +75,23 @@ pub struct Slot {
 pub fn ends_open(text: &str) -> bool {
     let t = text.trim_end();
     t.ends_with('=') && !t.ends_with("==") && !t.ends_with(":=")
+}
+
+/// True when `line` of a display block has its answer drawn in the slot: a trailing
+/// `=`, and also `= ?` and `≈ ?` (not `= ?!`, whose working is drawn under it). The
+/// answer never goes in the formula, so it arriving never changes the line's height.
+/// (An answer that is an equation or a table still goes in the formula: see [`rich`].)
+pub fn is_slot_line(line: &Line, src: &str) -> bool {
+    matches!(line.statement, Statement::Query { steps: false, .. }) || is_open_line(line, src)
+}
+
+/// True when an answer is drawn in the formula even on a slot line: an equation
+/// (`L(x) = 25x − 54`, after an arrow) or a table under the line.
+fn rich(v: &Answered) -> bool {
+    matches!(
+        v.value,
+        Some(mpp_eval::Value::Relation(_) | mpp_eval::Value::Table(_))
+    )
 }
 
 /// True when `line` asks for its answer with a trailing `=`.
@@ -145,7 +171,7 @@ fn found<'e>(
 fn answer_of(v: &Answered, input: &PageInput<'_>, span: Span) -> Option<(String, String)> {
     let (text, latex, approx) = match input.show.format_for(span) {
         Some(f) => v.reformat_all(f),
-        None => (v.text.clone(), v.latex.clone(), v.approx.clone()),
+        None => (v.text.clone(), v.latex.clone(), v.decimal_beside()),
     };
     let decimal = matches!(
         v.kind,
@@ -177,7 +203,7 @@ fn preview_of(v: &Answered) -> Option<(String, String)> {
         .clone()
         .or_else(|| v.text.clone())
         .unwrap_or_else(|| latex.clone());
-    match (&v.text, &v.approx) {
+    match (&v.text, &v.decimal_beside()) {
         (Some(t), Some(a)) if t != a => Some((format!("= {latex} \\approx {a}"), copy)),
         _ => Some((format!("= {latex}"), copy)),
     }
@@ -185,18 +211,37 @@ fn preview_of(v: &Answered) -> Option<(String, String)> {
 
 /// The first error inside `span`, short and whole.
 fn error_in(br: &BlockResult, span: Span) -> Option<Content> {
-    let d = br.diagnostics.iter().find(|d| {
-        d.severity == Severity::Error && span.start <= d.span.start && d.span.end <= span.end
-    })?;
-    let full = mpp_core::note::plain(&d.message);
+    // An error first; with none, a warning (`w isn't defined, so there is no value`)
+    // explains why there is no answer.
+    let inside = |d: &&mpp_syntax::Diagnostic| span.start <= d.span.start && d.span.end <= span.end;
+    let d = br
+        .diagnostics
+        .iter()
+        .filter(inside)
+        .find(|d| d.severity == Severity::Error)
+        .or_else(|| {
+            br.diagnostics
+                .iter()
+                .filter(inside)
+                .find(|d| d.severity == Severity::Warning)
+        })?;
+    Some(error_content(d))
+}
+
+/// A diagnostic as slot content: a short form for the slot and the whole message.
+fn error_content(d: &mpp_syntax::Diagnostic) -> Content {
+    let full = mpp_core::note::plain(&d.message).replace('`', "");
     let first = full.lines().next().unwrap_or("").trim();
     let short = if first.chars().count() > 44 {
         format!("{}…", first.chars().take(43).collect::<String>().trim_end())
     } else {
         first.to_string()
     };
-    Some(Content::Error { short, full })
+    Content::Error { short, full }
 }
+
+/// What the hover over a check says about checks against numbers.
+pub const CHECK_RULE: &str = "\\text{A check against a number passes when the value rounds to it as written: 35.31 passes R = 35.3 (within half a unit of the last digit). Write ≈ or approx for a looser check, to 3 significant figures.}";
 
 /// The slots of a display maths block, line by line.
 pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot> {
@@ -205,7 +250,7 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
         .and_then(|ev| found(ev, input.src, input.doc, b, ast));
     let mut out = vec![];
     for (i, line) in ast.lines.iter().enumerate() {
-        let open = is_open_line(line, input.src);
+        let open = is_slot_line(line, input.src);
         let Some(run) = &run else {
             if open {
                 out.push(Slot {
@@ -213,6 +258,7 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
                     open,
                     content: Content::Empty,
                     stale: false,
+                    result: None,
                 });
             }
             continue;
@@ -226,25 +272,42 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
             .iter()
             .filter(|v| span.start <= v.span.start && v.span.end <= span.end)
             .collect();
-        let content = if open {
-            vals.iter()
-                .rev()
-                .find(|v| matches!(v.kind, LineKind::Query { .. }))
-                .and_then(|v| answer_of(v, input, line.span))
-                .map(|(latex, copy)| Content::Answer { latex, copy })
-                .or_else(|| error_in(run.br, span))
+        let open = open && !vals.iter().any(|v| rich(v));
+        // A name defined nowhere: say so, never echo the question as its answer.
+        let missing = run.br.diagnostics.iter().find(|d| {
+            span.start <= d.span.start
+                && d.span.end <= span.end
+                && d.message.contains("defined, so this cannot be worked out")
+        });
+        let content = if let (Some(d), false) = (missing, open) {
+            error_content(d)
+        } else if open {
+            missing
+                .map(error_content)
+                .or_else(|| {
+                    vals.iter()
+                        .rev()
+                        .find(|v| matches!(v.kind, LineKind::Query { .. }))
+                        .and_then(|v| answer_of(v, input, line.span))
+                        .map(|(latex, copy)| Content::Answer { latex, copy })
+                        .or_else(|| error_in(run.br, span))
+                })
                 .unwrap_or(Content::Empty)
         } else if let Some(v) = vals.iter().find(|v| v.implicit) {
             Content::Defined {
                 value: v.shows_value.then(|| preview_of(v)).flatten(),
             }
-        } else if let Some(v) = vals
-            .iter()
-            .find(|v| v.kind == LineKind::Check && matches!(line.statement, Statement::Relation(_)))
-        {
+        } else if let Some(v) = vals.iter().find(|v| {
+            v.kind == LineKind::Check
+                && matches!(
+                    line.statement,
+                    Statement::Relation(_) | Statement::Check { .. }
+                )
+        }) {
             Content::Check {
                 holds: v.verdict.as_ref().and_then(mpp_eval::Verdict::passed),
                 why: v.verdict_text().unwrap_or_default(),
+                left: left_side(line, input.src).zip(v.left.clone()),
             }
         } else if let Some((latex, copy)) = vals
             .iter()
@@ -255,14 +318,31 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
         } else {
             continue;
         };
+        let result = matches!(content, Content::Answer { .. }).then(|| Span::point(span.end));
         out.push(Slot {
             line: i,
             open,
             content,
             stale: run.stale,
+            result,
         });
     }
     out
+}
+
+/// The left side of a check line as written, when it is short enough to repeat
+/// beside the check's ✗ (`R`, `|R - 35.3|`).
+fn left_side(line: &Line, src: &str) -> Option<String> {
+    let span = match &line.statement {
+        Statement::Check { lhs, .. } => lhs.span,
+        Statement::Relation(n) => match &n.kind {
+            NodeKind::Relation { first, .. } => first.span,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let text = src.get(span.start..span.end)?.trim();
+    (!text.is_empty() && text.chars().count() <= 24).then(|| text.to_string())
 }
 
 /// True when the line `index` of the block has its answer drawn in a slot (so the
@@ -325,6 +405,31 @@ fn warning_sign(x: f32, y: f32, h: f32, color: Color, out: &mut Vec<Primitive>) 
     out.push(Primitive::Rule { rect: dot, color });
 }
 
+/// A ✗ drawn as two strokes, `size` high on a baseline: never an operator between
+/// empty boxes (a typeset `\times` has nothing on either side).
+fn cross(size: f32, color: Color) -> DisplayList {
+    let h = size * 0.62;
+    let stroke = (size * 0.09).max(1.2);
+    let line = |x0: f32, y0: f32, x1: f32, y1: f32| Primitive::Path {
+        cmds: vec![PathCmd::MoveTo(x0, y0), PathCmd::LineTo(x1, y1)],
+        color,
+        stroke: Some(stroke),
+    };
+    let pad = size * 0.08;
+    DisplayList {
+        width: h + 2.0 * pad,
+        height: h + pad,
+        depth: 0.0,
+        baseline: h + pad,
+        font_size: size,
+        items: vec![
+            line(pad, pad, pad + h, pad + h),
+            line(pad + h, pad, pad, pad + h),
+        ],
+        hits: vec![],
+    }
+}
+
 /// What one slot draws, laid out with its top-left at the origin.
 struct Chip {
     items: Vec<Primitive>,
@@ -335,6 +440,9 @@ struct Chip {
     /// What a click copies, and what hovering shows (LaTeX lines).
     copy: Option<String>,
     tip: Option<String>,
+    /// Hit like a result in the formula: the end of its line, and how far left of
+    /// the chip the hit reaches (over the gap after the `=`).
+    result: Option<(Span, f32)>,
 }
 
 impl Chip {
@@ -346,6 +454,7 @@ impl Chip {
             items: dl.items,
             copy: None,
             tip: None,
+            result: None,
         }
     }
 
@@ -374,6 +483,10 @@ impl Chip {
     }
 }
 
+/// What the hover over a definition's grey `= value` says.
+pub const DEFINED_HERE: &str =
+    "\\text{defined here: the grey = shows its value, worked out from the lines above}";
+
 /// The chip of a slot, at most `room` wide.
 fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
     let ac = colors(&theme);
@@ -390,13 +503,14 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
         Content::Answer { latex, copy } => {
             let mut c = Chip::from(fitted(latex, size, ink(ac.answer), theme, room));
             c.copy = Some(copy.clone());
+            c.result = slot.result.map(|r| (r, size * 0.35));
             c.tip = Some(format!("{latex}\n{hint}"));
             c
         }
         Content::Preview { latex, copy } => {
             let mut c = Chip::from(fitted(latex, size * 0.92, ink(ac.preview), theme, room));
             c.copy = Some(copy.clone());
-            c.tip = Some(format!("{latex}\n{hint}"));
+            c.tip = Some(format!("{latex}\n{DEFINED_HERE}\n{hint}"));
             c
         }
         Content::Defined { value } => {
@@ -408,7 +522,7 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
                     let v = fitted(latex, size * 0.92, ink(ac.preview), theme, room);
                     let mut c = Chip::from(v).then(mark, size * 0.4);
                     c.copy = Some(copy.clone());
-                    c.tip = Some(format!("{latex}\n{tip}\n{hint}"));
+                    c.tip = Some(format!("{latex}\n{DEFINED_HERE}\n{tip}\n{hint}"));
                     c
                 }
                 None => {
@@ -418,16 +532,32 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
                 }
             }
         }
-        Content::Check { holds, why } => {
-            let (tex, color) = match holds {
-                Some(true) => ("\\checkmark", ac.holds),
-                Some(false) => ("\\times", ac.fails),
-                None => ("?", ac.mark),
+        Content::Check { holds, why, left } => {
+            let color = ink(match holds {
+                Some(true) => ac.holds,
+                Some(false) => ac.fails,
+                None => ac.mark,
+            });
+            let mark = match holds {
+                Some(true) => typeset("\\checkmark", size, color, theme),
+                Some(false) => cross(size, color),
+                None => typeset("?", size, color, theme),
             };
-            let mut c = Chip::from(typeset(tex, size, ink(color), theme));
-            if !why.is_empty() {
-                c.tip = Some(prose_latex(&format!("check: {why}")));
+            let mut c = Chip::from(mark);
+            // A failed check says what the value really is: ✗ R = 35.31194307.
+            if let (Some(false), Some((name, value))) = (holds, left) {
+                let shown = format!("{name} = {value}");
+                let room = (room - c.width - size * 0.3).max(size);
+                let v = fitted(&shown, size * 0.85, color, theme, room);
+                c = c.then(v, size * 0.3);
+                c.copy = Some(value.clone());
             }
+            let mut tip = vec![];
+            if !why.is_empty() {
+                tip.push(prose_latex(&format!("check: {why}")));
+            }
+            tip.push(CHECK_RULE.to_string());
+            c.tip = Some(tip.join("\n"));
             c
         }
         Content::Error { short, full } => {
@@ -457,6 +587,7 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
                 depth: words.depth,
                 copy: Some(full.clone()),
                 tip: Some(prose_latex(full)),
+                result: None,
             }
         }
     };
@@ -481,16 +612,32 @@ fn put(chip: Chip, x: f32, baseline: f32, c: &mut Canvas) {
             },
         });
     }
+    if let Some((span, left)) = chip.result {
+        c.hits.push(mpp_render::HitBox {
+            rect: mpp_render::Rect {
+                x: x - left,
+                y: top,
+                w: chip.width.max(4.0) + left,
+                h: (chip.height + chip.depth).max(4.0),
+            },
+            baseline,
+            span,
+            path: mpp_render::NodePath(vec![]),
+            kind: HitKind::Result,
+            level: 50,
+            label: None,
+        });
+    }
 }
 
 /// Where line `index` of a laid-out block ends: the x after it and its baseline.
 fn line_end(dl: &DisplayList, line: &Line, open: bool) -> Option<(f32, f32)> {
     if open {
-        if let Some(h) = dl
-            .hits
-            .iter()
-            .find(|h| h.kind == HitKind::Result && h.span.start == line.span.end)
-        {
+        if let Some(h) = dl.hits.iter().find(|h| {
+            h.kind == HitKind::Result
+                && line.span.start <= h.span.start
+                && h.span.start <= line.span.end
+        }) {
             return Some((h.rect.x, h.baseline));
         }
     }
@@ -611,6 +758,7 @@ pub(crate) fn inline_chips(input: &PageInput<'_>, b: &Block, c: &mut Canvas) {
             open: true,
             content,
             stale,
+            result: None,
         };
         let room = inline_room(size) - size * 0.3;
         if let Some(ch) = chip(&slot, size * 0.95, input.theme, room) {

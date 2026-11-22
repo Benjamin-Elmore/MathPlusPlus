@@ -110,6 +110,9 @@ pub struct LineResult {
     /// `x = 5` on a maths line read as a definition, because `x` was not defined yet
     /// (the editor marks it so the reading is visible).
     pub implicit: bool,
+    /// A check's left side as a decimal (`35.31194307`), shown beside its ✓ or ✗
+    /// so a failed check says what the value really is.
+    pub left: Option<String>,
 }
 
 impl LineResult {
@@ -138,6 +141,7 @@ impl LineResult {
             open: false,
             shows_value: false,
             implicit: false,
+            left: None,
         }
     }
 
@@ -188,6 +192,23 @@ impl LineResult {
         let mut plain = self.clone();
         plain.text = self.plain.clone().or_else(|| self.text.clone());
         plain.answer()
+    }
+
+    /// The decimal shown beside an exact answer: the 10-digit approximation, or for an
+    /// exact number that is not a whole number (1968329/1270080) its decimal
+    /// (1.549767731), so an answer is never only a fraction to work out by hand.
+    pub fn decimal_beside(&self) -> Option<String> {
+        if let Some(a) = &self.approx {
+            return Some(a.clone());
+        }
+        let e = match self.value.as_ref()? {
+            Value::Expr(e) => e,
+            _ => return None,
+        };
+        let n = e.as_number()?;
+        (n.is_exact() && n.as_rational().is_some() && !n.is_integer())
+            .then(|| crate::numeric::approximate(e).ok())
+            .flatten()
     }
 
     /// Sets the value with its LaTeX and plain text.

@@ -17,6 +17,8 @@ pub struct LetterRunHit {
     pub word: String,
     /// The function the word is close to (`sin`), when there is one.
     pub function: Option<String>,
+    /// The word is called like a function (`integrate(x^2, x, 0, 3)`).
+    pub called: bool,
 }
 
 /// The functions a mistyped word is compared with.
@@ -63,6 +65,30 @@ pub fn message(hit: &LetterRunHit) -> String {
     )
 }
 
+/// The error for a word called like a function that no function has as its name
+/// (`integrate(x^2, x, 0, 3)`): what it is, and the form to write instead.
+pub fn unknown_function_message(hit: &LetterRunHit) -> String {
+    let w = hit.word.as_str();
+    let fix = match w {
+        "integrate" | "integral" | "integ" | "quad" => {
+            "Did you mean int(f, x, a, b)? (SymPy writes integrate(f, (x, a, b)).)".to_string()
+        }
+        "derivative" | "derive" | "deriv" | "differentiate" => "Did you mean diff(f, x)?".into(),
+        "summation" | "series" => "Did you mean sum(f, n, a, b)?".into(),
+        "product" => "Did you mean prod(f, n, a, b)?".into(),
+        "print" | "show" | "display" | "disp" | "echo" => {
+            "To see a value, type its name and = (R =).".into()
+        }
+        "range" => "In Python range(a, b) stops before b: write sum(f, n, a, b - 1).".into(),
+        "power" | "pow" => "Write x^n (or x**n).".into(),
+        _ => match &hit.function {
+            Some(f) => format!("Did you mean {f}?"),
+            None => "Define it first (f(x) := …) or check the spelling.".into(),
+        },
+    };
+    format!("`{w}` is not a known function. {fix}")
+}
+
 /// The word and function named by a warning from `message`.
 pub fn parse_message(msg: &str) -> Option<(String, Option<String>)> {
     let rest = msg.strip_prefix('`')?;
@@ -91,7 +117,12 @@ pub fn hits(line: &Line, is_known: &dyn Fn(&str) -> bool) -> Vec<LetterRunHit> {
                     // `sinn(2)`: the last letter is the name of a call; it belongs
                     // to the word the reader typed.
                     let (mut word, mut span) = (r.word.clone(), r.span);
-                    let mut called = false;
+                    // `integrate(…)`: letters straight before brackets (the last one is
+                    // `e`, a constant, so no call is parsed) are called too.
+                    let mut called = factors.get(r.end).is_some_and(|f| {
+                        f.span.start == r.span.end
+                            && matches!(f.kind, NodeKind::Tuple { .. } | NodeKind::Group { .. })
+                    });
                     if let Some(NodeKind::Call { callee, .. }) = factors.get(r.end).map(|f| &f.kind)
                     {
                         if let Some(c) = plain_letter(callee) {
@@ -111,6 +142,7 @@ pub fn hits(line: &Line, is_known: &dyn Fn(&str) -> bool) -> Vec<LetterRunHit> {
                             span,
                             word,
                             function: function.map(str::to_string),
+                            called,
                         });
                     }
                 }

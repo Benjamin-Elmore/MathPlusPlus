@@ -161,6 +161,18 @@ pub fn path_at(page: &Page, doc: &Document, offset: usize) -> Vec<Step> {
                 next = Some(c);
             }
         });
+        // Spaces typed at the end of a box (`\frac{1}{2 |}`) are in the box:
+        // the part before them holds the caret while the structure does,
+        // since that is where the next character goes.
+        if next.is_none() && offset < node.span.end {
+            let mut last: Option<&Node> = None;
+            visit::children(node, &mut |c| {
+                if c.span.end <= offset && last.is_none_or(|l| c.span.end >= l.span.end) {
+                    last = Some(c);
+                }
+            });
+            next = last.filter(|c| role(node, c).is_some());
+        }
         let Some(c) = next else { break };
         if let Some((what, part)) = role(node, c) {
             out.push(Step {
@@ -282,6 +294,16 @@ mod tests {
             at(src, exp),
             "Maths \u{203a} integral \u{203a} integrand \u{203a} power \u{203a} exponent"
         );
+    }
+
+    #[test]
+    fn spaces_at_the_end_of_a_box_are_in_the_box() {
+        let src = "$$ q := \\frac{1}{2 } $$\n";
+        let pos = src.find("2 }").unwrap() + 2;
+        assert_eq!(at(src, pos), "Maths \u{203a} fraction \u{203a} denominator");
+        let src = "$$ q := \\frac{1}{2} + 3 $$\n";
+        let after = src.find("} + 3").unwrap() + 2;
+        assert_eq!(at(src, after), "Maths");
     }
 
     #[test]

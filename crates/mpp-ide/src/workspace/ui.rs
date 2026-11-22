@@ -87,6 +87,7 @@ impl IdeApp {
         }
         if explorer {
             self.show_side(SideView::Explorer);
+            self.land_in(crate::layout::Pane::Explorer);
         }
         if cheat {
             self.show_cheat_sheet(ctx);
@@ -579,7 +580,8 @@ impl IdeApp {
         // Prose or Maths, and the path to the caret inside maths (U13).
         let place = self.doc().map(crate::page::caret_path::status_text);
         let mut flip_line = false;
-        egui::Panel::bottom("status")
+        let mut place_id = None;
+        let bar = egui::Panel::bottom("status")
             .frame(
                 egui::Frame::NONE
                     .fill(c32(theme.code_background))
@@ -619,13 +621,13 @@ impl IdeApp {
                         }
                     });
                     ui.label(egui::RichText::new("\u{00b7}").color(c32(theme.muted)));
-                    if ui
-                        .add(
-                            egui::Label::new(plural(ndefs, "definition", "definitions"))
-                                .sense(Sense::click()),
-                        )
-                        .clicked()
-                    {
+                    let defs = ui.add(
+                        egui::Label::new(plural(ndefs, "definition", "definitions"))
+                            .sense(Sense::click()),
+                    );
+                    // A button that opens the Outline, for a screen reader too.
+                    crate::access::live::as_button(ui, &defs, "Opens the Outline");
+                    if defs.clicked() {
                         show_outline = true;
                     }
                     ui.label(egui::RichText::new("\u{00b7}").color(c32(theme.muted)));
@@ -646,14 +648,14 @@ impl IdeApp {
                             format!("{} in this file", counts.summary())
                         };
                         // Clicking the count opens the Problems tile, like Ctrl+Shift+M.
-                        if ui
+                        let count = ui
                             .add(
                                 egui::Label::new(egui::RichText::new(text).color(color))
                                     .sense(Sense::click()),
                             )
-                            .on_hover_text("Problems (Ctrl+Shift+M)")
-                            .clicked()
-                        {
+                            .on_hover_text("Problems (Ctrl+Shift+M)");
+                        crate::access::live::as_button(ui, &count, "Opens Problems");
+                        if count.clicked() {
                             show_problems = true;
                         }
                     }
@@ -672,14 +674,17 @@ impl IdeApp {
                         ui.label(theme_label);
                         if let Some(place) = &place {
                             ui.separator();
-                            flip_line = ui
+                            let r = ui
                                 .add(egui::Label::new(place.as_str()).sense(Sense::click()))
-                                .on_hover_text("Ctrl+M switches this line between prose and maths")
-                                .clicked();
+                                .on_hover_text("Ctrl+M switches this line between prose and maths");
+                            place_id = Some(r.id);
+                            flip_line = r.clicked();
                         }
                     });
                 });
             });
+        self.access.status_rect = Some(bar.response.rect);
+        self.access.status_place = place_id.zip(place);
         if show_problems {
             self.open_pane(crate::layout::Pane::Problems);
         }

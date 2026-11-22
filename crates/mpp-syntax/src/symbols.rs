@@ -266,6 +266,7 @@ pub static SYMBOLS: &[Symbol] = &[
     entry("deg", "deg", "\\deg", Function),
     entry("arg", "arg", "\\arg", Function),
     entry("Pr", "Pr", "\\Pr", Function),
+    entry("round", "round", "\\operatorname{round}", Function),
     entry("sgn", "sgn", "\\operatorname{sgn}", Function),
     // Special functions of the calculus toolkits (erf x, the sine and cosine integrals).
     entry("erf", "erf", "\\operatorname{erf}", Function),

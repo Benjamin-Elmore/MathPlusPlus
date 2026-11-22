@@ -154,7 +154,7 @@ const FUNCTIONS: &[&str] = &[
     "log", "ln", "lg", "exp", "sqrt", "abs", "max", "min", "sum", "prod", "int", "lim", "det",
     "gcd", "lcm", "floor", "ceil", "mod", "pi", "inf", "diff", "solve", "frac", "cdot", "times",
     "alpha", "beta", "gamma", "delta", "theta", "lambda", "mu", "sigma", "omega", "phi", "rho",
-    "tau", "epsilon",
+    "tau", "epsilon", "round", "approx",
 ];
 
 /// Names defined in the text (`speed := 5`, `f(x) := …`, `g \equiv 9.81`).
@@ -192,7 +192,12 @@ pub fn defined_names(text: &str) -> Vec<String> {
 /// with `=` or `= ?`, or it is symbols, digits and operators whose words are all
 /// functions or defined names. A line with two or more ordinary words stays prose.
 pub fn reads_as_maths(line: &str, known: &[String]) -> bool {
-    let t = line.trim();
+    // `R == 35.3  # a check`: a coder's comment is not part of the maths.
+    let t = match line.find(" #") {
+        Some(i) if !line.trim_start().starts_with('#') => &line[..i],
+        _ => line,
+    };
+    let t = t.trim();
     if t.is_empty() || t.contains('$') || t.contains('`') || t.contains("[[") {
         return false;
     }
@@ -238,7 +243,9 @@ pub fn reads_as_maths(line: &str, known: &[String]) -> bool {
     if ordinary > 0 {
         return false;
     }
-    let op = t.chars().any(|c| "+-*/^=<>()≤≥≠·×÷−±√∫∑".contains(c)) || t.contains('\\');
+    let op = t.chars().any(|c| "+-*/^=<>()≤≥≠·×÷−±√∫∑≈~".contains(c))
+        || t.contains('\\')
+        || t.split_whitespace().any(|w| w == "approx");
     op && t.chars().any(|c| c.is_alphanumeric())
 }
 
@@ -826,6 +833,57 @@ impl Editor {
         }
         self.fixup();
         self.revision += 1;
+    }
+
+    /// The caret's line, when it is a prose line of its own that ends in `=`
+    /// (or `= ?`, `≈ ?`) and reads as maths: what auto-detect would turn into
+    /// maths once the caret leaves it. `(start, end)` of the line.
+    fn asking_line(&self, state: &MathsState) -> Option<(usize, usize)> {
+        if state.auto_off || self.selection().is_some() {
+            return None;
+        }
+        let (ls, le) = line_bounds(&self.text, self.caret);
+        if line_kind(&self.text, ls) != LineKind::Prose {
+            return None;
+        }
+        let line = self.text[ls..le].trim();
+        let squeezed: String = line.chars().filter(|c| !c.is_whitespace()).collect();
+        let asks =
+            (squeezed.ends_with('=') && !squeezed.ends_with("==") && !squeezed.ends_with(":="))
+                || squeezed.ends_with("=?")
+                || squeezed.ends_with("≈?");
+        if !asks || state.kept.iter().any(|k| k == line) {
+            return None;
+        }
+        if !line_blank_before(&self.text, ls) || !line_blank_after(&self.text, le) {
+            return None;
+        }
+        reads_as_maths(line, &defined_names(&self.text)).then_some((ls, le))
+    }
+
+    /// True when the caret's line would be turned into maths after a rest (see
+    /// [`Editor::maths_after_rest`]).
+    pub fn rest_candidate(&self, state: &MathsState) -> bool {
+        self.asking_line(state).is_some()
+    }
+
+    /// The caret has rested on a prose line ending in `=` that reads as maths:
+    /// the line is finished, so it becomes a maths line now (the caret stays at
+    /// the same place in it). One undo step, like [`Editor::maths_after_frame`].
+    pub fn maths_after_rest(&mut self, state: &mut MathsState) -> bool {
+        let Some((ls, le)) = self.asking_line(state) else {
+            return false;
+        };
+        state.kept.push(self.text[ls..le].trim().to_string());
+        if !self.make_maths(ls) {
+            return false;
+        }
+        self.typed_forms(ls);
+        self.fire_hint(
+            Hint::AutoMaths,
+            "Turned into maths. Ctrl+Z keeps it as text.",
+        );
+        true
     }
 
     /// Where the caret is now, for [`Editor::maths_after_frame`].

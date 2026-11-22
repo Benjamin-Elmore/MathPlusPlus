@@ -243,10 +243,25 @@ impl Behavior<Pane> for AppBehavior<'_> {
 
     fn on_tab_button(
         &mut self,
-        _tiles: &mut Tiles<Pane>,
+        tiles: &mut Tiles<Pane>,
         tile_id: TileId,
         button_response: egui::Response,
     ) -> egui::Response {
+        // A screen reader hears "Untitled-1, unsaved, 4 errors", not "● 4".
+        if let Some(Pane::Equation { doc, view }) = tiles.get_pane(&tile_id) {
+            if let Some(d) = self.app.docs.iter().find(|d| d.id == *doc) {
+                let c = d
+                    .path
+                    .as_ref()
+                    .and_then(|p| self.counts.iter().find(|(q, _)| q == p))
+                    .map(|(_, c)| *c)
+                    .unwrap_or_else(|| d.problem_counts());
+                let name = crate::access::live::tab_name(&d.title(), *view, d.is_dirty(), c.errors);
+                button_response
+                    .ctx
+                    .accesskit_node_builder(button_response.id, |n| n.set_label(name));
+            }
+        }
         if button_response.clicked() || button_response.drag_started() {
             self.pressed = Some(tile_id);
         }

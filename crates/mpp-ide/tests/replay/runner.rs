@@ -257,7 +257,10 @@ pub fn run(h: &mut H, steps: &[Step], mut check: impl FnMut(&Step, FrameKind, &S
                 let mut last: Option<String> = None;
                 loop {
                     std::thread::sleep(Duration::from_millis(15));
-                    let done = h.state().doc().is_some_and(|d| d.page_is_current());
+                    let done = h
+                        .state()
+                        .doc()
+                        .is_some_and(|d| d.page_is_current() && !d.rest_pending());
                     let quiet = !h.ctx.has_requested_repaint() || same >= 5;
                     if (start.elapsed() >= debounce && done && quiet)
                         || start.elapsed() > PAUSE_LIMIT
@@ -299,9 +302,6 @@ pub struct Watch {
     above: Option<(usize, Vec<(Span, f32)>)>,
     /// Where the caret was in the previous frame, and the text then.
     last: Option<(String, egui::Pos2)>,
-    /// Lines above may move when an answer arrives (see
-    /// `worksheets::a_fraction_answer_moves_nothing`).
-    answers_may_move: bool,
 }
 
 impl Watch {
@@ -311,7 +311,6 @@ impl Watch {
             at_end: true,
             above: None,
             last: None,
-            answers_may_move: false,
         }
     }
 
@@ -321,15 +320,7 @@ impl Watch {
             at_end: false,
             above: None,
             last: None,
-            answers_may_move: false,
         }
-    }
-
-    /// Lets the lines above move in a pause, when answers arrive: only the
-    /// frames that keys cause are held to it.
-    pub fn answers_may_move(mut self) -> Watch {
-        self.answers_may_move = true;
-        self
     }
 
     /// Checks one frame.
@@ -340,8 +331,13 @@ impl Watch {
         // The caret is drawn on the line where the next character goes, below
         // every line that ends before it (at the end of the file, when the
         // person only ever types there).
+        // (A last line that became maths after a rest keeps the caret before
+        // its closing ` $$`.)
         if self.at_end {
-            assert_eq!(s.caret, s.text.len(), "the caret left the end after {at}");
+            assert!(
+                s.caret == s.text.len() || &s.text[s.caret..] == " $$",
+                "the caret left the end after {at}"
+            );
         }
         let caret_at = s
             .caret_at
@@ -379,9 +375,6 @@ impl Watch {
             .copied()
             .collect();
         match &self.above {
-            _ if self.answers_may_move && kind == FrameKind::Idle => {
-                self.above = Some((line, above));
-            }
             Some((l, before)) if *l == line && !matches!(step, Step::Key(Key::Enter)) => {
                 for ((sa, ta), (_, tb)) in before.iter().zip(&above) {
                     assert!(

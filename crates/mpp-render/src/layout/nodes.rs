@@ -99,9 +99,25 @@ impl Engine<'_> {
 
     fn atom_inner(&mut self, n: &Node, st: Style, path: &NodePath, hint: Option<&str>) -> Atom {
         use NodeKind as K;
+        // Upright letters (an unknown function's name) reach only the letters of the
+        // name, never what is inside its brackets.
+        if self.upright
+            && !matches!(
+                n.kind,
+                K::Name(_) | K::Constant(_) | K::Binary { .. } | K::Call { .. }
+            )
+        {
+            self.upright = false;
+            let a = self.atom_inner(n, st, path, hint);
+            self.upright = true;
+            return a;
+        }
         match &n.kind {
             K::Number(s) => Atom::ord(self.word(s, st)),
             K::Name(name) => Atom::ord(self.name(n, name, st, path, true)),
+            // `e` and `i` inside an unknown function's name are letters of it.
+            K::Constant(Constant::E) if self.upright => Atom::ord(self.letter('e', st, true)),
+            K::Constant(Constant::I) if self.upright => Atom::ord(self.letter('i', st, true)),
             K::Constant(c) => Atom::ord(self.constant(*c, st)),
             K::Symbol(s) => Atom::ord(self.sym_str(s, st)),
             K::Dots(d) => {
@@ -126,7 +142,9 @@ impl Engine<'_> {
             }
             K::Call { callee, args, .. } => {
                 let f = self.child(n, callee, st, path);
+                let upright = std::mem::replace(&mut self.upright, false);
                 let inner = self.list(n, args, st, path);
+                self.upright = upright;
                 let call = self.fenced(Some('('), inner, Some(')'), st);
                 self.group(vec![f, call], st)
             }
@@ -144,8 +162,15 @@ impl Engine<'_> {
                 self.group(vec![o, x], st)
             }
             K::Binary { op, lhs, rhs } => {
+                // `integrate(…)`: a word of letters called like a function is a
+                // function's name, set upright (NIST), not a product of italic letters.
+                let upright = self.upright;
+                if *op == BinOp::Mul(MulStyle::Implicit) && called_word(n) {
+                    self.upright = true;
+                }
                 let l = self.child(n, lhs, st, path);
                 let r = self.child(n, rhs, st, path);
+                self.upright = upright;
                 if *op == BinOp::Mod {
                     let m = Atom::new(Class::Bin, self.roman("mod", st));
                     return self.group(vec![l, m, r], st);
@@ -417,7 +442,7 @@ impl Engine<'_> {
         }
         let mut chars = name.base.chars();
         let base = match (chars.next(), chars.next(), chars.next()) {
-            (Some(c), None, _) => self.letter(c, st, false),
+            (Some(c), None, _) => self.letter(c, st, self.upright),
             // `\Delta x`, `\delta t`: one name, set as the two letters it is written with.
             (Some(d @ ('Δ' | 'δ')), Some(c), None) if c.is_alphabetic() => LBox::hlist(vec![
                 self.letter(d, st, d == 'Δ'),
@@ -1268,4 +1293,41 @@ fn sentence_fits(pieces: &[Piece], op: &NamedOp) -> bool {
         }),
         _ => true,
     })
+}
+
+/// True when `n` is letters side by side, with no spaces, ending in a call of the
+/// last one (`integrate(x)`, `round(R, 1)`): three or more letters in all.
+fn called_word(n: &Node) -> bool {
+    use mpp_syntax::math::letters::{implicit_factors, plain_letter};
+    let factors = implicit_factors(n);
+    let Some((last, before)) = factors.split_last() else {
+        return false;
+    };
+    // `round(…)` parses as a call of `d`; `integrate(…)` ends in the constant `e`,
+    // so its brackets are a group after the letters.
+    let (letters, name_end): (Vec<&Node>, usize) = match &last.kind {
+        NodeKind::Call { callee, .. } if plain_letter(callee).is_some() => {
+            let mut l = before.to_vec();
+            l.push(callee);
+            (l, callee.span.end)
+        }
+        NodeKind::Tuple { .. } | NodeKind::Group { .. } => {
+            (before.to_vec(), before.last().map_or(0, |f| f.span.end))
+        }
+        _ => return false,
+    };
+    if letters.len() < 3 {
+        return false;
+    }
+    if !matches!(last.kind, NodeKind::Call { .. }) && last.span.start != name_end {
+        return false;
+    }
+    let mut end = None;
+    for f in letters {
+        if plain_letter(f).is_none() || end.is_some_and(|e| e != f.span.start) {
+            return false;
+        }
+        end = Some(f.span.end);
+    }
+    true
 }

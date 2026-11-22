@@ -292,12 +292,14 @@ pub fn show(
                         }
                         return;
                     }
-                    let edit = ui.add(
-                        egui::TextEdit::singleline(&mut state.query)
-                            .hint_text(small("Search maths\u{2026}"))
-                            .font(theme::sans(15.0))
-                            .desired_width(f32::INFINITY),
-                    );
+                    let edit = ui
+                        .add(
+                            egui::TextEdit::singleline(&mut state.query)
+                                .hint_text(small("Search maths\u{2026}"))
+                                .font(theme::sans(15.0))
+                                .desired_width(f32::INFINITY),
+                        )
+                        .accessible_name("Search maths to insert");
                     if state.just_opened || !edit.has_focus() {
                         edit.request_focus();
                     }
@@ -306,6 +308,7 @@ pub fn show(
                     }
                     ui.add_space(4.0);
                     let mut chosen: Option<&'static Template> = None;
+                    let mut active: Option<Id> = None;
                     // The area remembers its last size: when the list grows
                     // (a new search, the menu opened again) it must not stay
                     // as short as it was.
@@ -314,6 +317,10 @@ pub fn show(
                         .min_scrolled_height(MENU_HEIGHT)
                         .auto_shrink([false, true])
                         .show(ui, |ui| {
+                            ui.ctx().accesskit_node_builder(ui.unique_id(), |n| {
+                                n.set_role(egui::accesskit::Role::ListBox);
+                                n.set_label("Maths to insert");
+                            });
                             let mut index = 0usize;
                             if items.is_empty() {
                                 ui.label(small("Nothing matches."));
@@ -331,7 +338,9 @@ pub fn show(
                                         ui.spacing_mut().item_spacing = Vec2::new(2.0, 2.0);
                                         for t in list {
                                             let sel = index == state.selected;
-                                            if tile(ui, t, sel, theme, mode).clicked() {
+                                            let r = tile(ui, t, sel, theme, mode);
+                                            option(ui, &r, t, sel, &mut active);
+                                            if r.clicked() {
                                                 chosen = Some(t);
                                             }
                                             index += 1;
@@ -340,7 +349,9 @@ pub fn show(
                                 } else {
                                     for t in list {
                                         let sel = index == state.selected;
-                                        if row(ui, t, sel, theme, mode).clicked() {
+                                        let r = row(ui, t, sel, theme, mode);
+                                        option(ui, &r, t, sel, &mut active);
+                                        if r.clicked() {
                                             chosen = Some(t);
                                         }
                                         index += 1;
@@ -348,6 +359,13 @@ pub fn show(
                                 }
                             }
                         });
+                    // The search box keeps the keyboard; the screen reader
+                    // follows the highlighted item.
+                    if let Some(a) = active {
+                        ui.ctx().accesskit_node_builder(edit.id, |n| {
+                            n.set_active_descendant(a.accesskit_id());
+                        });
+                    }
                     if let Some(t) = chosen {
                         outcome = state.choose(t);
                     }
@@ -364,6 +382,23 @@ pub fn show(
         return Outcome::Closed;
     }
     outcome
+}
+
+/// Makes a row or tile a list option for a screen reader: named, and marked
+/// selected when it is the highlighted one.
+fn option(ui: &Ui, r: &egui::Response, t: &Template, selected: bool, active: &mut Option<Id>) {
+    r.widget_info(|| {
+        egui::WidgetInfo::selected(egui::Role::ListBoxOption, true, selected, &t.name)
+    });
+    ui.ctx().accesskit_node_builder(r.id, |n| {
+        n.set_role(egui::accesskit::Role::ListBoxOption);
+        n.set_label(t.name.clone());
+        n.clear_toggled();
+        n.set_selected(selected);
+    });
+    if selected {
+        *active = Some(r.id);
+    }
 }
 
 /// One list row: the typeset picture, then the name.
@@ -556,9 +591,11 @@ fn picker_ui(ui: &mut Ui, state: &mut MenuState, theme: Theme, mode: Mode) -> Op
 
 /// The toolbar's "Insert ▾" button (the arrow is drawn: Latin Modern has no ▾).
 pub fn insert_button(ui: &mut Ui) -> egui::Response {
+    // The spaces make room for the drawn arrow; a screen reader hears "Insert".
     let resp = ui
         .button("Insert    ")
-        .on_hover_text(small("Insert maths at the cursor (Ctrl+Space)"));
+        .on_hover_text(small("Insert maths at the cursor (Ctrl+Space)"))
+        .accessible_name("Insert");
     let r = resp.rect;
     let c = Pos2::new(r.right() - 12.0, r.center().y + 1.0);
     let color = ui.visuals().widgets.style(&resp).fg_stroke.color;

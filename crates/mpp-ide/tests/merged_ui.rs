@@ -151,8 +151,16 @@ fn the_problems_tile_lists_the_project_and_tabs_show_error_counts() {
     assert!(main_errors >= 1, "{counts:?}");
 
     // The tabs carry the counts, and the Problems tile lists every file.
-    assert!(h.query_by_label("notes  1").is_some(), "tab with its count");
-    assert!(h.query_by_label(&format!("main  {main_errors}")).is_some());
+    assert!(
+        h.query_by_label("notes, 1 error").is_some(),
+        "tab with its count"
+    );
+    let main_tab = if main_errors == 1 {
+        "main, 1 error".to_string()
+    } else {
+        format!("main, {main_errors} errors")
+    };
+    assert!(h.query_by_label(&main_tab).is_some());
     assert!(h.query_by_label("Problems").is_some(), "the tile's tab");
     let list = h.state_mut().project_problems();
     let titles: Vec<&str> = list.iter().map(|f| f.title.as_str()).collect();
@@ -260,7 +268,7 @@ fn the_insert_menu_works_in_a_split_view() {
     );
 
     // The toolbar button opens the menu in the focused view; one insert only.
-    h.get_by_label("Insert    ").click();
+    h.get_by_label("Insert").click();
     run(&mut h);
     assert!(h.state().insert.menu.open);
     type_text(&mut h, "fraction");

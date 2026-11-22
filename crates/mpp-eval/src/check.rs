@@ -33,6 +33,10 @@ pub enum Verdict {
     /// Two closed expressions agree to this many significant digits in high-precision
     /// arithmetic, but no proof was found (shown with ≈, never ✓).
     Agrees { digits: usize },
+    /// A check against a written number (`R = 35.3`): the value rounds to it, within
+    /// half a unit of its last written digit (35.31194307 rounds to 35.3). Also the
+    /// pass of an approximate check (`R ≈ 35.3`).
+    Rounds { value: String, written: String },
     /// Neither a proof nor a numeric check was possible.
     Unknown(String),
 }
@@ -41,7 +45,10 @@ impl Verdict {
     /// `Some(true)` for ✓, `Some(false)` for ✗, `None` when undecided.
     pub fn passed(&self) -> Option<bool> {
         match self {
-            Verdict::Proved | Verdict::Holds { .. } | Verdict::Agrees { .. } => Some(true),
+            Verdict::Proved
+            | Verdict::Holds { .. }
+            | Verdict::Agrees { .. }
+            | Verdict::Rounds { .. } => Some(true),
             Verdict::Fails { .. } => Some(false),
             Verdict::Unknown(_) => None,
         }
@@ -78,9 +85,48 @@ impl Verdict {
             Verdict::Agrees { digits } => {
                 format!("≈ (checked numerically to {digits} digits, not proved)")
             }
+            Verdict::Rounds { value, written } => format!("✓ ({value} rounds to {written})"),
             Verdict::Unknown(why) => format!("? ({why})"),
         }
     }
+}
+
+/// A number as written on the right of a check (`35.3`, `-2.50`, `40`): its value and
+/// how many digits follow the decimal point.
+pub fn written_number(text: &str) -> Option<(f64, usize)> {
+    let t = text.trim();
+    let body = t
+        .strip_prefix('-')
+        .or_else(|| t.strip_prefix('−'))
+        .unwrap_or(t);
+    let (whole, frac) = body.split_once('.').unwrap_or((body, ""));
+    let digits = |s: &str| s.chars().all(|c| c.is_ascii_digit());
+    if whole.is_empty() || !digits(whole) || !digits(frac) {
+        return None;
+    }
+    let value: f64 = format!("{whole}.{}", if frac.is_empty() { "0" } else { frac })
+        .parse()
+        .ok()?;
+    let neg = body.len() != t.len();
+    Some((if neg { -value } else { value }, frac.len()))
+}
+
+/// True when `value` rounds to the number written with `places` digits after the
+/// point: it is within half a unit of the last written digit.
+pub fn rounds_to(value: f64, written: f64, places: usize) -> bool {
+    let half = 0.5 * 10f64.powi(-(places as i32));
+    value.is_finite() && (value - written).abs() <= half * (1.0 + 1e-9) + 1e-12
+}
+
+/// True when two values agree to 3 significant figures (an approximate check against
+/// an expression, not a written number).
+pub fn agrees_roughly(a: f64, b: f64) -> bool {
+    let top = a.abs().max(b.abs());
+    if top == 0.0 {
+        return true;
+    }
+    let unit = 10f64.powf(top.log10().floor() - 2.0);
+    (a - b).abs() <= 0.5 * unit * (1.0 + 1e-9)
 }
 
 /// A small deterministic generator, so checks give the same answer every run.
@@ -387,6 +433,7 @@ fn check_entries(lhs: &Expr, rhs: &Expr, a: &[Expr], b: &[Expr]) -> Verdict {
                 fewest = Some(fewest.map_or(points, |p: usize| p.min(points)));
             }
             Verdict::Agrees { digits } => return Verdict::Agrees { digits },
+            v @ Verdict::Rounds { .. } => return v,
             Verdict::Fails { at, lhs, rhs } => {
                 return Verdict::Fails {
                     at,

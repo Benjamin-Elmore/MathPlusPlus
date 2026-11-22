@@ -49,7 +49,7 @@ const CODER: &[Step] = &[
 
 fn typed(script: &[Step]) -> H {
     let mut h = fresh();
-    let mut w = Watch::new().answers_may_move();
+    let mut w = Watch::new();
     run(&mut h, script, |step, kind, s| w.frame(step, kind, s));
     h
 }
@@ -104,7 +104,8 @@ fn a_mathematician_and_a_coder_get_the_same_worksheet() {
     assert_eq!(results(&maths), want);
     assert_eq!(results(&code), want);
     let (sm, sc) = (Seen::of(&maths), Seen::of(&code));
-    assert_eq!(drawn_answers(&sm), ["32", "13", "11"]);
+    // Exact fractions show their decimal beside them (E5).
+    assert_eq!(drawn_answers(&sm), ["32≈1.5", "13≈0.3333333333", "11"]);
     assert_eq!(drawn_answers(&sc), drawn_answers(&sm));
     // Both are a heading and five maths lines; only the saved text differs.
     assert_eq!((sm.maths, sc.maths), (5, 5));
@@ -130,7 +131,6 @@ fn a_mathematician_and_a_coder_get_the_same_worksheet() {
 }
 
 #[test]
-#[ignore = "U27: a `= ?` answer is drawn in the formula, not in a reserved slot (U16): 3/2 replacing ? makes the line ~5 px taller (a digit is taller than `a`), so the lines above shift when it arrives"]
 fn a_fraction_answer_moves_nothing() {
     let mut h = fresh();
     let mut w = Watch::new();

@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 
 use egui::{Event, Key, Modifiers, Vec2};
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use mpp_ide::layout::tiles::{self, Dir, Pane, Preset};
 use mpp_ide::{theme, IdeApp};
@@ -158,7 +158,7 @@ fn maximise_and_restore_with_the_key_and_a_double_click() {
     let mut h = harness(open_two(&d));
     run(&mut h);
     // Focus the page, then maximise.
-    h.get_by_label("beta").click();
+    beta_tab(&h).click();
     run(&mut h);
     press(
         &mut h,
@@ -170,7 +170,7 @@ fn maximise_and_restore_with_the_key_and_a_double_click() {
     h.get_by_label("Restore").click();
     run(&mut h);
     assert!(!h.state().is_maximised(), "restore button");
-    let r = h.get_by_label("beta").rect();
+    let r = beta_tab(&h).rect();
     double_click(&mut h, egui::pos2(r.left() + 12.0, r.center().y));
     run(&mut h);
     assert!(h.state().is_maximised(), "double-click on a tab");
@@ -342,4 +342,11 @@ fn closing_one_of_two_views_keeps_the_file_open() {
     assert_eq!(h.state().docs.len(), 2, "the file stays");
     assert_eq!(equation_views(h.state_mut(), b), 1);
     let _ = std::fs::remove_dir_all(&d);
+}
+
+/// The tab of the file "beta" (the page itself is also named after its file).
+fn beta_tab<'a>(h: &'a Harness<'static, IdeApp>) -> egui_kittest::Node<'a> {
+    h.query_all_by_label("beta")
+        .find(|n| n.accesskit_node().role() != egui::accesskit::Role::MultilineTextInput)
+        .expect("the beta tab")
 }
