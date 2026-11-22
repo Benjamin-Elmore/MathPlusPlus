@@ -100,6 +100,9 @@ pub struct AccessState {
     pub(crate) status_place: Option<(Id, String)>,
     /// Where the status bar is.
     pub(crate) status_rect: Option<Rect>,
+    /// Ctrl+Alt+W's words shown on screen for sighted users, and when they
+    /// were asked for (T-N6, E-N7).
+    toast: Option<(String, f64)>,
 }
 
 impl AccessState {
@@ -112,7 +115,15 @@ impl AccessState {
     pub fn assertive(&self) -> &str {
         self.assertive.text.trim_end_matches('\u{a0}')
     }
+
+    /// The words "where am I" shows on screen, while they are shown.
+    pub fn toast(&self) -> Option<&str> {
+        self.toast.as_ref().map(|(t, _)| t.as_str())
+    }
 }
+
+/// How long "where am I" stays on screen, in seconds.
+const TOAST_SECONDS: f64 = 5.0;
 
 /// Makes a clickable label a button for a screen reader: its text becomes the
 /// button's name and `does` says what it does.
@@ -207,11 +218,72 @@ fn first_focusable(ctx: &Context, rects: &[Rect], this_pass: bool) -> Option<Id>
     })
 }
 
+/// Names the tile manager's own widgets that take the keyboard but say
+/// nothing (R-F4): a tab bar's empty strip and the divider between tiles.
+fn name_unnamed(ctx: &Context) {
+    let rects: Vec<(Id, Rect)> = ctx.viewport(|v| {
+        v.this_pass
+            .widgets
+            .layers()
+            .filter(|(l, _)| l.order == Order::Background)
+            .flat_map(|(_, list)| list.iter())
+            .filter(|w| w.sense.is_focusable() && w.sense.senses_drag())
+            .map(|w| (w.id, w.rect))
+            .collect()
+    });
+    for (id, r) in rects {
+        ctx.accesskit_node_builder(id, |n| {
+            let unnamed = n.role() == accesskit::Role::Unknown
+                && n.label().is_none_or(|l| l.trim().is_empty())
+                && n.value().is_none_or(|v| v.trim().is_empty());
+            if !unnamed {
+                return;
+            }
+            if r.width().min(r.height()) <= 8.0 {
+                n.set_role(accesskit::Role::Splitter);
+                n.set_label("Divider between panels");
+            } else if r.height() <= 40.0 {
+                n.set_role(accesskit::Role::Group);
+                n.set_label("Tab bar");
+            }
+        });
+    }
+}
+
 impl IdeApp {
     /// Gives a panel the keyboard as soon as it is drawn (a panel opened by
     /// its shortcut).
     pub fn land_in(&mut self, pane: Pane) {
         self.access.land = Some((pane, 0));
+    }
+
+    /// True when the keyboard is in the panel named `name` ("Problems").
+    pub(crate) fn focus_in_pane(&self, ctx: &Context, name: &str) -> bool {
+        let Some(f) = ctx.memory(egui::Memory::focused) else {
+            return false;
+        };
+        if is_editor(ctx, f) {
+            return false;
+        }
+        let at = ctx.viewport(|v| {
+            v.prev_pass
+                .widgets
+                .get(f)
+                .or_else(|| v.this_pass.widgets.get(f))
+                .map(|w| w.interact_rect.center())
+        });
+        at.is_some_and(|c| {
+            self.access
+                .panes
+                .iter()
+                .any(|(n, r)| *n == name && r.contains(c))
+        })
+    }
+
+    /// Says `words` in the polite live region now.
+    pub(crate) fn say_politely(&mut self, words: &str) {
+        self.access.pending = None;
+        self.access.polite.say(words);
     }
 
     /// The region holding the widget `id` (by where it was last frame).
@@ -408,6 +480,8 @@ impl IdeApp {
             };
             if let Some(w) = w {
                 self.access.polite.say(&w);
+                let now = ctx.input(|i| i.time);
+                self.access.toast = Some((w, now));
             }
         }
         if back || fwd {
@@ -663,8 +737,37 @@ impl IdeApp {
         );
     }
 
+    /// "Where am I" on screen: the same words, above the status bar's right
+    /// end, for a few seconds.
+    fn show_toast(&mut self, ctx: &Context) {
+        let Some((words, at)) = self.access.toast.clone() else {
+            return;
+        };
+        let left = TOAST_SECONDS - (ctx.input(|i| i.time) - at);
+        if left <= 0.0 {
+            self.access.toast = None;
+            return;
+        }
+        let screen = ctx.content_rect();
+        let bottom = self.access.status_rect.map_or(screen.bottom(), |r| r.top()) - 8.0;
+        egui::Area::new(Id::unique("mpp-where-am-i"))
+            .order(Order::Foreground)
+            .interactable(false)
+            .pivot(egui::Align2::RIGHT_BOTTOM)
+            .fixed_pos(Pos2::new(screen.right() - 12.0, bottom))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_max_width(520.0);
+                    ui.label(words.as_str());
+                });
+            });
+        ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+    }
+
     /// End of a frame, after everything is drawn.
     pub(crate) fn access_after(&mut self, ctx: &Context) {
+        name_unnamed(ctx);
+        self.show_toast(ctx);
         self.measure_regions();
         self.land_pending(ctx);
         self.announce();

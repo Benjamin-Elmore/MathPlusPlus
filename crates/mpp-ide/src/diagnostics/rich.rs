@@ -558,6 +558,9 @@ pub fn show(ui: &mut Ui, r: &Rich, size: f32, color: egui::Color32, theme: Theme
     let s = measure(r, size, theme, max);
     let (resp, painter) = ui.allocate_painter(s.max(Vec2::splat(1.0)), Sense::click());
     paint(&painter, r, resp.rect.min, size, color, theme, max);
+    // Painted words: a screen reader that lands on them hears them (R-F4).
+    let said = r.plain();
+    resp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Label, true, said.clone()));
     resp
 }
 

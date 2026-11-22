@@ -536,3 +536,32 @@ fn the_status_bar_says_its_count_is_for_this_file() {
         "the status bar names what it counts"
     );
 }
+
+#[test]
+fn pf2_a_typo_hint_is_not_joined_by_a_vague_no_answer_entry() {
+    let mut h = settled(
+        "$$ R := 35 $$\n\n$$ roundd(R) = $$\n",
+        theme::ThemeChoice::Light,
+    );
+    let ps = problems(&mut h);
+    let line: Vec<String> = ps
+        .iter()
+        .filter(|p| p.span.start > 15)
+        .map(|p| p.rich.plain())
+        .collect();
+    assert!(
+        line.iter().any(|m| m.contains("round")),
+        "the useful hint stays: {line:?}"
+    );
+    assert!(
+        !line.iter().any(|m| m.contains("got no answer")),
+        "no vague entry beside it: {line:?}"
+    );
+    // A query that got no answer and nothing better still says so.
+    let list = h.state_mut().project_problems();
+    let all: Vec<String> = list
+        .iter()
+        .flat_map(|f| f.items.iter().map(|i| i.message.plain()))
+        .collect();
+    assert!(!all.iter().any(|m| m.contains("got no answer")), "{all:?}");
+}

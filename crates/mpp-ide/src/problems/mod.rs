@@ -55,6 +55,13 @@ impl Item {
         i
     }
 
+    /// The word shown after the entry's icon: "Hint" for a hint, whose icon
+    /// alone reads as a note (P7, P8). Errors and warnings have their own
+    /// icons and colours.
+    pub fn shown_level(&self) -> Option<&'static str> {
+        (self.level == Level::Info).then_some("Hint")
+    }
+
     /// What a screen reader says for the entry: "Error, line 3: w is not
     /// defined." (R12).
     pub fn spoken(&self) -> String {
@@ -300,6 +307,11 @@ impl ProblemsView {
                                 theme,
                             );
                             ui.add_space(4.0);
+                            if let Some(tag) = item.shown_level() {
+                                let t = Rich::text(tag);
+                                words(ui, &t, size * 0.9, ink, *theme);
+                                ui.add_space(6.0);
+                            }
                             if let Some(x) = &item.excerpt {
                                 tex(ui, x, size, *theme);
                                 ui.add_space(8.0);
@@ -388,6 +400,21 @@ pub fn badge(ui: &mut Ui, c: Counts, theme: &Theme, size: f32) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_hint_shows_the_word_hint() {
+        let item = |level| Item {
+            span: Span::point(0),
+            level,
+            message: Rich::text("x"),
+            excerpt: None,
+            line: Some(3),
+        };
+        assert_eq!(item(Level::Info).shown_level(), Some("Hint"));
+        assert!(item(Level::Info).spoken().starts_with("Hint, line 3"));
+        assert_eq!(item(Level::Warning).shown_level(), None);
+        assert_eq!(item(Level::Error).shown_level(), None);
+    }
 
     #[test]
     fn counts_add_up_by_file() {

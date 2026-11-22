@@ -401,10 +401,7 @@ impl IdeApp {
             self.size = BODY_SIZE;
         }
         if ctx.input_mut(|i| i.consume_shortcut(&PROBLEMS)) {
-            self.toggle_problems();
-            if self.problems.open {
-                self.land_in(crate::layout::Pane::Problems);
-            }
+            self.problems_shortcut(ctx);
         }
         if (zdelta - 1.0).abs() > 0.001 {
             self.size = (self.size * zdelta).clamp(MIN_SIZE, MAX_SIZE);
@@ -698,6 +695,26 @@ impl IdeApp {
         };
         let exported = crate::export::export_doc(doc, format, &options)?;
         crate::export::write_export(path, &exported)
+    }
+
+    /// Ctrl+Shift+M (R-F1): opens the Problems panel, or takes the keyboard
+    /// to it when it is open but the keyboard is elsewhere; closes it only
+    /// from inside it. Each says where the keyboard went.
+    fn problems_shortcut(&mut self, ctx: &Context) {
+        let open = self.has_pane(&crate::layout::Pane::Problems);
+        if open && self.focus_in_pane(ctx, crate::layout::Pane::Problems.name()) {
+            self.toggle_problems();
+            self.focus_editor(ctx);
+            self.say_politely("Problems closed, editor");
+            return;
+        }
+        if !open {
+            self.toggle_problems();
+        }
+        self.land_in(crate::layout::Pane::Problems);
+        let n: usize = self.project_problems().iter().map(|f| f.items.len()).sum();
+        let items = if n == 1 { "item" } else { "items" };
+        self.say_politely(&format!("Problems panel, {n} {items}"));
     }
 
     /// Shows or hides the Problems tile (Ctrl+Shift+M).

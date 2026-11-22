@@ -867,3 +867,209 @@ fn r17_the_marker_button_sits_in_the_page_beside_its_maths() {
     let m = h.get_by_label(mpp_ide::access::MARKER_LABEL);
     assert_eq!(m.accesskit_node().role(), Role::Button);
 }
+
+// ---- Fix loop 3 (R-F1 … R14) ----------------------------------------------
+
+#[test]
+fn rf1_the_problems_shortcut_goes_back_to_an_open_panel_before_it_closes_it() {
+    let src = "First line.\n\n$$ v := 20 $$\n\n$$ w + v = ? $$\n\n$$ v = 40 $$\n\nLast line.";
+    let mut h = app_with(src, src.len());
+    wait(&mut h);
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(!in_editor(&h), "Problems has the keyboard");
+    for _ in 0..6 {
+        if focused(&h).is_some_and(|f| f.label.starts_with("Warning, line 5")) {
+            break;
+        }
+        key(&mut h, Modifiers::NONE, Key::Tab);
+    }
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    h.run_steps(3);
+    assert!(in_editor(&h), "the jump gives the keyboard to the editor");
+    let before = h.state().doc().unwrap().editor.text().to_string();
+
+    // The panel is still open; the shortcut takes the keyboard back to it.
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(h.state().problems.open, "the panel stays open");
+    assert!(!in_editor(&h), "Problems has the keyboard again");
+    let said = polite(&h);
+    assert!(said.starts_with("Problems panel, "), "{said:?}");
+    assert!(said.contains("item"), "{said:?}");
+    // Keys meant for the panel do not edit the file.
+    key(&mut h, Modifiers::NONE, Key::Tab);
+    key(&mut h, Modifiers::NONE, Key::Tab);
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    h.run_steps(3);
+    assert_eq!(h.state().doc().unwrap().editor.text(), before);
+
+    // From inside the panel, the shortcut closes it and says so.
+    if in_editor(&h) {
+        // The Enter above chose a problem; go back to the panel first.
+        key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+        h.run_steps(3);
+        assert!(!in_editor(&h));
+    }
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(!h.state().problems.open, "the panel closes from inside it");
+    assert!(in_editor(&h), "the editor has the keyboard");
+    assert_eq!(polite(&h), "Problems closed, editor");
+}
+
+#[test]
+fn rf2_inline_answers_are_announced_after_a_run_like_display_answers() {
+    let src = "$$ v := 2 $$\n\nHalf of $v$ is $v/2 =$ metres per second.\n";
+    let mut h = app_with(src, 9);
+    wait(&mut h);
+    h.run_steps(3);
+    type_text(&mut h, "0");
+    wait(&mut h);
+    h.run_steps(3);
+    let said = polite(&h);
+    assert!(said.contains("v over 2 equals 10"), "{said:?}");
+}
+
+#[test]
+fn rf3_the_spoken_level_matches_the_problems_panel() {
+    let src = "Words.\n\n$$ v := 20 $$\n\n$$ w + v = ? $$\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    let all = labels(&h);
+    let line = all
+        .iter()
+        .find(|l| l.starts_with("w plus v equals"))
+        .cloned()
+        .unwrap_or_else(|| panic!("{all:?}"));
+    assert!(line.contains("warning: w is not defined"), "{line:?}");
+    assert!(!line.contains("error"), "{line:?}");
+    // Announced as Problems lists it: politely, as a warning.
+    let src2 = "Words.
+
+$$ v := 20 $$
+
+$$ v = ? $$
+";
+    let mut h = app_with(src2, src2.rfind("v = ?").unwrap());
+    wait(&mut h);
+    h.run_steps(3);
+    type_text(&mut h, "w + ");
+    wait(&mut h);
+    h.run_steps(3);
+    assert!(
+        !h.state().access.assertive().contains("w is not defined"),
+        "{:?}",
+        h.state().access.assertive()
+    );
+    assert!(
+        polite(&h).contains("warning: w is not defined"),
+        "{:?}",
+        polite(&h)
+    );
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(labels(&h)
+        .iter()
+        .any(|l| l.starts_with("Warning, line 5: w is not defined")));
+}
+
+/// Focusable nodes a screen reader can land on that say nothing.
+fn unnamed_focusable(h: &H) -> Vec<String> {
+    h.query_all(by().predicate(|n| {
+        n.data().supports_action(egui::accesskit::Action::Focus)
+            && n.label().is_none_or(|l| l.trim().is_empty())
+            && n.value().is_none_or(|v| v.trim().is_empty())
+    }))
+    .map(|n| {
+        let a = n.accesskit_node();
+        format!("{:?} {:?}", a.role(), a.bounding_box())
+    })
+    .collect()
+}
+
+#[test]
+fn rf4_no_focusable_node_is_unnamed() {
+    let src = "Words.\n\n$$ v := 20 $$\n\n$$ w + v = ? $$\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    let none = unnamed_focusable(&h);
+    assert!(none.is_empty(), "unnamed: {none:?}");
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    let none = unnamed_focusable(&h);
+    assert!(none.is_empty(), "unnamed with Problems open: {none:?}");
+    // After a jump the problem card is open beside the line.
+    for _ in 0..2 {
+        key(&mut h, Modifiers::NONE, Key::Tab);
+    }
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    h.run_steps(3);
+    let none = unnamed_focusable(&h);
+    assert!(none.is_empty(), "unnamed after a jump: {none:?}");
+    // Tab through the panel: every stop says something.
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    for i in 0..8 {
+        let f = focused(&h).expect("something has the keyboard");
+        assert!(
+            !f.label.trim().is_empty() || !f.value.trim().is_empty(),
+            "Tab {i} lands on an unnamed {:?}",
+            f.role
+        );
+        key(&mut h, Modifiers::NONE, Key::Tab);
+    }
+}
+
+#[test]
+fn tn6_where_am_i_is_shown_on_screen_too() {
+    let mut h = app_with("Words.\n\n$$ x^2 $$\n", 2);
+    wait(&mut h);
+    assert!(h.state().access.toast().is_none());
+    key(&mut h, Modifiers::COMMAND | Modifiers::ALT, Key::W);
+    h.step();
+    let said = polite(&h);
+    assert!(said.contains("Untitled-1, line 1"), "{said:?}");
+    assert_eq!(h.state().access.toast(), Some(said.as_str()));
+    h.run_steps(2);
+    let drawn = h
+        .query_all(by().predicate(|n| n.role() == Role::Label))
+        .any(|n| n.accesskit_node().value().is_some_and(|v| v == said));
+    assert!(drawn, "the words are drawn on screen");
+}
+
+#[test]
+fn r14_a_command_being_typed_is_not_called_an_error() {
+    let mut h = app_with("", 0);
+    for c in r"$$ s := \frac".chars() {
+        h.event(Event::Text(c.to_string()));
+        h.step();
+    }
+    wait(&mut h);
+    h.run_steps(3);
+    let text = h.state().doc().unwrap().editor.text().to_string();
+    assert!(text.contains(r"\frac"), "{text:?}");
+    let f = focused(&h).expect("the editor has the keyboard");
+    assert!(!f.value.contains("error"), "line value: {:?}", f.value);
+    assert!(!f.value.contains("Expected"), "line value: {:?}", f.value);
+    assert!(
+        !h.state().access.assertive().contains("Expected"),
+        "{:?}",
+        h.state().access.assertive()
+    );
+    let errors = h.state_mut().doc_mut().unwrap().problems();
+    assert!(
+        !errors.iter().any(|p| p.message.contains("numerator")),
+        "flagged: {errors:?}"
+    );
+    // Once the caret leaves the command, it is a problem again.
+    key(&mut h, Modifiers::NONE, Key::Home);
+    h.run_steps(3);
+    let errors = h.state_mut().doc_mut().unwrap().problems();
+    assert!(
+        errors
+            .iter()
+            .any(|p| p.message.to_lowercase().contains("numerator")),
+        "{errors:?}"
+    );
+}
