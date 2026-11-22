@@ -264,6 +264,14 @@ fn a_unit_answer_moves_nothing() {
     }
 }
 
+/// S11, E17: the grey `= value` of a definition says what it is on hover.
+#[test]
+fn a_definition_value_explains_itself() {
+    let h = typed_after(DEFS, &[Pause]);
+    let tips: Vec<String> = slots(&h).into_iter().map(|(_, t)| t).collect();
+    assert!(tips.iter().any(|t| t.contains("defined here")), "{tips:?}");
+}
+
 /// E6: `~= ?` (≈ ?) gives the decimal in the answer slot, not a fraction in the
 /// formula.
 #[test]

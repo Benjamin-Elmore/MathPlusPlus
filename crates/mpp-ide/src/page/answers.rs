@@ -460,6 +460,10 @@ impl Chip {
     }
 }
 
+/// What the hover over a definition's grey `= value` says.
+pub const DEFINED_HERE: &str =
+    "\\text{defined here: the grey = shows its value, worked out from the lines above}";
+
 /// The chip of a slot, at most `room` wide.
 fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
     let ac = colors(&theme);
@@ -482,7 +486,7 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
         Content::Preview { latex, copy } => {
             let mut c = Chip::from(fitted(latex, size * 0.92, ink(ac.preview), theme, room));
             c.copy = Some(copy.clone());
-            c.tip = Some(format!("{latex}\n{hint}"));
+            c.tip = Some(format!("{latex}\n{DEFINED_HERE}\n{hint}"));
             c
         }
         Content::Defined { value } => {
@@ -494,7 +498,7 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
                     let v = fitted(latex, size * 0.92, ink(ac.preview), theme, room);
                     let mut c = Chip::from(v).then(mark, size * 0.4);
                     c.copy = Some(copy.clone());
-                    c.tip = Some(format!("{latex}\n{tip}\n{hint}"));
+                    c.tip = Some(format!("{latex}\n{DEFINED_HERE}\n{tip}\n{hint}"));
                     c
                 }
                 None => {
