@@ -243,18 +243,42 @@ fn escape_does_one_thing_then_lets_go_of_the_keyboard() {
     press(&mut h, egui::Key::Escape);
     type_text(&mut h, "!");
     assert_eq!(text_of(&h), "Hello $x$! world");
-    // In prose with nothing open, Esc lets go of the keyboard, and the page
-    // does not take it back by itself, however many frames go by.
+    // In prose with nothing open, Esc lets go of the keyboard: keys that move
+    // the caret no longer reach the page, however many frames go by.
     press(&mut h, egui::Key::Escape);
     h.run_steps(5);
-    assert!(!typing_reaches_the_page(&mut h), "Esc did not let go");
-    // A click on the page takes it back.
+    assert!(!page_moves_the_caret(&mut h), "Esc did not let go");
+    // But typing never vanishes (U28, S4): a letter typed then still lands
+    // on the page, and the page has the keyboard again.
+    assert!(typing_reaches_the_page(&mut h), "a typed letter was lost");
+    assert!(page_moves_the_caret(&mut h));
+    // A click on the page takes it back too.
+    press(&mut h, egui::Key::Escape);
+    h.run_steps(3);
     let at = caret_at(&h);
     click_at(&mut h, at);
-    assert!(
-        typing_reaches_the_page(&mut h),
-        "a click did not take it back"
-    );
+    assert!(page_moves_the_caret(&mut h), "a click did not take it back");
+}
+
+/// True when End moves the caret (the page has the keyboard); the caret is
+/// put back where it was.
+fn page_moves_the_caret(h: &mut Harness<'static, IdeApp>) -> bool {
+    let doc = h.state().doc().expect("doc");
+    let before = doc.editor.caret();
+    let end = doc.editor.text().len();
+    if before == end {
+        press(h, egui::Key::Home);
+    } else {
+        press(h, egui::Key::End);
+    }
+    let moved = h.state().doc().expect("doc").editor.caret() != before;
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .move_caret(before, false);
+    h.step();
+    moved
 }
 
 #[test]
@@ -279,15 +303,25 @@ fn escape_leaves_a_template_box() {
     );
 }
 
+/// U28 (P1) replaces U10's "Tab only while there is a box": Tab that moved
+/// the keyboard off the page lost everything typed after it. With no box to
+/// go to, Tab now types nothing and keeps the keyboard; Esc leaves the page.
 #[test]
-fn tab_is_only_kept_while_there_is_a_box_to_go_to() {
+fn tab_never_takes_the_keyboard_off_the_page() {
     let mut h = harness(app_with("Plain prose"));
     h.run_steps(3);
     assert!(typing_reaches_the_page(&mut h));
     press(&mut h, egui::Key::Tab);
     h.run_steps(2);
     assert_eq!(text_of(&h), "Plain prose", "Tab typed something");
-    assert!(!typing_reaches_the_page(&mut h), "Tab was kept by the page");
+    assert!(page_moves_the_caret(&mut h), "Tab took the keyboard away");
+    h.key_press_modifiers(egui::Modifiers::SHIFT, egui::Key::Tab);
+    h.run_steps(2);
+    assert!(
+        page_moves_the_caret(&mut h),
+        "Shift+Tab took the keyboard away"
+    );
+    assert!(typing_reaches_the_page(&mut h));
 }
 
 #[test]
@@ -332,10 +366,9 @@ fn an_arrow_at_the_edge_of_the_document_lets_go() {
     // so the keyboard moves up to the tabs and menus.
     press(&mut h, egui::Key::ArrowUp);
     h.run_steps(3);
-    assert!(
-        !typing_reaches_the_page(&mut h),
-        "the page kept the keyboard"
-    );
+    assert!(!page_moves_the_caret(&mut h), "the page kept the keyboard");
+    // A letter typed then is not lost (U28, S4): it goes to the page.
+    assert!(typing_reaches_the_page(&mut h), "a typed letter was lost");
 }
 
 // ---- input rules (lane A3): Enter, Backspace, lists and headings ----

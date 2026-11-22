@@ -242,7 +242,8 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 cx.diag.origin = origin;
             }
 
-            let focused = take_focus(ui, &resp, std::mem::take(&mut doc.take_focus));
+            let force = std::mem::take(&mut doc.take_focus);
+            let focused = take_focus(ui, &resp, force, cx.active);
 
             // A click on the bulb opens the quick fixes instead of moving the caret.
             let bulb = bulb_target(doc, &pc0, origin);
@@ -455,7 +456,7 @@ const POPUP_OPEN: &str = "mpp-popup-open";
 /// column's search box, quick open, a dialog): a click elsewhere hands it over
 /// as anywhere in egui. True when the page has it.
 /// `force` is set when a file was just opened or its tab clicked (U5).
-fn take_focus(ui: &Ui, resp: &egui::Response, force: bool) -> bool {
+fn take_focus(ui: &Ui, resp: &egui::Response, force: bool, active: bool) -> bool {
     let away_id = resp.id.with("mpp-keyboard-away");
     let pressed = ui.input(|i| i.pointer.any_pressed());
     // A menu or popup moves the keyboard about while it is open.
@@ -470,7 +471,25 @@ fn take_focus(ui: &Ui, resp: &egui::Response, force: bool) -> bool {
             m.had_focus_last_frame(resp.id) && !m.has_focus(resp.id) && m.focused().is_none()
         });
     let away = let_go || ui.data(|d| d.get_temp::<bool>(away_id)).unwrap_or(false);
-    if force || resp.clicked() || resp.drag_started() {
+    // Typing never silently vanishes (S4, R11): text typed while the keyboard
+    // is on nothing, or on a button (a side icon, a menu just used), goes to
+    // the page; so does Esc pressed there. A text box keeps what is typed in it.
+    let (typed, esc) = ui.input(|i| {
+        let typed = i.events.iter().any(|e| match e {
+            egui::Event::Text(_) | egui::Event::Paste(_) => true,
+            egui::Event::Key { key, pressed, .. } => {
+                *pressed && matches!(key, Key::Backspace | Key::Delete)
+            }
+            _ => false,
+        });
+        (typed, i.key_pressed(Key::Escape))
+    });
+    let other = ui.memory(|m| m.focused()).filter(|&f| f != resp.id);
+    let text_box =
+        other.is_some_and(|f| egui::text_edit::TextEditState::load(ui.ctx(), f).is_some());
+    let had = ui.memory(|m| m.had_focus_last_frame(resp.id));
+    let reclaim = active && !popup && !text_box && (typed || (esc && !had));
+    if force || resp.clicked() || resp.drag_started() || reclaim {
         ui.memory_mut(|m| m.request_focus(resp.id));
     } else if !away && ui.memory(|m| m.focused().is_none()) {
         ui.memory_mut(|m| m.request_focus(resp.id));
@@ -481,8 +500,8 @@ fn take_focus(ui: &Ui, resp: &egui::Response, force: bool) -> bool {
 }
 
 /// Which keys the page keeps for itself next frame (the rest move the
-/// keyboard to other widgets, as anywhere else). Tab only while there is a box
-/// to go to or an autocomplete to accept; Esc only while it has something to
+/// keyboard to other widgets, as anywhere else). Tab always (it never takes the
+/// keyboard away, P1); Esc only while it has something to
 /// do (close a popup, leave a box, leave maths).
 fn key_filter(doc: &Doc, pc: &PageCache, cx: &ViewCtx<'_>, menu: bool) -> EventFilter {
     let caret = doc.editor.caret();
@@ -494,7 +513,10 @@ fn key_filter(doc: &Doc, pc: &PageCache, cx: &ViewCtx<'_>, menu: bool) -> EventF
         || cx.insert.commands.open
         || cx.diag.menu_open();
     EventFilter {
-        tab: popup || in_template || !empty_slots(&pc.page, caret).is_empty(),
+        // Tab never takes the keyboard off the page, where the person's
+        // typing would then vanish (P1): with no box to go to it does nothing.
+        // Esc is the way off the page.
+        tab: true,
         horizontal_arrows: true,
         vertical_arrows: true,
         escape: popup || in_template || pc.page.in_math(caret) || doc.editor.at_maths_end(),

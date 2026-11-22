@@ -336,3 +336,44 @@ fn a_click_under_the_last_box_starts_a_new_line() {
     assert_eq!(text_of(&h), format!("{src}\n\nNext"));
     caret_on_its_line(&h);
 }
+
+/// Clicks the activity-bar icon for `view`.
+fn click_icon(h: &mut H, view: mpp_ide::settings::SideView) {
+    use egui_kittest::kittest::Queryable;
+    let pos = h.get_by_label(view.label()).rect().center();
+    super::runner::click_at(h, pos);
+}
+
+/// S4, P1 and R11: typing never silently vanishes. After a click on a side
+/// icon or a menu, typed keys go to the page; Tab and Shift+Tab in prose keep
+/// the keyboard on the page; Esc from a panel button brings it back.
+#[test]
+fn typing_always_reaches_the_page() {
+    use mpp_ide::settings::SideView;
+    let mut h = super::runner::harness(super::runner::app_with("Some words."));
+    h.run_steps(3);
+    // A side icon, then typing.
+    click_icon(&mut h, SideView::Problems);
+    keys_land(&mut h, " abc");
+    click_icon(&mut h, SideView::Tutorial);
+    keys_land(&mut h, " def");
+    // Tab and Shift+Tab on a prose line type nothing and keep the keyboard.
+    press(&mut h, Modifiers::NONE, Key::Tab);
+    press(&mut h, Modifiers::SHIFT, Key::Tab);
+    h.run_steps(2);
+    keys_land(&mut h, " ghi");
+    assert_eq!(text_of(&h), "Some words. abc def ghi");
+    // A menu, closed with Esc, then typing.
+    {
+        use egui_kittest::kittest::Queryable;
+        h.get_by_label("Edit").click();
+    }
+    h.run_steps(3);
+    press(&mut h, Modifiers::NONE, Key::Escape);
+    h.run_steps(3);
+    keys_land(&mut h, " jkl");
+    // Esc in prose lets the page go; keys typed then still reach it.
+    press(&mut h, Modifiers::NONE, Key::Escape);
+    h.run_steps(3);
+    keys_land(&mut h, " mno");
+}
