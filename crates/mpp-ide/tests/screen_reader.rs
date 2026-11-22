@@ -818,3 +818,50 @@ fn rn3_rn4_answers_are_spoken_whole_once_and_not_as_code() {
     let sum = find("1 over 2 plus 1 over 3 equals");
     assert!(sum.contains("equals 5 over 6"), "{sum:?}");
 }
+
+#[test]
+fn r14_the_path_is_current_while_typing_a_latex_command() {
+    let mut h = app_with("", 0);
+    let mut lagged = Vec::new();
+    for c in "$$ s := \\frac{1}{n} $$".chars() {
+        h.event(Event::Text(c.to_string()));
+        h.step();
+        let desc = |h: &H| {
+            h.query_all(by().predicate(|n| n.is_focused()))
+                .next()
+                .and_then(|n| n.accesskit_node().description())
+                .unwrap_or_default()
+        };
+        let now = (status_place(&h), desc(&h));
+        h.run_steps(3);
+        let settled = (status_place(&h), desc(&h));
+        // A bare `\frac` with no braces yet is a command being typed, not a
+        // fraction the caret is in.
+        if h.state()
+            .doc()
+            .unwrap()
+            .editor
+            .text()
+            .ends_with(r"\frac $$")
+        {
+            assert_eq!(now.0, "Maths", r"after \frac");
+        }
+        if now != settled {
+            lagged.push((c, now, settled));
+        }
+    }
+    assert!(lagged.is_empty(), "the path lagged: {lagged:?}");
+}
+
+#[test]
+fn r17_the_marker_button_sits_in_the_page_beside_its_maths() {
+    let h = app_with("Words.\n\n$$ x^2 $$\n", 0);
+    let root = h.kittest_state().root();
+    let top: Vec<String> = root.children().filter_map(|c| c.label()).collect();
+    assert!(
+        !top.iter().any(|l| l == mpp_ide::access::MARKER_LABEL),
+        "the marker hangs off the window root: {top:?}"
+    );
+    let m = h.get_by_label(mpp_ide::access::MARKER_LABEL);
+    assert_eq!(m.accesskit_node().role(), Role::Button);
+}

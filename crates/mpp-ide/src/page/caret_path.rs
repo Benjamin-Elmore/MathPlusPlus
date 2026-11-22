@@ -174,6 +174,12 @@ pub fn path_at(page: &Page, doc: &Document, offset: usize) -> Vec<Step> {
             next = last.filter(|c| role(node, c).is_some());
         }
         let Some(c) = next else { break };
+        // A part not written yet (a bare `\frac` while its name is typed, no
+        // braces): an empty node at the very end of the structure. The caret
+        // is not in it (R14).
+        if c.span.start == c.span.end && c.span.start >= node.span.end {
+            break;
+        }
         if let Some((what, part)) = role(node, c) {
             out.push(Step {
                 what,

@@ -82,9 +82,11 @@ pub fn annotate(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, size: f32) {
         if !rect.intersects(clip) {
             continue;
         }
-        // A node only, not a widget: the page keeps the pointer (a click on
-        // the marker is the page's own), the screen reader gets a button.
+        // A hover-only widget: the page keeps the pointer (a click on the
+        // marker is the page's own), the screen reader gets a button inside
+        // the page, beside the maths it switches (R17).
         let id = ui.scope_id().with(("maths-marker", band.start));
+        let _ = ui.interact(rect, id, Sense::hover());
         ui.ctx().accesskit_node_builder(id, |n| {
             n.set_role(Role::Button);
             n.set_label(MARKER_LABEL);
