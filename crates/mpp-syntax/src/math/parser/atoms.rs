@@ -670,11 +670,12 @@ impl Parser<'_> {
                 apply_font(font, inner, span.join(self.prev_span()))
             }
             _ => {
-                self.error(
-                    span,
-                    format!("unknown command `\\{name}`"),
-                    &["a known LaTeX maths command"],
-                );
+                // `\sinn`: name the command it is a typo of (T-N4).
+                let message = match close_command(name) {
+                    Some(c) => format!("unknown command `\\{name}`. Did you mean `\\{c}`?"),
+                    None => format!("unknown command `\\{name}`"),
+                };
+                self.error(span, message, &["a known LaTeX maths command"]);
                 Node::error(span)
             }
         }
@@ -1469,5 +1470,33 @@ fn delim_opener(delim: Delim) -> &'static str {
         Delim::Bar => "|",
         Delim::DoubleBar => "‖",
         Delim::None => "\\left.",
+    }
+}
+
+/// The function command (`sin`, `log`) that `name` is a typo of: the command with
+/// a letter or two more, or one letter changed.
+fn close_command(name: &str) -> Option<&'static str> {
+    crate::symbols::SYMBOLS
+        .iter()
+        .filter(|s| s.kind == crate::symbols::SymbolKind::Function)
+        .filter_map(|s| s.latex.strip_prefix('\\'))
+        .find(|c| {
+            let extra = name.len().saturating_sub(c.len());
+            let one_changed = name.len() == c.len()
+                && name.chars().zip(c.chars()).filter(|(a, b)| a != b).count() == 1;
+            (name.starts_with(c) && (1..=2).contains(&extra)) || one_changed
+        })
+}
+
+#[cfg(test)]
+mod close_command_tests {
+    use super::close_command;
+
+    /// T-N4: `\sinn` names `\sin`.
+    #[test]
+    fn typos_of_function_commands_name_the_command() {
+        assert_eq!(close_command("sinn"), Some("sin"));
+        assert_eq!(close_command("coss"), Some("cos"));
+        assert_eq!(close_command("foo"), None);
     }
 }

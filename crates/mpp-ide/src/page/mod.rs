@@ -143,6 +143,8 @@ pub enum LinkTarget {
     /// An answer in its slot: a click copies this text, Ctrl+click inserts it at the
     /// caret (see [`answers::click`]).
     Answer(String),
+    /// Hover text only (the `=` of a definition, S11): a click goes to the page.
+    Tip,
 }
 
 /// A clickable part of the page, with what hovering it shows.

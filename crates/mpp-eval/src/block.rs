@@ -1637,25 +1637,33 @@ impl Run<'_, '_> {
                 unknown_operator |= has_operator_holder(&value, &name);
             }
         }
-        // `w + 1 = ?` with `w` defined nowhere: nothing could be worked out, so the
-        // answer would only repeat the question. No answer; a warning names what
-        // is missing.
-        // `w + 1 = ?` with `w` defined nowhere, in a document that defines numbers
-        // (a calculation, not algebra): the answer would only repeat the question,
-        // so a warning names what is missing (the editor shows it in the slot).
+        // A name defined nowhere left in the answer (R8): no answer, and a warning
+        // names what is missing (the editor shows it in the slot). Said when the
+        // answer only repeats the question (`w + 1 = ?` → w + 1), and when the
+        // question (not a definition, `d := v t = ?`) is a calculation with a
+        // defined name in it (`w + v = ?` →
+        // w + 20). Algebra (`x + x = ?` → 2x) and calculus (`diff(x^2, x)`,
+        // `solve(…)`) keep their names quietly. The rule looks only at the names
+        // the line uses, so an edit elsewhere never changes it.
         let squeeze = |t: &str| -> String {
             t.chars()
                 .filter(|c| !c.is_whitespace() && *c != '*')
                 .collect()
         };
-        let calculation = self.env.iter().any(|(n, b)| {
-            matches!(&**b, Binding::Variable { value, .. } if value.free_symbols().is_empty())
-                && !crate::result::is_internal_name(n)
-        });
+        let repeats = squeeze(&value.to_string()) == squeeze(written);
+        let uses_defined = || {
+            input.free_symbols().iter().any(|n| {
+                self.view()
+                    .get(n.as_ref(), false)
+                    .is_some_and(|b| matches!(&*b, Binding::Variable { .. }))
+            })
+        };
         if mode == QueryMode::Exact
-            && calculation
             && !contains_holder(&value)
-            && squeeze(&value.to_string()) == squeeze(written)
+            && (repeats
+                || (matches!(line.statement, Statement::Query { .. })
+                    && plain_arithmetic(&input)
+                    && uses_defined()))
         {
             let missing: Vec<String> = value
                 .free_symbols()
@@ -2785,4 +2793,23 @@ fn left_decimal(e: &Expr) -> Option<String> {
         return None;
     }
     approximate(e).ok()
+}
+
+/// True when `e` is arithmetic on names and numbers only: no calculus, no calls of
+/// named operations (`solve`, `expand`) and no relations, whose answers rightly keep
+/// names that have no value.
+fn plain_arithmetic(e: &Expr) -> bool {
+    match e.node() {
+        ExprNode::Derivative { .. }
+        | ExprNode::Integral { .. }
+        | ExprNode::BigOp { .. }
+        | ExprNode::Limit { .. }
+        | ExprNode::Apply(..)
+        | ExprNode::Relation(..)
+        | ExprNode::Logic(..)
+        | ExprNode::Piecewise { .. }
+        | ExprNode::Set(_)
+        | ExprNode::Matrix { .. } => false,
+        _ => e.children().into_iter().all(plain_arithmetic),
+    }
 }

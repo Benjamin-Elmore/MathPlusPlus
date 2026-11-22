@@ -591,6 +591,14 @@ pub fn fill_in_hint(editor: &Editor, page: &Page, span: &Range<usize>) -> Option
         .hits
         .iter()
         .filter(|h| h.kind == mpp_render::HitKind::Slot && !tracked.contains(&h.span.start))
+        // An unknown command (`\sinn`) is drawn as a box too, but it is a typo
+        // with its own message, not a box to type in (T-N4).
+        .filter(|h| {
+            !editor
+                .text()
+                .get(h.span.start..h.span.end)
+                .is_some_and(|t| t.starts_with('\\'))
+        })
         .collect();
     slots.sort_by_key(|h| h.span.start);
     let first = slots.first()?;

@@ -85,7 +85,17 @@ impl Verdict {
             Verdict::Agrees { digits } => {
                 format!("≈ (checked numerically to {digits} digits, not proved)")
             }
-            Verdict::Rounds { value, written } => format!("✓ ({value} rounds to {written})"),
+            // How close counts, in the numbers of the line (T-N5): `35` is ±0.5.
+            Verdict::Rounds { value, written } => match written_number(written) {
+                Some((_, places)) => {
+                    let half = 0.5 * 10f64.powi(-i32::try_from(places).unwrap_or(0));
+                    format!(
+                        "✓ ({value} rounds to {written}: within ±{half:.prec$})",
+                        prec = places + 1
+                    )
+                }
+                None => format!("✓ ({value} rounds to {written})"),
+            },
             Verdict::Unknown(why) => format!("? ({why})"),
         }
     }

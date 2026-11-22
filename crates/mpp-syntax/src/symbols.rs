@@ -122,6 +122,8 @@ pub static SYMBOLS: &[Symbol] = &[
     entry("neq", "≠", "\\neq", Relation),
     entry("ne", "≠", "\\ne", Relation),
     entry("approx", "≈", "\\approx", Relation),
+    // "R about 35.3", as people say it (S-N6).
+    entry("about", "≈", "\\approx", Relation),
     entry("equiv", "≡", "\\equiv", Relation),
     entry("sim", "∼", "\\sim", Relation),
     entry("simeq", "≃", "\\simeq", Relation),

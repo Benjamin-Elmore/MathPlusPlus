@@ -154,7 +154,7 @@ const FUNCTIONS: &[&str] = &[
     "log", "ln", "lg", "exp", "sqrt", "abs", "max", "min", "sum", "prod", "int", "lim", "det",
     "gcd", "lcm", "floor", "ceil", "mod", "pi", "inf", "diff", "solve", "frac", "cdot", "times",
     "alpha", "beta", "gamma", "delta", "theta", "lambda", "mu", "sigma", "omega", "phi", "rho",
-    "tau", "epsilon", "round", "approx",
+    "tau", "epsilon", "round", "approx", "about",
 ];
 
 /// Names defined in the text (`speed := 5`, `f(x) := …`, `g \equiv 9.81`).
@@ -245,7 +245,7 @@ pub fn reads_as_maths(line: &str, known: &[String]) -> bool {
     }
     let op = t.chars().any(|c| "+-*/^=<>()≤≥≠·×÷−±√∫∑≈~".contains(c))
         || t.contains('\\')
-        || t.split_whitespace().any(|w| w == "approx");
+        || t.split_whitespace().any(|w| w == "approx" || w == "about");
     op && t.chars().any(|c| c.is_alphanumeric())
 }
 

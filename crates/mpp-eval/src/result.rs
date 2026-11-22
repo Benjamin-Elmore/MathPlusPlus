@@ -205,9 +205,21 @@ impl LineResult {
             Value::Expr(e) => e,
             _ => return None,
         };
+        // With the digits the file asks for (`%digits 4`, E8).
+        let formatted = |f: &dyn Fn() -> Option<String>| match &self.number_format {
+            Some(s) => mpp_core::display::with_format(&s.format, f),
+            None => f(),
+        };
+        // An exact answer with units that is not a whole number (E5): 3/2 m/s
+        // shows 1.5 m/s beside it.
+        if crate::units_wire::contains_units(e) {
+            let a = formatted(&|| crate::units_wire::approximate(e).ok().flatten())?;
+            let shown = |t: &Option<String>| t.as_deref() == Some(a.as_str());
+            return (!shown(&self.text) && !shown(&self.plain)).then_some(a);
+        }
         let n = e.as_number()?;
         (n.is_exact() && n.as_rational().is_some() && !n.is_integer())
-            .then(|| crate::numeric::approximate(e).ok())
+            .then(|| formatted(&|| crate::numeric::approximate(e).ok()))
             .flatten()
     }
 

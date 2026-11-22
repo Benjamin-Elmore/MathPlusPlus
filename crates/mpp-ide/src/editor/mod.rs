@@ -835,6 +835,9 @@ impl Editor {
         match next.and_then(|p| s.tab.get(p).copied()) {
             Some(i) => self.focus_box(id, i),
             None => {
+                // A fraction made by a typed `/` was never a box of its own to the
+                // person typing it.
+                let typed = s.linear;
                 self.finalize(id);
                 let target =
                     self.session(id)
@@ -844,6 +847,19 @@ impl Editor {
                     if forward {
                         // Typing now goes after the template, not into its last box.
                         self.left = Some((id, t));
+                    }
+                    // A fraction typed with `/` inside a box of a template (`1/n^2`
+                    // in a sum's term, S6): Tab goes on to the template's next box.
+                    // A template put in from the menu is left into the box around
+                    // it, so typing can go on after it.
+                    let outer = self
+                        .sessions
+                        .iter()
+                        .filter(|o| typed && o.id != id && o.holds(t))
+                        .min_by_key(|o| o.range.len())
+                        .map(|o| o.id);
+                    if let Some(o) = outer {
+                        return self.tab_in(o, t, forward);
                     }
                 }
             }

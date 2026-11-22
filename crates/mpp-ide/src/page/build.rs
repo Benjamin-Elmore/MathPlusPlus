@@ -1196,11 +1196,23 @@ fn layout_block(
             ) {
                 return None;
             }
+            // A number setting (`%digits 4`) is a quiet directive as written,
+            // upright and small, never a sentence in italics (E8).
+            let setting = d.kind == DirectiveKind::Display;
+            let shown = if setting {
+                format!("%{}", d.text)
+            } else {
+                d.text.clone()
+            };
             let inl = [Inline {
-                kind: InlineKind::Text(d.text.clone()),
+                kind: InlineKind::Text(shown),
                 span: b.span,
             }];
-            let mut st = style(input, FontId::TextItalic, 0.9);
+            let mut st = if setting {
+                style(input, FontId::Text, 0.8)
+            } else {
+                style(input, FontId::TextItalic, 0.9)
+            };
             st.color = input.theme.muted;
             flow(cx, &inl, st, x0, 0.0, w, &mut c)
         }

@@ -1,0 +1,7 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc a45dd387d3ad80463a6abca23974f66292e5954c8327a265741d7273a21132c7 # shrinks to a = "$$ F(6) = ? $$\n\n$$ f(x) := x^2 + a $$", b = "$$ f(x) := x^2 + a $$\n\n$$ e := i $$\n\n$$ F(6) = ? $$"

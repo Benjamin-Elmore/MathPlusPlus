@@ -485,7 +485,7 @@ impl Chip {
 
 /// What the hover over a definition's grey `= value` says.
 pub const DEFINED_HERE: &str =
-    "\\text{defined here: the grey = shows its value, worked out from the lines above}";
+    "\\text{defined here: the value in grey after the line is worked out from the lines above}";
 
 /// The chip of a slot, at most `room` wide.
 fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
@@ -515,7 +515,7 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
         }
         Content::Defined { value } => {
             let mark = typeset("\\text{defined}", size * 0.7, ink(ac.mark), theme);
-            let tip = "\\text{read as a definition (the name was not defined yet)}";
+            let tip = "\\text{read as a definition (the name was not defined yet);}\n\\text{the same name with = and a value on a later line checks it}";
             match value {
                 Some((latex, copy)) => {
                     let room = (room - mark.width - size * 0.4).max(size);
@@ -630,6 +630,22 @@ fn put(chip: Chip, x: f32, baseline: f32, c: &mut Canvas) {
     }
 }
 
+/// The box of the first `=` (or `≔`) on the row with this baseline, left of `end`.
+fn relation_at(dl: &DisplayList, baseline: f32, end: f32, size: f32) -> Option<Rect> {
+    dl.items.iter().find_map(|p| match p {
+        mpp_render::Primitive::Glyph {
+            ch: '=' | '≔',
+            x,
+            y,
+            ..
+        } if (*y - baseline).abs() < size * 0.2 && *x < end => Some(Rect::from_min_max(
+            Pos2::new(*x - size * 0.1, *y - size * 0.6),
+            Pos2::new(*x + size * 0.8, *y + size * 0.2),
+        )),
+        _ => None,
+    })
+}
+
 /// Where line `index` of a laid-out block ends: the x after it and its baseline.
 fn line_end(dl: &DisplayList, line: &Line, open: bool) -> Option<(f32, f32)> {
     if open {
@@ -695,6 +711,22 @@ pub(crate) fn place(
             continue;
         }
         if let Some(ch) = chip(slot, size, input.theme, (right - x).max(size * 2.0)) {
+            // The `=` of a definition explains itself on hover too, as its value
+            // and "defined" mark do (S11, E17).
+            if matches!(
+                slot.content,
+                Content::Defined { .. } | Content::Preview { .. }
+            ) {
+                if let Some(eq) = relation_at(dl, baseline, end, size) {
+                    c.links.push(PageLink {
+                        rect: eq.translate(Vec2::new(x0, top)),
+                        link: Link {
+                            target: LinkTarget::Tip,
+                            tip: ch.tip.clone(),
+                        },
+                    });
+                }
+            }
             put(ch, x0 + x, top + baseline, c);
         }
     }
@@ -708,10 +740,11 @@ fn ch_baseline(size: f32) -> f32 {
 
 // ---- Inline maths ------------------------------------------------------------------
 
-/// The index of the last line of inline maths when it ends in `=` (`$1 + 2 =$`).
+/// The index of the last line of inline maths when it asks for its answer: it
+/// ends in `=` (`$1 + 2 =$`), `= ?` or `≈ ?` (T-N2).
 pub(crate) fn inline_open(ast: &MathAst, src: &str) -> Option<usize> {
     let i = ast.lines.len().checked_sub(1)?;
-    is_open_line(&ast.lines[i], src).then_some(i)
+    is_slot_line(&ast.lines[i], src).then_some(i)
 }
 
 /// The room kept after inline maths that ends in `=`, for its answer chip.
@@ -745,7 +778,13 @@ pub(crate) fn inline_chips(input: &PageInput<'_>, b: &Block, c: &mut Canvas) {
     let size = input.size;
     for (end, x, baseline, _) in ends {
         let old_end = end.saturating_add_signed(-delta);
-        let Some(v) = br.values.iter().find(|v| v.open && v.span.end == old_end) else {
+        let asks = |v: &&Answered| v.open || matches!(v.kind, LineKind::Query { steps: false, .. });
+        let Some(v) = br
+            .values
+            .iter()
+            .filter(asks)
+            .find(|v| v.span.end == old_end)
+        else {
             continue;
         };
         let span = Span::new(v.span.start.saturating_add_signed(delta), end);
@@ -968,6 +1007,26 @@ mod tests {
             tops(&page_with(src, None)),
             tops(&page_with(src, Some(&run(src))))
         );
+    }
+
+    /// T-N2, P-N3: inline maths in a sentence asking with `= ?` (or `≈ ?`) is
+    /// answered as `=` is.
+    #[test]
+    fn inline_maths_asking_with_a_question_mark_gets_a_chip() {
+        for (src, want) in [
+            ("$$ v = 20 $$\n\nHalf is $v/2 = ?$ m/s.\n", "10"),
+            ("$$ v = 20 $$\n\nHalf is $\\frac{v}{2} = ?$ m/s.\n", "10"),
+            ("The sum $2 + 3 = ?$ is small.\n", "5"),
+            ("Then $1/4 \\approx ?$ is small.\n", "0.25"),
+        ] {
+            let got = answers(&page_with(src, Some(&run(src))));
+            assert!(got.iter().any(|(c, _)| c == want), "{src}: {got:?}");
+            assert_eq!(
+                tops(&page_with(src, None)),
+                tops(&page_with(src, Some(&run(src)))),
+                "{src}"
+            );
+        }
     }
 
     #[test]

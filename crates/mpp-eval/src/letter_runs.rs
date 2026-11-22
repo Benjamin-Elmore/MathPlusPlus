@@ -22,9 +22,9 @@ pub struct LetterRunHit {
 }
 
 /// The functions a mistyped word is compared with.
-const FUNCTIONS: [&str; 17] = [
+const FUNCTIONS: [&str; 22] = [
     "sin", "cos", "tan", "sec", "csc", "cot", "sinh", "cosh", "tanh", "coth", "arcsin", "arccos",
-    "arctan", "exp", "log", "ln", "sqrt",
+    "arctan", "exp", "log", "ln", "sqrt", "round", "floor", "ceil", "abs", "diff",
 ];
 
 /// The function `word` is one edit away from, or a function followed by a letter or
@@ -177,4 +177,19 @@ pub fn hits(line: &Line, is_known: &dyn Fn(&str) -> bool) -> Vec<LetterRunHit> {
         walk(r, is_known, false, &mut out);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// E-N6: a typo of `round` (and the other helpers) names it.
+    #[test]
+    fn typos_of_helpers_name_the_helper() {
+        assert_eq!(close_function("roundd"), Some("round"));
+        assert_eq!(close_function("rond"), Some("round"));
+        assert_eq!(close_function("sinn"), Some("sin"));
+        assert_eq!(close_function("flor"), Some("floor"));
+        assert_eq!(close_function("velocity"), None);
+    }
 }

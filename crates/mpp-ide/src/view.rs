@@ -175,7 +175,7 @@ pub fn follow_link(doc: &mut Doc, target: &crate::page::LinkTarget) {
         }
         crate::page::LinkTarget::Fold(id) => doc.show_mut().toggle_fold(*id),
         // Answers need the clipboard and the modifiers: see `answers::click`.
-        crate::page::LinkTarget::Answer(_) => {}
+        crate::page::LinkTarget::Answer(_) | crate::page::LinkTarget::Tip => {}
     }
 }
 
@@ -270,7 +270,8 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 .then(|| resp.interact_pointer_pos().or_else(|| resp.hover_pos()))
                 .flatten()
                 .and_then(|p| pc0.page.link_at(p - origin.to_vec2()))
-                .map(|l| l.link.target.clone());
+                .map(|l| l.link.target.clone())
+                .filter(|t| *t != crate::page::LinkTarget::Tip);
             if let Some(line) = step_click {
                 doc.show_mut().toggle_steps(line);
             } else if let Some(target) = link_click {
@@ -394,7 +395,8 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                     .is_some_and(|(r, _)| resp.hover_pos().is_some_and(|p| r.contains(p)));
                 let over_link = resp
                     .hover_pos()
-                    .is_some_and(|p| pc.page.link_at(p - origin.to_vec2()).is_some());
+                    .and_then(|p| pc.page.link_at(p - origin.to_vec2()))
+                    .is_some_and(|l| l.link.target != crate::page::LinkTarget::Tip);
                 ui.ctx().set_cursor_icon(if over_bulb || over_link {
                     CursorIcon::PointingHand
                 } else {

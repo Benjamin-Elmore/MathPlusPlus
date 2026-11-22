@@ -287,6 +287,26 @@ fn present(lr: &LineResult, fmt: Option<&NumberFormat>) -> Option<Presented> {
             return with_format(&plain, || shown(lr, &e, mode, Some(&plain)));
         }
     }
+    // An exact answer stays exact under `%sf` and `%dp` (E8): its numbers are
+    // never padded (`20000√3/981`, never `20000√3.000/981`); only its decimal
+    // takes the digits.
+    if let Some(f) = fmt {
+        if f.precision != Precision::Default
+            && f.style == Style::Exact
+            && f.complex == ComplexForm::Rectangular
+            && !e.has_float()
+            && e.as_number().is_none_or(Number::is_exact)
+        {
+            let mut plain = *f;
+            plain.precision = Precision::Default;
+            let exact = with_format(&plain, || shown(lr, &e, mode, Some(&plain)));
+            let digits = run(&|| shown(lr, &e, mode, fmt));
+            if let (Some(mut exact), Some(digits)) = (exact, digits) {
+                exact.approx = digits.approx;
+                return Some(exact);
+            }
+        }
+    }
     run(&|| shown(lr, &e, mode, fmt))
 }
 

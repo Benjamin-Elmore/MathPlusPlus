@@ -334,3 +334,37 @@ fn tab_visits_the_bounds_of_a_sum() {
     }
     assert!(!in_template(&h), "Tab left the sum: {seen:?}");
 }
+
+/// S6 (fix loop 2): with `1/n^2` typed in the sum's term, the caret is in the
+/// exponent of the denominator; the first Tab goes on to the sum's next box,
+/// not one level out.
+#[test]
+fn tab_from_a_box_inside_the_term_goes_to_the_next_box_of_the_sum() {
+    let t = templates()
+        .into_iter()
+        .find(|t| t.name.eq_ignore_ascii_case("sum"))
+        .expect("the sum template");
+    let mut h = with(t);
+    // Into the term box first, wherever the sum starts.
+    for _ in 0..6 {
+        if box_label(&h).as_deref() == Some("term") {
+            break;
+        }
+        press(&mut h, Modifiers::NONE, Key::Tab);
+    }
+    assert_eq!(box_label(&h).as_deref(), Some("term"));
+    type_text(&mut h, "1/n^2");
+    let typed = text_of(&h);
+    assert!(typed.contains(r"\frac{1}{n^{2}}"), "{typed}");
+    press(&mut h, Modifiers::NONE, Key::Tab);
+    let at = box_label(&h);
+    let ed = &h.state().doc().expect("doc").editor;
+    let sum = ed
+        .session_at(ed.selection().map_or(ed.caret(), |r| r.start))
+        .map(|s| s.template.clone());
+    assert!(
+        matches!(at.as_deref(), Some("index" | "start" | "end")),
+        "the first Tab went to {at:?} in {sum:?}: {}",
+        text_of(&h)
+    );
+}

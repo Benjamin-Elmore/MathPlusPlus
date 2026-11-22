@@ -155,6 +155,36 @@ pub const SECTIONS: &[Section] = &[
         ],
     },
     Section {
+        title: "Numbers, digits and units",
+        tips: &[
+            tip(
+                "%digits 4",
+                "On a line of its own: answers below it show 4 digits (significant figures)",
+                None,
+                Some("%digits 4"),
+            ),
+            tip(
+                "round(x, 2)",
+                "Rounds a value to 2 decimal places",
+                Some(r"\operatorname{round}(x, 2)"),
+                Some("round(x, 2)"),
+            ),
+            tip(
+                "9.81 m/s^2",
+                "A number with units: unit symbols after the number (m, s, kg, km/h, N)",
+                Some(r"9.81\,\mathrm{m/s^{2}}"),
+                None,
+            ),
+            tip("v in km/h =", "Shows a value in other units", None, None),
+            tip(
+                "approx, ~= or \u{2248}",
+                "Checks a value roughly, to 3 significant figures: R approx 35",
+                Some(r"R \approx 35"),
+                Some("R \u{2248} 35"),
+            ),
+        ],
+    },
+    Section {
         title: "Headings, lists and maths lines",
         tips: &[
             tip(
@@ -366,6 +396,24 @@ impl IdeApp {
                 insert_at_caret(doc, text);
             }
             ui.ctx().request_repaint();
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// E8: the words people search for find the rows about numbers and units.
+    #[test]
+    fn digits_units_and_approx_are_found() {
+        for word in ["digits", "unit", "units", "approx", "round"] {
+            let found = SECTIONS
+                .iter()
+                .chain([&START_HERE])
+                .flat_map(|s| s.tips.iter())
+                .any(|t| tip_matches(t, word));
+            assert!(found, "nothing for {word:?}");
         }
     }
 }
