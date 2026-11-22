@@ -135,7 +135,16 @@ pub enum Tok {
 }
 
 /// Plain-form keywords that are not in the symbol table.
-const WORDS: &[&str] = &["root", "binom", "floor", "ceil", "abs", "norm", "otherwise"];
+const WORDS: &[&str] = &[
+    "root",
+    "binom",
+    "floor",
+    "ceil",
+    "abs",
+    "norm",
+    "otherwise",
+    "diff",
+];
 
 /// LaTeX commands that only change spacing or size.
 const IGNORED_COMMANDS: &[&str] = &[
@@ -245,6 +254,13 @@ impl<'a> Lexer<'a> {
         }
     }
 
+    /// Skips to the end of the line (a comment).
+    fn skip_comment(&mut self) {
+        while self.peek().is_some_and(|c| c != '\n') {
+            self.bump();
+        }
+    }
+
     fn number(&mut self, start: usize) {
         self.eat_digits();
         if self.peek() == Some('.') && self.peek_at(1).is_some_and(|d| d.is_ascii_digit()) {
@@ -323,7 +339,21 @@ impl<'a> Lexer<'a> {
                 Tok::Rel(RelOp::To)
             }
             '-' => Tok::Op(Op::Minus),
+            // `x**2`, the coder's power (see `crate::forms`).
+            '*' if next == Some('*') => {
+                self.bump();
+                Tok::Caret
+            }
             '*' => Tok::Op(Op::Star),
+            // `# note` and `// note`: a coder's comment, read as `% note`.
+            '/' if next == Some('/') => {
+                self.skip_comment();
+                return;
+            }
+            '#' => {
+                self.skip_comment();
+                return;
+            }
             '/' => Tok::Op(Op::Slash),
             '^' => Tok::Caret,
             '_' => Tok::Underscore,
@@ -405,9 +435,7 @@ impl<'a> Lexer<'a> {
                     self.pos += "noeval".len();
                     Tok::NoEval
                 } else {
-                    while self.peek().is_some_and(|c| c != '\n') {
-                        self.bump();
-                    }
+                    self.skip_comment();
                     return;
                 }
             }
@@ -1010,7 +1038,7 @@ mod tests {
 
     #[test]
     fn bad_input_reports() {
-        let (tokens, diags) = lex("x # \\left", 0);
+        let (tokens, diags) = lex("x @ \\left", 0);
         assert_eq!(tokens.len(), 3);
         assert_eq!(diags.len(), 2);
     }

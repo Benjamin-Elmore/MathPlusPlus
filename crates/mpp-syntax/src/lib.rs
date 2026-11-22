@@ -6,6 +6,7 @@
 #![forbid(unsafe_code)]
 
 pub mod document;
+pub mod forms;
 pub mod lexer;
 pub mod math;
 pub mod span;

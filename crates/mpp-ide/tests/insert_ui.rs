@@ -133,12 +133,11 @@ fn tab_walks_a_definite_integral_in_reading_order() {
         text(&mut h, c);
     }
     // From the integrand the caret starts in, Tab goes to the lower bound, then
-    // the upper bound, back to the integrand, the variable, and out.
+    // the upper bound, then (the integrand is filled) the variable, and out.
     key(&mut h, Key::Tab);
     text(&mut h, "0");
     key(&mut h, Key::Tab);
     text(&mut h, "1");
-    key(&mut h, Key::Tab);
     key(&mut h, Key::Tab);
     text(&mut h, "t");
     key(&mut h, Key::Tab);
@@ -189,7 +188,7 @@ fn snapshots_of_the_insert_menu_templates_and_matrix_picker() {
         text(&mut h, " = ?");
         settle(&mut h);
         assert!(
-            doc_text(&h).contains("\\int_{0}^{1} {x^2} \\, dx = ?"),
+            doc_text(&h).contains("\\int_{0}^{1} {x^{2}} \\, dx = ?"),
             "{}",
             doc_text(&h)
         );

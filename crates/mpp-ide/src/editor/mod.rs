@@ -7,8 +7,13 @@
 //! to the text goes through one splice, which keeps the boxes of inserted
 //! templates (see [`template`]) in step with the text.
 
+pub mod brackets;
 pub mod comment;
+pub mod convert;
+mod exits;
+pub mod forms;
 mod rules;
+pub mod select;
 pub mod symbols;
 pub mod template;
 
@@ -193,6 +198,10 @@ pub struct Editor {
     hint: Option<(String, u64)>,
     /// The heading hint was shown already.
     hinted_heading: bool,
+    /// The revision right after `/` made a fraction (so `//` can take it back).
+    auto_frac: Option<u64>,
+    /// Closing brackets shown but not written (see [`brackets`]).
+    ghosts: Vec<brackets::Ghost>,
 }
 
 impl Editor {
@@ -241,6 +250,7 @@ impl Editor {
         self.undo.clear();
         self.redo.clear();
         self.sessions.clear();
+        self.ghosts.clear();
         self.last_kind = None;
         self.word_done = false;
         self.when = None;
@@ -291,6 +301,7 @@ impl Editor {
         self.caret = move_point(self.caret, &edit, n);
         self.anchor = self.anchor.map(|a| move_point(a, &edit, n));
         self.sessions.retain_mut(|s| adjust_session(s, &edit, n));
+        self.shift_ghosts(&edit, n);
     }
 
     /// Moves the caret to `offset`, extending the selection when `extend`.
@@ -304,6 +315,7 @@ impl Editor {
         self.caret = o;
         self.last_kind = None;
         self.left = None;
+        self.prune_ghosts();
     }
 
     /// Selects a range.
@@ -479,6 +491,7 @@ impl Editor {
         };
         self.caret = s.caret.min(self.text.len());
         self.anchor = None;
+        self.ghosts.clear();
         self.last_kind = None;
         self.word_done = false;
         self.revision += 1;
@@ -673,18 +686,53 @@ impl Editor {
         let Some(s) = self.session_at(caret) else {
             return false;
         };
+        // An exponent or subscript box has nothing else to visit: Tab leaves it
+        // and goes on in the template around it, if there is one.
+        if s.template == convert::SUP || s.template == convert::SUB {
+            let (id, to) = (s.id, if forward { s.range.end } else { s.range.start });
+            self.move_caret(to, false);
+            if forward {
+                self.left = Some((id, to));
+            }
+            let outer = self
+                .sessions
+                .iter()
+                .filter(|o| o.id != id && o.holds(to))
+                .min_by_key(|o| o.range.len())
+                .map(|o| o.id);
+            if let Some(o) = outer {
+                self.tab_in(o, to, forward);
+            }
+            return true;
+        }
         let id = s.id;
+        self.tab_in(id, caret, forward)
+    }
+
+    /// Tab in template `id` with the caret at `caret` (see [`Editor::tab`]).
+    fn tab_in(&mut self, id: u64, caret: usize, forward: bool) -> bool {
+        let Some(s) = self.session(id) else {
+            return false;
+        };
         let cur = s.box_at(caret).and_then(|i| s.tab_pos(i));
         let start = s.primary.and_then(|i| s.tab_pos(i));
         // Boxes before the starting one that still need filling (an integral's
         // bounds; a sum's index and limits come with defaults).
         let lead_open = |p: usize| s.tab[..p].iter().any(|&i| s.boxes[i].range.is_empty());
+        // Only boxes still to fill are stops: empty, or holding their default.
+        let open = |p: &usize| s.boxes[s.tab[*p]].untouched(&self.text);
+        let n = s.tab.len();
         let next = match (cur, forward) {
-            (Some(p), true) if !s.walked && Some(p) == start && lead_open(p) => Some(0),
-            (Some(p), true) => Some(p + 1),
-            (Some(p), false) => p.checked_sub(1),
-            (None, true) => s.tab.iter().position(|&i| s.boxes[i].range.start > caret),
-            (None, false) => s.tab.iter().rposition(|&i| s.boxes[i].range.end < caret),
+            (Some(p), true) if !s.walked && Some(p) == start && lead_open(p) => (0..n).find(open),
+            (Some(p), true) => (p + 1..n).find(open),
+            (Some(p), false) => (0..p).rev().find(open),
+            (None, true) => (0..n)
+                .filter(open)
+                .find(|&p| s.boxes[s.tab[p]].range.start > caret),
+            (None, false) => (0..n)
+                .rev()
+                .filter(open)
+                .find(|&p| s.boxes[s.tab[p]].range.end < caret),
         };
         if let (Some(p), Some(si)) = (cur, self.session_index(id)) {
             if Some(p) != start {

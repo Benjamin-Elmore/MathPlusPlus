@@ -74,9 +74,16 @@ proptest! {
         let (a, b) = (raw.unwrap_or_default(), simplified.unwrap_or_default());
         // A closed expression's float value can be all rounding (e^(π³) sin π is 0.0036
         // in floats); its high-precision value decides instead.
-        if !close(a, b) && e.free_symbols().is_empty() {
+        // The same goes for open ones (e^(e^π)·x·sin π is 1e10 · 1e-16 of rounding):
+        // put exact fractions in for x and y and let the high-precision value decide.
+        if !close(a, b) {
             use mpp_core::hp::{approx_closed, Approx};
-            let truth = match approx_closed(&e, 12) {
+            const DEN: i64 = 1_000_000;
+            let (xq, yq) = ((x * DEN as f64).round() as i64, (y * DEN as f64).round() as i64);
+            let (xr, yr) = (xq as f64 / DEN as f64, yq as f64 / DEN as f64);
+            let closed = e.subs_all(&[("x", Expr::rational(xq, DEN)), ("y", Expr::rational(yq, DEN))]);
+            let b = value(&s, xr, yr).unwrap_or(b);
+            let truth = match approx_closed(&closed, 12) {
                 Some(Approx::Zero { .. }) => Some(0.0),
                 Some(Approx::Value { value, .. }) => value
                     .to_ratio()
