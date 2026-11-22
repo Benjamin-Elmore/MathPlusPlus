@@ -358,6 +358,20 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 }
             }
 
+            // The answer and error cards (U25): clickable, so they outlive the hover.
+            let shown_help = !cx.diag.menu_open()
+                && crate::hover::cards(
+                    ui,
+                    doc,
+                    &pc,
+                    origin,
+                    &theme,
+                    cx.mode,
+                    cx.size,
+                    cx.diag.peek,
+                    &mut events,
+                    resp.hovered(),
+                );
             if resp.hovered() {
                 let over_bulb = bulb_target(doc, &pc, origin)
                     .is_some_and(|(r, _)| resp.hover_pos().is_some_and(|p| r.contains(p)));
@@ -369,7 +383,10 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 } else {
                     CursorIcon::Text
                 });
-                if !cx.diag.menu_open() && !proof_mark_card(ui, &pc, origin, &theme, cx.size) {
+                if !cx.diag.menu_open()
+                    && !proof_mark_card(ui, &pc, origin, &theme, cx.size)
+                    && !shown_help
+                {
                     hover_card(ui, doc, &pc, origin, &theme, cx);
                     verdict_card(ui, doc, &pc, origin, &theme, cx.size);
                     link_card(ui, &pc, origin, &theme, cx.size);

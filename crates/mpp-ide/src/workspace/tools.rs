@@ -209,6 +209,10 @@ impl IdeApp {
             self.open_tutorial(Some(ctx));
             ui.close();
         }
+        if ui.button("Cheat sheet	F1").clicked() {
+            self.show_cheat_sheet(ctx);
+            ui.close();
+        }
         self.hints_menu(ui);
     }
 }

@@ -34,6 +34,7 @@ const PREV_TAB: KeyboardShortcut =
 const CLOSE_TAB: KeyboardShortcut = KeyboardShortcut::new(Modifiers::COMMAND, Key::W);
 const FIND_USES: KeyboardShortcut = KeyboardShortcut::new(Modifiers::SHIFT, Key::F12);
 const RENAME_KEY: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F2);
+const CHEAT_SHEET: KeyboardShortcut = KeyboardShortcut::new(Modifiers::NONE, Key::F1);
 
 /// An icon painter for the activity bar.
 type IconFn = fn(&egui::Painter, Rect, egui::Color32);
@@ -41,8 +42,8 @@ type IconFn = fn(&egui::Painter, Rect, egui::Color32);
 impl IdeApp {
     /// Keys that belong to the workspace. Run before the page sees input.
     pub(crate) fn workspace_shortcuts(&mut self, ctx: &Context) {
-        let (side, quick, search, explorer, back, fwd, prev, next, close, uses, rename) = ctx
-            .input_mut(|i| {
+        let (side, quick, search, explorer, back, fwd, prev, next, close, uses, rename, cheat) =
+            ctx.input_mut(|i| {
                 (
                     i.consume_shortcut(&TOGGLE_SIDE),
                     i.consume_shortcut(&QUICK_OPEN),
@@ -55,6 +56,7 @@ impl IdeApp {
                     i.consume_shortcut(&CLOSE_TAB),
                     i.consume_shortcut(&FIND_USES),
                     i.consume_shortcut(&RENAME_KEY),
+                    i.consume_shortcut(&CHEAT_SHEET),
                 )
             });
         // Ctrl+Shift+Tab is consumed before Ctrl+Tab (a shortcut without Shift
@@ -72,6 +74,9 @@ impl IdeApp {
         }
         if explorer {
             self.show_side(SideView::Explorer);
+        }
+        if cheat {
+            self.show_cheat_sheet(ctx);
         }
         if back {
             self.nav_back();
@@ -124,7 +129,7 @@ impl IdeApp {
     fn activity_bar(&mut self, ui: &mut Ui, theme: &Theme) {
         // The only way to switch side panels: click an icon to show its panel,
         // click the lit icon to hide the side column.
-        let items: [(SideView, &str, IconFn); 6] = [
+        let items: [(SideView, &str, IconFn); 7] = [
             (
                 SideView::Explorer,
                 "Explorer (Ctrl+Shift+E)",
@@ -155,6 +160,7 @@ impl IdeApp {
                 "Tutorial: the lessons",
                 icons::activity_tutorial,
             ),
+            (SideView::Help, "Cheat sheet (F1)", icons::activity_help),
         ];
         // Clicks first, painting after: every icon is drawn with the state the
         // click left, in the same frame.
