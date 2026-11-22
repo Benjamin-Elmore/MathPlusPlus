@@ -233,7 +233,7 @@ fn typing_reaches_the_page(h: &mut Harness<'static, IdeApp>) -> bool {
 }
 
 #[test]
-fn escape_does_one_thing_then_lets_go_of_the_keyboard() {
+fn escape_does_one_thing_then_keeps_the_keyboard() {
     // In inline maths, Esc leaves the maths: typing goes just after it.
     let src = "Hello $x$ world";
     let mut app = app_with(src);
@@ -243,16 +243,14 @@ fn escape_does_one_thing_then_lets_go_of_the_keyboard() {
     press(&mut h, egui::Key::Escape);
     type_text(&mut h, "!");
     assert_eq!(text_of(&h), "Hello $x$! world");
-    // In prose with nothing open, Esc lets go of the keyboard: keys that move
-    // the caret no longer reach the page, however many frames go by.
+    // In prose with nothing open, Esc does nothing and the page keeps the
+    // keyboard (R-N1: a screen reader still has a line to read), however many
+    // frames go by.
     press(&mut h, egui::Key::Escape);
     h.run_steps(5);
-    assert!(!page_moves_the_caret(&mut h), "Esc did not let go");
-    // But typing never vanishes (U28, S4): a letter typed then still lands
-    // on the page, and the page has the keyboard again.
+    assert!(page_moves_the_caret(&mut h), "Esc let go of the keyboard");
     assert!(typing_reaches_the_page(&mut h), "a typed letter was lost");
-    assert!(page_moves_the_caret(&mut h));
-    // A click on the page takes it back too.
+    // A click on the page keeps it too.
     press(&mut h, egui::Key::Escape);
     h.run_steps(3);
     let at = caret_at(&h);
@@ -351,7 +349,7 @@ fn the_page_never_takes_the_keyboard_from_another_widget() {
 }
 
 #[test]
-fn an_arrow_at_the_edge_of_the_document_lets_go() {
+fn up_at_the_top_stays_and_left_at_the_start_lets_go() {
     let src = "One line";
     let mut app = app_with(src);
     app.doc_mut().expect("doc").editor.move_caret(0, false);
@@ -362,9 +360,15 @@ fn an_arrow_at_the_edge_of_the_document_lets_go() {
     assert!(typing_reaches_the_page(&mut h));
     assert_eq!(text_of(&h), src);
     press(&mut h, egui::Key::Home);
-    // Up on the first line, already at its start: nowhere to go in the page,
-    // so the keyboard moves up to the tabs and menus.
+    // Up on the first line, already at its start: the page keeps the keyboard
+    // (R-N2: a screen reader user is not thrown onto the tab bar).
     press(&mut h, egui::Key::ArrowUp);
+    h.run_steps(3);
+    assert!(page_moves_the_caret(&mut h), "Up let go of the keyboard");
+    press(&mut h, egui::Key::Home);
+    // Left at the very start: nowhere to go in the page, so the keyboard
+    // moves to the widget on the left, as everywhere else.
+    press(&mut h, egui::Key::ArrowLeft);
     h.run_steps(3);
     assert!(!page_moves_the_caret(&mut h), "the page kept the keyboard");
     // A letter typed then is not lost (U28, S4): it goes to the page.

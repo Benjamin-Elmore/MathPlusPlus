@@ -224,6 +224,105 @@ pub fn page_lines(doc: &Doc, pc: &PageCache) -> Vec<(String, bool)> {
     out
 }
 
+/// The page input the answer slots are worked out from.
+fn page_input<'a>(
+    doc: &'a Doc,
+    pc: &'a PageCache,
+    refs: &'a ExtraRefs,
+    proof: &'a crate::proof::ProofView,
+) -> PageInput<'a> {
+    PageInput {
+        src: doc.editor.text(),
+        doc: &pc.doc,
+        eval: doc.eval.as_deref(),
+        theme: crate::theme::Mode::Light.theme(),
+        size: 16.0,
+        width: 700.0,
+        integral_limits: mpp_render::IntegralLimits::AboveBelow,
+        slot_labels: &[],
+        show: doc.show(),
+        extra_refs: refs,
+        proof,
+    }
+}
+
+/// The words after inline maths at `span` (`$v/2 =$`): the answer its chip
+/// shows, a `= ?` answer, a check's verdict, or its error or warning.
+pub fn inline_words(doc: &Doc, pc: &PageCache, span: Span) -> Vec<Said> {
+    let src = doc.editor.text();
+    let mut out = Vec::new();
+    if pc.revision() != doc.editor.revision() {
+        return out;
+    }
+    let refs = ExtraRefs::default();
+    let proof = crate::proof::ProofView::default();
+    let input = page_input(doc, pc, &refs, &proof);
+    if let Some(ev) = doc.eval.as_deref().filter(|ev| ev.source() == src) {
+        pc.doc.walk(&mut |b| {
+            if matches!(b.kind, BlockKind::DisplayMath(_)) || !inside(span, b.span) {
+                return;
+            }
+            let Some(br) = ev.block(b.id) else {
+                return;
+            };
+            for v in br.values.iter().filter(|v| inside(v.span, span)) {
+                let said = if v.open {
+                    crate::page::answers::answer_of(v, &input, v.span)
+                        .map(|(latex, copy)| Content::Answer { latex, copy })
+                        .or_else(|| crate::page::answers::error_in(br, v.span))
+                        .as_ref()
+                        .and_then(slot_words)
+                } else if matches!(v.kind, LineKind::Query { .. } | LineKind::Check) {
+                    v.answer().map(|a| {
+                        if v.verdict.is_none() {
+                            return Said::Value(value_words(&a));
+                        }
+                        let head = match a.trim_start().chars().next() {
+                            Some('\u{2713}') => "check holds",
+                            Some('\u{2717}') => "check fails",
+                            _ => "check not decided",
+                        };
+                        match check_words(&a) {
+                            w if w.is_empty() => Said::Clause(head.into()),
+                            w => Said::Clause(format!("{head}, {w}")),
+                        }
+                    })
+                } else {
+                    None
+                };
+                if let Some(w) = said {
+                    if !out.contains(&w) {
+                        out.push(w);
+                    }
+                }
+            }
+        });
+    }
+    for p in pc.problems.iter().filter(|p| inside(p.span, span)) {
+        let what = match p.level {
+            Level::Error => "error",
+            Level::Warning => "warning",
+            _ => continue,
+        };
+        if out
+            .iter()
+            .any(|w| matches!(w, Said::Clause(c) if c.starts_with(what)))
+        {
+            continue;
+        }
+        out.push(Said::Clause(format!("{what}: {}", p.message.trim())));
+    }
+    out
+}
+
+/// The spoken label of inline maths at `span`: its formula and what the page
+/// shows after it.
+pub fn inline_label(doc: &Doc, pc: &PageCache, span: Span) -> Option<String> {
+    let spoken = super::spoken_at(doc.editor.text(), span)?;
+    let words = inline_words(doc, pc, span);
+    Some(words.iter().fold(spoken, |acc, w| w.after(&acc)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

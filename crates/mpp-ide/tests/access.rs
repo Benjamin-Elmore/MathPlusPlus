@@ -91,8 +91,11 @@ fn formulas_are_spoken_in_the_accessibility_tree() {
         "1 over 2 plus 1 over 3 equals",
         "y is defined as 3",
     ] {
+        // A run that finishes in time adds the answer or a warning after it.
         assert!(
-            all.iter().any(|l| l == want),
+            all.iter().any(|l| l == want
+                || l.starts_with(&format!("{want} "))
+                || l.starts_with(&format!("{want},"))),
             "no node says {want:?}; labels: {all:?}"
         );
     }

@@ -591,3 +591,97 @@ fn r19_one_spoken_style_for_fractions_in_the_tree() {
     }
     assert!(!all.iter().any(|l| l.contains("the fraction")), "{all:?}");
 }
+
+// ---- Fix loop 2 -----------------------------------------------------------
+
+/// Types `s` and checks it landed in the file (the editor had the keyboard).
+fn types_into_file(h: &mut H, s: &str) -> bool {
+    type_text(h, s);
+    h.state().doc().unwrap().editor.text().contains(s)
+}
+
+#[test]
+fn rn1_esc_on_a_prose_line_keeps_the_keyboard_in_the_editor() {
+    let mut h = app_with("Hello there.\n", 6);
+    assert!(in_editor(&h));
+    key(&mut h, Modifiers::NONE, Key::Escape);
+    h.step();
+    assert!(
+        in_editor(&h),
+        "Esc in prose: focus {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    key(&mut h, Modifiers::NONE, Key::Escape);
+    h.step();
+    assert!(in_editor(&h), "Esc again");
+    // F10, then Esc: still the editor.
+    key(&mut h, Modifiers::NONE, Key::F10);
+    h.step();
+    key(&mut h, Modifiers::NONE, Key::Escape);
+    h.step();
+    assert!(
+        in_editor(&h),
+        "Esc after F10: focus {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    assert!(types_into_file(&mut h, "K"));
+}
+
+#[test]
+fn rn2_up_on_the_first_line_and_down_on_the_last_stay_in_the_editor() {
+    let mut h = app_with("First line.\n\nLast line.", 3);
+    for _ in 0..4 {
+        key(&mut h, Modifiers::NONE, Key::ArrowUp);
+    }
+    h.step();
+    assert!(
+        in_editor(&h),
+        "Up at the top: {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    assert_eq!(h.state().doc().unwrap().editor.caret(), 0);
+    key(&mut h, Modifiers::COMMAND, Key::End);
+    for _ in 0..3 {
+        key(&mut h, Modifiers::NONE, Key::ArrowDown);
+    }
+    h.step();
+    assert!(
+        in_editor(&h),
+        "Down at the bottom: {:?}",
+        focused(&h).map(|f| f.label)
+    );
+    assert!(types_into_file(&mut h, "D"));
+}
+
+#[test]
+fn r19_inline_maths_says_its_answer_and_the_line_reads_spoken_maths() {
+    let src = "$$ v := 20 $$\n\nHalf of $v$ is $v/2 =$ metres per second.\n\nThe angle $\\theta$ is small.\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    let all = labels(&h);
+    assert!(
+        all.iter().any(|l| l == "v over 2 equals 10"),
+        "inline answer: {all:?}"
+    );
+    let at = src.find("Half").unwrap() + 2;
+    h.state_mut()
+        .doc_mut()
+        .unwrap()
+        .editor
+        .move_caret(at, false);
+    h.run_steps(2);
+    let f = focused(&h).expect("focused");
+    assert_eq!(
+        f.value,
+        "Half of v is v over 2 equals 10 metres per second."
+    );
+    let at = src.find("The angle").unwrap() + 2;
+    h.state_mut()
+        .doc_mut()
+        .unwrap()
+        .editor
+        .move_caret(at, false);
+    h.run_steps(2);
+    let f = focused(&h).expect("focused");
+    assert_eq!(f.value, "The angle theta is small.");
+}

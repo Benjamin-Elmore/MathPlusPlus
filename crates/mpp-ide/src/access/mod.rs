@@ -74,7 +74,7 @@ pub fn annotate(ui: &Ui, doc: &Doc, pc: &PageCache, origin: Pos2, size: f32) {
         };
         let rect = rect.translate(off);
         if rect.intersects(clip) {
-            node(ui, rect, *span, spoken_at(text, *span));
+            node(ui, rect, *span, answers::inline_label(doc, pc, *span));
         }
     }
     for band in crate::page::mode::bands(page, size) {

@@ -168,7 +168,11 @@ fn found<'e>(
 }
 
 /// The answer of an evaluated `= ?` line as LaTeX, with the text a copy gives.
-fn answer_of(v: &Answered, input: &PageInput<'_>, span: Span) -> Option<(String, String)> {
+pub(crate) fn answer_of(
+    v: &Answered,
+    input: &PageInput<'_>,
+    span: Span,
+) -> Option<(String, String)> {
     let (text, latex, approx) = match input.show.format_for(span) {
         Some(f) => v.reformat_all(f),
         None => (v.text.clone(), v.latex.clone(), v.decimal_beside()),
@@ -210,7 +214,7 @@ fn preview_of(v: &Answered) -> Option<(String, String)> {
 }
 
 /// The first error inside `span`, short and whole.
-fn error_in(br: &BlockResult, span: Span) -> Option<Content> {
+pub(crate) fn error_in(br: &BlockResult, span: Span) -> Option<Content> {
     // An error first; with none, a warning (`w isn't defined, so there is no value`)
     // explains why there is no answer.
     let inside = |d: &&mpp_syntax::Diagnostic| span.start <= d.span.start && d.span.end <= span.end;

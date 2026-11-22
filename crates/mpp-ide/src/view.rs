@@ -423,7 +423,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
             let popup = ui.ctx().any_popup_open();
             ui.data_mut(|d| d.insert_temp(egui::Id::unique(POPUP_OPEN), popup));
             if ui.memory(|m| m.has_focus(resp.id)) {
-                let filter = key_filter(doc, &pc, cx, popup);
+                let filter = key_filter();
                 ui.memory_mut(|m| m.set_focus_lock_filter(resp.id, filter));
             }
             if shift != 0.0 {
@@ -459,8 +459,8 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
 const POPUP_OPEN: &str = "mpp-popup-open";
 
 /// Gives the page the keyboard: on a click, or when nothing else has it. When
-/// the page let go of it on purpose (Esc with nothing open), only a click
-/// brings it back, and the page never takes it from another widget (the side
+/// the page let go of it on purpose (a Left or Right arrow at the edge), only
+/// a click or typing brings it back, and the page never takes it from another widget (the side
 /// column's search box, quick open, a dialog): a click elsewhere hands it over
 /// as anywhere in egui. True when the page has it.
 /// `force` is set when a file was just opened or its tab clicked (U5).
@@ -508,26 +508,16 @@ fn take_focus(ui: &Ui, resp: &egui::Response, force: bool, active: bool) -> bool
 }
 
 /// Which keys the page keeps for itself next frame (the rest move the
-/// keyboard to other widgets, as anywhere else). Tab always (it never takes the
-/// keyboard away, P1); Esc only while it has something to
-/// do (close a popup, leave a box, leave maths).
-fn key_filter(doc: &Doc, pc: &PageCache, cx: &ViewCtx<'_>, menu: bool) -> EventFilter {
-    let caret = doc.editor.caret();
-    let in_template = doc.editor.session_at(caret).is_some();
-    let popup = menu
-        || cx.completion.is_some()
-        || cx.diag.peek.is_some()
-        || cx.insert.menu.open
-        || cx.insert.commands.open
-        || cx.diag.menu_open();
+/// keyboard to other widgets, as anywhere else). Tab, the arrows and Esc
+/// always: Tab never takes the keyboard away (P1), and Esc with nothing to do
+/// (in prose) leaves the keyboard on the page, where a screen reader still
+/// has a line to read (R-N1). F6 is the way off the page.
+fn key_filter() -> EventFilter {
     EventFilter {
-        // Tab never takes the keyboard off the page, where the person's
-        // typing would then vanish (P1): with no box to go to it does nothing.
-        // Esc is the way off the page.
         tab: true,
         horizontal_arrows: true,
         vertical_arrows: true,
-        escape: popup || in_template || pc.page.in_math(caret) || doc.editor.at_maths_end(),
+        escape: true,
     }
 }
 
@@ -546,10 +536,10 @@ fn empty_slots(page: &crate::page::Page, caret: usize) -> Vec<usize> {
     slots
 }
 
-/// An arrow key at the edge of the document: the page has nowhere to move the
-/// caret, so the key moves the keyboard to the widget that way, as it does
-/// everywhere else. Up on the first line first goes to the line's start, and
-/// Down on the last line to its end.
+/// An arrow key at the left or right edge of the document: the page has
+/// nowhere to move the caret, so the key moves the keyboard to the widget that
+/// way, as it does everywhere else. Up on the first line and Down on the last
+/// line stay on the page (R-N2): the caret goes to the line's start or end.
 fn edge_release(
     doc: &Doc,
     pc: &PageCache,
@@ -566,8 +556,6 @@ fn edge_release(
     }
     let page = &pc.page;
     let (caret, side) = (doc.editor.caret(), doc.caret_side);
-    let text = doc.editor.text();
-    let (lo, hi) = page.line_ends(text, caret, side).unwrap_or((caret, caret));
     match key {
         Key::ArrowLeft => page
             .step_on(caret, side, false)
@@ -577,12 +565,6 @@ fn edge_release(
             .step_on(caret, side, true)
             .is_none()
             .then_some(F::Right),
-        Key::ArrowUp => (page.line_vertical(text, caret, side, true, None).is_none()
-            && caret == lo)
-            .then_some(F::Up),
-        Key::ArrowDown => (page.line_vertical(text, caret, side, false, None).is_none()
-            && caret == hi)
-            .then_some(F::Down),
         _ => None,
     }
 }
