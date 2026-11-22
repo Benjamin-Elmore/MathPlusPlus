@@ -930,3 +930,46 @@ fn rf2_inline_answers_are_announced_after_a_run_like_display_answers() {
     let said = polite(&h);
     assert!(said.contains("v over 2 equals 10"), "{said:?}");
 }
+
+#[test]
+fn rf3_the_spoken_level_matches_the_problems_panel() {
+    let src = "Words.\n\n$$ v := 20 $$\n\n$$ w + v = ? $$\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    let all = labels(&h);
+    let line = all
+        .iter()
+        .find(|l| l.starts_with("w plus v equals"))
+        .cloned()
+        .unwrap_or_else(|| panic!("{all:?}"));
+    assert!(line.contains("warning: w is not defined"), "{line:?}");
+    assert!(!line.contains("error"), "{line:?}");
+    // Announced as Problems lists it: politely, as a warning.
+    let src2 = "Words.
+
+$$ v := 20 $$
+
+$$ v = ? $$
+";
+    let mut h = app_with(src2, src2.rfind("v = ?").unwrap());
+    wait(&mut h);
+    h.run_steps(3);
+    type_text(&mut h, "w + ");
+    wait(&mut h);
+    h.run_steps(3);
+    assert!(
+        !h.state().access.assertive().contains("w is not defined"),
+        "{:?}",
+        h.state().access.assertive()
+    );
+    assert!(
+        polite(&h).contains("warning: w is not defined"),
+        "{:?}",
+        polite(&h)
+    );
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(labels(&h)
+        .iter()
+        .any(|l| l.starts_with("Warning, line 5: w is not defined")));
+}

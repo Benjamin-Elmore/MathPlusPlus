@@ -141,6 +141,24 @@ fn already_said(said: &[Said], message: &str) -> bool {
     })
 }
 
+/// The page lists the problem behind a slot's error as a warning (an
+/// undefined name): the error is said as a warning too, as Problems lists it
+/// (R-F3).
+fn match_level(said: &mut [Said], level: Level, message: &str) {
+    if level != Level::Warning {
+        return;
+    }
+    for w in said.iter_mut() {
+        if let Said::Clause(c) = w {
+            if let Some(rest) = c.strip_prefix("error: ") {
+                if already_said(&[Said::Clause(c.clone())], message) {
+                    *w = Said::Clause(format!("warning: {rest}"));
+                }
+            }
+        }
+    }
+}
+
 fn slot_words(c: &Content) -> Option<Said> {
     Some(match c {
         Content::Empty => return None,
@@ -248,6 +266,7 @@ pub fn line_words(doc: &Doc, pc: &PageCache, start: usize) -> Vec<Vec<Said>> {
     // Errors and warnings the page marks on the line.
     for (i, line) in ast.lines.iter().enumerate() {
         for p in pc.problems.iter().filter(|p| inside(p.span, line.span)) {
+            match_level(&mut out[i], p.level, &p.message);
             let what = match p.level {
                 Level::Error => "error",
                 Level::Warning => "warning",
@@ -404,6 +423,7 @@ pub fn inline_words(doc: &Doc, pc: &PageCache, span: Span) -> Vec<Said> {
         });
     }
     for p in pc.problems.iter().filter(|p| inside(p.span, span)) {
+        match_level(&mut out, p.level, &p.message);
         let what = match p.level {
             Level::Error => "error",
             Level::Warning => "warning",
