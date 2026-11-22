@@ -851,11 +851,20 @@ pub fn checks(doc: &Document, ev: &Evaluated) -> Vec<Problem> {
         })
     }) || doc_has_figure(doc);
     if consumes {
-        let used: std::collections::HashSet<&str> = ev
+        let mut used: std::collections::HashSet<String> = ev
             .blocks
             .iter()
-            .flat_map(|b| b.uses.iter().map(String::as_str))
+            .flat_map(|b| b.uses.iter().cloned())
             .collect();
+        // Uses inside the defining block count too (`g`, `v` and `θ` used in `R` on
+        // the rows of one maths box): the block's own uses are not in `uses`.
+        for b in &ev.blocks {
+            for v in &b.values {
+                if let Some(input) = &v.input {
+                    used.extend(input.free_symbols().iter().map(|n| n.to_string()));
+                }
+            }
+        }
         for (name, binding) in &ev.bindings {
             let origin = binding.origin();
             if origin.file.is_some()
@@ -864,7 +873,7 @@ pub fn checks(doc: &Document, ev: &Evaluated) -> Vec<Problem> {
             {
                 continue;
             }
-            if used.contains(name.as_str()) {
+            if used.contains(name) {
                 continue;
             }
             out.push(

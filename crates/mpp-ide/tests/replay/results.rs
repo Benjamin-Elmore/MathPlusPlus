@@ -227,6 +227,21 @@ fn coder_idioms_in_prose_get_a_hint() {
     }
 }
 
+/// S7: names used by another row of the same maths box are used.
+#[test]
+fn names_used_in_the_same_box_are_not_unused() {
+    let rows = concat!(
+        "$$ g = 9.81 \\\\",
+        "\nv = 20 \\\\",
+        "\n\\theta = \\pi/6 \\\\",
+        "\nR = v^2 \\sin(2\\theta)/g \\\\",
+        "\nR = 35.3 $$\n\n"
+    );
+    let mut h = typed_after(rows, &[Pause]);
+    let p = problems(&mut h);
+    assert!(!p.iter().any(|m| m.contains("Unused")), "{p:?}");
+}
+
 /// E9 (Design rule 5): an answer with units arriving moves no line.
 #[test]
 fn a_unit_answer_moves_nothing() {
