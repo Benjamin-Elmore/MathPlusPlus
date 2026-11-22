@@ -23,15 +23,18 @@ pub enum Hint {
     Conversion,
     /// `1.3` stayed a number instead of becoming a list.
     NumberNotList,
+    /// A sentence ends with maths and `=`: Ctrl+M makes just that maths.
+    InlineMaths,
 }
 
 impl Hint {
-    pub const ALL: [Hint; 5] = [
+    pub const ALL: [Hint; 6] = [
         Hint::Heading,
         Hint::StartMaths,
         Hint::AutoMaths,
         Hint::Conversion,
         Hint::NumberNotList,
+        Hint::InlineMaths,
     ];
 
     /// The name stored in the settings.
@@ -42,6 +45,7 @@ impl Hint {
             Hint::AutoMaths => "auto-maths",
             Hint::Conversion => "conversion",
             Hint::NumberNotList => "number-not-list",
+            Hint::InlineMaths => "inline-maths",
         }
     }
 
@@ -53,6 +57,7 @@ impl Hint {
             Hint::AutoMaths => "Line turned into maths",
             Hint::Conversion => "Typing converted",
             Hint::NumberNotList => "Number kept as a number",
+            Hint::InlineMaths => "Maths in a sentence",
         }
     }
 
@@ -71,6 +76,9 @@ impl Hint {
             }
             Hint::NumberNotList => {
                 "A number like 1.3 is never a list. For a list, type 1. and then a space."
+            }
+            Hint::InlineMaths => {
+                "A sentence ending in maths and = (half of v is v/2 =) can get an answer: Ctrl+M makes just that part maths. Select words and press Ctrl+M or Alt+= to make them maths."
             }
         }
     }

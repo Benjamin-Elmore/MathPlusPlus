@@ -242,6 +242,63 @@ pub fn reads_as_maths(line: &str, known: &[String]) -> bool {
     op && t.chars().any(|c| c.is_alphanumeric())
 }
 
+/// The maths at the end of a prose sentence that ends with `=` (or `= ?`):
+/// in `half of v is v/2 =`, the range of `v/2 =`. Words that are not maths
+/// (`is`, `of`) end it. None when there is none, or when the whole line is
+/// maths (auto-detect turns that into a maths line).
+pub fn sentence_tail(line: &str) -> Option<Range<usize>> {
+    let t = line.trim_end();
+    let squeezed: String = t.chars().filter(|c| !c.is_whitespace()).collect();
+    if !(squeezed.ends_with('=') || squeezed.ends_with("=?")) || t.contains(['$', '\\']) {
+        return None;
+    }
+    let maths_word = |w: &str| {
+        if w.ends_with(['.', ',', ';', ':', '!']) && w != "=" {
+            return false;
+        }
+        let mut run = String::new();
+        let mut ok = true;
+        for c in w.chars().chain([' ']) {
+            if c.is_alphabetic() {
+                run.push(c);
+            } else {
+                if run.chars().count() >= 2 && !FUNCTIONS.contains(&run.as_str()) {
+                    ok = false;
+                }
+                run.clear();
+            }
+        }
+        ok && w
+            .chars()
+            .all(|c| c.is_alphanumeric() || "+-*/^=?()<>.·×÷−√_'".contains(c))
+    };
+    // The words with their starts, from the end.
+    let mut words: Vec<(usize, &str)> = Vec::new();
+    let mut start = None;
+    for (i, c) in t.char_indices().chain([(t.len(), ' ')]) {
+        match (c.is_whitespace(), start) {
+            (true, Some(s)) => {
+                words.push((s, &t[s..i]));
+                start = None;
+            }
+            (false, None) => start = Some(i),
+            _ => {}
+        }
+    }
+    let mut from = None;
+    let mut maths = false;
+    for &(s, w) in words.iter().rev() {
+        if !maths_word(w) {
+            break;
+        }
+        maths |= w.chars().any(|c| c.is_alphanumeric());
+        from = Some(s);
+    }
+    let from = from.filter(|_| maths)?;
+    let lead = line.len() - line.trim_start().len();
+    (from > lead).then_some(from..t.len())
+}
+
 /// The maths line made from a prose line: `$` signs dropped, spaces trimmed.
 /// Returns the new text and a map from each kept byte of the old line to its
 /// place in the new one.
@@ -321,6 +378,93 @@ impl Editor {
         }
     }
 
+    /// Inline maths in a sentence (T7, E12, S8, P3): the selection on a prose
+    /// line becomes `$…$`, or with no selection the maths that ends the
+    /// sentence (`half of v is v/2 =`). One undo step; the caret goes after the
+    /// maths, back in the sentence. False when there is nothing to wrap.
+    pub fn inline_maths(&mut self) -> bool {
+        let (range, caret_end) = if let Some(sel) = self.selection() {
+            let s = &self.text[sel.clone()];
+            if s.contains('\n') || s.contains('$') || s.trim().is_empty() {
+                return false;
+            }
+            if line_kind(&self.text, sel.start) != LineKind::Prose {
+                return false;
+            }
+            let lead = s.len() - s.trim_start().len();
+            let trail = s.len() - s.trim_end().len();
+            (sel.start + lead..sel.end - trail, true)
+        } else {
+            if line_kind(&self.text, self.caret) != LineKind::Prose {
+                return false;
+            }
+            let (ls, le) = line_bounds(&self.text, self.caret);
+            let Some(r) = sentence_tail(&self.text[ls..le]) else {
+                return false;
+            };
+            (ls + r.start..ls + r.end, true)
+        };
+        let inner = self.text[range.clone()].to_string();
+        let with = format!("${inner}$");
+        let end = range.start + with.len();
+        self.maths_step(range, &with, caret_end.then_some(end));
+        true
+    }
+
+    /// After `=` typed at the end of a sentence that ends with maths: a
+    /// one-time hint that Ctrl+M makes just that part maths. The sentence
+    /// itself is left as it is.
+    pub(super) fn tail_hint(&mut self) {
+        let (ls, le) = line_bounds(&self.text, self.caret);
+        if self.caret != le || line_kind(&self.text, ls) != LineKind::Prose {
+            return;
+        }
+        if let Some(r) = sentence_tail(&self.text[ls..le]) {
+            let tail = self.text[ls + r.start..ls + r.end].to_string();
+            self.fire_hint(Hint::InlineMaths, &format!("Make \"{tail}\" maths? Ctrl+M"));
+        }
+    }
+
+    /// Alt+= with no selection in the middle of a sentence: an empty inline
+    /// maths `${}$` at the caret, with the caret in it. False when the caret's
+    /// line is not a sentence (empty, or reads as maths: then the line becomes
+    /// a maths line).
+    pub fn empty_inline_maths(&mut self) -> bool {
+        if self.selection().is_some() || line_kind(&self.text, self.caret) != LineKind::Prose {
+            return false;
+        }
+        let (ls, le) = line_bounds(&self.text, self.caret);
+        let known = defined_names(&self.text);
+        if reads_as_maths(&self.text[ls..le], &known) {
+            return false;
+        }
+        let at = self.caret;
+        self.maths_step(at..at, "${}$", Some(at + 2));
+        true
+    }
+
+    /// After a character typed into the empty inline maths that Alt+= made
+    /// (`${x}$`), the placeholder braces go: `$x$`.
+    pub fn settle_inline(&mut self) {
+        let c = self.caret;
+        let t = &self.text;
+        if c < 3 || !t[c..].starts_with("}$") {
+            return;
+        }
+        let Some(open) = t[..c].rfind("${") else {
+            return;
+        };
+        let inner = &t[open + 2..c];
+        if inner.chars().count() != 1 || inner.contains(['{', '}', '$']) {
+            return;
+        }
+        let inner = inner.to_string();
+        self.splice(open..c + 2, &format!("${inner}$"));
+        self.caret = open + 1 + inner.len();
+        self.fixup();
+        self.revision += 1;
+    }
+
     /// Makes the maths block at `at` prose again: its rows become lines of
     /// their own. False when `at` is not in a maths block.
     pub fn make_prose(&mut self, state: &mut MathsState, at: usize) -> bool {
@@ -362,6 +506,9 @@ impl Editor {
     /// Ctrl+M or a click on the ∑ marker: flips the line at `at` between prose
     /// and maths. False when nothing changed.
     pub fn flip_maths(&mut self, state: &mut MathsState, at: usize) -> bool {
+        if self.inline_maths() {
+            return true;
+        }
         match line_kind(&self.text, at) {
             LineKind::Maths(..) => self.make_prose(state, at),
             LineKind::Empty | LineKind::Prose => self.make_maths(at),

@@ -275,6 +275,10 @@ impl Editor {
     /// Called just after a character was typed in prose: `#` then a letter at the
     /// start of a line becomes a heading (the editor writes the space).
     pub fn after_type(&mut self, ch: char) {
+        if ch == '=' {
+            self.tail_hint();
+            return;
+        }
         if ch.is_ascii_digit() {
             let at = self.caret - 1;
             let (ls, _) = line_bounds(&self.text, at);

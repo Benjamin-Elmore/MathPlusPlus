@@ -101,3 +101,86 @@ fn page_up_and_down_move_by_a_screenful() {
     h.run_steps(2);
     assert!(line(&h) > up + 5, "PageDown moved back down");
 }
+
+fn hint(h: &H) -> Option<String> {
+    h.state()
+        .doc()
+        .and_then(|d| d.editor.hint().map(str::to_string))
+}
+
+fn in_math(h: &H) -> bool {
+    let doc = h.state().doc().expect("doc");
+    doc.page_cache()
+        .expect("page")
+        .page
+        .in_math(doc.editor.caret())
+}
+
+/// T7, E12, S8 and P3: a sentence that ends in maths and `=` keeps its words.
+/// A one-time hint offers Ctrl+M, which makes just the maths at its end inline
+/// maths; the sentence goes on after it.
+#[test]
+fn ctrl_m_makes_the_maths_at_the_end_of_a_sentence_inline() {
+    let mut h = fresh();
+    type_text(&mut h, "Half of v is v/2 =");
+    assert_eq!(hint(&h).as_deref(), Some("Make \"v/2 =\" maths? Ctrl+M"));
+    assert_eq!(
+        text_of(&h),
+        "Half of v is v/2 =",
+        "nothing converts by itself"
+    );
+    press(&mut h, Modifiers::COMMAND, Key::M);
+    assert_eq!(text_of(&h), "Half of v is $v/2 =$");
+    assert!(!in_math(&h), "the caret is back in the sentence");
+    type_text(&mut h, " m/s.");
+    assert_eq!(text_of(&h), "Half of v is $v/2 =$ m/s.");
+}
+
+/// Ctrl+M or Alt+= on a selection in a sentence wraps just the selection.
+#[test]
+fn a_selection_in_a_sentence_becomes_inline_maths() {
+    for mods in [Modifiers::COMMAND, Modifiers::ALT] {
+        let mut h = fresh();
+        type_text(&mut h, "The value x+1 is big");
+        for _ in 0.." is big".len() {
+            key(&mut h, Key::ArrowLeft);
+        }
+        for _ in 0.."x+1".len() {
+            press(&mut h, Modifiers::SHIFT, Key::ArrowLeft);
+        }
+        let k = if mods == Modifiers::ALT {
+            Key::Equals
+        } else {
+            Key::M
+        };
+        press(&mut h, mods, k);
+        assert_eq!(text_of(&h), "The value $x+1$ is big", "with {mods:?}");
+    }
+}
+
+/// S8: Alt+= with no selection in a sentence starts an empty inline maths at
+/// the caret (not the whole sentence); Esc leaves it into the sentence.
+#[test]
+fn alt_equals_in_a_sentence_starts_inline_maths_and_esc_leaves_it() {
+    let mut h = fresh();
+    type_text(&mut h, "Half of v is ");
+    press(&mut h, Modifiers::ALT, Key::Equals);
+    assert!(in_math(&h), "the caret is in the new inline maths");
+    type_text(&mut h, "v");
+    assert_eq!(text_of(&h), "Half of v is $v$");
+    type_text(&mut h, "/2");
+    // Esc leaves the denominator's box, then the inline maths (rule 4).
+    for _ in 0..2 {
+        if in_math(&h) {
+            key(&mut h, Key::Escape);
+        }
+    }
+    assert!(!in_math(&h), "Esc left the inline maths");
+    type_text(&mut h, " m/s.");
+    let text = text_of(&h);
+    assert!(
+        text.starts_with("Half of v is $") && text.ends_with("$ m/s."),
+        "{text:?}"
+    );
+    assert_eq!(text.matches('$').count(), 2, "{text:?}");
+}

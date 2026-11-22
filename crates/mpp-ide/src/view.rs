@@ -1408,6 +1408,7 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
             };
             doc.editor.type_maths(ch, &typing);
             doc.editor.bracket_after(ch);
+            doc.editor.settle_inline();
             continue;
         }
         if doc.editor.before_type(ch) {
@@ -1587,7 +1588,14 @@ fn key_pressed(
     let in_math = page.in_math(caret);
     let shift = mods.shift;
     if mods.alt && !mods.command && key == Key::Equals {
-        // Alt+= (as in Word): this line becomes maths.
+        // Alt+= (as in Word): the selection, or an empty piece at the caret in
+        // a sentence, becomes inline maths; otherwise the line becomes maths.
+        let sel = doc.editor.selection().is_some();
+        if (sel && doc.editor.inline_maths()) || (!sel && doc.editor.empty_inline_maths()) {
+            doc.touched();
+            doc.want_x = None;
+            return true;
+        }
         return make_maths(doc, caret);
     }
     if !mods.command && !mods.alt {
