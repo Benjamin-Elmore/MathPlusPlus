@@ -43,8 +43,14 @@ pub enum Content {
     Preview { latex: String, copy: String },
     /// `x = 5` read as a definition, with the value when it was worked out.
     Defined { value: Option<(String, String)> },
-    /// `x = 5` with `x` already defined: does it hold?
-    Check { holds: Option<bool>, why: String },
+    /// `x = 5` with `x` already defined, `R ≈ 35.3`, `R == 35.3`, `|R − 35.3| < 0.1`:
+    /// does it hold? `left` is the left side as written (LaTeX) and its value, shown
+    /// beside a ✗ (`✗ R = 35.31…`).
+    Check {
+        holds: Option<bool>,
+        why: String,
+        left: Option<(String, String)>,
+    },
     /// The line's error: a short form for the slot and the whole message.
     Error { short: String, full: String },
 }
@@ -198,6 +204,9 @@ fn error_in(br: &BlockResult, span: Span) -> Option<Content> {
     Some(Content::Error { short, full })
 }
 
+/// What the hover over a check says about checks against numbers.
+pub const CHECK_RULE: &str = "\\text{A check against a number passes when the value rounds to it as written: 35.31 passes R = 35.3 (within half a unit of the last digit). Write ≈ or approx for a looser check, to 3 significant figures.}";
+
 /// The slots of a display maths block, line by line.
 pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot> {
     let run = input
@@ -238,13 +247,17 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
             Content::Defined {
                 value: v.shows_value.then(|| preview_of(v)).flatten(),
             }
-        } else if let Some(v) = vals
-            .iter()
-            .find(|v| v.kind == LineKind::Check && matches!(line.statement, Statement::Relation(_)))
-        {
+        } else if let Some(v) = vals.iter().find(|v| {
+            v.kind == LineKind::Check
+                && matches!(
+                    line.statement,
+                    Statement::Relation(_) | Statement::Check { .. }
+                )
+        }) {
             Content::Check {
                 holds: v.verdict.as_ref().and_then(mpp_eval::Verdict::passed),
                 why: v.verdict_text().unwrap_or_default(),
+                left: left_side(line, input.src).zip(v.left.clone()),
             }
         } else if let Some((latex, copy)) = vals
             .iter()
@@ -263,6 +276,21 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
         });
     }
     out
+}
+
+/// The left side of a check line as written, when it is short enough to repeat
+/// beside the check's ✗ (`R`, `|R - 35.3|`).
+fn left_side(line: &Line, src: &str) -> Option<String> {
+    let span = match &line.statement {
+        Statement::Check { lhs, .. } => lhs.span,
+        Statement::Relation(n) => match &n.kind {
+            NodeKind::Relation { first, .. } => first.span,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let text = src.get(span.start..span.end)?.trim();
+    (!text.is_empty() && text.chars().count() <= 24).then(|| text.to_string())
 }
 
 /// True when the line `index` of the block has its answer drawn in a slot (so the
@@ -323,6 +351,31 @@ fn warning_sign(x: f32, y: f32, h: f32, color: Color, out: &mut Vec<Primitive>) 
         h: stroke,
     };
     out.push(Primitive::Rule { rect: dot, color });
+}
+
+/// A ✗ drawn as two strokes, `size` high on a baseline: never an operator between
+/// empty boxes (a typeset `\times` has nothing on either side).
+fn cross(size: f32, color: Color) -> DisplayList {
+    let h = size * 0.62;
+    let stroke = (size * 0.09).max(1.2);
+    let line = |x0: f32, y0: f32, x1: f32, y1: f32| Primitive::Path {
+        cmds: vec![PathCmd::MoveTo(x0, y0), PathCmd::LineTo(x1, y1)],
+        color,
+        stroke: Some(stroke),
+    };
+    let pad = size * 0.08;
+    DisplayList {
+        width: h + 2.0 * pad,
+        height: h + pad,
+        depth: 0.0,
+        baseline: h + pad,
+        font_size: size,
+        items: vec![
+            line(pad, pad, pad + h, pad + h),
+            line(pad + h, pad, pad, pad + h),
+        ],
+        hits: vec![],
+    }
 }
 
 /// What one slot draws, laid out with its top-left at the origin.
@@ -418,16 +471,32 @@ fn chip(slot: &Slot, size: f32, theme: Theme, room: f32) -> Option<Chip> {
                 }
             }
         }
-        Content::Check { holds, why } => {
-            let (tex, color) = match holds {
-                Some(true) => ("\\checkmark", ac.holds),
-                Some(false) => ("\\times", ac.fails),
-                None => ("?", ac.mark),
+        Content::Check { holds, why, left } => {
+            let color = ink(match holds {
+                Some(true) => ac.holds,
+                Some(false) => ac.fails,
+                None => ac.mark,
+            });
+            let mark = match holds {
+                Some(true) => typeset("\\checkmark", size, color, theme),
+                Some(false) => cross(size, color),
+                None => typeset("?", size, color, theme),
             };
-            let mut c = Chip::from(typeset(tex, size, ink(color), theme));
-            if !why.is_empty() {
-                c.tip = Some(prose_latex(&format!("check: {why}")));
+            let mut c = Chip::from(mark);
+            // A failed check says what the value really is: ✗ R = 35.31194307.
+            if let (Some(false), Some((name, value))) = (holds, left) {
+                let shown = format!("{name} = {value}");
+                let room = (room - c.width - size * 0.3).max(size);
+                let v = fitted(&shown, size * 0.85, color, theme, room);
+                c = c.then(v, size * 0.3);
+                c.copy = Some(value.clone());
             }
+            let mut tip = vec![];
+            if !why.is_empty() {
+                tip.push(prose_latex(&format!("check: {why}")));
+            }
+            tip.push(CHECK_RULE.to_string());
+            c.tip = Some(tip.join("\n"));
             c
         }
         Content::Error { short, full } => {

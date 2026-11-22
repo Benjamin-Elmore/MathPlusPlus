@@ -110,6 +110,9 @@ pub struct LineResult {
     /// `x = 5` on a maths line read as a definition, because `x` was not defined yet
     /// (the editor marks it so the reading is visible).
     pub implicit: bool,
+    /// A check's left side as a decimal (`35.31194307`), shown beside its ✓ or ✗
+    /// so a failed check says what the value really is.
+    pub left: Option<String>,
 }
 
 impl LineResult {
@@ -138,6 +141,7 @@ impl LineResult {
             open: false,
             shows_value: false,
             implicit: false,
+            left: None,
         }
     }
 

@@ -238,7 +238,14 @@ impl<'a> Lexer<'a> {
     fn run(&mut self) {
         while let Some(c) = self.peek() {
             let start = self.pos;
-            if c.is_whitespace() || c == '~' {
+            if c == '~' && self.tilde_means_approx() {
+                // `R ~= 35.3` and `R ~ 35.3`, as people type "about": `≈`.
+                self.bump();
+                if self.peek() == Some('=') {
+                    self.bump();
+                }
+                self.push(Tok::Rel(RelOp::Approx), start);
+            } else if c.is_whitespace() || c == '~' {
                 self.bump();
             } else if c.is_ascii_digit() {
                 self.number(start);
@@ -252,6 +259,19 @@ impl<'a> Lexer<'a> {
                 self.unicode(c, start);
             }
         }
+    }
+
+    /// True at a `~` that means "about" (`≈`): `~=`, or a `~` with a space on both
+    /// sides (`R ~ 35.3`). A `~` between two things with no spaces is LaTeX's tie
+    /// (a space).
+    fn tilde_means_approx(&self) -> bool {
+        let rest = &self.src[self.pos..];
+        if rest.starts_with("~=") {
+            return true;
+        }
+        let before = self.src[..self.pos].chars().next_back();
+        let after = rest[1..].chars().next();
+        before.is_some_and(char::is_whitespace) && after.is_some_and(char::is_whitespace)
     }
 
     /// Skips to the end of the line (a comment).

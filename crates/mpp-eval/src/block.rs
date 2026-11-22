@@ -1911,6 +1911,21 @@ impl Run<'_, '_> {
                 if verdict == crate::check::Verdict::Proved {
                     lr.caveat = self.removable_points(lhs, rhs, &l, &r, s);
                 }
+                // A check against a written decimal (`R = 35.3`) passes when the value
+                // rounds to it: within half a unit of its last written digit.
+                // An explicit `\overset{?}{=}` is an exact check: every digit counts.
+                let exact = self
+                    .inputs
+                    .source
+                    .get(line.span.start..line.span.end)
+                    .is_some_and(|t| t.contains("overset"));
+                if verdict.passed() == Some(false) && !exact {
+                    if let Some(v) = self.rounds_to_written(&l, rhs, 1) {
+                        verdict = v;
+                    }
+                }
+                lr.left = left_decimal(&l);
+                self.failed_check(line.span, &verdict);
                 lr.verdict = Some(verdict);
             }
             (Err(err), _) => self.error(lhs.span, err),
@@ -2101,8 +2116,140 @@ impl Run<'_, '_> {
         }
     }
 
+    /// `Verdict::Rounds` when the closed value `l` rounds to the number written as
+    /// `rhs` (`35.3`), which must have at least `min_places` digits after its point.
+    fn rounds_to_written(
+        &self,
+        l: &Expr,
+        rhs: &Node,
+        min_places: usize,
+    ) -> Option<crate::check::Verdict> {
+        let text = self.inputs.source.get(rhs.span.start..rhs.span.end)?;
+        let (written, places) = crate::check::written_number(text)?;
+        if places < min_places || !l.free_symbols().is_empty() {
+            return None;
+        }
+        let value = l.eval_f64(&mpp_core::eval::EmptyEnv).ok()?;
+        crate::check::rounds_to(value, written, places).then(|| crate::check::Verdict::Rounds {
+            value: left_decimal(l).unwrap_or_else(|| value.to_string()),
+            written: text.trim().to_string(),
+        })
+    }
+
+    /// A closed comparison on a maths line, decided as a check (✓ or ✗):
+    /// `R ≈ 35.3` (`pprox`, `~=`), `abs(R - 35.3) < 0.1`, `R > 30`, `R ≠ 0`. An
+    /// approximate check against a written number passes when the value rounds to
+    /// it (half a unit of its last digit), against an expression when the two agree
+    /// to 3 significant figures. True when the line was taken.
+    fn comparison_check(&mut self, line: &Line, node: &Node, s: &Scope) -> bool {
+        if !line.clauses.is_empty() || self.inputs.has_proofs || !s.conditions.is_empty() {
+            return false;
+        }
+        let NodeKind::Relation { first, rest } = &node.kind else {
+            return false;
+        };
+        let [(op, rhs)] = rest.as_slice() else {
+            return false;
+        };
+        let op = match op {
+            SynRel::Approx => None,
+            SynRel::Lt => Some(mpp_core::RelOp::Lt),
+            SynRel::Le => Some(mpp_core::RelOp::Le),
+            SynRel::Gt => Some(mpp_core::RelOp::Gt),
+            SynRel::Ge => Some(mpp_core::RelOp::Ge),
+            SynRel::Ne => Some(mpp_core::RelOp::Ne),
+            _ => return false,
+        };
+        let side = |run: &mut Self, n: &Node| -> Option<Expr> {
+            let e = run.lower(n, s.names).ok()?;
+            let v = run
+                .resolve_full(&e, s.locals, &[], false, false)
+                .value
+                .and_then(|v| run.finish_logged(v, None))
+                .ok()?;
+            let closed = v.free_symbols().is_empty()
+                && !contains_holder(&v)
+                && !matches!(
+                    v.node(),
+                    ExprNode::Bool(_) | ExprNode::Relation(..) | ExprNode::Logic(..)
+                )
+                && v.eval_f64(&mpp_core::eval::EmptyEnv)
+                    .is_ok_and(f64::is_finite);
+            closed.then_some(v)
+        };
+        let (Some(l), Some(r)) = (side(self, first), side(self, rhs)) else {
+            return false;
+        };
+        let mut lr = LineResult::new(line.span, LineKind::Check);
+        lr.input = Some(match op {
+            Some(op) => Expr::relation(op, l.clone(), r.clone()),
+            None => Expr::equation(l.clone(), r.clone()),
+        });
+        let verdict = match op {
+            Some(op) => check(
+                &Expr::relation(op, l.clone(), r.clone()),
+                &Expr::new(ExprNode::Bool(true)),
+            ),
+            None => {
+                let fails = || crate::check::Verdict::Fails {
+                    at: vec![],
+                    lhs: left_decimal(&l).unwrap_or_default(),
+                    rhs: left_decimal(&r).unwrap_or_default(),
+                };
+                match self.rounds_to_written(&l, rhs, 0) {
+                    Some(v) => v,
+                    None if self
+                        .inputs
+                        .source
+                        .get(rhs.span.start..rhs.span.end)
+                        .and_then(crate::check::written_number)
+                        .is_some() =>
+                    {
+                        fails()
+                    }
+                    None => {
+                        let f =
+                            |e: &Expr| e.eval_f64(&mpp_core::eval::EmptyEnv).unwrap_or(f64::NAN);
+                        if crate::check::agrees_roughly(f(&l), f(&r)) {
+                            crate::check::Verdict::Rounds {
+                                value: left_decimal(&l).unwrap_or_default(),
+                                written: left_decimal(&r).unwrap_or_default(),
+                            }
+                        } else {
+                            fails()
+                        }
+                    }
+                }
+            }
+        };
+        lr.left = left_decimal(&l);
+        self.failed_check(line.span, &verdict);
+        lr.verdict = Some(verdict);
+        self.push(lr);
+        true
+    }
+
+    /// A check that does not hold is a problem of the file (a warning), so it is
+    /// listed with the others and not only marked ✗ on its line.
+    fn failed_check(&mut self, span: Span, verdict: &crate::check::Verdict) {
+        if verdict.passed() != Some(false) {
+            return;
+        }
+        let why = verdict.describe();
+        let why = why.trim_start_matches("✗ ");
+        let why = if why.contains("left side false") || why.contains("left side true") {
+            String::new()
+        } else {
+            format!(" {why}")
+        };
+        self.warn(span, format!("this check does not hold{why}"));
+    }
+
     fn relation(&mut self, line: &Line, node: &Node, s: &Scope, display: bool, noeval: bool) {
         if display && !noeval && self.implicit_definition(line, node, s) {
+            return;
+        }
+        if display && !noeval && self.comparison_check(line, node, s) {
             return;
         }
         let mut lr = LineResult::new(line.span, LineKind::Relation);
@@ -2503,4 +2650,12 @@ struct Scope<'s> {
     names: &'s [String],
     locals: &'s Locals,
     conditions: &'s [&'s Node],
+}
+
+/// A closed value as decimal text (10 significant digits), for a check's left side.
+fn left_decimal(e: &Expr) -> Option<String> {
+    if !e.free_symbols().is_empty() || contains_holder(e) {
+        return None;
+    }
+    approximate(e).ok()
 }

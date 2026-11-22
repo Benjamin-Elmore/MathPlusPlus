@@ -26,9 +26,13 @@
     ✓ (proved symbolically)
 39: (x + 1)^2 \overset{?}{=} x^2 + 1
     ✗ (at x = 1: left side 4, right side 2)
+    note: this check does not hold (at x = 1: left side 4, right side 2)
 41: \sqrt{x^2} \overset{?}{=} x
     ✗ (at x = -1: left side 1, right side -1)
+    note: this check does not hold (at x = -1: left side 1, right side -1)
 43: \frac{d}{dx} \ln(2x) \overset{?}{=} \frac{2}{x}
     ✗ (at x = 1: left side 1, right side 2)
+    note: this check does not hold (at x = 1: left side 1, right side 2)
 45: \int_0^1 x^2 \, dx \overset{?}{=} \frac{1}{2}
     ✗ (left side 0.3333333333, right side 0.5)
+    note: this check does not hold (left side 0.3333333333, right side 0.5)

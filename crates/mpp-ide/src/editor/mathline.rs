@@ -154,7 +154,7 @@ const FUNCTIONS: &[&str] = &[
     "log", "ln", "lg", "exp", "sqrt", "abs", "max", "min", "sum", "prod", "int", "lim", "det",
     "gcd", "lcm", "floor", "ceil", "mod", "pi", "inf", "diff", "solve", "frac", "cdot", "times",
     "alpha", "beta", "gamma", "delta", "theta", "lambda", "mu", "sigma", "omega", "phi", "rho",
-    "tau", "epsilon",
+    "tau", "epsilon", "round", "approx",
 ];
 
 /// Names defined in the text (`speed := 5`, `f(x) := …`, `g \equiv 9.81`).
@@ -192,7 +192,12 @@ pub fn defined_names(text: &str) -> Vec<String> {
 /// with `=` or `= ?`, or it is symbols, digits and operators whose words are all
 /// functions or defined names. A line with two or more ordinary words stays prose.
 pub fn reads_as_maths(line: &str, known: &[String]) -> bool {
-    let t = line.trim();
+    // `R == 35.3  # a check`: a coder's comment is not part of the maths.
+    let t = match line.find(" #") {
+        Some(i) if !line.trim_start().starts_with('#') => &line[..i],
+        _ => line,
+    };
+    let t = t.trim();
     if t.is_empty() || t.contains('$') || t.contains('`') || t.contains("[[") {
         return false;
     }
@@ -238,7 +243,9 @@ pub fn reads_as_maths(line: &str, known: &[String]) -> bool {
     if ordinary > 0 {
         return false;
     }
-    let op = t.chars().any(|c| "+-*/^=<>()≤≥≠·×÷−±√∫∑".contains(c)) || t.contains('\\');
+    let op = t.chars().any(|c| "+-*/^=<>()≤≥≠·×÷−±√∫∑≈~".contains(c))
+        || t.contains('\\')
+        || t.split_whitespace().any(|w| w == "approx");
     op && t.chars().any(|c| c.is_alphanumeric())
 }
 
