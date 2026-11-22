@@ -73,13 +73,24 @@ fn slot_words(c: &Content) -> Option<Said> {
             Some((_, copy)) => Said::Clause(format!("defined, equals {}", value_words(copy))),
             None => Said::Clause("defined".into()),
         },
-        Content::Check { holds, why } => {
+        Content::Check { holds, why, left } => {
             let head = match holds {
                 Some(true) => "check holds",
                 Some(false) => "check fails",
                 None => "check not decided",
             };
-            let why = check_words(why);
+            let mut why = check_words(why);
+            // Say what the screen shows beside the ✗: the left side's real value.
+            if let (Some(false), Some((_, value))) = (holds, left) {
+                let value = value_words(value);
+                if !why.contains(&value) {
+                    why = if why.is_empty() {
+                        format!("value {value}")
+                    } else {
+                        format!("{why}, value {value}")
+                    };
+                }
+            }
             if why.is_empty() {
                 Said::Clause(head.into())
             } else {

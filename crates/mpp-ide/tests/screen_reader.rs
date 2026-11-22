@@ -159,15 +159,21 @@ fn r1_the_editor_is_a_text_control_with_its_line_and_caret() {
 
 #[test]
 fn r5_r7_r8_maths_nodes_say_their_answer_and_state() {
-    let src = "$$ R := 35.31194307 $$\n\n$$ R = ? $$\n\n$$ R = 35.3 $$\n\n$$ R = 35.31194307 $$\n\n$$ 3 \\mathrm{m} + 2 \\mathrm{s} = ? $$\n";
+    let src = "$$ R := 35.31194307 $$\n\n$$ R = ? $$\n\n$$ R = 35.3 $$\n\n$$ R = 35.4 $$\n\n$$ R = 35.31194307 $$\n\n$$ 3 \\mathrm{m} + 2 \\mathrm{s} = ? $$\n";
     let mut h = app_with(src, 0);
     wait(&mut h);
     let all = labels(&h);
     let has = |want: &str| all.iter().any(|l| l.contains(want));
     assert!(has("R equals 35.31194307"), "answer: {all:?}");
+    // 35.31194307 rounds to the written 35.3, so that check holds; 35.4 fails.
     assert!(
-        has("R equals 35.3, check fails, left side 35.31194307, right side 35.3"),
+        has("R equals 35.3, check holds, 35.31194307 rounds to 35.3"),
         "check: {all:?}"
+    );
+    assert!(
+        all.iter()
+            .any(|l| l.starts_with("R equals 35.4, check fails") && l.contains("35.31194307")),
+        "failed check: {all:?}"
     );
     assert!(has("R equals 35.31194307, check holds"), "check: {all:?}");
     assert!(
