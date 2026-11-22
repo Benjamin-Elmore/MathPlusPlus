@@ -973,3 +973,50 @@ $$ v = ? $$
         .iter()
         .any(|l| l.starts_with("Warning, line 5: w is not defined")));
 }
+
+/// Focusable nodes a screen reader can land on that say nothing.
+fn unnamed_focusable(h: &H) -> Vec<String> {
+    h.query_all(by().predicate(|n| {
+        n.data().supports_action(egui::accesskit::Action::Focus)
+            && n.label().is_none_or(|l| l.trim().is_empty())
+            && n.value().is_none_or(|v| v.trim().is_empty())
+    }))
+    .map(|n| {
+        let a = n.accesskit_node();
+        format!("{:?} {:?}", a.role(), a.bounding_box())
+    })
+    .collect()
+}
+
+#[test]
+fn rf4_no_focusable_node_is_unnamed() {
+    let src = "Words.\n\n$$ v := 20 $$\n\n$$ w + v = ? $$\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    let none = unnamed_focusable(&h);
+    assert!(none.is_empty(), "unnamed: {none:?}");
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    let none = unnamed_focusable(&h);
+    assert!(none.is_empty(), "unnamed with Problems open: {none:?}");
+    // After a jump the problem card is open beside the line.
+    for _ in 0..2 {
+        key(&mut h, Modifiers::NONE, Key::Tab);
+    }
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    h.run_steps(3);
+    let none = unnamed_focusable(&h);
+    assert!(none.is_empty(), "unnamed after a jump: {none:?}");
+    // Tab through the panel: every stop says something.
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    for i in 0..8 {
+        let f = focused(&h).expect("something has the keyboard");
+        assert!(
+            !f.label.trim().is_empty() || !f.value.trim().is_empty(),
+            "Tab {i} lands on an unnamed {:?}",
+            f.role
+        );
+        key(&mut h, Modifiers::NONE, Key::Tab);
+    }
+}

@@ -207,6 +207,38 @@ fn first_focusable(ctx: &Context, rects: &[Rect], this_pass: bool) -> Option<Id>
     })
 }
 
+/// Names the tile manager's own widgets that take the keyboard but say
+/// nothing (R-F4): a tab bar's empty strip and the divider between tiles.
+fn name_unnamed(ctx: &Context) {
+    let rects: Vec<(Id, Rect)> = ctx.viewport(|v| {
+        v.this_pass
+            .widgets
+            .layers()
+            .filter(|(l, _)| l.order == Order::Background)
+            .flat_map(|(_, list)| list.iter())
+            .filter(|w| w.sense.is_focusable() && w.sense.senses_drag())
+            .map(|w| (w.id, w.rect))
+            .collect()
+    });
+    for (id, r) in rects {
+        ctx.accesskit_node_builder(id, |n| {
+            let unnamed = n.role() == accesskit::Role::Unknown
+                && n.label().is_none_or(|l| l.trim().is_empty())
+                && n.value().is_none_or(|v| v.trim().is_empty());
+            if !unnamed {
+                return;
+            }
+            if r.width().min(r.height()) <= 8.0 {
+                n.set_role(accesskit::Role::Splitter);
+                n.set_label("Divider between panels");
+            } else if r.height() <= 40.0 {
+                n.set_role(accesskit::Role::Group);
+                n.set_label("Tab bar");
+            }
+        });
+    }
+}
+
 impl IdeApp {
     /// Gives a panel the keyboard as soon as it is drawn (a panel opened by
     /// its shortcut).
@@ -694,6 +726,7 @@ impl IdeApp {
 
     /// End of a frame, after everything is drawn.
     pub(crate) fn access_after(&mut self, ctx: &Context) {
+        name_unnamed(ctx);
         self.measure_regions();
         self.land_pending(ctx);
         self.announce();
