@@ -78,6 +78,9 @@ pub struct Palette {
     pub focus_box: Color,
     /// The fainter outline of that structure's parent.
     pub focus_parent: Color,
+    /// The ring around the button, icon, menu item or status-bar item that
+    /// has the keyboard.
+    pub focus_ring: Color,
 }
 
 impl Palette {
@@ -101,6 +104,7 @@ impl Palette {
         maths_caret: Color::rgb(0x1d, 0x5b, 0xb0),
         focus_box: Color::rgb(0x9b, 0x2f, 0x8a),
         focus_parent: Color::rgb(0xb8, 0x6f, 0xae),
+        focus_ring: Color::rgb(0x1a, 0x4f, 0xd0),
     };
 
     pub const DARK: Palette = Palette {
@@ -123,6 +127,7 @@ impl Palette {
         maths_caret: Color::rgb(0x7a, 0xb4, 0xff),
         focus_box: Color::rgb(0xf0, 0x8a, 0xd0),
         focus_parent: Color::rgb(0xa8, 0x6b, 0x98),
+        focus_ring: Color::rgb(0x8a, 0xb8, 0xff),
     };
 
     /// Pairs of (name, foreground, background) that carry text and must reach
@@ -237,6 +242,30 @@ impl Palette {
                 "placeholder outline in a maths box",
                 t.placeholder_outline,
                 self.maths_tint,
+            ),
+            ("focus ring on page", self.focus_ring, t.background),
+            ("focus ring on panel", self.focus_ring, self.panel),
+            (
+                "focus ring on status bar",
+                self.focus_ring,
+                t.code_background,
+            ),
+            ("focus ring on widget", self.focus_ring, self.widget),
+            (
+                "focus ring on hovered widget",
+                self.focus_ring,
+                self.widget_hover,
+            ),
+            (
+                "focus ring on pressed widget",
+                self.focus_ring,
+                self.widget_active,
+            ),
+            ("focus ring on menu", self.focus_ring, self.tooltip),
+            (
+                "focus ring on selected row",
+                self.focus_ring,
+                self.row_selected,
             ),
         ];
         const NAMES: [&str; 8] = [

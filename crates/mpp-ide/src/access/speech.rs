@@ -1,6 +1,11 @@
 //! The spoken form of a formula, read from the maths syntax tree: `x^2 + 5`
 //! becomes "x squared plus 5". Anything the speaker has no words for is read
 //! out as its source text, so nothing is ever left silent.
+//!
+//! One style throughout, after ClearSpeak: a fraction is always "a over b",
+//! and any part of a fraction, power or factorial that is longer than one
+//! word is wrapped in "the quantity … end quantity", so the reading is never
+//! ambiguous ("1 over n squared", "the quantity a plus b end quantity over 2").
 
 use mpp_syntax::math::{
     parse_math, BigOpKind, BinOp, Bracket, Constant, DefHead, Fence, IntKind, MathAst, MulStyle,
@@ -16,14 +21,21 @@ pub fn speak_math(src: &str, base: usize) -> String {
 
 /// The spoken form of a parsed block.
 pub fn speak_ast(ast: &MathAst, src: &str, base: usize) -> String {
-    let s = Speaker { src, base };
-    let lines: Vec<String> = ast
-        .lines
-        .iter()
-        .map(|l| s.statement(&l.statement))
+    let lines: Vec<String> = speak_lines(ast, src, base)
+        .into_iter()
         .filter(|t| !t.is_empty())
         .collect();
     lines.join(". ")
+}
+
+/// The spoken form of each line of a parsed block, one entry per line (an
+/// empty line gives an empty string, so the index matches the line's).
+pub fn speak_lines(ast: &MathAst, src: &str, base: usize) -> Vec<String> {
+    let s = Speaker { src, base };
+    ast.lines
+        .iter()
+        .map(|l| s.statement(&l.statement))
+        .collect()
 }
 
 struct Speaker<'a> {
@@ -210,6 +222,33 @@ impl Speaker<'_> {
         }
     }
 
+    /// True for a part of a fraction that reads unambiguously without
+    /// brackets: one word, or one word squared or cubed ("n squared").
+    fn fraction_part(n: &Node) -> bool {
+        match &n.kind {
+            NodeKind::Pow { base, exp } => {
+                Self::simple(base)
+                    && matches!(&exp.kind, NodeKind::Number(t) if t == "2" || t == "3")
+            }
+            NodeKind::Group {
+                inner,
+                bracket: Bracket::TexGroup,
+                ..
+            } => Self::fraction_part(inner),
+            _ => Self::simple(n),
+        }
+    }
+
+    /// A numerator or denominator, wrapped when it is longer than a word.
+    fn part(&self, n: &Node) -> String {
+        let t = self.node(n);
+        if Self::fraction_part(n) {
+            t
+        } else {
+            format!("the quantity {t} end quantity")
+        }
+    }
+
     fn node(&self, n: &Node) -> String {
         match &n.kind {
             NodeKind::Number(t) => t.clone(),
@@ -263,15 +302,7 @@ impl Speaker<'_> {
                 out
             }
             NodeKind::Frac { num, den, .. } => {
-                if Self::simple(num) && Self::simple(den) {
-                    format!("{} over {}", self.node(num), self.node(den))
-                } else {
-                    format!(
-                        "the fraction {} over {} end fraction",
-                        self.node(num),
-                        self.node(den)
-                    )
-                }
+                format!("{} over {}", self.part(num), self.part(den))
             }
             NodeKind::Pow { base, exp } => {
                 let b = self.tight(base);
@@ -444,6 +475,38 @@ mod tests {
         );
         let t = said(r"\sum_{i=1}^{10} i");
         assert!(t.starts_with("the sum"), "{t}");
+    }
+
+    #[test]
+    fn every_fraction_is_read_one_way() {
+        assert_eq!(said(r"\frac{a}{b}"), "a over b");
+        assert_eq!(said("a/b"), "a over b");
+        assert_eq!(said(r"\frac{1}{n^2}"), "1 over n squared");
+        assert_eq!(
+            said(r"\frac{a + b}{2}"),
+            "the quantity a plus b end quantity over 2"
+        );
+        assert_eq!(
+            said(r"\frac{1}{x + 2}"),
+            "1 over the quantity x plus 2 end quantity"
+        );
+        // A fraction inside a power keeps its own bracket words.
+        assert_eq!(
+            said(r"\frac{1}{n}^2"),
+            "the quantity 1 over n end quantity squared"
+        );
+        for src in [r"\frac{1}{n^2}", r"\frac{a+b}{c}", r"\frac{x}{y}"] {
+            assert!(!said(src).contains("the fraction"), "{src}: {}", said(src));
+        }
+    }
+
+    #[test]
+    fn lines_are_spoken_one_by_one() {
+        let src = "x := 5 \\\\ x + 1 = ?";
+        let (ast, _) = parse_math(src, 0);
+        let lines = speak_lines(&ast, src, 0);
+        assert_eq!(lines.len(), ast.lines.len());
+        assert_eq!(lines.first().map(String::as_str), Some("x is defined as 5"));
     }
 
     #[test]

@@ -334,6 +334,7 @@ pub fn show(ui: &mut Ui, doc: &mut Doc, cx: &mut ViewCtx<'_>) -> Vec<ViewEvent> 
                 ui.expand_to_include_y(resp.rect.top() + scrolled + shift + 1.0 + avail_h);
             }
             paint_page(ui, &painter, doc, &pc, origin, cx, &theme, focused);
+            crate::access::editor::editor_node(ui, &resp, doc, &pc);
             figures_pass(ui, doc, &pc, origin, cx, resp.id, &mut events);
             spinners(ui, &painter, &pc, origin, &theme);
 
@@ -1125,7 +1126,7 @@ fn paint_page(
     let off = origin.to_vec2();
     let caret = focused.then(|| doc.editor.caret());
     crate::page::mode::paint_maths(painter, page, origin, &cx.mode.palette(), cx.size, caret);
-    crate::access::annotate(ui, page, doc.editor.text(), origin);
+    crate::access::annotate(ui, doc, pc, origin, cx.size);
     if let Some(span) = doc.highlight {
         if let Some(r) = page.rect_of_span(span) {
             let c = c32(cx.mode.palette().highlight);
