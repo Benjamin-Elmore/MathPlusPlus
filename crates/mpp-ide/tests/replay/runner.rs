@@ -302,9 +302,6 @@ pub struct Watch {
     above: Option<(usize, Vec<(Span, f32)>)>,
     /// Where the caret was in the previous frame, and the text then.
     last: Option<(String, egui::Pos2)>,
-    /// Lines above may move when an answer arrives (see
-    /// `worksheets::a_fraction_answer_moves_nothing`).
-    answers_may_move: bool,
 }
 
 impl Watch {
@@ -314,7 +311,6 @@ impl Watch {
             at_end: true,
             above: None,
             last: None,
-            answers_may_move: false,
         }
     }
 
@@ -324,15 +320,7 @@ impl Watch {
             at_end: false,
             above: None,
             last: None,
-            answers_may_move: false,
         }
-    }
-
-    /// Lets the lines above move in a pause, when answers arrive: only the
-    /// frames that keys cause are held to it.
-    pub fn answers_may_move(mut self) -> Watch {
-        self.answers_may_move = true;
-        self
     }
 
     /// Checks one frame.
@@ -387,9 +375,6 @@ impl Watch {
             .copied()
             .collect();
         match &self.above {
-            _ if self.answers_may_move && kind == FrameKind::Idle => {
-                self.above = Some((line, above));
-            }
             Some((l, before)) if *l == line && !matches!(step, Step::Key(Key::Enter)) => {
                 for ((sa, ta), (_, tb)) in before.iter().zip(&above) {
                     assert!(

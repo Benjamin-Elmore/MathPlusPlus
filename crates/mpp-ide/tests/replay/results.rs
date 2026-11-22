@@ -173,3 +173,33 @@ fn round_and_digits() {
     let h = typed_after(&text, &[Pause]);
     assert_eq!(last_slot(&h).0, "35.31");
 }
+
+/// E9 (Design rule 5): an answer with units arriving moves no line.
+#[test]
+fn a_unit_answer_moves_nothing() {
+    let text = "$$ q = 20 m/s $$\n\n$$ q*3600/1000 = $$\n\nAfter the answer.\n\n$$ 1 + 1 = ? $$\n\nThe end.";
+    let mut h = harness(app_with(text));
+    h.run_steps(2);
+    let before = Seen::of(&h).tops;
+    run(&mut h, &[Pause], |_, _, _| {});
+    let s = Seen::of(&h);
+    assert!(
+        s.answers.iter().any(|a| a.contains("72")),
+        "{:?}",
+        s.answers
+    );
+    for ((span, a), (_, b)) in before.iter().zip(&s.tops) {
+        assert!(
+            (a - b).abs() < 0.5,
+            "the line at {span:?} moved from {a} to {b}"
+        );
+    }
+}
+
+/// E6: `~= ?` (≈ ?) gives the decimal in the answer slot, not a fraction in the
+/// formula.
+#[test]
+fn about_equals_question_gives_the_decimal_in_the_slot() {
+    let h = typed_after("", &[Type("sum(1/n^2, n, 1, 10) ~= ?"), Pause]);
+    assert_eq!(last_slot(&h).0, "1.549767731");
+}

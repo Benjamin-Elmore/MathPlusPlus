@@ -74,6 +74,13 @@ pub fn ends_open(text: &str) -> bool {
     t.ends_with('=') && !t.ends_with("==") && !t.ends_with(":=")
 }
 
+/// True when `line` of a display block has its answer drawn in the slot: a trailing
+/// `=`, and also `= ?` and `≈ ?` (not `= ?!`, whose working is drawn under it). The
+/// answer never goes in the formula, so it arriving never changes the line's height.
+pub fn is_slot_line(line: &Line, src: &str) -> bool {
+    matches!(line.statement, Statement::Query { steps: false, .. }) || is_open_line(line, src)
+}
+
 /// True when `line` asks for its answer with a trailing `=`.
 pub fn is_open_line(line: &Line, src: &str) -> bool {
     let asks = matches!(
@@ -214,7 +221,7 @@ pub(crate) fn slots(input: &PageInput<'_>, b: &Block, ast: &MathAst) -> Vec<Slot
         .and_then(|ev| found(ev, input.src, input.doc, b, ast));
     let mut out = vec![];
     for (i, line) in ast.lines.iter().enumerate() {
-        let open = is_open_line(line, input.src);
+        let open = is_slot_line(line, input.src);
         let Some(run) = &run else {
             if open {
                 out.push(Slot {
@@ -555,11 +562,11 @@ fn put(chip: Chip, x: f32, baseline: f32, c: &mut Canvas) {
 /// Where line `index` of a laid-out block ends: the x after it and its baseline.
 fn line_end(dl: &DisplayList, line: &Line, open: bool) -> Option<(f32, f32)> {
     if open {
-        if let Some(h) = dl
-            .hits
-            .iter()
-            .find(|h| h.kind == HitKind::Result && h.span.start == line.span.end)
-        {
+        if let Some(h) = dl.hits.iter().find(|h| {
+            h.kind == HitKind::Result
+                && line.span.start <= h.span.start
+                && h.span.start <= line.span.end
+        }) {
             return Some((h.rect.x, h.baseline));
         }
     }
