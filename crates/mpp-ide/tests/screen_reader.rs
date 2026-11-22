@@ -742,3 +742,48 @@ fn r12_problems_items_are_named_buttons_and_enter_jumps_back_to_the_editor() {
     assert_eq!(line, 5, "the caret is on the problem's line");
     assert!(polite(&h).contains("line 5"), "{:?}", polite(&h));
 }
+
+#[test]
+fn p7_p8_coder_hints_are_in_problems_and_said_once() {
+    let mut h = app_with("$$ R := 35 $$\n\n", 15);
+    wait(&mut h);
+    type_text(&mut h, "print(R)");
+    wait(&mut h);
+    h.run_steps(3);
+    // Not while the line is still being typed.
+    assert!(!polite(&h).contains("Hint: To see"), "{:?}", polite(&h));
+    key(&mut h, Modifiers::NONE, Key::Enter);
+    wait(&mut h);
+    h.run_steps(3);
+    let said = polite(&h);
+    assert!(
+        said.contains("Hint: To see the value of R, type R = on a line of its own"),
+        "the hint is said: {said:?}"
+    );
+    // The status bar counts it, and the Problems panel lists it.
+    let all = labels(&h);
+    assert!(
+        all.iter().any(|l| l == "No problems, 1 hint"),
+        "status: {all:?}"
+    );
+    key(&mut h, Modifiers::COMMAND | Modifiers::SHIFT, Key::M);
+    h.run_steps(3);
+    assert!(
+        labels(&h)
+            .iter()
+            .any(|l| l.starts_with("Hint, line 3: To see the value of R")),
+        "{:?}",
+        labels(&h)
+    );
+    // Said once: the next run says what is new, not the hint again.
+    key(&mut h, Modifiers::NONE, Key::Escape);
+    h.run_steps(2);
+    key(&mut h, Modifiers::COMMAND, Key::Home);
+    for _ in 0..4 {
+        key(&mut h, Modifiers::NONE, Key::ArrowRight);
+    }
+    type_text(&mut h, "0");
+    wait(&mut h);
+    h.run_steps(3);
+    assert!(!polite(&h).contains("Hint: To see"), "{:?}", polite(&h));
+}

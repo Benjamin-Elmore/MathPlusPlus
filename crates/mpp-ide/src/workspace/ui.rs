@@ -642,7 +642,18 @@ impl IdeApp {
                         };
                         // The count is for the file on screen; the Problems tile
                         // lists the whole project, so the bar says which it counts.
-                        let text = if counts.problems() == 0 {
+                        // Notes and hints are not problems, but the bar says
+                        // they are there (P7, P8: a hint only shown on hover).
+                        let text = if counts.problems() == 0 && counts.infos > 0 {
+                            format!(
+                                "No problems, {}",
+                                if counts.infos == 1 {
+                                    "1 hint".to_string()
+                                } else {
+                                    format!("{} hints", counts.infos)
+                                }
+                            )
+                        } else if counts.problems() == 0 {
                             "No problems".to_string()
                         } else {
                             format!("{} in this file", counts.summary())

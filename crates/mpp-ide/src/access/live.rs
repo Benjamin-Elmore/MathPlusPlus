@@ -91,6 +91,9 @@ pub struct AccessState {
     polite: Live,
     assertive: Live,
     seen: Option<Seen>,
+    /// The hints said already (a coder's form on a prose line, P7/P8), by
+    /// file: each is said once.
+    hinted: std::collections::HashSet<(u64, String)>,
     /// Words to say with the next announcement (after a jump), and frames waited.
     pending: Option<(String, u8)>,
     /// The status bar's path label and the words it drew.
@@ -508,6 +511,28 @@ impl IdeApp {
                     } else {
                         polite.push(l.clone());
                     }
+                }
+            }
+        }
+        // A hint the page marks on a prose line (P7, P8: `print(R)`), which a
+        // screen reader cannot hover: said once, when the page has settled.
+        // Those of a file just opened are only noted.
+        if fresh && !evaluating {
+            let settled = same.as_ref().is_some_and(|s| s.settled);
+            for p in pc.problems.iter().filter(|p| {
+                p.level == crate::diagnostics::Level::Info
+                    && matches!(p.kind, crate::diagnostics::Kind::Other)
+            }) {
+                // Not while the line is being typed (`R` on its way to
+                // `Range`): once the caret has left it.
+                let caret = d.editor.caret();
+                if p.span.start <= caret && caret <= p.span.end {
+                    continue;
+                }
+                let m = p.rich.plain();
+                let m = m.trim().trim_end_matches('.').to_string();
+                if self.access.hinted.insert((d.id, m.clone())) && settled {
+                    polite.push(format!("Hint: {m}"));
                 }
             }
         }
