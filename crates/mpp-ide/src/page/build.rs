@@ -1631,6 +1631,18 @@ fn layout_display(
     let top = pad + above - dl.height;
     let before = c.stops.len();
     c.merge(&dl, x0, top, true);
+    // What is typed past the last stop the formula has (`v = ` before its
+    // value): the caret goes after what is drawn of it (not the answer drawn
+    // after it), where the next character will be, not back beside the `v` (E2).
+    let content_end = m.raw.start + text.trim_end().len();
+    let last = c.stops[before..].iter().copied().max_by_key(|s| s.offset);
+    if let Some(last) = last.filter(|s| s.offset < content_end) {
+        c.stops.push(CaretStop {
+            x: (x0 + ink_right_of_formula(&dl)).max(last.x),
+            offset: content_end,
+            ..last
+        });
+    }
     if c.stops.len() == before {
         // An empty line: the caret stands on the baseline, as tall as a capital
         // letter, where the first character typed will be (not hanging below).
@@ -1903,6 +1915,28 @@ pub(crate) fn ink_right(dl: &DisplayList) -> f32 {
     });
     dl.hits
         .iter()
+        .map(|h| h.rect.x + h.rect.w)
+        .chain(glyphs)
+        .fold(0.0f32, f32::max)
+}
+
+/// Like [`ink_right`], but only the formula's own ink: what is drawn left of
+/// the first answer in it (an answer, or its `⋯` while it is worked out).
+fn ink_right_of_formula(dl: &DisplayList) -> f32 {
+    let limit = dl
+        .hits
+        .iter()
+        .filter(|h| h.kind == HitKind::Result)
+        .map(|h| h.rect.x)
+        .fold(f32::INFINITY, f32::min);
+    let glyphs = dl.items.iter().filter_map(|p| match p {
+        Primitive::Glyph { x, size, .. } if *x < limit => Some((x + size * 0.75).min(limit)),
+        Primitive::Rule { rect, .. } if rect.x < limit => Some((rect.x + rect.w).min(limit)),
+        _ => None,
+    });
+    dl.hits
+        .iter()
+        .filter(|h| h.kind != HitKind::Result && h.rect.x < limit)
         .map(|h| h.rect.x + h.rect.w)
         .chain(glyphs)
         .fold(0.0f32, f32::max)

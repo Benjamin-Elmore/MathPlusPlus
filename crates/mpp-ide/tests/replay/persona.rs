@@ -256,3 +256,43 @@ fn backspace_after_a_fraction_takes_one_character() {
     type_text(&mut h, "4");
     assert_eq!(text_of(&h), concat!(r"$$ θ = \frac{\pi}{4} $$", "\n\n"));
 }
+
+/// Where the caret stop for `offset` is drawn on screen.
+fn stop_x(h: &H, offset: usize) -> f32 {
+    let st = h.state();
+    let doc = st.doc().expect("doc");
+    let stop = doc
+        .page_cache()
+        .expect("page")
+        .page
+        .caret_stop_on(offset, mpp_ide::page::Side::Before)
+        .expect("a stop");
+    st.diag.origin.x + stop.x
+}
+
+/// E2: after Backspace takes the value of `v = 20`, the caret is drawn after
+/// the `=`, where the next character goes, not left of it.
+#[test]
+fn the_caret_is_drawn_where_the_next_character_goes_in_a_definition() {
+    let src = "$$ v = 20 $$\n\n$$ w = v $$\n\n";
+    let mut h = super::runner::harness(super::runner::app_with(src));
+    h.run_steps(3);
+    click_offset(&mut h, 9);
+    press(&mut h, Modifiers::NONE, Key::Backspace);
+    press(&mut h, Modifiers::NONE, Key::Backspace);
+    h.run_steps(2);
+    assert_eq!(text_of(&h), "$$ v =  $$\n\n$$ w = v $$\n\n");
+    let drawn = Seen::of(&h).caret_at.expect("caret").x;
+    let after_v = stop_x(&h, 4);
+    assert!(
+        drawn > after_v + 8.0,
+        "the caret was drawn at x={drawn}, beside the v (x={after_v}), not after the ="
+    );
+    type_text(&mut h, "3");
+    h.run_steps(2);
+    let three = stop_x(&h, 7);
+    assert!(
+        (drawn - three).abs() < 6.0,
+        "the caret was drawn at x={drawn} but the 3 went at x={three}"
+    );
+}
