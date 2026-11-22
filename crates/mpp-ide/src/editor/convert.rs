@@ -176,6 +176,31 @@ pub(super) fn has_operand(text: &str, at: usize) -> bool {
     })
 }
 
+/// True when the `/` at `slash` follows a unit written after a number
+/// (`9.81 m/s`, `3 km/h`, `2 kg·m/s`): units stay as written, never a fraction
+/// of letters (E-N4).
+fn unit_before_slash(text: &str, slash: usize) -> bool {
+    let before = &text[..slash];
+    let unit_char = |c: char| c.is_alphabetic() || matches!(c, '·' | '°');
+    let start = before
+        .char_indices()
+        .rev()
+        .take_while(|(_, c)| unit_char(*c))
+        .last()
+        .map_or(slash, |(i, _)| i);
+    let word = &before[start..];
+    if word.is_empty() || !word.split('·').all(mpp_syntax::units::is_unit_name) {
+        return false;
+    }
+    let head = &before[..start];
+    let gap = head.trim_end_matches([' ', '~']).trim_end_matches(r"\,");
+    gap.len() < head.len()
+        && gap
+            .chars()
+            .next_back()
+            .is_some_and(|c| c.is_ascii_digit() || c == '.')
+}
+
 /// True when `at` is in a `%` comment on its line or inside the braces of a
 /// command that holds words (`\text{…}`): nothing converts there.
 fn quiet_at(text: &str, at: usize) -> bool {
@@ -426,7 +451,7 @@ impl Editor {
                 self.convert(at - 1..caret, "%");
                 return;
             }
-            '/' if cx.shortcuts => {
+            '/' if cx.shortcuts && !unit_before_slash(&self.text, at) => {
                 if insert::shortcut(self, '/', &cx.build) {
                     self.auto_frac = Some(self.revision);
                     if let Some((id, i)) = self.box_here(self.caret) {
@@ -687,6 +712,41 @@ mod tests {
             assert_ne!(e.text(), back, "{src}: nothing converted");
             assert!(e.undo(), "{src}");
             assert_eq!(e.text(), back, "{src}");
+        }
+    }
+
+    /// E-N2: a `/` straight after an exponent ends the exponent and divides
+    /// the power (v²/g), in a line typed in maths and in one made maths later.
+    #[test]
+    fn a_slash_after_an_exponent_divides_the_power() {
+        for src in ["v^2/g", "v**2/g", "v^2 /g", "v^2/ g"] {
+            let got = typed_in_maths(src);
+            assert_eq!(got.replace(' ', ""), r"\frac{v^{2}}{g}", "{src}");
+            let got = typed(&format!("{src} "));
+            assert_eq!(got.replace(' ', ""), r"\frac{v^{2}}{g}", "{src} typed");
+        }
+        for src in ["1/n^2", "1/n**2"] {
+            assert_eq!(typed_in_maths(src), r"\frac{1}{n^{2}}", "{src}");
+        }
+        // A bracket opened in the exponent keeps the `/` inside it.
+        assert_eq!(
+            typed_in_maths("e^(x/2)").replace(' ', ""),
+            r"e^{(\frac{x}{2})}"
+        );
+    }
+
+    /// E-N4: units after a number stay units, not a fraction of letters.
+    #[test]
+    fn units_after_a_number_are_not_built_up() {
+        for (src, want) in [
+            ("g = 9.81 m/s^2", "g = 9.81 m/s^{2}"),
+            ("v = 20 m/s", "v = 20 m/s"),
+            ("q = 3 km/h", "q = 3 km/h"),
+            ("v = 20/s", r"v = \frac{20}{s}"),
+            ("a = 2 x/y", r"a = 2 \frac{x}{y}"),
+            ("a = m/s", r"a = \frac{m}{s}"),
+        ] {
+            assert_eq!(typed_in_maths(src), want, "{src}");
         }
     }
 

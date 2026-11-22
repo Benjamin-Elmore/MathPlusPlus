@@ -866,7 +866,10 @@ impl Run<'_, '_> {
                 }
             }
             Statement::Query { expr, mode, steps } => {
-                self.query(line, expr, *mode, *steps, &scope, noeval)
+                let display = matches!(place, Place::Display { .. });
+                if !(display && !noeval && self.defining_query(line, expr, *mode, &scope)) {
+                    self.query(line, expr, *mode, *steps, &scope, noeval)
+                }
             }
             Statement::Check { lhs, rhs } => self.check_line(line, lhs, rhs, &scope),
             Statement::Relation(node) => {
@@ -2229,6 +2232,35 @@ impl Run<'_, '_> {
             value: left_decimal(l).unwrap_or_else(|| value.to_string()),
             written: text.trim().to_string(),
         })
+    }
+
+    /// `R = v^2 \sin(2θ)/g =` with `R` not defined yet (S9): a definition, as
+    /// `R = …` alone is (U17), that also shows its value, as `R := … =` does. So
+    /// `R = 35.3` on a line below is a check of it. True when the line was taken.
+    fn defining_query(&mut self, line: &Line, expr: &Node, mode: QueryMode, s: &Scope) -> bool {
+        let NodeKind::Relation { first, rest } = &expr.kind else {
+            return false;
+        };
+        let [(SynRel::Eq, rhs)] = rest.as_slice() else {
+            return false;
+        };
+        let Some(key) = node_key(first) else {
+            return false;
+        };
+        if self.view().get(&key, false).is_some() {
+            return false;
+        }
+        let before = self.result.values.len();
+        if !self.implicit_definition(line, expr, s) || self.result.values.len() == before {
+            return false;
+        }
+        if let Some(last) = self.result.values.last_mut() {
+            if last.span == line.span {
+                last.span = Span::new(line.span.start, rhs.span.end.max(line.span.start));
+            }
+        }
+        self.query(line, first, mode, false, s, false);
+        true
     }
 
     /// A closed comparison on a maths line, decided as a check (✓ or ✗):

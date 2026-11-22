@@ -4,8 +4,9 @@
 //!   ([`Editor::tab`]); an exponent or subscript is passed through.
 //! - Right at the end of a box goes to the next box or out; Left at its start
 //!   goes the other way ([`Editor::arrow_out`]).
-//! - `+ − = < > ,` or Space typed at the end of an exponent or subscript leave
-//!   it (`x^2+` gives x²+); `^` at the end of a subscript starts the exponent.
+//! - `+ − * / = < > ,` or Space typed at the end of an exponent or subscript
+//!   leave it (`x^2+` gives x²+, `v^2/g` gives v²/g); `^` at the end of a
+//!   subscript starts the exponent.
 //! - A slip such as `x^^2` is refused, with a hint.
 //! - The denominator of a fraction made by a typed `/` ends the same way (and
 //!   on `)`), when it closes every bracket it opens: `1/2 + 3` is ½ + 3.
@@ -113,17 +114,19 @@ impl Editor {
                     self.refuse(ch)
                 }
             }
-            '+' | '-' | '−' | '*' | '·' | '=' | '<' | '>' | ',' | ' ' | ')' => {
-                // `)` leaves a script only when it closes nothing inside it.
+            '+' | '-' | '−' | '*' | '·' | '/' | '=' | '<' | '>' | ',' | ' ' | ')' => {
+                // `)` and `/` leave a script only when it closes every bracket
+                // opened inside it (`e^(x/2)` keeps its `/` in the exponent).
                 let script = self
                     .script_exit(caret)
-                    .filter(|_| ch != ')' || self.box_balanced(caret));
+                    .filter(|_| !matches!(ch, ')' | '/') || self.box_balanced(caret));
                 if let Some((id, to)) = script {
                     self.leave_to(id, to);
                 }
-                // A product (`v**2*g`) leaves an exponent, but stays in a
-                // denominator, where `*` may start a power (`1/n**2`).
-                if matches!(ch, '*' | '·') {
+                // A product (`v**2*g`) or a division (`v^2/g`, E-N2) leaves an
+                // exponent, but stays in a denominator, where `*` may start a
+                // power (`1/n**2`).
+                if matches!(ch, '*' | '·' | '/') {
                     return true;
                 }
                 // Then out of the denominator of a `/` fraction (`1/n^2,`).

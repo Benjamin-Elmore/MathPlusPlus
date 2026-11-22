@@ -457,6 +457,11 @@ fn operand_before(text: &str, end: usize) -> usize {
         let Some(open) = matching_open(before) else {
             return end;
         };
+        // A power or index (`v^{2}`, `(x+1)^{2}`): the operand is its base with it.
+        if before.ends_with('}') && before[..open].ends_with(['^', '_']) {
+            let base = operand_before(text, open - 1);
+            return if base < open - 1 { base } else { end };
+        }
         let mut start = open;
         if before[..start].ends_with(r"\left") {
             start -= r"\left".len();
