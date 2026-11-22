@@ -900,15 +900,21 @@ fn layout_block(
                 }
                 None => content,
             };
-            flow(
-                cx,
-                content,
-                style(input, FontId::TextBold, scale),
-                x0,
-                0.0,
-                w,
-                &mut c,
-            )
+            let st = style(input, FontId::TextBold, scale);
+            let h = flow(cx, content, st, x0, 0.0, w, &mut c);
+            if c.stops.is_empty() {
+                // An empty heading (`#` just typed) is still a line the caret is on.
+                let h = h.max(st.size * 1.5);
+                c.stops.push(CaretStop {
+                    x: x0,
+                    top: 0.0,
+                    bottom: h,
+                    offset: b.span.end,
+                });
+                h
+            } else {
+                h
+            }
         }
         BlockKind::Title(t) => layout_title(input, cx, t, b.span.end, x0, w, &mut c),
         BlockKind::References(r) => layout_references(input, cx, b, r, x0, w, &mut c)?,
