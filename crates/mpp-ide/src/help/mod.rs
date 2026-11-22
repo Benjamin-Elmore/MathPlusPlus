@@ -57,7 +57,7 @@ pub(crate) fn had_focus_id() -> Id {
 /// What to type with no LaTeX and no code: the first section of the sheet, in
 /// plain words (E18, S12, P12).
 pub const START_HERE: Section = Section {
-    title: "Start here (no LaTeX or code needed)",
+    title: "Start here: no LaTeX or code needed",
     tips: &[
         tip("= on an empty line", "Starts a line of maths", None, None),
         tip(
@@ -180,6 +180,12 @@ pub const SECTIONS: &[Section] = &[
             tip("Alt+=", "Starts a maths line", None, None),
             tip("Ctrl+M", "Starts a maths line", None, None),
             tip(
+                "Ctrl+/",
+                "Makes the block a note (a comment, not worked out); again takes it back",
+                None,
+                None,
+            ),
+            tip(
                 "/ (in maths)",
                 "Opens a fraction",
                 Some(r"\frac{a}{b}"),
@@ -188,6 +194,20 @@ pub const SECTIONS: &[Section] = &[
         ],
     },
 ];
+
+/// A section's title: in sentence case and on one line (P12); a narrow panel
+/// cuts it short rather than wrapping it.
+fn section_title(ui: &mut Ui, theme: &Theme, title: &str) {
+    ui.add(
+        egui::Label::new(
+            RichText::new(title)
+                .size(12.5)
+                .strong()
+                .color(c32(theme.muted)),
+        )
+        .truncate(),
+    );
+}
 
 /// True when a row of the forms table is found by the search words.
 pub fn form_matches(f: &Form, needle: &str) -> bool {
@@ -294,11 +314,7 @@ impl IdeApp {
                         continue;
                     }
                     shown += tips.len();
-                    ui.label(
-                        RichText::new(s.title.to_uppercase())
-                            .size(12.5)
-                            .color(c32(theme.muted)),
-                    );
+                    section_title(ui, theme, s.title);
                     for t in tips {
                         ui.label(RichText::new(t.becomes).size(12.5).color(c32(theme.muted)));
                         let label = format!("{}: {}", t.becomes, t.typed);
@@ -341,11 +357,7 @@ impl IdeApp {
                     }
                     shown += tips.len();
                     ui.add_space(8.0);
-                    ui.label(
-                        RichText::new(s.title.to_uppercase())
-                            .size(12.5)
-                            .color(c32(theme.muted)),
-                    );
+                    section_title(ui, theme, s.title);
                     for t in tips {
                         ui.label(RichText::new(t.becomes).size(12.5).color(c32(theme.muted)));
                         let label = format!("{}: {}", t.becomes, t.typed);

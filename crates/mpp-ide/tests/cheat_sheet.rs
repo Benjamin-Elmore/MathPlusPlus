@@ -3,7 +3,7 @@
 //! real app (`ui()` runs `pump()`).
 
 use egui::{Event, Key, Modifiers, PointerButton, Pos2, Vec2};
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use egui_kittest::Harness;
 use mpp_ide::editor::forms;
 use mpp_ide::settings::SideView;
@@ -121,5 +121,33 @@ fn clicking_a_row_inserts_it_at_the_caret() {
     assert!(
         text.contains(sqrt.writes),
         "the row was inserted, got {text:?}"
+    );
+}
+
+#[test]
+fn start_here_header_is_sentence_case_on_one_line_p12() {
+    let mut h = fresh();
+    f1(&mut h);
+    let heads: Vec<_> = h.query_all_by_label_contains("Start here").collect();
+    assert!(!heads.is_empty(), "the Start here header is on the sheet");
+    assert!(
+        h.query_all_by_label_contains("START HERE").next().is_none(),
+        "the header is not in capitals"
+    );
+    let r = heads[0].rect();
+    assert!(r.height() < 24.0, "the header is one line: {r:?}");
+}
+
+#[test]
+fn the_note_key_ctrl_slash_is_on_the_sheet_p15() {
+    let mut h = fresh();
+    f1(&mut h);
+    let rows: Vec<String> = h
+        .query_all_by_label_contains("Ctrl+/")
+        .filter_map(|n| n.accesskit_node().label())
+        .collect();
+    assert!(
+        rows.iter().any(|l| l.to_lowercase().contains("note")),
+        "Ctrl+/ is named on the sheet: {rows:?}"
     );
 }
