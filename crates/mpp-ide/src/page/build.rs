@@ -1603,14 +1603,21 @@ fn layout_display(
     .with_integral_limits(input.integral_limits);
     let text = input.src.get(m.raw.start..m.raw.end).unwrap_or("");
     let dl = super::mathcache::layout(text, m.raw, &m.ast, &opts);
-    let pad = size * 0.35;
+    // A maths line is about 1.5 lines tall whatever is typed into it: room for
+    // an exponent above and an index below is kept from the start, so typing
+    // `x^2` or `x_1` never changes the line's height or moves its baseline.
+    let pad = size * 0.2;
+    let fs = size * 1.1;
+    let above = dl.height.max(fs * 0.95);
+    let below = dl.depth.max(fs * 0.3);
+    let top = pad + above - dl.height;
     let before = c.stops.len();
-    c.merge(&dl, x0, pad, true);
+    c.merge(&dl, x0, top, true);
     if c.stops.len() == before {
         c.stops.push(CaretStop {
             x: x0 + w / 2.0,
-            top: pad,
-            bottom: pad + dl.total_height().max(size),
+            top,
+            bottom: top + dl.total_height().max(size),
             offset: m.raw.start,
         });
     }
@@ -1618,7 +1625,7 @@ fn layout_display(
         let right = ink_right(&dl);
         c.spinners.push(Pos2::new(
             x0 + (right + size * 0.9).min(w - size * 0.5),
-            pad + dl.total_height() / 2.0,
+            top + dl.total_height() / 2.0,
         ));
     }
     // An empty box already gets the editor's own "fill in" note beside the
@@ -1647,11 +1654,11 @@ fn layout_display(
         c.merge(
             &hd,
             x0 + x,
-            pad + (dl.total_height() - hd.total_height()) / 2.0,
+            top + (dl.total_height() - hd.total_height()) / 2.0,
             false,
         );
     }
-    let mut y = dl.total_height() + 2.0 * pad;
+    let mut y = pad + above + below + size * 0.35;
     for note in &extras.notes {
         y += layout_note(input, note, x0, y, w, c);
     }

@@ -83,7 +83,7 @@ pub fn layout_ast(e: &mut Engine<'_>, ast: &MathAst) -> LBox {
         lines.push(layout_line(e, line, i, result.as_ref(), st));
     }
     // Results for lines past the end (or for an empty span) are ignored.
-    let body = stack_lines(e, lines, ast.aligned, st);
+    let body = stack_lines(e, lines, st);
     with_number(e, body, ast.lines.len() > 1, st)
 }
 
@@ -330,8 +330,8 @@ fn result_atom(e: &mut Engine<'_>, r: &LineResult, index: usize, line: &Line, st
     a
 }
 
-/// Stacks lines: aligned on their relations, or each centred.
-fn stack_lines(e: &Engine<'_>, lines: Vec<LaidLine>, aligned: bool, st: Style) -> LBox {
+/// Stacks lines: aligned on their relations when every line has one, or each centred.
+fn stack_lines(e: &Engine<'_>, lines: Vec<LaidLine>, st: Style) -> LBox {
     if lines.len() == 1 {
         if let Some(l) = lines.into_iter().next() {
             return l.b;
@@ -342,7 +342,9 @@ fn stack_lines(e: &Engine<'_>, lines: Vec<LaidLine>, aligned: bool, st: Style) -
         return LBox::empty();
     }
     let s = e.scale(st);
-    let use_align = aligned && lines.iter().all(|l| l.align.is_some());
+    // Rows that all have a relation line up on it (`=` under `=`), in an
+    // alignment environment or not.
+    let use_align = lines.iter().all(|l| l.align.is_some());
     let left_of_align = lines
         .iter()
         .map(|l| l.align.unwrap_or(0.0))

@@ -129,11 +129,9 @@ fn the_caret_stays_on_its_line_while_typing_with_pauses() {
         &mut h,
         &["$$ ", "E ", "= ", "2x ", "+ ", "5 ", "= ", "? ", "$$"],
         |at, typed| {
-            // Half of the closing `$$` is drawn as a `$` of its own under the
-            // line until the second one closes it: the caret is right to be there.
-            if typed.ends_with("? $") {
-                return;
-            }
+            // Every frame, including the one between the two `$` of the
+            // closing `$$` (the editor wrote the closing, so the typed one
+            // steps over it and no half-typed `$` is ever drawn).
             assert!(
                 (at.y - line).abs() < 6.0,
                 "after {typed:?} the caret was drawn at y={} but the line is at y={line}",

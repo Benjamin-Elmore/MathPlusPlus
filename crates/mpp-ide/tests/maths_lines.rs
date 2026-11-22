@@ -337,3 +337,108 @@ fn empty_parts_show_what_goes_in_them() {
     assert!(labels.iter().any(|l| l == "numerator"), "{labels:?}");
     assert!(labels.iter().any(|l| l == "denominator"), "{labels:?}");
 }
+
+/// The glyphs of the first maths block on the page: (char, x, size).
+fn maths_glyphs(h: &Harness<'static, IdeApp>) -> Vec<(char, f32, f32)> {
+    let doc = h.state().doc().expect("doc");
+    let pc = doc.page_cache().expect("page");
+    let b = pc
+        .page
+        .blocks
+        .iter()
+        .find(|b| b.tag == mpp_ide::page::BlockTag::Math)
+        .expect("a maths block");
+    b.dl.items
+        .iter()
+        .filter_map(|p| match p {
+            mpp_render::Primitive::Glyph { ch, x, size, .. } => Some((*ch, *x, *size)),
+            _ => None,
+        })
+        .collect()
+}
+
+fn maths_height(h: &Harness<'static, IdeApp>) -> f32 {
+    let doc = h.state().doc().expect("doc");
+    let pc = doc.page_cache().expect("page");
+    pc.page
+        .blocks
+        .iter()
+        .find(|b| b.tag == mpp_ide::page::BlockTag::Math)
+        .expect("a maths block")
+        .height
+}
+
+#[test]
+fn maths_looks_like_maths_while_typing() {
+    // Typed the way Ben did in the video, without a space after the `+`.
+    let src = "$$ E = 2x +5 $$";
+    let mut h = harness(app_with(src, 12));
+    h.run_steps(3);
+    let g = maths_glyphs(&h);
+    let chars: String = g.iter().map(|c| c.0).collect();
+    // Single-letter variables are italic, numbers upright.
+    assert!(
+        chars.contains('\u{1d438}') && chars.contains('\u{1d465}'),
+        "{chars}"
+    );
+    assert!(chars.contains('2') && chars.contains('5'), "{chars}");
+    // `+5` gets the spacing of a binary plus straight away.
+    let x = |c: char| g.iter().find(|t| t.0 == c).expect("glyph").1;
+    let em = g[0].2;
+    assert!(x('5') - x('+') > 0.9 * em, "+5 is tight: {g:?}");
+    // Functions are upright.
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .set_text("$$ \\sin(x) $$");
+    h.run_steps(3);
+    let chars: String = maths_glyphs(&h).iter().map(|c| c.0).collect();
+    assert!(chars.starts_with("sin"), "{chars}");
+}
+
+#[test]
+fn scripts_never_change_the_line_height() {
+    let mut h = harness(app_with("$$ x $$", 4));
+    h.run_steps(3);
+    let plain = maths_height(&h);
+    for src in ["$$ x^2 $$", "$$ x_1 $$", "$$ x_1^2 $$"] {
+        h.state_mut().doc_mut().expect("doc").editor.set_text(src);
+        h.run_steps(3);
+        assert!(
+            (maths_height(&h) - plain).abs() < 0.5,
+            "{src}: {} vs {plain}",
+            maths_height(&h)
+        );
+    }
+    // A line is about one and a half lines of maths tall.
+    let fs = h.state().size * 1.1;
+    assert!(plain >= 1.4 * fs && plain <= 1.9 * fs, "{plain} for {fs}");
+}
+
+#[test]
+fn scripts_are_never_tiny() {
+    let dl = mpp_render::layout_latex("x^{2^{2}}", &mpp_render::LayoutOptions::inline(12.0));
+    for p in &dl.items {
+        if let mpp_render::Primitive::Glyph { ch, size, .. } = p {
+            assert!(*size >= 9.0 - 1e-3, "{ch} at {size}px");
+        }
+    }
+}
+
+#[test]
+fn rows_line_up_on_their_equals_signs() {
+    let src = "$$ a = 1 \\\\\nbb + c = 22 $$";
+    let mut h = harness(app_with(src, 4));
+    h.run_steps(3);
+    let xs: Vec<f32> = maths_glyphs(&h)
+        .iter()
+        .filter(|g| g.0 == '=')
+        .map(|g| g.1)
+        .collect();
+    assert_eq!(xs.len(), 2, "{xs:?}");
+    assert!(
+        (xs[0] - xs[1]).abs() < 0.5,
+        "the = signs are not aligned: {xs:?}"
+    );
+}
