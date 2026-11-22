@@ -1037,3 +1037,39 @@ fn tn6_where_am_i_is_shown_on_screen_too() {
         .any(|n| n.accesskit_node().value().is_some_and(|v| v == said));
     assert!(drawn, "the words are drawn on screen");
 }
+
+#[test]
+fn r14_a_command_being_typed_is_not_called_an_error() {
+    let mut h = app_with("", 0);
+    for c in r"$$ s := \frac".chars() {
+        h.event(Event::Text(c.to_string()));
+        h.step();
+    }
+    wait(&mut h);
+    h.run_steps(3);
+    let text = h.state().doc().unwrap().editor.text().to_string();
+    assert!(text.contains(r"\frac"), "{text:?}");
+    let f = focused(&h).expect("the editor has the keyboard");
+    assert!(!f.value.contains("error"), "line value: {:?}", f.value);
+    assert!(!f.value.contains("Expected"), "line value: {:?}", f.value);
+    assert!(
+        !h.state().access.assertive().contains("Expected"),
+        "{:?}",
+        h.state().access.assertive()
+    );
+    let errors = h.state_mut().doc_mut().unwrap().problems();
+    assert!(
+        !errors.iter().any(|p| p.message.contains("numerator")),
+        "flagged: {errors:?}"
+    );
+    // Once the caret leaves the command, it is a problem again.
+    key(&mut h, Modifiers::NONE, Key::Home);
+    h.run_steps(3);
+    let errors = h.state_mut().doc_mut().unwrap().problems();
+    assert!(
+        errors
+            .iter()
+            .any(|p| p.message.to_lowercase().contains("numerator")),
+        "{errors:?}"
+    );
+}

@@ -689,13 +689,32 @@ impl Doc {
         self.problem_counts().errors
     }
 
-    /// The template the caret is filling in, while it still has empty boxes.
+    /// Where problems are not shown yet: the template the caret is filling
+    /// in, while it still has empty boxes, or a `\command` the caret is at
+    /// the end of (R14: `\frac` before its `{` is being typed, not wrong),
+    /// to the end of its line.
     fn quiet_range(&self) -> Option<(usize, usize)> {
         let caret = self.editor.caret();
-        let s = self.editor.session_at(caret)?;
-        s.tab_boxes()
-            .any(|b| b.range.is_empty())
-            .then_some((s.range.start, s.range.end))
+        if let Some(s) = self.editor.session_at(caret) {
+            if s.tab_boxes().any(|b| b.range.is_empty()) {
+                return Some((s.range.start, s.range.end));
+            }
+        }
+        let text = self.editor.text();
+        let caret = caret.min(text.len());
+        let before = text.get(..caret)?;
+        let name = before.len()
+            - before
+                .trim_end_matches(|c: char| c.is_ascii_alphabetic())
+                .len();
+        let after = text[caret..].chars().next();
+        let typing = name > 0
+            && before[..caret - name].ends_with('\\')
+            && !after.is_some_and(|c| c.is_ascii_alphabetic());
+        typing.then(|| {
+            let end = text[caret..].find('\n').map_or(text.len(), |i| caret + i);
+            (caret - name - 1, end)
+        })
     }
 
     /// The laid-out page for a window width, rebuilt only when something changed.
