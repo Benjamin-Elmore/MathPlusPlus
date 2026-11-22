@@ -1771,7 +1771,7 @@ fn empty_required_boxes_give_a_fill_in_hint_and_no_answer() {
     let page = page_of(&ed);
     let b = &page.blocks[0];
     let hint = insert::fill_in_hint(&ed, &page, &(b.span.start..b.span.end));
-    assert_eq!(hint.as_deref(), Some("fill in: integrand"));
+    assert_eq!(hint.as_deref(), Some("type what is integrated"));
     // Optional bounds are not asked for; once the integrand is there, nothing is.
     ed.insert_text("x");
     let page = page_of(&ed);
@@ -1788,14 +1788,14 @@ fn empty_required_boxes_give_a_fill_in_hint_and_no_answer() {
     let b = &page.blocks[0];
     assert_eq!(
         insert::fill_in_hint(&ed, &page, &(b.span.start..b.span.end)).as_deref(),
-        Some("fill in: integrand")
+        Some("type what is integrated")
     );
     ed.insert_text("x");
     let page = page_of(&ed);
     let b = &page.blocks[0];
     assert_eq!(
         insert::fill_in_hint(&ed, &page, &(b.span.start..b.span.end)).as_deref(),
-        Some("fill in: lower bound")
+        Some("type the lower bound")
     );
     // No answer while a box is empty.
     assert_eq!(

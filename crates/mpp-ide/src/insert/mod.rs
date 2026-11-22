@@ -541,7 +541,20 @@ pub fn long_label(label: &str) -> String {
     }
 }
 
-/// The "fill in: …" hint for a maths block (`span`), if it has an empty box
+/// What the hint beside an equation with an empty box says to type, in plain
+/// words (S13): "type the top", "type what is summed".
+pub fn plain_label(label: &str) -> String {
+    match label {
+        "numerator" => "the top".into(),
+        "denominator" => "the bottom".into(),
+        "term" => "what is summed".into(),
+        "integrand" => "what is integrated".into(),
+        "" => "in the empty boxes".into(),
+        other => format!("the {}", long_label(other)),
+    }
+}
+
+/// The hint for a maths block (`span`), if it has an empty box
 /// that must be filled before it can be worked out.
 pub fn fill_in_hint(editor: &Editor, page: &Page, span: &Range<usize>) -> Option<String> {
     let inside = |o: usize| span.start <= o && o <= span.end;
@@ -558,7 +571,7 @@ pub fn fill_in_hint(editor: &Editor, page: &Page, span: &Range<usize>) -> Option
         .find(|(o, _)| *o == caret)
         .or_else(|| missing.first());
     if let Some((_, label)) = first {
-        return Some(format!("fill in: {}", long_label(label)));
+        return Some(format!("type {}", plain_label(label)));
     }
     // Empty boxes nobody is tracking (a file opened later): every one counts,
     // except optional boxes of a template that is being edited.
@@ -577,8 +590,8 @@ pub fn fill_in_hint(editor: &Editor, page: &Page, span: &Range<usize>) -> Option
     slots.sort_by_key(|h| h.span.start);
     let first = slots.first()?;
     Some(format!(
-        "fill in: {}",
-        long_label(first.label.as_deref().unwrap_or(""))
+        "type {}",
+        plain_label(first.label.as_deref().unwrap_or(""))
     ))
 }
 

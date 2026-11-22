@@ -295,3 +295,22 @@ fn heading_and_list_are_in_the_insert_menu() {
         assert_eq!(text_of(&h).trim_end(), want, "{query}");
     }
 }
+
+/// S13: the note beside a sum with an empty box says what to type in plain
+/// words.
+#[test]
+fn the_empty_box_hint_is_in_plain_words() {
+    let src = r"$$ \sum_{n=1}^{10} {} $$";
+    let h = super::runner::harness(super::runner::app_with(src));
+    let st = h.state();
+    let doc = st.doc().expect("doc");
+    let page = &doc.page_cache().expect("page").page;
+    let hint = mpp_ide::insert::fill_in_hint(&doc.editor, page, &(0..src.len()));
+    if let Some(hint) = hint {
+        assert!(!hint.contains("fill in"), "{hint}");
+        assert!(hint.starts_with("type "), "{hint}");
+    }
+    assert_eq!(mpp_ide::insert::plain_label("term"), "what is summed");
+    assert_eq!(mpp_ide::insert::plain_label(""), "in the empty boxes");
+    assert_eq!(mpp_ide::insert::plain_label("numerator"), "the top");
+}
