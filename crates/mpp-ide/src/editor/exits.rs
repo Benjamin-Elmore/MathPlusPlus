@@ -127,19 +127,25 @@ impl Editor {
     }
 
     /// Before Enter in maths: out of every template around the caret, so the new
-    /// line starts after the structure, not inside one of its boxes.
-    pub(super) fn leave_templates(&mut self) {
+    /// line starts after the structure, not inside one of its boxes (nor in a
+    /// last box that ends where the structure does, the `x` of `dx`). True when
+    /// the caret was in a template.
+    pub(super) fn leave_templates(&mut self) -> bool {
         let mut guard = 0;
+        let mut left = None;
         while let Some(s) = self.session_at(self.caret) {
             let (id, end) = (s.id, s.range.end);
             self.finalize(id);
             let end = self.session(id).map_or(end, |s| s.range.end);
+            left = Some((id, end));
             if end == self.caret || guard > 16 {
                 break;
             }
             self.move_caret(end, false);
             guard += 1;
         }
+        self.left = left;
+        left.is_some()
     }
 }
 

@@ -557,14 +557,14 @@ fn escape(doc: &mut Doc, page: &crate::page::Page, cx: &mut ViewCtx<'_>) -> bool
         return false;
     }
     let caret = doc.editor.caret();
-    let target = match doc.editor.session_at(caret) {
-        Some(s) => Some(s.range.end),
-        None => leave_maths(doc.editor.text(), page, caret),
-    };
-    let Some(t) = target else {
-        return false;
-    };
-    doc.editor.move_caret(t, false);
+    // Out of a template, typing after it stays out of its last box (the `x`
+    // of an integral's `dx`); otherwise out of the maths.
+    if !doc.editor.leave_template() {
+        let Some(t) = leave_maths(doc.editor.text(), page, caret) else {
+            return false;
+        };
+        doc.editor.move_caret(t, false);
+    }
     doc.caret_side = Side::Before;
     doc.want_x = None;
     true

@@ -594,6 +594,28 @@ impl Editor {
             .min_by_key(|s| s.range.len())
     }
 
+    /// True when what is typed next goes into a template (not when Tab just
+    /// left one whose last box ends where the caret is).
+    pub fn in_template(&self) -> bool {
+        self.session_at(self.caret).is_some() && self.left.is_none_or(|(_, at)| at != self.caret)
+    }
+
+    /// Leaves the innermost template holding the caret (Esc): the caret goes
+    /// just after it, and what is typed there stays out of its last box, as
+    /// after Tab. False when the caret is in no template.
+    pub fn leave_template(&mut self) -> bool {
+        let Some(id) = self.session_at(self.caret).map(|s| s.id) else {
+            return false;
+        };
+        self.finalize(id);
+        let Some(end) = self.session(id).map(|s| s.range.end) else {
+            return false;
+        };
+        self.move_caret(end, false);
+        self.left = Some((id, end));
+        true
+    }
+
     fn session_index(&self, id: u64) -> Option<usize> {
         self.sessions.iter().position(|s| s.id == id)
     }
