@@ -188,9 +188,12 @@ impl DisplayList {
     }
 
     /// Every caret position: both sides of each innermost node, the inside of
-    /// each empty slot. Sorted by offset, then by x.
+    /// each empty slot, and the outer sides of a structure where no innermost
+    /// node gives one (after a closing bracket or a fraction at the end of a
+    /// line). Sorted by offset, then by x.
     pub fn caret_stops(&self) -> Vec<CaretStop> {
         let mut out = vec![];
+        let mut outer = vec![];
         for (i, h) in self.hits.iter().enumerate() {
             if h.kind == HitKind::Result {
                 continue;
@@ -213,6 +216,14 @@ impl DisplayList {
                     && o.kind != HitKind::Result
             });
             if has_child {
+                for (x, offset) in [(h.rect.x, h.span.start), (h.rect.x + h.rect.w, h.span.end)] {
+                    outer.push(CaretStop {
+                        x,
+                        top,
+                        bottom,
+                        offset,
+                    });
+                }
                 continue;
             }
             out.push(CaretStop {
@@ -227,6 +238,13 @@ impl DisplayList {
                 bottom,
                 offset: h.span.end,
             });
+        }
+        // Outermost first, so the widest structure gives a missing side.
+        outer.reverse();
+        for s in outer {
+            if !out.iter().any(|o| o.offset == s.offset) {
+                out.push(s);
+            }
         }
         out.sort_by(|a, b| {
             a.offset
