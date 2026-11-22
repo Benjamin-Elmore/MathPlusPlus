@@ -21,6 +21,7 @@ pub mod figure;
 pub mod files;
 pub mod help;
 pub mod history;
+pub mod hover;
 pub mod insert;
 pub mod layout;
 pub mod library;

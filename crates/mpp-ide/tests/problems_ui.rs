@@ -170,7 +170,7 @@ fn undefined_symbol_suggests_a_close_name() {
         |k| matches!(k, Kind::Undefined { name, .. } if name == "θ"),
     );
     assert_eq!(p.level, Level::Error);
-    assert!(p.message.starts_with("Undefined: θ."), "{}", p.message);
+    assert!(p.message.starts_with("θ isn't defined."), "{}", p.message);
     assert!(p.message.contains("Did you mean ϑ"), "{}", p.message);
     assert_plain(p);
     save_png(&mut h, "problem-undefined-light.png");
