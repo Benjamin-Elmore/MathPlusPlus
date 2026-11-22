@@ -189,3 +189,24 @@ fn a_slash_fraction_ends_like_written_maths() {
         assert_eq!(text_of(&h), file, "typed {typed:?}");
     }
 }
+
+/// T8 and S17: the fraction `/` makes is its own undo step: the first Ctrl+Z
+/// gives back exactly what was typed.
+#[test]
+fn the_first_undo_gives_back_the_slash() {
+    for (typed, back) in [
+        (r"$\pi/6", r"$$ \pi/6 $$"),
+        ("$x/2", "$$ x/2 $$"),
+        ("$x/25", "$$ x/25 $$"),
+    ] {
+        let mut h = fresh();
+        type_text(&mut h, typed);
+        press(&mut h, Modifiers::COMMAND, Key::Z);
+        assert_eq!(text_of(&h), back, "typed {typed:?}");
+        assert_eq!(
+            Seen::of(&h).caret,
+            back.len() - 3,
+            "the caret is after what was typed"
+        );
+    }
+}

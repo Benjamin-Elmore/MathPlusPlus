@@ -398,9 +398,12 @@ impl Editor {
             '/' if cx.shortcuts => {
                 if insert::shortcut(self, '/', &cx.build) {
                     self.auto_frac = Some(self.revision);
-                    if let Some((id, _)) = self.box_here(self.caret) {
+                    if let Some((id, i)) = self.box_here(self.caret) {
                         if let Some(si) = self.session_index(id) {
                             self.sessions[si].linear = true;
+                        }
+                        if i == 1 {
+                            self.slash_made(id);
                         }
                     }
                 }

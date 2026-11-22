@@ -206,6 +206,17 @@ pub struct Editor {
     /// Where a typed `$` just stepped over a maths line's closing `$$`, and the
     /// revision then: a second `$` typed straight after is the rest of a `$$`.
     closed_at: Option<(usize, u64)>,
+    /// The fraction a typed `/` just made, while its denominator is typed in.
+    slash: Option<SlashStep>,
+}
+
+/// The undo step of a `/` conversion: the text before it (with the `/`) and
+/// where the caret was, after the `/`.
+#[derive(Debug, Clone)]
+struct SlashStep {
+    id: u64,
+    pre: String,
+    at: usize,
 }
 
 impl Editor {
@@ -275,6 +286,7 @@ impl Editor {
             && contiguous
             && !self.word_done;
         self.word_done = false;
+        self.slash = None;
         if !group {
             push_step(
                 &mut self.undo,
@@ -344,14 +356,22 @@ impl Editor {
             // ", " after a word: the space joins the comma's step.
             self.word_done = false;
         }
-        self.record(
-            if typing {
-                EditKind::Typing
-            } else {
-                EditKind::Other
-            },
-            contiguous,
-        );
+        let slash = typing && contiguous && self.in_slash_denominator();
+        if slash {
+            // No step of its own: see `keep_slash_step`.
+            self.redo.clear();
+            self.last_kind = None;
+            self.when = Some(Instant::now());
+        } else {
+            self.record(
+                if typing {
+                    EditKind::Typing
+                } else {
+                    EditKind::Other
+                },
+                contiguous,
+            );
+        }
         self.word_done = typing && s.chars().next_back().is_some_and(ends_word);
         let range = self.selection().unwrap_or(self.caret..self.caret);
         let left = left.filter(|(_, at)| range == (*at..*at));
@@ -363,6 +383,50 @@ impl Editor {
         self.anchor = None;
         self.fixup();
         self.revision += 1;
+        if slash {
+            self.keep_slash_step();
+        }
+    }
+
+    /// A typed `/` just made fraction `id` (its denominator holds the caret):
+    /// typing in the denominator joins the conversion's undo step (T8).
+    pub(super) fn slash_made(&mut self, id: u64) {
+        self.slash = self.undo.last().map(|s| SlashStep {
+            id,
+            pre: s.full().to_string(),
+            at: s.caret,
+        });
+    }
+
+    /// True while the caret is in the denominator of the fraction a `/` made,
+    /// with nothing else edited since.
+    fn in_slash_denominator(&self) -> bool {
+        self.slash
+            .as_ref()
+            .is_some_and(|st| self.box_here(self.caret) == Some((st.id, 1)))
+    }
+
+    /// The undo step of a `/` conversion keeps what was typed as plain text
+    /// after the `/` (`\pi/6`), so the first Ctrl+Z gives back exactly what was
+    /// typed (design rule 3) and not a fraction with an empty denominator.
+    fn keep_slash_step(&mut self) {
+        let Some(st) = &self.slash else {
+            return;
+        };
+        let den = self
+            .session(st.id)
+            .and_then(|s| s.boxes.get(1))
+            .and_then(|b| self.text.get(b.range.clone()))
+            .unwrap_or("");
+        let mut linear = String::with_capacity(st.pre.len() + den.len());
+        linear.push_str(&st.pre[..st.at]);
+        linear.push_str(den);
+        linear.push_str(&st.pre[st.at..]);
+        let caret = st.at + den.len();
+        if let Some(top) = self.undo.last_mut() {
+            top.text = Stored::Full(linear);
+            top.caret = caret;
+        }
     }
 
     /// Text was typed just after template `id` (at `at`), which the caret had
