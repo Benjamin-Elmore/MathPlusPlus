@@ -339,3 +339,30 @@ fn a_line_that_will_become_maths_shows_a_cue() {
         h.state().doc().expect("doc")
     ));
 }
+
+/// T12: after `\frac{}{}` typed in full, the status bar says where the next
+/// character goes.
+#[test]
+fn the_status_path_says_where_the_next_character_goes() {
+    // The empty-braces habit: `\frac{}{}`, then a digit.
+    let mut h = fresh();
+    type_text(&mut h, r"$\frac{}{}");
+    h.run_steps(2);
+    let at = h.state().doc().expect("doc").editor.caret();
+    let text = text_of(&h);
+    let status = mpp_ide::page::caret_path::status_text(h.state().doc().expect("doc"));
+    let inside = text[at..].trim_start().starts_with('}');
+    assert_eq!(
+        status.contains("denominator"),
+        inside,
+        "the status says {status:?} with the caret at {at} in {text:?}"
+    );
+    // The next character goes where the status said.
+    type_text(&mut h, "1");
+    let after = text_of(&h);
+    assert_eq!(
+        after.contains("{1}"),
+        inside,
+        "{status:?}, then 1 went into {after:?}"
+    );
+}
