@@ -45,7 +45,7 @@ fn error_messages() {
         r"|x",
         r"\left( x",
         r"3 + * 4",
-        r"#x",
+        r"@x",
         r"\foo x",
         r"\lim_{x} x",
         r"\lim x",

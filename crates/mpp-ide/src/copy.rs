@@ -2,34 +2,58 @@
 //!
 //! Inside Math++ a copy keeps the source, so pasting into another `.mpp` file
 //! keeps the maths exactly. For other applications the default is Unicode maths
-//! (`∫₀¹ x² dx`); the option gives LaTeX instead.
+//! (`∫₀¹ x² dx`); the option gives LaTeX instead. The right-click menu also
+//! offers each form once: as LaTeX, as plain text and as code (U18).
 
 use mpp_syntax::symbols::lookup_latex;
+
+use crate::editor::forms::{to_code, to_latex};
 
 /// What the clipboard gets for other applications.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CopyFormat {
+    /// Plain text with Unicode maths (`∫₀¹ x² dx`).
     #[default]
     Unicode,
     Latex,
+    /// As a programmer types it (`int(x**2, x, 0, 1)`).
+    Code,
 }
 
 /// The clipboard text for a selection of source text. `all_maths` says the
 /// selection lies inside a maths span (otherwise `$ … $` pairs are looked for).
 pub fn clipboard_text(selection: &str, all_maths: bool, format: CopyFormat) -> String {
-    match format {
-        CopyFormat::Latex => selection.to_string(),
-        CopyFormat::Unicode => {
-            if all_maths {
-                maths_to_unicode(selection)
-            } else {
-                mixed_to_unicode(selection)
-            }
-        }
+    let convert: fn(&str) -> String = match format {
+        CopyFormat::Latex => to_latex,
+        CopyFormat::Unicode => maths_to_unicode,
+        CopyFormat::Code => to_code,
+    };
+    if all_maths {
+        convert(selection)
+    } else {
+        mixed(selection, convert, format == CopyFormat::Latex)
     }
 }
 
-fn mixed_to_unicode(s: &str) -> String {
+/// The items of the right-click menu for a selection: the format chosen, if any.
+pub fn copy_menu(ui: &mut egui::Ui) -> Option<CopyFormat> {
+    let mut chosen = None;
+    for (label, format) in [
+        ("Copy as LaTeX", CopyFormat::Latex),
+        ("Copy as plain text", CopyFormat::Unicode),
+        ("Copy as code", CopyFormat::Code),
+    ] {
+        let text = egui::RichText::new(label).font(crate::theme::sans(14.0));
+        if ui.button(text).clicked() {
+            chosen = Some(format);
+        }
+    }
+    chosen
+}
+
+/// Prose with `$ … $` maths: each maths part converted, the prose kept (and the
+/// dollar signs too when `keep` is set).
+fn mixed(s: &str, convert: fn(&str) -> String, keep: bool) -> String {
     let mut out = String::new();
     let mut rest = s;
     while let Some(i) = rest.find('$') {
@@ -39,13 +63,14 @@ fn mixed_to_unicode(s: &str) -> String {
         } else {
             ("$", &rest[i + 1..])
         };
+        let d = if keep { delim } else { "" };
         match after.find(delim) {
             Some(j) => {
-                out.push_str(&maths_to_unicode(&after[..j]));
+                out.push_str(&format!("{d}{}{d}", convert(&after[..j])));
                 rest = &after[j + delim.len()..];
             }
             None => {
-                out.push_str(&maths_to_unicode(after));
+                out.push_str(&format!("{d}{}", convert(after)));
                 rest = "";
             }
         }
@@ -238,7 +263,11 @@ mod tests {
     #[test]
     fn mixed_text_keeps_prose() {
         assert_eq!(
-            mixed_to_unicode("The area is $\\int_0^1 x^2 dx$."),
+            clipboard_text(
+                r"The area is $\int_0^1 x^2 dx$.",
+                false,
+                CopyFormat::Unicode
+            ),
             "The area is ∫₀¹ x² dx."
         );
     }
@@ -246,5 +275,28 @@ mod tests {
     #[test]
     fn latex_option_keeps_the_source() {
         assert_eq!(clipboard_text("$x^2$", false, CopyFormat::Latex), "$x^2$");
+        // What the editor wrote in Unicode goes out as commands.
+        assert_eq!(
+            clipboard_text("$α ≤ 1$", false, CopyFormat::Latex),
+            r"$\alpha \leq 1$"
+        );
+    }
+
+    #[test]
+    fn three_ways_to_copy() {
+        let src = r"\int_{0}^{1} x^{2} \, dx";
+        assert_eq!(clipboard_text(src, true, CopyFormat::Latex), src);
+        assert_eq!(
+            clipboard_text(src, true, CopyFormat::Unicode),
+            "∫₀¹ x² \u{2009} dx"
+        );
+        assert_eq!(
+            clipboard_text(src, true, CopyFormat::Code),
+            "int(x**2, x, 0, 1)"
+        );
+        assert_eq!(
+            clipboard_text("Area $x^{2}$ here", false, CopyFormat::Code),
+            "Area x**2 here"
+        );
     }
 }

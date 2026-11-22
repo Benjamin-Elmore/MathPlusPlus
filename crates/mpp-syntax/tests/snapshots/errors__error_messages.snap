@@ -52,8 +52,8 @@ expression: report
   4..5 "*": expected an expression after `+`
     expected: a number, a name, `(`
   tree: (+ 3 (* :star (error) 4))
-## #x
-  0..1 "#": unexpected character `#`
+## @x
+  0..1 "@": unexpected character `@`
     expected: 
   tree: (* :implicit (error) x)
 ## \foo x
