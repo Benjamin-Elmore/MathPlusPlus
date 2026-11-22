@@ -250,3 +250,39 @@ fn an_empty_file_says_how_to_start() {
     type_text(&mut h, "Hello");
     assert_eq!(text_of(&h), "Hello");
 }
+
+/// True when the status bar shows exactly this place label.
+fn shows(h: &Harness<'static, IdeApp>, label: &str) -> bool {
+    use egui_kittest::kittest::Queryable;
+    h.query_by_label(label).is_some()
+}
+
+#[test]
+fn the_status_bar_shows_prose_or_maths_and_the_path_to_the_caret() {
+    use egui_kittest::kittest::Queryable;
+    let src = "Some words.\n\n$$ y := \\frac{1}{x + 2} $$";
+    let mut h = harness(app_with(src, 3));
+    h.run_steps(3);
+    assert!(shows(&h, "Prose"));
+    let den = src.find("x + 2").expect("x") + 1;
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .move_caret(den, false);
+    h.run_steps(3);
+    assert!(shows(&h, "Maths \u{203a} fraction \u{203a} denominator"));
+    // Clicking the label flips the line, as Ctrl+M does.
+    h.state_mut()
+        .doc_mut()
+        .expect("doc")
+        .editor
+        .move_caret(3, false);
+    h.run_steps(3);
+    h.get_by_label("Prose").click();
+    h.run_steps(3);
+    assert_eq!(
+        text_of(&h),
+        "$$ Some words. $$\n\n$$ y := \\frac{1}{x + 2} $$"
+    );
+}
