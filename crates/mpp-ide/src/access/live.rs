@@ -163,6 +163,22 @@ pub fn tab_name(title: &str, view: u32, dirty: bool, errors: usize) -> String {
     s
 }
 
+/// A hint in words a screen reader says whole (R-N5): a symbol at its end
+/// ("Ctrl+Z gives back the $") is named, which a screen reader would skip.
+pub fn spoken_hint(h: &str) -> String {
+    let h = h.trim_end();
+    for (sym, name) in [
+        (" :=", " colon equals you typed"),
+        (" $", " dollar sign you typed"),
+        (" =", " equals sign you typed"),
+    ] {
+        if let Some(head) = h.strip_suffix(sym) {
+            return format!("{head}{name}.");
+        }
+    }
+    h.to_string()
+}
+
 /// The status bar's path in words a screen reader says well.
 pub fn spoken_place(place: &str) -> String {
     place.replace(" \u{203a} ", ", ")
@@ -500,7 +516,7 @@ impl IdeApp {
                 polite.push(format!("In {}", mode.to_lowercase()));
             }
             if let (Some(h), true) = (&hint, hint != s.hint) {
-                polite.push(format!("Hint: {h}"));
+                polite.push(format!("Hint: {}", spoken_hint(h)));
             }
             // The answers of a file just opened are not news: only what a
             // later run changes is said.
@@ -669,6 +685,19 @@ mod tests {
         l.say("Maths");
         assert_ne!(first, l.text);
         assert_eq!(l.text.trim_end_matches('\u{a0}'), "Maths");
+    }
+
+    #[test]
+    fn a_hint_ending_in_a_symbol_names_it() {
+        assert_eq!(
+            spoken_hint("Maths line. Ctrl+Z gives back the $"),
+            "Maths line. Ctrl+Z gives back the dollar sign you typed."
+        );
+        assert_eq!(
+            spoken_hint("Maths line. Ctrl+Z gives back the :="),
+            "Maths line. Ctrl+Z gives back the colon equals you typed."
+        );
+        assert_eq!(spoken_hint("Plain words."), "Plain words.");
     }
 
     #[test]

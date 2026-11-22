@@ -64,13 +64,94 @@ fn check_words(why: &str) -> String {
     t.trim().to_string()
 }
 
+/// True when `s` is a plain number (`35.31194307`, `-2`, `1.5e3`).
+fn is_number(s: &str) -> bool {
+    let s = s.trim().trim_start_matches('-');
+    !s.is_empty()
+        && s.chars().next().is_some_and(|c| c.is_ascii_digit())
+        && s.parse::<f64>().is_ok()
+}
+
+/// An answer as words, from the LaTeX the page shows (R-N4): an exact form is
+/// spoken like any formula ("20000 times square root of 3 over 981"), and the
+/// decimal shown beside it follows ("about 35.31194307"). `copy` is the
+/// fallback when the LaTeX gives no words.
+fn latex_words(latex: &str, copy: &str) -> String {
+    let l = latex.trim();
+    let l = l.strip_prefix('=').map_or(l, str::trim_start);
+    let (exact, approx) = match l.split_once("\\approx") {
+        Some((e, a)) => (e.trim(), Some(a.trim())),
+        None => (l, None),
+    };
+    if exact.is_empty() {
+        return approx.map_or_else(|| value_words(copy), |a| format!("approximately {a}"));
+    }
+    let said = if is_number(exact) {
+        exact.to_string()
+    } else {
+        super::speech::speak_math(exact, 0)
+    };
+    let said = if said.trim().is_empty() {
+        value_words(copy)
+    } else {
+        said
+    };
+    match approx {
+        Some(a) if a != exact && !a.is_empty() => format!("{said}, about {a}"),
+        _ => said,
+    }
+}
+
+/// A message as a clause: no full stop at its end (clauses are joined with
+/// commas and full stops).
+fn clause_text(m: &str) -> &str {
+    m.trim().trim_end_matches('.').trim_end()
+}
+
+/// The words of `w` without the verdict or level in front ("error: ",
+/// "check fails, "), lower case.
+fn core_of(w: &Said) -> String {
+    let t = match w {
+        Said::Value(v) | Said::Clause(v) => v.to_lowercase(),
+    };
+    for head in [
+        "error: ",
+        "warning: ",
+        "check fails, ",
+        "check holds, ",
+        "check not decided, ",
+    ] {
+        if let Some(rest) = t.strip_prefix(head) {
+            return rest.trim_end_matches('.').to_string();
+        }
+    }
+    t.trim_end_matches('.').to_string()
+}
+
+/// True when `message` says what `said` already says (R-N3): the slot's
+/// error and the page's warning for the same name, a failed check and the
+/// warning that it does not hold.
+fn already_said(said: &[Said], message: &str) -> bool {
+    let m = clause_text(message).to_lowercase();
+    said.iter().any(|w| {
+        let core = core_of(w);
+        let check = matches!(w, Said::Clause(c) if c.starts_with("check fails"));
+        (core.len() > 3 && (m.contains(&core) || core.contains(&m)))
+            || (check && m.contains("does not hold"))
+    })
+}
+
 fn slot_words(c: &Content) -> Option<Said> {
     Some(match c {
         Content::Empty => return None,
-        Content::Answer { copy, .. } => Said::Value(value_words(copy)),
-        Content::Preview { copy, .. } => Said::Clause(format!("equals {}", value_words(copy))),
+        Content::Answer { latex, copy } => Said::Value(latex_words(latex, copy)),
+        Content::Preview { latex, copy } => {
+            Said::Clause(format!("equals {}", latex_words(latex, copy)))
+        }
         Content::Defined { value } => match value {
-            Some((_, copy)) => Said::Clause(format!("defined, equals {}", value_words(copy))),
+            Some((latex, copy)) => {
+                Said::Clause(format!("defined, equals {}", latex_words(latex, copy)))
+            }
             None => Said::Clause("defined".into()),
         },
         Content::Check { holds, why, left } => {
@@ -97,7 +178,8 @@ fn slot_words(c: &Content) -> Option<Said> {
                 Said::Clause(format!("{head}, {why}"))
             }
         }
-        Content::Error { short, .. } => Said::Clause(format!("error: {short}")),
+        // The whole message: the short form is cut off with "…" (R-N3).
+        Content::Error { full, .. } => Said::Clause(format!("error: {}", clause_text(full))),
     })
 }
 
@@ -154,7 +236,11 @@ pub fn line_words(doc: &Doc, pc: &PageCache, start: usize) -> Vec<Vec<Said>> {
                     && line.span.start <= v.span.start
                     && v.span.end <= line.span.end
             });
-            if let Some(a) = v.and_then(mpp_eval::LineResult::answer) {
+            let Some(v) = v else { continue };
+            // The answer as the page shows it, in words (R-N4).
+            if let Some((latex, copy)) = crate::page::answers::answer_of(v, &input, v.span) {
+                out[i].push(Said::Value(latex_words(&latex, &copy)));
+            } else if let Some(a) = v.answer() {
                 out[i].push(Said::Value(value_words(&a)));
             }
         }
@@ -167,12 +253,13 @@ pub fn line_words(doc: &Doc, pc: &PageCache, start: usize) -> Vec<Vec<Said>> {
                 Level::Warning => "warning",
                 _ => continue,
             };
-            let said = Said::Clause(format!("{what}: {}", p.message.trim()));
-            // An error the slot already says is said once.
-            if what == "error" && out[i].iter().any(Said::is_error) {
+            // What the slot already says is said once (R-N3).
+            if already_said(&out[i], &p.message)
+                || (what == "error" && out[i].iter().any(Said::is_error))
+            {
                 continue;
             }
-            out[i].push(said);
+            out[i].push(Said::Clause(format!("{what}: {}", clause_text(&p.message))));
         }
     }
     out
@@ -275,7 +362,10 @@ pub fn inline_words(doc: &Doc, pc: &PageCache, span: Span) -> Vec<Said> {
                 } else if matches!(v.kind, LineKind::Query { .. } | LineKind::Check) {
                     v.answer().map(|a| {
                         if v.verdict.is_none() {
-                            return Said::Value(value_words(&a));
+                            return crate::page::answers::answer_of(v, &input, v.span).map_or_else(
+                                || Said::Value(value_words(&a)),
+                                |(latex, copy)| Said::Value(latex_words(&latex, &copy)),
+                            );
                         }
                         let head = match a.trim_start().chars().next() {
                             Some('\u{2713}') => "check holds",
@@ -304,13 +394,14 @@ pub fn inline_words(doc: &Doc, pc: &PageCache, span: Span) -> Vec<Said> {
             Level::Warning => "warning",
             _ => continue,
         };
-        if out
-            .iter()
-            .any(|w| matches!(w, Said::Clause(c) if c.starts_with(what)))
+        if already_said(&out, &p.message)
+            || out
+                .iter()
+                .any(|w| matches!(w, Said::Clause(c) if c.starts_with(what)))
         {
             continue;
         }
-        out.push(Said::Clause(format!("{what}: {}", p.message.trim())));
+        out.push(Said::Clause(format!("{what}: {}", clause_text(&p.message))));
     }
     out
 }

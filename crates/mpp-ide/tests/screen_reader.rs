@@ -787,3 +787,34 @@ fn p7_p8_coder_hints_are_in_problems_and_said_once() {
     h.run_steps(3);
     assert!(!polite(&h).contains("Hint: To see"), "{:?}", polite(&h));
 }
+
+#[test]
+fn rn3_rn4_answers_are_spoken_whole_once_and_not_as_code() {
+    let src = "$$ g := 9.81 $$\n\n$$ v := 20 $$\n\n$$ R := 35.31194307 $$\n\n$$ w + 1 = ? $$\n\n$$ R = 40 $$\n\n$$ \\theta := \\pi/6 $$\n\n$$ q := \\frac{v^2 \\sin(2\\theta)}{g} $$\n\n$$ \\frac{1}{2} + \\frac{1}{3} = ? $$\n\n$$ q + R + g + v $$\n";
+    let mut h = app_with(src, 0);
+    wait(&mut h);
+    let all = labels(&h);
+    let find = |start: &str| {
+        all.iter()
+            .find(|l| l.starts_with(start))
+            .cloned()
+            .unwrap_or_else(|| panic!("no label starts with {start:?}: {all:?}"))
+    };
+    // R-N3: not cut off, and the same thing is said once.
+    assert!(
+        !all.iter().any(|l| l.contains('\u{2026}')),
+        "cut off: {all:?}"
+    );
+    let w = find("w plus 1 equals");
+    assert_eq!(w.matches("not defined").count(), 1, "{w:?}");
+    let check = find("R equals 40");
+    assert_eq!(check.matches("right side 40").count(), 1, "{check:?}");
+    assert!(!check.contains(".,") && !check.contains(".."), "{check:?}");
+    // R-N4: exact answers in words, with the decimal after them.
+    let q = find("q is defined as");
+    assert!(!q.contains('*') && !q.contains("sqrt("), "code: {q:?}");
+    assert!(q.contains("square root of 3"), "{q:?}");
+    assert!(q.contains("about 35.31"), "{q:?}");
+    let sum = find("1 over 2 plus 1 over 3 equals");
+    assert!(sum.contains("equals 5 over 6"), "{sum:?}");
+}
