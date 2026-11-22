@@ -308,6 +308,21 @@ pub fn page_lines(doc: &Doc, pc: &PageCache) -> Vec<(String, bool)> {
             }
         }
     }
+    // Inline maths (`$v/2 =$`) is announced the same way (R-F2).
+    for span in &pc.page.math_ranges {
+        let in_block = pc.doc.blocks.iter().any(|b| {
+            matches!(b.kind, BlockKind::DisplayMath(_))
+                && b.span.start <= span.start
+                && span.end <= b.span.end
+        });
+        if in_block {
+            continue;
+        }
+        let s = super::spoken_at(text, *span).unwrap_or_default();
+        for w in inline_words(doc, pc, *span) {
+            out.push((w.after(&s), w.is_error()));
+        }
+    }
     out
 }
 

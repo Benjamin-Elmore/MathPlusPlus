@@ -917,3 +917,16 @@ fn rf1_the_problems_shortcut_goes_back_to_an_open_panel_before_it_closes_it() {
     assert!(in_editor(&h), "the editor has the keyboard");
     assert_eq!(polite(&h), "Problems closed, editor");
 }
+
+#[test]
+fn rf2_inline_answers_are_announced_after_a_run_like_display_answers() {
+    let src = "$$ v := 2 $$\n\nHalf of $v$ is $v/2 =$ metres per second.\n";
+    let mut h = app_with(src, 9);
+    wait(&mut h);
+    h.run_steps(3);
+    type_text(&mut h, "0");
+    wait(&mut h);
+    h.run_steps(3);
+    let said = polite(&h);
+    assert!(said.contains("v over 2 equals 10"), "{said:?}");
+}
