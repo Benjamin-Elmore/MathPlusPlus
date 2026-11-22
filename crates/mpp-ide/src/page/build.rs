@@ -1632,10 +1632,13 @@ fn layout_display(
     let before = c.stops.len();
     c.merge(&dl, x0, top, true);
     if c.stops.len() == before {
+        // An empty line: the caret stands on the baseline, as tall as a capital
+        // letter, where the first character typed will be (not hanging below).
+        let baseline = top + dl.height;
         c.stops.push(CaretStop {
             x: x0 + w / 2.0,
-            top,
-            bottom: top + dl.total_height().max(size),
+            top: baseline - fs * 0.75,
+            bottom: baseline + fs * 0.1,
             offset: m.raw.start,
         });
     }
