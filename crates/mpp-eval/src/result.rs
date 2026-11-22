@@ -194,6 +194,23 @@ impl LineResult {
         plain.answer()
     }
 
+    /// The decimal shown beside an exact answer: the 10-digit approximation, or for an
+    /// exact number that is not a whole number (1968329/1270080) its decimal
+    /// (1.549767731), so an answer is never only a fraction to work out by hand.
+    pub fn decimal_beside(&self) -> Option<String> {
+        if let Some(a) = &self.approx {
+            return Some(a.clone());
+        }
+        let e = match self.value.as_ref()? {
+            Value::Expr(e) => e,
+            _ => return None,
+        };
+        let n = e.as_number()?;
+        (n.is_exact() && n.as_rational().is_some() && !n.is_integer())
+            .then(|| crate::numeric::approximate(e).ok())
+            .flatten()
+    }
+
     /// Sets the value with its LaTeX and plain text.
     pub fn set_value(&mut self, value: Value) {
         match &value {

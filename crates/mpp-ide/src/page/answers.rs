@@ -151,7 +151,7 @@ fn found<'e>(
 fn answer_of(v: &Answered, input: &PageInput<'_>, span: Span) -> Option<(String, String)> {
     let (text, latex, approx) = match input.show.format_for(span) {
         Some(f) => v.reformat_all(f),
-        None => (v.text.clone(), v.latex.clone(), v.approx.clone()),
+        None => (v.text.clone(), v.latex.clone(), v.decimal_beside()),
     };
     let decimal = matches!(
         v.kind,
@@ -183,7 +183,7 @@ fn preview_of(v: &Answered) -> Option<(String, String)> {
         .clone()
         .or_else(|| v.text.clone())
         .unwrap_or_else(|| latex.clone());
-    match (&v.text, &v.approx) {
+    match (&v.text, &v.decimal_beside()) {
         (Some(t), Some(a)) if t != a => Some((format!("= {latex} \\approx {a}"), copy)),
         _ => Some((format!("= {latex}"), copy)),
     }

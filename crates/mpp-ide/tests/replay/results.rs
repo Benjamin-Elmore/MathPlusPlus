@@ -144,3 +144,18 @@ fn comparisons_give_a_tick_or_a_cross() {
         assert!(tip.contains(want), "{line}: {tip}");
     }
 }
+
+/// E5, P9: an exact answer that is not a whole number shows its decimal beside
+/// it, as definitions do.
+#[test]
+fn an_exact_fraction_shows_its_decimal() {
+    let h = typed_after("", &[Type("sum(1/n^2, n, 1, 10) ="), Pause]);
+    let s = Seen::of(&h);
+    let last = s.visible.last().expect("a line");
+    assert!(last.contains("1.549767731"), "no decimal: {last}");
+    let (copy, _) = last_slot(&h);
+    assert_eq!(
+        copy, "1968329/1270080",
+        "a click still copies the exact value"
+    );
+}
