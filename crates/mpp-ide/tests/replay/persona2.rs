@@ -323,3 +323,19 @@ fn the_first_colon_equals_says_what_it_means() {
     type_text(&mut h, "x :=");
     assert_eq!(hint(&h).as_deref(), Some(mpp_ide::hints::DEFINES));
 }
+
+/// P10: while a prose line reads as maths, a faint cue says it will become
+/// maths; a sentence gets none.
+#[test]
+fn a_line_that_will_become_maths_shows_a_cue() {
+    let mut h = fresh();
+    type_text(&mut h, "g = 9.81");
+    assert!(mpp_ide::page::mode::maths_cue(
+        h.state().doc().expect("doc")
+    ));
+    let mut h = fresh();
+    type_text(&mut h, "A ball is thrown.");
+    assert!(!mpp_ide::page::mode::maths_cue(
+        h.state().doc().expect("doc")
+    ));
+}

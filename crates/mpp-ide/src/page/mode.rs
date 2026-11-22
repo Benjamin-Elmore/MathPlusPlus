@@ -204,6 +204,58 @@ pub fn paint_empty_hint(
     );
 }
 
+/// The cue drawn after a prose line that will become maths when the caret
+/// leaves it (P10).
+pub const MATHS_CUE: &str = "maths?";
+
+/// True while the caret's prose line reads as maths, so it will become a maths
+/// line once the caret leaves it (auto-detect, U12): the page shows a faint
+/// [`MATHS_CUE`] after it, so the change is no surprise (P10).
+pub fn maths_cue(doc: &crate::doc::Doc) -> bool {
+    use crate::editor::mathline::{
+        defined_names, line_bounds, line_kind, reads_as_maths, LineKind,
+    };
+    let text = doc.editor.text();
+    let caret = doc.editor.caret();
+    if doc.maths.auto_off || line_kind(text, caret) != LineKind::Prose {
+        return false;
+    }
+    let (ls, le) = line_bounds(text, caret);
+    let line = text[ls..le].trim();
+    !doc.maths.kept.iter().any(|k| k == line) && reads_as_maths(line, &defined_names(text))
+}
+
+/// Paints [`MATHS_CUE`] after the caret's line while [`maths_cue`] holds.
+pub fn paint_maths_cue(
+    painter: &Painter,
+    doc: &crate::doc::Doc,
+    page: &Page,
+    origin: Pos2,
+    theme: &mpp_render::Theme,
+    size: f32,
+) {
+    if !maths_cue(doc) {
+        return;
+    }
+    let text = doc.editor.text();
+    let end = crate::editor::mathline::line_bounds(text, doc.editor.caret()).1;
+    let Some(s) = page.caret_stop(end) else {
+        return;
+    };
+    let at = Pos2::new(
+        origin.x + s.x + size * 0.8,
+        origin.y + s.bottom - size * 0.3,
+    );
+    crate::paint::paint_text(
+        painter,
+        MATHS_CUE,
+        at,
+        size * 0.75,
+        FontId::TextItalic,
+        c32(theme.placeholder_label),
+    );
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

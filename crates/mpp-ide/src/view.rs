@@ -1285,6 +1285,7 @@ fn paint_page(
     // An empty file says how to start (U12).
     if focused {
         crate::page::mode::paint_empty_hint(painter, doc, page, origin, theme, cx.size);
+        crate::page::mode::paint_maths_cue(painter, doc, page, origin, theme, cx.size);
     }
     // The one-time hint of the last edit, under the caret.
     if let (Some(h), Some(s)) = (doc.editor.hint(), page.caret_stop(doc.editor.caret())) {
