@@ -163,7 +163,9 @@ pub fn auto_detect(ui: &egui::Ui, doc: &mut crate::doc::Doc, was: LineMark) -> b
                 if !modifiers.shift && !modifiers.command)
         })
     });
-    let done = doc.editor.maths_after_frame(&mut doc.maths, was, enter);
+    // An empty bullet Enter left at the end of the file goes once it is left.
+    let dropped = !enter && doc.editor.drop_empty_item(was.line_start);
+    let done = dropped || doc.editor.maths_after_frame(&mut doc.maths, was, enter);
     if done {
         doc.touched();
     }

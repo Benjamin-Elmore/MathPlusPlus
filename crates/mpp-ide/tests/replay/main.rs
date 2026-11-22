@@ -8,6 +8,7 @@
 mod basics;
 mod escape;
 mod persona;
+mod persona2;
 mod runner;
 mod side;
 mod timing;

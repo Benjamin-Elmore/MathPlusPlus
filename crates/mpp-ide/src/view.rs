@@ -1408,7 +1408,9 @@ fn type_text(doc: &mut Doc, pc: &PageCache, cx: &mut ViewCtx<'_>, text: &str) {
             doc.editor.bracket_after(ch);
             continue;
         }
-        doc.editor.before_type(ch);
+        if doc.editor.before_type(ch) {
+            continue;
+        }
         doc.editor.insert_text(&ch.to_string());
         doc.editor.after_type(ch);
         // `$`, `=` or `:=` on an empty line starts a maths line (U12).

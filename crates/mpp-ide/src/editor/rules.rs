@@ -219,21 +219,57 @@ impl Editor {
     }
 
     /// Called just before a character is typed in prose: a space that completes a
-    /// list marker (`- `, `1. `) is an undo step of its own.
-    pub fn before_type(&mut self, ch: char) {
+    /// list marker (`- `, `1. `) is an undo step of its own. True when `ch` is
+    /// used up.
+    pub fn before_type(&mut self, ch: char) -> bool {
         if ch != ' ' || self.selection().is_some() {
-            return;
+            return false;
         }
-        let (ls, _) = line_bounds(&self.text, self.caret);
+        let (ls, le) = line_bounds(&self.text, self.caret);
         let t = self.text[ls..self.caret].trim_start_matches([' ', '\t']);
-        let marker = matches!(t, "-" | "*")
-            || (t.len() > 1
-                && t.len() <= 10
-                && t.ends_with('.')
-                && t[..t.len() - 1].bytes().all(|b| b.is_ascii_digit()));
-        if marker {
+        let is_marker = |t: &str| {
+            matches!(t, "-" | "*")
+                || (t.len() > 1
+                    && t.len() <= 10
+                    && t.ends_with('.')
+                    && t[..t.len() - 1].bytes().all(|b| b.is_ascii_digit()))
+        };
+        // On a list item, a marker typed again at the start of its text (Enter
+        // already wrote one) is swallowed, so the bullet is not doubled (T9).
+        if self.caret == le && !in_fence(&self.text, ls) {
+            if let Some((_, _, content)) = list_marker(&self.text[ls..le]) {
+                let typed = &self.text[ls + content..self.caret];
+                if is_marker(typed) {
+                    self.delete_range(ls + content..self.caret);
+                    return true;
+                }
+            }
+        }
+        if is_marker(t) {
             self.break_step();
         }
+        false
+    }
+
+    /// The caret left the line starting at `line_start`: an empty list item
+    /// there at the end of the file (left behind by Enter) is removed. True
+    /// when it was.
+    pub fn drop_empty_item(&mut self, line_start: usize) -> bool {
+        if line_start == 0 || line_start > self.text.len() || self.selection().is_some() {
+            return false;
+        }
+        let (ls, le) = line_bounds(&self.text, line_start);
+        if ls != line_start || le != self.text.len() || self.caret >= ls {
+            return false;
+        }
+        let line = &self.text[ls..le];
+        let empty = list_marker(line)
+            .is_some_and(|(_, _, c)| line.get(c..).is_none_or(|r| r.trim().is_empty()));
+        if !empty || in_fence(&self.text, ls) || !self.text[..ls].ends_with('\n') {
+            return false;
+        }
+        self.convert(ls - 1..le, "");
+        true
     }
 
     /// Called just after a character was typed in prose: `#` then a letter at the
