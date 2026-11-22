@@ -254,6 +254,26 @@ fn show_decimal(lr: &mut LineResult, decimal: &str) {
     }
 }
 
+/// The decimal of a value worked out with `round(…)` when it is a number of tenths,
+/// hundredths …: `353/10` reads as `35.3`.
+fn rounded_decimal(written: &str, value: &Expr) -> Option<String> {
+    if !written.contains("round") {
+        return None;
+    }
+    let q = value.as_number()?.as_rational()?.clone();
+    let mut den = q.denom().clone();
+    let mut places = 0;
+    let ten = num_bigint::BigInt::from(10);
+    while den > num_bigint::BigInt::from(1) {
+        if &den % &ten != num_bigint::BigInt::from(0) || places > 30 {
+            return None;
+        }
+        den /= &ten;
+        places += 1;
+    }
+    Some(mpp_core::number::rational_to_fixed(&q, places))
+}
+
 /// A remark that only reports how an answer was found and that it checked out
 /// (`method: separable`, `… substituting it back gives 0 exactly`): not a problem
 /// with the line, so `mpp check` does not list it as a warning.
@@ -1644,6 +1664,12 @@ impl Run<'_, '_> {
             lr.set_value(Value::from_expr(value));
             lr.text = Some(text);
             lr.latex = Some(latex);
+            return self.push(lr);
+        }
+        // `round(R, 1) =`: the rounded number reads as a decimal (35.3, not 353/10).
+        if let (QueryMode::Exact, Some(d)) = (mode, rounded_decimal(written, &value)) {
+            lr.set_value(Value::from_expr(value));
+            show_decimal(&mut lr, &d);
             return self.push(lr);
         }
         match mode {

@@ -1087,6 +1087,26 @@ impl<'a> Lowerer<'a> {
 
     fn func_app(&mut self, app: &FuncApp, span: Span) -> LowerResult {
         let name = app.func;
+        // `round(x, n)`: x to n digits after the point (n = 0 when left out), as
+        // floor(x·10ⁿ + 1/2)/10ⁿ.
+        if name == "round" && app.sub.is_none() && !app.inverse && app.power.is_none() {
+            let args = self.lower_all(&app.args)?;
+            let (x, n) = match args.as_slice() {
+                [x] => (x.clone(), Expr::int(0)),
+                [x, n] => (x.clone(), n.clone()),
+                _ => return Err(fail(
+                    span,
+                    EvalError::Invalid(
+                        "round takes a number and the digits to keep after the point: round(x, 2)"
+                            .into(),
+                    ),
+                )),
+            };
+            let scale = Expr::int(10).pow(n);
+            let up = Expr::func(Func::Floor, vec![x * scale.clone() + Expr::rational(1, 2)])
+                .map_err(math(span))?;
+            return Ok(up / scale);
+        }
         // `\max_{t \in [0, 50]} f(t)`: the extremum over an interval.
         if let (Some(sub), "max" | "min", false) = (&app.sub, name, app.inverse) {
             if let NodeKind::Relation { first, rest } = &sub.ungrouped().kind {

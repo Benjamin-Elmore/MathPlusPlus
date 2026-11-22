@@ -51,6 +51,9 @@ pub(crate) struct Engine<'a> {
     pub depth: u32,
     /// When false, no hit boxes are recorded (results have no source).
     pub hits: bool,
+    /// Letters are set upright: the name of a function the document does not know,
+    /// spelled as letters side by side (`integrate(…)`, `round(…)`).
+    pub upright: bool,
 }
 
 impl<'a> Engine<'a> {
@@ -63,6 +66,7 @@ impl<'a> Engine<'a> {
             font: None,
             depth: 0,
             hits: true,
+            upright: false,
         }
     }
 
@@ -917,6 +921,7 @@ impl<'a> Engine<'a> {
             font: self.font,
             depth: self.depth,
             hits: self.hits,
+            upright: self.upright,
         }
     }
 }

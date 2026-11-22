@@ -159,3 +159,17 @@ fn an_exact_fraction_shows_its_decimal() {
         "a click still copies the exact value"
     );
 }
+
+/// E7, E8: `round(x, n)` rounds, its name is upright (never italic letters), and
+/// `%digits 4` (the same as `%sf 4`) sets the significant figures.
+#[test]
+fn round_and_digits() {
+    let h = typed_after(DEFS, &[Type("round(R, 1) ="), Pause]);
+    let s = Seen::of(&h);
+    let last = s.visible.last().expect("a line");
+    assert!(last.starts_with("round("), "the name is upright: {last}");
+    assert_eq!(last_slot(&h).0, "35.3", "{last}");
+    let text = format!("{DEFS}%digits 4\n\n$$ R = $$");
+    let h = typed_after(&text, &[Pause]);
+    assert_eq!(last_slot(&h).0, "35.31");
+}
