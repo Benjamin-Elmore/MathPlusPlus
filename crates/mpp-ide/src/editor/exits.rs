@@ -113,13 +113,18 @@ impl Editor {
                     self.refuse(ch)
                 }
             }
-            '+' | '-' | '−' | '=' | '<' | '>' | ',' | ' ' | ')' => {
+            '+' | '-' | '−' | '*' | '·' | '=' | '<' | '>' | ',' | ' ' | ')' => {
                 // `)` leaves a script only when it closes nothing inside it.
                 let script = self
                     .script_exit(caret)
                     .filter(|_| ch != ')' || self.box_balanced(caret));
                 if let Some((id, to)) = script {
                     self.leave_to(id, to);
+                }
+                // A product (`v**2*g`) leaves an exponent, but stays in a
+                // denominator, where `*` may start a power (`1/n**2`).
+                if matches!(ch, '*' | '·') {
+                    return true;
                 }
                 // Then out of the denominator of a `/` fraction (`1/n^2,`).
                 if let Some((id, to)) = self.linear_exit(self.caret) {

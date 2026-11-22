@@ -788,11 +788,44 @@ impl Editor {
         if !self.make_maths(ls) {
             return false;
         }
+        self.typed_forms(ls);
         self.fire_hint(
             Hint::AutoMaths,
             "Turned into maths. Ctrl+Z keeps it as text.",
         );
         true
+    }
+
+    /// The maths line at `at`, just made from a prose line, gets what was
+    /// typed converted as typing in maths converts it (`v**2/g` →
+    /// `\frac{v^{2}}{g}`, P13, S16). Part of the same undo step, so the first
+    /// Ctrl+Z gives back the line as typed.
+    fn typed_forms(&mut self, at: usize) {
+        let LineKind::Maths(open, end) = line_kind(&self.text, at) else {
+            return;
+        };
+        let inner = &self.text[open..end];
+        let (Some(body), true) = (inner.strip_prefix("$$ "), inner.ends_with(" $$")) else {
+            return;
+        };
+        let body = &body[..body.len() - 3];
+        if body.contains('$') || body.trim().is_empty() {
+            return;
+        }
+        let new = super::convert::typed_in_maths(body);
+        if new == body || new.is_empty() {
+            return;
+        }
+        let range = open + 3..end - 3;
+        let (old_len, caret) = (range.len(), self.caret);
+        self.splice(range.clone(), &new);
+        if caret >= range.end {
+            self.caret = caret - old_len + new.len();
+        } else if caret > range.start {
+            self.caret = range.start + new.len();
+        }
+        self.fixup();
+        self.revision += 1;
     }
 
     /// Where the caret is now, for [`Editor::maths_after_frame`].

@@ -213,3 +213,30 @@ fn bracket_display_maths_becomes_a_maths_line() {
     type_text(&mut h, r"So \[ a + b \] and more");
     assert_eq!(text_of(&h), "So\n\n$$ a + b $$\n\nand more");
 }
+
+/// P13 and S16: a line typed in code style that becomes maths by itself is
+/// converted as typing in maths would (a built-up fraction, a power, θ), in
+/// the same undo step: the first Ctrl+Z gives back the line as typed.
+#[test]
+fn a_code_style_line_is_built_up_when_it_becomes_maths() {
+    for (typed, want) in [
+        ("v/2 =", r"$$ \frac{v}{2} = $$"),
+        ("1/n**2 =", r"$$ \frac{1}{n^{2}} = $$"),
+    ] {
+        let mut h = fresh();
+        type_text(&mut h, typed);
+        enter(&mut h);
+        assert_eq!(text_of(&h), format!("{want}\n\n"), "typed {typed:?}");
+        press(&mut h, Modifiers::COMMAND, Key::Z);
+        assert_eq!(text_of(&h), format!("{typed}\n\n"), "undo after {typed:?}");
+    }
+    let mut h = fresh();
+    type_text(&mut h, "R = v**2*sin(2*theta)/g");
+    enter(&mut h);
+    let text = text_of(&h);
+    assert!(
+        text.starts_with(r"$$ R = v^{2}·\frac{") && text.contains("{g}") && text.contains('θ'),
+        "{text:?}"
+    );
+    assert!(!text.contains("**"), "{text:?}");
+}

@@ -116,10 +116,13 @@ fn a_mathematician_and_a_coder_get_the_same_worksheet() {
          $$ \\int_{0}^{1} x^{2} \\, dx = ? $$\n\n$$ α := \\sqrt{16} $$\n\n\
          $$ 2 α + a = ? $$\n\n"
     );
+    // The coder's lines became maths by themselves, so they were converted as
+    // typing in maths converts them (U28, P13 and S16).
     assert_eq!(
         sc.text,
-        "# Worksheet\n\n$$ a = 3 $$\n\n$$ a/2 = ? $$\n\n$$ int(x**2, x, 0, 1) = ? $$\n\n\
-         $$ alpha = sqrt(16) $$\n\n$$ 2*alpha + a = ? $$\n\n"
+        "# Worksheet\n\n$$ a = 3 $$\n\n$$ \\frac{a}{2} = ? $$\n\n\
+         $$ \\int_{0}^{1} x^{2} \\, dx = ? $$\n\n$$ α = \\sqrt{16} $$\n\n\
+         $$ 2·α + a = ? $$\n\n"
     );
     let (mut maths, mut code) = (maths, code);
     snapshot(&mut maths, "replay_worksheet_latex");

@@ -239,6 +239,33 @@ fn script_snippet(sup: bool) -> Option<Snippet> {
     .ok()
 }
 
+/// `content` typed key by key into an empty maths line, converted the way
+/// typing in maths converts it (P13, S16): `1/n**2` becomes
+/// `\frac{1}{n^{2}}`, `theta` becomes `θ`. For a code-style line that becomes
+/// maths by itself.
+pub fn typed_in_maths(content: &str) -> String {
+    let mut e = Editor::new("$$  $$");
+    e.move_caret(3, false);
+    let cx = TypingCx {
+        build: BuildCx::default(),
+        shortcuts: true,
+    };
+    // A Space at the end ends the last token, as a delimiter does.
+    for ch in content.chars().chain([' ']) {
+        if e.bracket_before(ch) {
+            continue;
+        }
+        e.type_maths(ch, &cx);
+        e.bracket_after(ch);
+    }
+    e.leave_templates();
+    let t = e.text();
+    match (t.find("$$"), t.rfind("$$")) {
+        (Some(o), Some(c)) if c > o + 2 => t[o + 2..c].trim().to_string(),
+        _ => content.to_string(),
+    }
+}
+
 impl Editor {
     /// Types one character in maths, converting as it goes (see the module docs).
     pub fn type_maths(&mut self, ch: char, cx: &TypingCx) {
